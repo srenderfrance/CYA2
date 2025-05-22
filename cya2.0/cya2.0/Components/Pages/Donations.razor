@@ -1,0 +1,216 @@
+﻿@page "/donations"
+
+@using Microsoft.Extensions.Configuration
+@using ModelsLibrary
+@using DataLibrary
+@using UtilityClassLibrary
+@inject IDataAccess _data
+@inject IConfiguration _config
+@rendermode InteractiveServer
+
+<PageTitle>DONATIONS</PageTitle>
+<h1>Donations</h1>
+<div class="d-flex justify-content-between">
+	<h2>Account Name: @selectedAccount</h2>
+	<Dropdown Color="DropdownColor.Secondary">
+		<DropdownToggleButton>Choose Account</DropdownToggleButton>
+		<DropdownMenu @bind-value="@selectedAccount">
+			@foreach (var account in userAccounts)
+			{
+				<DropdownItem Type=DropdownItemType.Button @onclick="() => accountSelection(account.Name)">@account.Name</DropdownItem>
+			}
+		</DropdownMenu>
+	</Dropdown>
+</div>
+<div> 
+	<Grid 
+	TItem="UserDataDonations"
+	Class="table table-hover table-bordered table-striped"
+	Data="@selectedDonations"
+	AllowFiltering="true"
+	AllowPaging="true"
+	PageSize="10"
+	AllowSorting="true"
+	AllowSelection="false"
+	SelectionMode="GridSelectionMode.Multiple"
+	Responsive="true">
+
+		<GridColumns>
+			<GridColumn TItem="UserDataDonations" HeaderText="Account" PropertyName="Account">@context.Account</GridColumn>
+			<GridColumn TItem="UserDataDonations" HeaderText="Donor" PropertyName="Donor">@context.Donor</GridColumn>
+			<GridColumn TItem="UserDataDonations" HeaderText="Date" PropertyName="Date">@context.Date</GridColumn>
+			<GridColumn TItem="UserDataDonations" HeaderText="Amount" PropertyName="Amount">@context.Amount</GridColumn>	
+			<GridColumn TItem="UserDataDonations" HeaderText="Frequency" PropertyName="Frequency">@context.Frequency</GridColumn>
+			<GridColumn TItem="UserDataDonations" HeaderText="Transaction Type" PropertyName="TransactionType">@context.TransactionType</GridColumn>		
+		</GridColumns>
+	</Grid>
+
+	<div class="d-flex">
+		<label class="labels" for="startDate">Start Date</label>
+		<div class="mb-3">
+			<DateInput class="form-control" name="startDate" TValue="DateTime" @bind-Value="@startDate" Placeholder="Enter Date" />
+		</div>
+		<label class=" labels" for="endDate">End Date</label>
+		<div class="mb-3">
+			<DateInput TValue="DateTime" @bind-Value="@endDate" Placeholder="Enter Date" />
+		</div>
+		<Button Color="ButtonColor.Primary" @onclick="selectDateRange" class="btn btn-primary">Select Date Range</Button>
+	</div>
+</div>
+
+@code {
+	List<DonationsDataModel> donationData;
+	//	List<AccountingDataModel> accountingData;
+	List<string> userAccountsSimple = new List<string>();
+	List<UserDataDonations> donations = new List<UserDataDonations>();
+	List<UserDataDonations> selectedDonations = new List<UserDataDonations>();
+	List<AccountNameOptions> userAccounts = new List<AccountNameOptions>();
+	List<DonationsDataModel> accountDonationsData = new List<DonationsDataModel>();
+	public DateTime startDate = new DateTime(DateTime.Now.Year, DateTime.Now.Month, 1, 0, 0 , 0);
+	public DateTime endDate = DateTime.Now;
+
+	public string selectedAccount;
+
+
+	string selection = "";
+	public async Task accountSelection(string accountName)
+	{
+		selectedAccount = accountName;
+		Console.WriteLine($"TESTING: {selectedAccount}");
+		await getAccount();
+	}
+
+	public async Task getAccount()
+	{
+		Console.WriteLine($"GET ACCOUNT Selected Account: {selectedAccount}"); 
+		foreach (var account in userAccounts)
+		{
+			if (account.Name == selectedAccount)
+			{
+				selection = account.WholeString;
+				Console.WriteLine($"SELECTION BEFORE BREAK: {selection}");
+				break;
+			}
+		}
+		string sql = $"select * from etapestry where fund = @Fund";
+		donationData = await _data.LoadData<DonationsDataModel, dynamic>(sql, new {Fund = selection}, _config.GetConnectionString("default"));
+		if (donationData != null)
+		{
+			Console.WriteLine($"Total donationData records: {donationData.Count}");
+			proccessDonations();
+		}
+		else
+		{
+			Console.WriteLine("No data returned from the SQL query.");
+		}
+	}
+
+	protected override async Task OnInitializedAsync()
+	{
+
+		//	string sql2 = "select * from quickbooks where accountnum = 'Rende12' order by date";
+		//	accountingData = await _data.LoadData<AccountingDataModel, dynamic>(sql2, new { }, _config.GetConnectionString("default"));
+		string sql3 = "select distinct fund from etapestry";
+
+		userAccountsSimple = await _data.LoadData<string, dynamic>(sql3, new { }, _config.GetConnectionString("default"));
+		if (userAccountsSimple != null)
+		{
+			foreach (var account in userAccountsSimple)
+			{
+				if (account.Contains(":"))
+				{
+					//		Console.WriteLine($"{account}");
+					string[] accountSplit = account.Split(":");
+					//	Console.WriteLine($"AccountSPLIT: {accountSplit[0]}");
+					var accountOptions = new AccountNameOptions(account, accountSplit[0], accountSplit[1]);
+					userAccounts.Add(accountOptions);
+				}
+				else
+				{
+					var accountOptions = new AccountNameOptions(account, account, account);
+					userAccounts.Add(accountOptions);
+
+				}
+			}
+		}
+
+
+	}
+	public void proccessDonations()
+	{
+		Console.WriteLine($"About to Process: Donations: {donations.Count}");
+		donations.Clear(); // Clear the list to avoid duplicate entries
+		Console.WriteLine($"Second Count: {donations.Count}"); 
+		Console.WriteLine($"Processing donations..."); 
+		foreach (var donation in donationData)
+		{
+			int seperator = donation.fund.IndexOf(":");
+
+			var newDonation = new UserDataDonations(donation.fund.Remove(seperator, donation.fund.Length - seperator), donation.accountname, donation.date, donation.amount, donation.recurring, donation.gifttype);
+			donations.Add(newDonation);
+		}
+		Console.WriteLine($"Total donations processed: {donations.Count}");
+		selectDateRange();
+	}
+	List<UserDataDonations> selectedData = new List<UserDataDonations>();
+	List<DateTime> selectedDates = new List<DateTime>();
+	public List<UserDataDonations> SelectData(List<UserDataDonations> data, DateTime? start = null, DateTime? end = null)
+	{
+		if (start == null && end == null)
+		{
+			return data;
+		}
+		else if (start != null && end == null)
+		{
+			return data.Where(d => d.Date >= start).ToList();
+		}
+		else if (start == null && end != null)
+		{
+			return data.Where(d => d.Date <= end).ToList();
+		}
+		else
+		{
+			return data.Where(d => d.Date >= start && d.Date <= end).ToList();
+		}
+	}
+	public void selectDateRange()
+	{
+		selectedDonations = SelectData(donations, startDate, endDate);
+		//StateHasChanged();
+		Console.WriteLine("DATA SELECTED");
+		Console.WriteLine($"Start: {startDate} End: {endDate}");
+	}
+
+/*	protected override void OnParametersSet()
+	{
+		ReloadData();
+	}
+*/
+//	public void ReloadData()
+	//{
+	//	Console.WriteLine("Reloading data...");
+	//	Console.WriteLine($"Selection: {selection}");
+	//	Console.WriteLine($"SELECTEDACCOUNT: {selectedAccount}");
+
+/*if (selection != "")
+		{
+	
+		string sql = $"select * from etapestry where fund = @Fund";
+			donationData = await _data.LoadData<DonationsDataModel, dynamic>(sql, new {Fund = selection}, _config.GetConnectionString("default"));
+		}
+		else
+		{
+			Console.WriteLine("No account selected.");
+		}*/
+		//	string sql2 = "select * from quickbooks where accountnum = 'Rende12' order by date";
+		//	accountingData = await _data.LoadData<AccountingDataModel, dynamic>(sql2, new { }, _config.GetConnectionString("default"));
+
+		//	if (donationData != null)
+	//		{
+			//	donations.Clear(); // Clear the list to avoid duplicate entries
+		//		proccessDonations();
+		
+	//		}
+	//	}
+
+	}

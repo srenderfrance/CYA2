@@ -1,0 +1,32 @@
+﻿@page "/not-authorized"
+
+<PageTitle>Not Authorized</PageTitle>
+
+<div class="row justify-content-center mt-5">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header bg-danger text-white">
+                <h3 class="text-center">Not Authorized</h3>
+            </div>
+            <div class="card-body text-center">
+                <p>Your Google account has not been pre-registered in the system.</p>
+                <p>Please contact your administrator to request access.</p>
+                <button class="btn btn-secondary" @onclick="GoToLoginPage">
+                    <i class="bi bi-arrow-left me-2"></i> Return to Login
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    [Inject]
+    private NavigationManager NavigationManager { get; set; }
+
+    private void GoToLoginPage()
+    {
+        NavigationManager.NavigateTo("/login-page");
+    }
+}
+
+

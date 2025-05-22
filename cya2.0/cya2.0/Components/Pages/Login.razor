@@ -1,0 +1,22 @@
+﻿@page "/login"
+@inject NavigationManager Navigation
+
+<h1>Login</h1>
+
+<p>Welcome! Please log in to continue.</p>
+
+<button class="btn btn-primary" @onclick="AuthenticateWithGoogle">
+    Login with Google
+</button>
+<h3>Login or Register</h3>
+ 
+@code {
+        // Method to initiate Google authentication
+        private void AuthenticateWithGoogle()
+        {
+            // Redirect the user to the Google authentication endpoint.
+            // The "__Host/Account/Login" path is a common convention in Blazor
+            // for handling external authentication challenges.
+            Navigation.NavigateTo("/__Host/Account/Login?provider=Google", forceLoad: true);
+        }
+}
