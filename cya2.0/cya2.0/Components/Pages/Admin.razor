@@ -1,0 +1,92 @@
+﻿@page "/admin"
+@attribute [Authorize(Roles = "Admin")]
+@inject UserRepository UserRepository
+@using ModelsLibrary
+@using System.ComponentModel.DataAnnotations
+
+<h3>Create New User</h3>
+
+<EditForm Model="@formModel" OnValidSubmit="HandleValidSubmit" FormName="CreateUser" Enhance>
+    <DataAnnotationsValidator />
+    <ValidationSummary />
+
+    <div class="mb-3">
+        <label for="email">Email:</label>
+        <InputText id="email" class="form-control" @bind-Value="formModel.Email" />
+        <ValidationMessage For="@(() => formModel.Email)" />
+    </div>
+    <div class="mb-3">
+        <label for="name">Name:</label>
+        <InputText id="name" class="form-control" @bind-Value="formModel.Name" />
+        <ValidationMessage For="@(() => formModel.Name)" />
+    </div>
+    <button type="submit" class="btn btn-primary">Register New User</button>
+</EditForm>
+
+@if (successMessage != null)
+{
+    <div class="alert alert-success mt-3">@successMessage</div>
+}
+
+@if (errorMessage != null)
+{
+    <div class="alert alert-danger mt-3">@errorMessage</div>
+}
+
+@code {
+
+    [SupplyParameterFromForm]
+    private UserFormModel formModel { get; set; } = new UserFormModel();
+
+    private string? successMessage;
+    private string? errorMessage;
+
+    private async Task HandleValidSubmit()
+    {
+        try
+        {
+            // Save to the database using UserRepository.CreateUserAsync
+            await UserRepository.CreateUserAsync(formModel.Email, formModel.Name);
+            successMessage = $"New user {formModel.Name} registered successfully with email {formModel.Email}";
+            errorMessage = null;
+
+            // Reset the form
+            formModel = new UserFormModel();
+        }
+        catch (Exception ex)
+        {
+            successMessage = null;
+            errorMessage = $"Error: {ex.Message}";
+        }
+    }
+
+    public class UserFormModel
+    {
+        [Required(ErrorMessage = "Email is required")]
+        [EmailAddress(ErrorMessage = "Please enter a valid email address")]
+        public string Email { get; set; } = string.Empty;
+
+        [Required(ErrorMessage = "Name is required")]
+        [StringLength(100, MinimumLength = 2, ErrorMessage = "Name must be between 2 and 100 characters")]
+        public string Name { get; set; } = string.Empty;
+    }
+
+
+
+    public async Task createAccountsTable()
+    {
+       /*	string sql = $"select * from etapestry where fund = @Fund";
+		donationData = await _data.LoadData<DonationsDataModel, dynamic>(sql, new {Fund = selection}, _config.GetConnectionString("default"));
+		if (donationData != null)
+		{
+			Console.WriteLine($"Total donationData records: {donationData.Count}");
+			proccessDonations();
+		}
+		else
+		{
+			Console.WriteLine("No data returned from the SQL query.");
+		}
+*/
+    }
+}
+

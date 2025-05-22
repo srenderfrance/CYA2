@@ -1,0 +1,60 @@
+﻿@page "/"
+@attribute [Authorize]
+@using System.Security.Claims
+
+<PageTitle>Home</PageTitle>
+
+<h1 class="h3"> @userName, Welcome to your Fundraising Account.</h1>
+<div>
+    <ul>
+        <li>Current Account: @currentAccount</li>
+        <li>Current Balance: $@currentBalance</li>
+        <li>Income this Month: $@incomeThisMonth</li>
+        <li>Monthly Average: $@monthlyAverage</li>
+        <li>AUTH: @language</li>
+    </ul>
+</div>
+<div class="mt-4">
+    <h3>Debug Info:</h3>
+    <ul>
+        @foreach (var claim in userClaims)
+        {
+            <li>@claim.Type: @claim.Value</li>
+        }
+    </ul>
+</div>
+
+@code {
+    [CascadingParameter]
+    private Task<AuthenticationState> AuthState { get; set; }
+
+    private string userName = "User";
+    public string currentAccount = "Main Account";
+    public decimal currentBalance = 3000.00m;
+    public decimal incomeThisMonth = 600.00m;
+    public decimal monthlyAverage = 2500.00m;
+    private IEnumerable<Claim> userClaims = Array.Empty<Claim>();
+	public string language = "default";
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthState;
+        var user = authState.User;
+
+        if (user.Identity.IsAuthenticated)
+        {
+            // Get the user's name from their claims
+            userName = user.FindFirst(ClaimTypes.GivenName)?.Value ??
+                user.Identity.Name ??
+                user.FindFirst(ClaimTypes.Email)?.Value ??
+                "User";
+
+            // Store all claims for debugging
+            userClaims = user.Claims;
+			language = user.FindFirst("Language")?.Value;
+
+
+
+		}
+    }
+}
