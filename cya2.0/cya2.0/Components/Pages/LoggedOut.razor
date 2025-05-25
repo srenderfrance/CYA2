@@ -1,0 +1,74 @@
+﻿@page "/logged-out"
+@attribute [AllowAnonymous]
+@using Microsoft.AspNetCore.Authorization
+@inject IJSRuntime JSRuntime
+@rendermode InteractiveServer
+
+<PageTitle>Logged Out - CYA</PageTitle>
+
+<div class="container mt-5">
+    <div class="row justify-content-center">
+        <div class="col-md-6">
+            <div class="card shadow">
+                <div class="card-body text-center p-5">
+                    <div class="mb-4">
+                        <i class="bi bi-box-arrow-right" style="font-size: 3rem; color: #0d6efd;"></i>
+                    </div>
+                    <h2 class="card-title mb-3">You've been logged out</h2>
+                    <p class="card-text mb-4">Thank you for using CYA. You have successfully logged out of your account.</p>
+                    <a href="/api/login" class="btn btn-primary btn-lg" @onclick="PrepareForLogin">
+                        <i class="bi bi-google me-2"></i> Sign in with Google
+                    </a>
+                </div>
+                <div class="card-footer text-center text-muted py-3">
+                    <small>&copy; @DateTime.Now.Year - CYA Application</small>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="row mt-4">
+        <div class="col text-center">
+            <button class="btn btn-outline-secondary btn-sm" @onclick="ShowDiagnostics">Show Auth Diagnostics</button>
+        </div>
+    </div>
+</div>
+
+@code {
+    private async Task PrepareForLogin()
+    {
+        try {
+            await JSRuntime.InvokeVoidAsync("authHelpers.prepareForLogin");
+            await JSRuntime.InvokeVoidAsync("authHelpers.diagnostics.logEvent", "login-button-clicked", new { page = "LoggedOut" });
+        }
+        catch (Exception ex) {
+            Console.WriteLine($"Error in PrepareForLogin: {ex.Message}");
+        }
+    }
+
+    private async Task ShowDiagnostics()
+    {
+        try {
+            await JSRuntime.InvokeVoidAsync("authHelpers.diagnostics.show");
+        }
+        catch (Exception ex) {
+            Console.WriteLine($"Error in ShowDiagnostics: {ex.Message}");
+        }
+    }
+
+    // Clear cookies after render
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            try {
+                // Clear authentication cookies via JS
+                await JSRuntime.InvokeVoidAsync("eval", 
+                    "document.cookie.split(';').forEach(c => document.cookie = c.trim().split('=')[0] + '=;' + 'expires=Thu, 01 Jan 1970 00:00:00 UTC;path=/;');");
+            }
+            catch (Exception ex) {
+                Console.WriteLine($"Error clearing cookies: {ex.Message}");
+            }
+        }
+    }
+}
+

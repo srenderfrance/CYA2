@@ -81,6 +81,28 @@ namespace UserAuth
             return rowsAffected; // Return the number of rows affected
         }
 
+        // Check if a user with the given email exists
+        public async Task<User?> GetUserByEmailAsync(string email)
+        {
+            var sql = "SELECT * FROM Users WHERE Email = @Email;";
+            var parameters = new { Email = email };
 
+            var users = await _dataAccess.LoadData<User, dynamic>(sql, parameters, _connectionString);
+            return users.FirstOrDefault(); // Return the first user or null if not found
+        }
+
+        // Check if a user has a GoogleId and if it matches
+        public async Task<bool> ValidateGoogleIdAsync(string email, string googleId)
+        {
+            var user = await GetUserByEmailAsync(email);
+            if (user == null)
+                return false; // User doesn't exist
+                
+            if (string.IsNullOrEmpty(user.GoogleId))
+                return true; // User exists but has no GoogleId yet - allow update
+                
+            // User exists and has GoogleId - check if it matches
+            return user.GoogleId == googleId;
+        }
     }
 }

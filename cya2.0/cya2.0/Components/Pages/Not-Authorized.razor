@@ -1,4 +1,8 @@
 ﻿@page "/not-authorized"
+@attribute [AllowAnonymous]
+@inject NavigationManager NavigationManager
+@inject IJSRuntime JSRuntime
+@rendermode InteractiveServer
 
 <PageTitle>Not Authorized</PageTitle>
 
@@ -11,21 +15,42 @@
             <div class="card-body text-center">
                 <p>Your Google account has not been pre-registered in the system.</p>
                 <p>Please contact your administrator to request access.</p>
-                <button class="btn btn-secondary" @onclick="GoToLoginPage">
-                    <i class="bi bi-arrow-left me-2"></i> Return to Login
-                </button>
+                <p class="mt-4">Or try signing in with a different Google account:</p>
+                <a href="/api/login" class="btn btn-primary" @onclick="PrepareForRedirect">
+                    <i class="bi bi-google me-2"></i> Sign in with different account
+                </a>
             </div>
         </div>
     </div>
 </div>
 
 @code {
-    [Inject]
-    private NavigationManager NavigationManager { get; set; }
-
-    private void GoToLoginPage()
+    private async Task PrepareForRedirect()
     {
-        NavigationManager.NavigateTo("/login-page");
+        try {
+            // Set a flag in localStorage indicating we need a redirect after login
+            await JSRuntime.InvokeVoidAsync("eval", 
+                "window.localStorage.setItem('redirectToHome', 'true')");
+        }
+        catch (Exception ex) {
+            Console.WriteLine($"Error in PrepareForRedirect: {ex.Message}");
+        }
+    }
+
+    // Clear cookies after render
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            try {
+                // Clear authentication cookies via JS
+                await JSRuntime.InvokeVoidAsync("eval", 
+                    "document.cookie.split(';').forEach(c => document.cookie = c.trim().split('=')[0] + '=;' + 'expires=Thu, 01 Jan 1970 00:00:00 UTC;path=/;');");
+            }
+            catch (Exception ex) {
+                Console.WriteLine($"Error clearing cookies: {ex.Message}");
+            }
+        }
     }
 }
 
