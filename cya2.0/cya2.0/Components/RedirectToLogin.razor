@@ -3,7 +3,7 @@
 @code {
     protected override void OnInitialized()
     {
-        Navigation.NavigateTo("/login-page");
+        Navigation.NavigateTo("/api/login", forceLoad: true);
     }
 }
 

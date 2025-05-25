@@ -1,4 +1,9 @@
-﻿<div class="nav-scrollable">
+﻿@inject NavigationManager NavigationManager
+@using Microsoft.AspNetCore.Components.Authorization
+@inject AuthenticationStateProvider AuthStateProvider
+@rendermode InteractiveServer
+
+<div class="nav-scrollable">
     <nav class="navbar d-flex justify-content-between navContainer">
         <div class="nav-item px-3">
             <NavLink class="nav-link" href="" Match="NavLinkMatch.All">
@@ -6,32 +11,41 @@
             </NavLink>
         </div>
         <div class="nav-item px-3 d-flex navbar-group">
-        <div class="nav-item px-3">
-            <NavLink class="nav-link" href="donations">
-                <span class="bi bi-list-nested-nav-menu" aria-hidden="true"></span> Donations 
-            </NavLink>
+            <div class="nav-item px-3">
+                <NavLink class="nav-link" href="donations">
+                    <span class="bi bi-list-nested-nav-menu" aria-hidden="true"></span> Donations
+                </NavLink>
+            </div>
+            <div class="nav-item px-3">
+                <NavLink class="nav-link" href="expenses">
+                    <span class="bi bi-list-nested-nav-menu" aria-hidden="true"></span> Expenses
+                </NavLink>
+            </div>
+            <div class="nav-item px-3">
+                <NavLink class="nav-link" href="donors">
+                    <span class="bi bi-list-nested-nav-menu" aria-hidden="true"></span> Donors
+                </NavLink>
+            </div>
+        </div>
+        <div class="nav-item px-3 d-flex navbar-group">
+            <div class="nav-item px-3">
+                <NavLink class="nav-link" href="usersettings">
+                    <span class="bi bi-gear-fill" aria-hidden="true"></span> Settings
+                </NavLink>
+            </div>
+            <div class="nav-item px-3">
+                <NavLink class="nav-link" href="/admin" Match="NavLinkMatch.All">
+                    <span class="bi bi-shield-lock" aria-hidden="true"></span> Admin
+                </NavLink>
+            </div>
         </div>
         <div class="nav-item px-3">
-            <NavLink class="nav-link" href="expenses">
-                <span class="bi bi-list-nested-nav-menu" aria-hidden="true"></span> Expenses 
-            </NavLink>
-        </div>
-         <div class="nav-item px-3">
-            <NavLink class="nav-link" href="donors">
-                <span class="bi bi-list-nested-nav-menu" aria-hidden="true"></span> Donors 
-            </NavLink>
-        </div>
-        </div>
-        <div class="nav-item px-3">
-            <NavLink class="nav-link" href="usersettings">
-                <span class="bi bi-gear-fill" aria-hidden="true"></span> Settings 
-            </NavLink>
-        </div>
-        <div class="nav-item px-3">
-            <NavLink class="nav-link" href="/admin" Match="NavLinkMatch.All">
-               Admin 
-            </NavLink>
+            <a href="/logout" class="nav-link">
+                <span class="bi bi-box-arrow-right" aria-hidden="true"></span> Logout
+            </a>
         </div>
     </nav>
 </div>
 
+@code {
+}
