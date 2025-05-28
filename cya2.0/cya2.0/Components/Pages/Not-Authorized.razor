@@ -1,4 +1,6 @@
 ﻿@page "/not-authorized"
+@using Microsoft.AspNetCore.Authorization
+@using static Microsoft.AspNetCore.Components.Web.RenderMode
 @attribute [AllowAnonymous]
 @inject NavigationManager NavigationManager
 @inject IJSRuntime JSRuntime

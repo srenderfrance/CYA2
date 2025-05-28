@@ -1,28 +1,61 @@
 ﻿<CascadingAuthenticationState>
+    @inject IDataAccess DataAccess
+    @inject IConfiguration Configuration
+    @inject ILogger<Routes> Logger
+    @inject DatabaseMonitorService DbMonitor
+
     <Router AppAssembly="typeof(Program).Assembly">
         <Found Context="routeData">
-            <AuthorizeRouteView RouteData="@routeData" DefaultLayout="typeof(Layout.MainLayout)">
-                <NotAuthorized>
-                    @if (context.User?.Identity?.IsAuthenticated != true)
-                    {
-                        <RedirectToLogin />
-                    }
-                    else
-                    {
-                        <p class="alert alert-danger">
-                            You are not authorized to access this resource.
-                        </p>
-                    }
-                </NotAuthorized>
-                <Authorizing>
-                    <div class="text-center">
-                        <div class="spinner-border" role="status">
-                            <span class="visually-hidden">Loading...</span>
+            @{
+                bool isErrorPage = routeData.PageType.Name.Contains("Error") || 
+                                  routeData.PageType.Name.Contains("DatabaseError") ||
+                                  routeData.PageType.Name.Contains("NotAuthorized") || 
+                                  routeData.PageType.Name.Contains("LoggedOut");
+            }
+            
+            @if (isErrorPage)
+            {
+                <RouteView RouteData="@routeData" DefaultLayout="typeof(Layout.MainLayout)" />
+            }
+            else
+            {
+                <AuthorizeRouteView RouteData="@routeData" DefaultLayout="typeof(Layout.MainLayout)">
+                    <NotAuthorized>
+                        @if (context.User?.Identity?.IsAuthenticated != true)
+                        {
+                            @if (!DbMonitor.IsConnected)
+                            {
+                                <div class="alert alert-danger m-4">
+                                    <h4 class="alert-heading">Database Error</h4>
+                                    <p>The application database is currently unavailable.</p>
+                                    <hr>
+                                    <p class="mb-0">
+                                        <a href="/database-error" class="btn btn-primary">View Database Status</a>
+                                    </p>
+                                </div>
+                            }
+                            else
+                            {
+                                <RedirectToLogin />
+                            }
+                        }
+                        else
+                        {
+                            <p class="alert alert-danger">
+                                You are not authorized to access this resource.
+                            </p>
+                        }
+                    </NotAuthorized>
+                    <Authorizing>
+                        <div class="text-center">
+                            <div class="spinner-border" role="status">
+                                <span class="visually-hidden">Loading...</span>
+                            </div>
+                            <p>Authorizing...</p>
                         </div>
-                        <p>Authorizing...</p>
-                    </div>
-                </Authorizing>
-            </AuthorizeRouteView>
+                    </Authorizing>
+                </AuthorizeRouteView>
+            }
             <FocusOnNavigate RouteData="@routeData" Selector="h1" />
         </Found>
         <NotFound>
@@ -33,4 +66,46 @@
         </NotFound>
     </Router>
 </CascadingAuthenticationState>
+
+@code {
+    // Subscribe to connection status changes from the monitor
+    protected override void OnInitialized()
+    {
+        try 
+        {
+            // Set up event handler to update the UI when connection status changes
+            DbMonitor.ConnectionStatusChanged += OnConnectionStatusChanged;
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error setting up DB monitor event handler in Routes.razor");
+        }
+    }
+    
+    private void OnConnectionStatusChanged(object sender, bool isConnected)
+    {
+        try
+        {
+            // Request UI update when connection status changes
+            InvokeAsync(StateHasChanged);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error in connection status changed handler");
+        }
+    }
+    
+    public void Dispose()
+    {
+        try
+        {
+            // Remove event handler when component is disposed
+            DbMonitor.ConnectionStatusChanged -= OnConnectionStatusChanged;
+        }
+        catch
+        {
+            // Ignore disposal errors
+        }
+    }
+}
 
