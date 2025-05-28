@@ -1,4 +1,10 @@
 ﻿@page "/login-page"
+@using DataLibrary
+@using Microsoft.Extensions.Configuration
+@inject NavigationManager NavigationManager
+@inject IDataAccess DataAccess
+@inject IConfiguration Configuration
+@inject ILogger<LoginPage> Logger
 
 <PageTitle>Login</PageTitle>
 
@@ -11,21 +17,74 @@
             <div class="card-body text-center">
                 <p>This application is for authorized users only.</p>
                 <p>Please sign in with your Google account to continue.</p>
-                <button class="btn btn-primary" @onclick="LoginWithGoogle">
-                    <i class="bi bi-google me-2"></i> Sign in with Google
-                </button>
+                
+                @if (_isLoading)
+                {
+                    <div class="d-flex justify-content-center my-3">
+                        <div class="spinner-border text-primary" role="status">
+                            <span class="visually-hidden">Loading...</span>
+                        </div>
+                        <span class="ms-2">Checking database connectivity...</span>
+                    </div>
+                }
+                else
+                {
+                    <button class="btn btn-primary" @onclick="LoginWithGoogle">
+                        <i class="bi bi-google me-2"></i> Sign in with Google
+                    </button>
+                }
+                
+                @if (_showError)
+                {
+                    <div class="alert alert-danger mt-3">
+                        <strong>Database Error:</strong> We're unable to connect to our database at the moment.
+                        <a href="/database-error">Click here for more information.</a>
+                    </div>
+                }
             </div>
         </div>
     </div>
 </div>
 
 @code {
-    [Inject]
-    private NavigationManager NavigationManager { get; set; }
+    private bool _isLoading = false;
+    private bool _showError = false;
 
-    private void LoginWithGoogle()
+    private async Task LoginWithGoogle()
     {
-        NavigationManager.NavigateTo("/login", forceLoad: true);
+        _isLoading = true;
+        _showError = false;
+        StateHasChanged();
+
+        try
+        {
+            // Check database connectivity first
+            var connectionString = Configuration.GetConnectionString("default");
+            bool isConnected = await DataAccess.CheckConnection(connectionString);
+
+            if (!isConnected)
+            {
+                // Database is down, show error
+                _showError = true;
+                _isLoading = false;
+                StateHasChanged();
+                Logger.LogWarning("Database unavailable, blocking authentication attempt");
+                return;
+            }
+
+            // Database is available, proceed with authentication
+            Logger.LogInformation("Database is available, proceeding with authentication");
+            
+            // Redirect directly to the API login endpoint
+            NavigationManager.NavigateTo("/api/login", forceLoad: true);
+        }
+        catch (Exception ex)
+        {
+            _showError = true;
+            _isLoading = false;
+            StateHasChanged();
+            Logger.LogError(ex, "Error checking database connectivity");
+        }
     }
 }
 

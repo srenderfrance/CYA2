@@ -1,4 +1,7 @@
 ﻿@page "/admin"
+@using Microsoft.AspNetCore.Authorization
+@using UserAuth
+@using static Microsoft.AspNetCore.Components.Web.RenderMode
 @attribute [Authorize(Roles = "Admin")]
 @inject UserRepository UserRepository
 @inject IDataAccess _data

@@ -1,5 +1,10 @@
 ﻿@page "/login"
+@using DataLibrary
+@using Microsoft.Extensions.Configuration
 @inject NavigationManager Navigation
+@inject IDataAccess DataAccess
+@inject IConfiguration Configuration
+@inject ILogger<Login> Logger
 
 <h1>Login</h1>
 
@@ -8,15 +13,64 @@
 <button class="btn btn-primary" @onclick="AuthenticateWithGoogle">
     Login with Google
 </button>
-<h3>Login or Register</h3>
- 
+
+@if (_isLoading)
+{
+    <div class="mt-3">
+        <div class="spinner-border text-primary" role="status">
+            <span class="visually-hidden">Loading...</span>
+        </div>
+        <span class="ms-2">Checking database connectivity...</span>
+    </div>
+}
+
+@if (_showError)
+{
+    <div class="alert alert-danger mt-3">
+        <strong>Database Error:</strong> We're unable to connect to our database at the moment.
+        <a href="/database-error">Click here for more information.</a>
+    </div>
+}
+
 @code {
-        // Method to initiate Google authentication
-        private void AuthenticateWithGoogle()
+    private bool _isLoading = false;
+    private bool _showError = false;
+
+    // Method to initiate Google authentication
+    private async Task AuthenticateWithGoogle()
+    {
+        _isLoading = true;
+        _showError = false;
+        StateHasChanged();
+
+        try
         {
-            // Redirect the user to the Google authentication endpoint.
-            // The "__Host/Account/Login" path is a common convention in Blazor
-            // for handling external authentication challenges.
-            Navigation.NavigateTo("/__Host/Account/Login?provider=Google", forceLoad: true);
+            // Check database connectivity first
+            var connectionString = Configuration.GetConnectionString("default");
+            bool isConnected = await DataAccess.CheckConnection(connectionString);
+
+            if (!isConnected)
+            {
+                // Database is down, show error
+                _showError = true;
+                _isLoading = false;
+                StateHasChanged();
+                Logger.LogWarning("Database unavailable, blocking authentication attempt");
+                return;
+            }
+
+            // Database is available, proceed with authentication
+            Logger.LogInformation("Database is available, proceeding with authentication");
+            
+            // Redirect to the correct API login endpoint
+            Navigation.NavigateTo("/api/login", forceLoad: true);
         }
+        catch (Exception ex)
+        {
+            _showError = true;
+            _isLoading = false;
+            StateHasChanged();
+            Logger.LogError(ex, "Error checking database connectivity");
+        }
+    }
 }

@@ -1,9 +1,45 @@
-﻿@inject NavigationManager Navigation
+﻿@using DataLibrary
+@inject NavigationManager Navigation
+@inject IDataAccess DataAccess
+@inject ILogger<RedirectToLogin> Logger
 
-@code {
-    protected override void OnInitialized()
-    {
-        Navigation.NavigateTo("/api/login", forceLoad: true);
-    }
+@if (_showError)
+{
+    <div class="alert alert-danger m-4">
+        <h4 class="alert-heading">Database Error</h4>
+        <p>We're unable to connect to our database at the moment.</p>
+        <hr>
+        <p class="mb-0">
+            <a href="/database-error" class="btn btn-primary">View Database Status</a>
+        </p>
+    </div>
 }
 
+@code {
+    private bool _showError = false;
+
+    protected override void OnInitialized()
+    {
+        try
+        {
+            // Simple check - just check the current IsConnected state
+            if (!DataAccess.IsConnected)
+            {
+                // Database is unavailable, redirect to database error page
+                Logger.LogWarning("Database unavailable, redirecting to database error page");
+                Navigation.NavigateTo("/database-error", forceLoad: true);
+                return;
+            }
+
+            // Database is available, proceed with authentication
+            Logger.LogInformation("Database is available, proceeding with authentication");
+            Navigation.NavigateTo("/login-page", forceLoad: true);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error in RedirectToLogin: {Message}", ex.Message);
+            _showError = true;
+            StateHasChanged();
+        }
+    }
+}
