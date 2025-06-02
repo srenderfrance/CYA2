@@ -7,12 +7,12 @@ using System.Threading.Tasks;
 
 namespace ModelsLibrary
 {
-    internal class Account
+    public class Account
     {
-        public int Id { get; set; }
+        public int AccountId { get; set; }
         public string Name { get; set; }
         public string AccountRef{ get; set; }
-        public DateTime DateCreated { get; set; } = DateTime.UtcNow;
+        public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
         // Parameterless constructor
         public Account() { }
@@ -24,7 +24,7 @@ namespace ModelsLibrary
         {
             Name = name;
             AccountRef = accountRef;
-            DateCreated = DateTime.Now;
+            CreatedAt = DateTime.Now;
         }
     }
 }

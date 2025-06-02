@@ -5,14 +5,15 @@
 @inject IDataAccess DataAccess
 @inject IConfiguration Config
 @rendermode InteractiveServer
+
 <CascadingAuthenticationState>
-    <div class="nav-scrollable">
-    <nav class="navbar d-flex justify-content-between navContainer">
+    <div class="navbar">
         <div class="nav-item px-3">
             <NavLink class="nav-link" href="" Match="NavLinkMatch.All">
                 <span class="bi bi-house-door-fill-nav-menu" aria-hidden="true"></span> CYA Home
             </NavLink>
         </div>
+        
         <div class="nav-item px-3 d-flex navbar-group">
             <div class="nav-item px-3">
                 <NavLink class="nav-link" href="donations">
@@ -30,6 +31,7 @@
                 </NavLink>
             </div>
         </div>
+        
         <div class="nav-item px-3 d-flex navbar-group">
             <div class="nav-item px-3">
                 <NavLink class="nav-link" href="usersettings">
@@ -47,32 +49,23 @@
                 </Authorized>
             </AuthorizeView>
         </div>
+        
         <div class="nav-item px-3">
             <a href="/logout" class="nav-link">
                 <span class="bi bi-box-arrow-right" aria-hidden="true"></span> Logout
             </a>
         </div>
-    </nav>
-</div>
+    </div>
 
-<ErrorBoundary @ref="_errorBoundary">
-    <ChildContent>
-        @if (_showConnectionError)
-        {
-            <div class="alert alert-warning mt-3 text-center">
-                <strong>Database connection issues detected.</strong>
-                <p>Some features may be unavailable until connection is restored.</p>
-            </div>
-        }
-    </ChildContent>
-    <ErrorContent>
-        <div class="alert alert-danger mt-3">
-            <p>An error occurred loading the navigation menu.</p>
-        </div>
-    </ErrorContent>
-</ErrorBoundary>
-
+    @if (_showConnectionError)
+    {
+        <RadzenAlert AlertStyle="AlertStyle.Warning" ShowIcon="true" Class="rz-m-2">
+            <RadzenText TextStyle="TextStyle.Subtitle1">Database connection issues detected.</RadzenText>
+            <RadzenText TextStyle="TextStyle.Body1">Some features may be unavailable until connection is restored.</RadzenText>
+        </RadzenAlert>
+    }
 </CascadingAuthenticationState>
+
 @code {
     private bool _showConnectionError = false;
     private ErrorBoundary _errorBoundary;

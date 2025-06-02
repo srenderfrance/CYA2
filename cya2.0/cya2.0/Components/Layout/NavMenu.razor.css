@@ -8,7 +8,7 @@
     top: 0.5rem;
     right: 1rem;
     border: 1px solid rgba(255, 255, 255, 0.1);
-    background: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 30 30'%3e%3cpath stroke='rgba%28255, 255, 255, 0.55%29' stroke-linecap='round' stroke-miterlimit='10' stroke-width='2' d='M4 7h22M4 15h22M4 23h22'/%3e%3c/svg%3e") no-repeat center/1.75rem rgba(255, 255, 255, 0.1);
+    background: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 30 30'%3e%3cpath stroke='rgba%28255, 255, 255, 255, 0.55%29' stroke-linecap='round' stroke-miterlimit='10' stroke-width='2' d='M4 7h22M4 15h22M4 23h22'/%3e%3c/svg%3e") no-repeat center/1.75rem rgba(255, 255, 255, 0.1);
 }
 
 .navbar-toggler:checked {
@@ -22,6 +22,22 @@
 
 .navbar-brand {
     font-size: 1.1rem;
+}
+
+.navbar {
+    background-image: linear-gradient(90deg, rgb(5, 39, 103) 0%, rgb(3, 166, 150) 70%);
+    display: flex;
+    justify-content: space-between;
+    width: 100%;
+    align-items: center;
+    box-sizing: border-box;
+    padding-left: 2rem; /* Add left padding */
+    padding-right: 2rem; /* Add right padding */
+}
+
+.navbar-group {
+    display: flex;
+    align-items: center;
 }
 
 .bi {
@@ -55,22 +71,27 @@
     width: 1.8rem; /* Match the font size for consistency */
     height: 1.8rem; /* Match the font size for consistency */
 }
-.nav-item {
-    font-size: 1.2rem;
-    padding-bottom: 0.5rem;
+
+.nav-container {
+    width: 100%;
+    background-image: linear-gradient(90deg, rgb(5, 39, 103) 0%, rgb(3, 166, 150) 70%);
 }
 
-    .nav-item ::deep .nav-link {
-        color: #d7d7d7;
-        background: none;
-        border: none;
-        border-radius: 4px;
-        height: 3rem;
-        display: flex;
-        align-items: center;
-        line-height: 3rem;
-        width: 100%;
-    }
+.nav-item {
+    font-size: 1.1rem;
+}
+
+.nav-item ::deep .nav-link {
+    color: #d7d7d7;
+    background: none;
+    border: none;
+    border-radius: 4px;
+    height: 3rem;
+    display: flex;
+    align-items: center;
+    line-height: 3rem;
+    width: 100%;
+}
 
 .nav-item ::deep a.active {
     background-color: rgba(255,255,255,0.37);
