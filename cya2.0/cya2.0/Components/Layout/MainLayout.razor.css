@@ -2,10 +2,18 @@
     position: relative;
     display: flex;
     flex-direction: column;
+    min-height: 100vh;
+}
+
+header {
+    position: sticky;
+    top: 0;
+    z-index: 100;
 }
 
 main {
     flex: 1;
+    padding-top: 1rem;
 }
 
 .navbar {
@@ -36,6 +44,10 @@ main {
         overflow: hidden;
         text-overflow: ellipsis;
     }
+
+.content {
+    padding: 1rem;
+}
 
 /*
 @media (max-width: 640.98px) {

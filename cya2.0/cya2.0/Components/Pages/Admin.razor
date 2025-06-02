@@ -11,91 +11,222 @@
 @using DataLibrary
 @rendermode InteractiveServer
 
-<h3>Create New User</h3>
-
-<EditForm Model="@formModel" OnValidSubmit="HandleValidSubmit" FormName="CreateUser" Enhance>
-    <DataAnnotationsValidator />
-    <ValidationSummary />
-
-    <div class="mb-3">
-        <label for="email">Email:</label>
-        <InputText id="email" class="form-control" @bind-Value="formModel.Email" />
-        <ValidationMessage For="@(() => formModel.Email)" />
-    </div>
-    <div class="mb-3">
-        <label for="name">Name:</label>
-        <InputText id="name" class="form-control" @bind-Value="formModel.Name" />
-        <ValidationMessage For="@(() => formModel.Name)" />
-    </div>
-    <button type="submit" class="btn btn-primary">Register New User</button>
-</EditForm>
-
-<div class="mt-4 d-flex gap-3">
-    <button type="button" class="btn btn-secondary" @onclick="GetDistinctFunds">
-        Get Distinct Funds
-    </button>
-
-    <button type="button" class="btn btn-primary" @onclick="CreateAccountsFromFunds"
-            disabled="@(funds == null || !funds.Any())">
-        Create Accounts from Funds
-    </button>
-</div>
-
-@if (successMessage != null)
-{
-    <div class="alert alert-success mt-3">@successMessage</div>
-}
-
-@if (errorMessage != null)
-{
-    <div class="alert alert-danger mt-3">@errorMessage</div>
-}
-
-@if (funds != null && funds.Any())
-{
-    <h4 class="mt-4">Distinct Funds (@funds.Count)</h4>
-    <ul class="list-group">
-        @foreach (var fund in funds)
-        {
-            <li class="list-group-item">@fund</li>
-        }
-    </ul>
-}
-
-@if (createdAccounts != null && createdAccounts.Any())
-{
-    <h4 class="mt-4">Created Accounts (@createdAccounts.Count)</h4>
-    <table class="table table-bordered table-striped">
-        <thead>
-            <tr>
-                <th>Name</th>
-                <th>Account Reference</th>
-                <th>Result</th>
-            </tr>
-        </thead>
-        <tbody>
-            @foreach (var account in createdAccounts)
+<RadzenStack Orientation="Orientation.Vertical" Gap="1rem" Class="rz-p-4">
+    <RadzenText TextStyle="TextStyle.H3">Admin Panel</RadzenText>
+    
+    <!-- Staff Members Selection -->
+    <RadzenCard>
+        <RadzenStack Orientation="Orientation.Horizontal" Gap="1rem" AlignItems="AlignItems.Center">
+            <RadzenDropDown TValue="string"
+                            Data="@staff"
+                            TextProperty="Name"
+                            ValueProperty="Name"
+                            @bind-Value="staffMember"
+                            Change="@(args => staffSelection(args?.ToString()))"
+                            Placeholder="Select Staff Member"
+                            Style="width: 300px;" />
+                            
+            <RadzenStack Orientation="Orientation.Vertical" Gap="0.5rem">
+                <RadzenFormField Text="Name" Variant="Variant.Outlined">
+                    <RadzenTextBox @bind-Value="@newName" />
+                </RadzenFormField>
+                
+                <RadzenFormField Text="Email" Variant="Variant.Outlined">
+                    <RadzenTextBox @bind-Value="@newEmail" />
+                </RadzenFormField>
+            </RadzenStack>
+        </RadzenStack>
+    </RadzenCard>
+    
+    <!-- Accounts Section -->
+    <RadzenCard>
+        <RadzenText TextStyle="TextStyle.H5">Accounts</RadzenText>
+        
+        <RadzenStack Orientation="Orientation.Vertical" Gap="0.5rem">
+            @foreach (var sharedAccount in sharedAccountsBool)
             {
-                <tr>
-                    <td>@account.name</td>
-                    <td>@account.accountRef</td>
-                    <td>
-                        @if (account.success)
-                        {
-                            <span class="text-success">Created</span>
-                        }
-                        else
-                        {
-                            <span class="text-danger">@account.errorMessage</span>
-                        }
-                    </td>
-                </tr>
+                <div class="rz-p-1">
+                    <RadzenCheckBox @bind-Value="sharedAccount.IsSelected" 
+                                   TValue="bool" 
+                                   Name="@($"account-{sharedAccount.Account.AccountId}")" />
+                    <RadzenLabel Text="@sharedAccount.Account.Name" 
+                               Component="@($"account-{sharedAccount.Account.AccountId}")" 
+                               Style="margin-left: 8px;" />
+                </div>
             }
-        </tbody>
-    </table>
-}
+        </RadzenStack>
+        
+        <RadzenDropDown TValue="string"
+                        Data="@allAccounts"
+                        TextProperty="Name"
+                        ValueProperty="Name"
+                        @bind-Value="accountToAdd"
+                        Change="@(args => accountSeletion(args?.ToString()))"
+                        Placeholder="All Accounts"
+                        Style="width: 300px; margin-top: 16px;" />
+    </RadzenCard>
+    
+    <!-- Create New User Form -->
+    <RadzenCard>
+        <RadzenText TextStyle="TextStyle.H5">Create New User</RadzenText>
+        
+        <RadzenTemplateForm TItem="UserFormModel" Data="@formModel" Submit="@HandleValidSubmit">
+            <RadzenStack Orientation="Orientation.Vertical" Gap="1rem">
+                <RadzenFormField Text="Email" Variant="Variant.Outlined">
+                    <RadzenTextBox @bind-Value="@formModel.Email" Name="Email" />
+                    <RadzenRequiredValidator Component="Email" Text="Email is required" />
+                    <RadzenEmailValidator Component="Email" Text="Please enter a valid email" />
+                </RadzenFormField>
+                
+                <RadzenFormField Text="Name" Variant="Variant.Outlined">
+                    <RadzenTextBox @bind-Value="@formModel.Name" Name="Name" />
+                    <RadzenRequiredValidator Component="Name" Text="Name is required" />
+                    <RadzenLengthValidator Component="Name" Min="2" Max="100" Text="Name must be between 2 and 100 characters" />
+                </RadzenFormField>
+                
+                <RadzenButton Text="Register New User" ButtonType="ButtonType.Submit" ButtonStyle="ButtonStyle.Primary" />
+            </RadzenStack>
+        </RadzenTemplateForm>
+    </RadzenCard>
+    
+    <!-- Funds Section -->
+    <RadzenCard>
+        <RadzenStack Orientation="Orientation.Horizontal" Gap="1rem">
+            <RadzenButton Text="Get Distinct Funds" Click="@GetDistinctFunds" ButtonStyle="ButtonStyle.Secondary" />
+            <RadzenButton Text="Create Accounts from Funds" Click="@CreateAccountsFromFunds" 
+                         ButtonStyle="ButtonStyle.Primary" 
+                         Disabled="@(funds == null || !funds.Any())" />
+        </RadzenStack>
+        
+        @if (successMessage != null)
+        {
+            <RadzenAlert AlertStyle="AlertStyle.Success" ShowIcon="true" Variant="Variant.Filled" Class="rz-mt-3">
+                @successMessage
+            </RadzenAlert>
+        }
+        
+        @if (errorMessage != null)
+        {
+            <RadzenAlert AlertStyle="AlertStyle.Danger" ShowIcon="true" Variant="Variant.Filled" Class="rz-mt-3">
+                @errorMessage
+            </RadzenAlert>
+        }
+        
+        @if (funds != null && funds.Any())
+        {
+            <RadzenStack Class="rz-mt-4" Orientation="Orientation.Vertical">
+                <RadzenText TextStyle="TextStyle.H6">Distinct Funds (@funds.Count)</RadzenText>
+                <RadzenList>
+                    @foreach (var fund in funds)
+                    {
+                        <RadzenListItem>@fund</RadzenListItem>
+                    }
+                </RadzenList>
+            </RadzenStack>
+        }
+        
+        @if (createdAccounts != null && createdAccounts.Any())
+        {
+            <RadzenStack Class="rz-mt-4" Orientation="Orientation.Vertical">
+                <RadzenText TextStyle="TextStyle.H6">Created Accounts (@createdAccounts.Count)</RadzenText>
+                <RadzenDataGrid Data="@createdAccounts" TItem="(string name, string accountRef, bool success, string errorMessage)">
+                    <Columns>
+                        <RadzenDataGridColumn TItem="(string name, string accountRef, bool success, string errorMessage)" 
+                                             Property="name" Title="Name" />
+                        <RadzenDataGridColumn TItem="(string name, string accountRef, bool success, string errorMessage)" 
+                                             Property="accountRef" Title="Account Reference" />
+                        <RadzenDataGridColumn TItem="(string name, string accountRef, bool success, string errorMessage)" 
+                                             Property="success" Title="Result">
+                            <Template Context="data">
+                                @if (data.success)
+                                {
+                                    <RadzenBadge BadgeStyle="BadgeStyle.Success" Text="Created" />
+                                }
+                                else
+                                {
+                                    <RadzenBadge BadgeStyle="BadgeStyle.Danger" Text="@data.errorMessage" />
+                                }
+                            </Template>
+                        </RadzenDataGridColumn>
+                    </Columns>
+                </RadzenDataGrid>
+            </RadzenStack>
+        }
+    </RadzenCard>
+</RadzenStack>
 
 @code {
+    private string? staffMember;
+    private List<UserData> staff = new List<UserData>();
+
+    public string selectedStaff;
+    public string newName = string.Empty;
+    public string newEmail = string.Empty;
+
+    public async Task staffSelection(string accountName)
+    {
+        if (string.IsNullOrEmpty(accountName)) return;
+        Console.WriteLine($"TESTING: {selectedStaff}");
+    }
+    
+    private string? accountToAdd;
+    private List<Account> allAccounts = new List<Account>();
+    
+    protected override async Task OnInitializedAsync()
+    {
+        await base.OnInitializedAsync();
+        await LoadAllAccounts();
+    }
+
+    private async Task LoadAllAccounts()
+    {
+        try
+        {
+            string sql = "SELECT AccountId, Name, AccountRef, CreatedAt FROM Accounts ORDER BY Name";
+            allAccounts = await _data.LoadData<Account, dynamic>(
+                sql,
+                new { },
+                _config.GetConnectionString("default")
+            );
+
+            if (allAccounts == null)
+                allAccounts = new List<Account>();
+
+            // Initialize empty list for shared accounts selection
+            sharedAccountsBool = new List<SharedAccountBool>();
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error loading accounts: {ex.Message}";
+            allAccounts = new List<Account>();
+        }
+    }
+
+    public async Task accountSeletion(string account)
+    {
+        if (string.IsNullOrEmpty(account)) return;
+        Console.WriteLine($"TESTING: {accountToAdd}");
+    }
+    
+    private List<Account>sharedAccounts = new List<Account>();
+    private List<SharedAccountBool>sharedAccountsBool = new List<SharedAccountBool>();
+    
+    public async Task sharedAccountSeletion(string account)
+    {
+        Console.WriteLine($"TESTING: {sharedAccounts}");
+    }
+
+    private class SharedAccountBool    {
+        public Account Account { get; set; }
+        public bool IsSelected { get; set; }
+
+        public SharedAccountBool(Account account, bool isSelected = false)
+        {
+            Account = account;
+            IsSelected = isSelected;
+        }
+    }
+    
     [SupplyParameterFromForm]
     private UserFormModel formModel { get; set; } = new UserFormModel();
 

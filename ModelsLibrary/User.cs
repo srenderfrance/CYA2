@@ -10,6 +10,7 @@ namespace ModelsLibrary;
         public string Language { get; set; } = "en";
         public string AuthLevel { get; set; } = "User";
         public string DefaultAccount { get; set; }
+        public string Prefrence { get; set; } = "default"; // Default preference
         public DateTime DateCreated { get; set; } = DateTime.UtcNow;
 
     // Parameterless constructor
@@ -27,5 +28,6 @@ namespace ModelsLibrary;
             AuthLevel = authLevel;
             DefaultAccount = defaultAccount;
             DateCreated = DateTime.Now;
+            Prefrence = "default"; // Default preference
     }
     }

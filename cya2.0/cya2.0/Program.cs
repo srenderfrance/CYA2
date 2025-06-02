@@ -1,33 +1,34 @@
+using cya2._0;
 using cya2._0.Components;
-using DataLibrary;
-using System.Security.Claims;
+using cya2._0.Components.Shared;
+using cya2._0.Middleware;
+using cya2._0.Services;
 using Dapper;
-using ModelsLibrary;
-using UserAuth;
+using DataLibrary;
+using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authentication.Google;
-using Microsoft.AspNetCore.Components.Authorization;
-using Microsoft.AspNetCore.Components.Server;
-using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.OAuth;
 using Microsoft.AspNetCore.Authorization;
-using static Microsoft.AspNetCore.Components.Web.RenderMode;
-using System.Net.Http;
-using System.Net.Http.Json;
+using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.AspNetCore.Components.Forms;
 using Microsoft.AspNetCore.Components.Routing;
+using Microsoft.AspNetCore.Components.Server;
 using Microsoft.AspNetCore.Components.Web;
 using Microsoft.AspNetCore.Components.Web.Virtualization;
-using Microsoft.JSInterop;
-using cya2._0;
-using cya2._0.Components.Shared;
-using System.Timers;
 using Microsoft.Extensions.Configuration;
+using Microsoft.JSInterop;
+using ModelsLibrary;
 using MySql.Data.MySqlClient;
-using cya2._0.Services;
-using cya2._0.Middleware;
-using System.Net.Sockets;
+using Radzen;
 using System.Net;
+using System.Net.Http;
+using System.Net.Http.Json;
+using System.Net.Sockets;
+using System.Security.Claims;
+using System.Timers;
+using UserAuth;
+using static Microsoft.AspNetCore.Components.Web.RenderMode;
 
 // Add this near the top with other variables
 var _unhandledExceptionCount = 0;
@@ -66,9 +67,7 @@ builder.Services.AddServerSideBlazor()
         options.MaximumReceiveMessageSize = 32 * 1024 * 1024; // 32MB for larger JavaScript interactions
     });
 
-// Add BlazorBootstrap AFTER AddRazorComponents
-builder.Services.AddBlazorBootstrap();
-
+builder.Services.AddRadzenComponents();
 // Add authentication services
 builder.Services.AddScoped<UserAuth.UserRepository>(provider =>
 {
