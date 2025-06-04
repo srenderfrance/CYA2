@@ -1,5 +1,437 @@
 @page "/usersettings"
+@using Microsoft.AspNetCore.Components.Authorization
+@using System.Security.Claims
+@using static Microsoft.AspNetCore.Components.Web.RenderMode
+@inject AuthenticationStateProvider AuthStateProvider
+@inject IDataAccess _data
+@inject IConfiguration _config
+@inject NavigationManager NavigationManager
+@using ModelsLibrary
+@rendermode InteractiveServer
 
-<PageTitle>Settings</PageTitle>
+<PageTitle>User Settings</PageTitle>
 
-<h1>User Setting go here.</h1>
+<div class="container mt-4">
+    <RadzenCard>
+        <RadzenText TextStyle="TextStyle.H3">User Settings</RadzenText>
+
+        @if (!string.IsNullOrEmpty(errorMessage))
+        {
+            <RadzenAlert AlertStyle="AlertStyle.Danger" ShowIcon="true" Variant="Variant.Filled" Class="mt-3 mb-3">
+                @errorMessage
+            </RadzenAlert>
+        }
+
+        @if (!string.IsNullOrEmpty(successMessage))
+        {
+            <RadzenAlert AlertStyle="AlertStyle.Success" ShowIcon="true" Variant="Variant.Filled" Class="mt-3 mb-3">
+                @successMessage
+            </RadzenAlert>
+        }
+
+        <!-- Use RadzenStack with Horizontal orientation instead of Bootstrap row/col -->
+        <RadzenStack Orientation="Orientation.Horizontal" Gap="2rem" Class="mt-4">
+            <!-- Default Account Column -->
+            <RadzenStack Orientation="Orientation.Vertical" Gap="1rem" Style="width: 48%;">
+                <RadzenCard>
+                    <RadzenStack Gap="1rem">
+                        <RadzenText TextStyle="TextStyle.H5">Default Account</RadzenText>
+                        
+                        <RadzenText TextStyle="TextStyle.Body2">
+                            Current default: <strong>@GetAccountDisplayName(currentDefaultAccountId)</strong>
+                        </RadzenText>
+                        
+                        <RadzenDropDown TValue="string"
+                                        Data="@userAccounts"
+                                        TextProperty="Name"
+                                        ValueProperty="AccountRef"
+                                        @bind-Value="selectedAccountRef"
+                                        Placeholder="Select a default account"
+                                        Style="width: 100%;"
+                                        Disabled="@(userAccounts == null || userAccounts.Count == 0)" />
+                        
+                        <RadzenButton Text="Update Account"
+                                      Click="SaveAccountSetting"
+                                      ButtonStyle="ButtonStyle.Primary"
+                                      Size="ButtonSize.Medium"
+                                      Style="width: fit-content;"
+                                      Disabled="@(isSavingAccount || !HasAccountChanges())" />
+                    </RadzenStack>
+                </RadzenCard>
+            </RadzenStack>
+            
+            <!-- Language Preference Column -->
+            <RadzenStack Orientation="Orientation.Vertical" Gap="1rem" Style="width: 48%;">
+                <RadzenCard>
+                    <RadzenStack Gap="1rem">
+                        <RadzenText TextStyle="TextStyle.H5">Language Preference</RadzenText>
+                        
+                        <RadzenText TextStyle="TextStyle.Body2">
+                            Current language: <strong>@GetLanguageDisplayName(currentLanguage)</strong>
+                        </RadzenText>
+                        
+                        <RadzenDropDown TValue="string"
+                                        Data="@languageOptions"
+                                        TextProperty="Text"
+                                        ValueProperty="Value"
+                                        @bind-Value="selectedLanguage"
+                                        Style="width: 100%;" />
+                        
+                        <RadzenButton Text="Update Language"
+                                      Click="SaveLanguageSetting"
+                                      ButtonStyle="ButtonStyle.Primary"
+                                      Size="ButtonSize.Medium"
+                                      Style="width: fit-content;"
+                                      Disabled="@(isSavingLanguage || !HasLanguageChanges())" />
+                    </RadzenStack>
+                </RadzenCard>
+            </RadzenStack>
+        </RadzenStack>
+    </RadzenCard>
+</div>
+
+@code {
+    private int userId;
+    private int? currentDefaultAccountId;
+    private string currentLanguage = "en";
+    private string selectedAccountRef;
+    private string selectedLanguage = "en";
+    private List<Account> userAccounts = new List<Account>();
+    private List<LanguageOption> languageOptions = new List<LanguageOption>();
+    private string errorMessage;
+    private string successMessage;
+    private bool isSavingAccount = false;
+    private bool isSavingLanguage = false;
+    private bool showLogoutButton = false;
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Initialize language options
+        languageOptions = new List<LanguageOption>
+        {
+            new LanguageOption { Value = "en", Text = "English" },
+            new LanguageOption { Value = "es", Text = "Spanish" }
+        };
+
+        // Get the current user information
+        await LoadUserData();
+    }
+
+    private async Task LoadUserData()
+    {
+        try
+        {
+            errorMessage = string.Empty;
+            successMessage = string.Empty;
+
+            // Get the current user claims
+            var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+            var user = authState.User;
+
+            if (user.Identity.IsAuthenticated)
+            {
+                // Get user ID from claims
+                var userIdClaim = user.FindFirstValue("UserId");
+                if (!string.IsNullOrEmpty(userIdClaim) && int.TryParse(userIdClaim, out int id))
+                {
+                    userId = id;
+                    Console.WriteLine($"User ID from claims: {userId}");
+                }
+                else
+                {
+                    // Fallback to database lookup if claim not found
+                    var email = user.FindFirstValue(ClaimTypes.Email);
+                    Console.WriteLine($"User ID claim not found, using email: {email} for DB lookup");
+
+                    string userSql = "SELECT Id FROM Users WHERE Email = @Email";
+                    var userResults = await _data.LoadData<UserIdOnly, dynamic>(
+                        userSql,
+                        new { Email = email },
+                        _config.GetConnectionString("default")
+                    );
+
+                    if (userResults != null && userResults.Any())
+                    {
+                        userId = userResults.First().Id;
+                        Console.WriteLine($"User ID from database: {userId}");
+                    }
+                    else
+                    {
+                        errorMessage = "Unable to find user information.";
+                        return;
+                    }
+                }
+
+                // Get language from claims or use default
+                currentLanguage = user.FindFirstValue("Language") ?? "en";
+                selectedLanguage = currentLanguage;
+
+                // Get default account ID from claims (stored as an integer)
+                var defaultAccountClaim = user.FindFirstValue("DefaultAccount");
+                currentDefaultAccountId = null;
+
+                if (!string.IsNullOrEmpty(defaultAccountClaim) && int.TryParse(defaultAccountClaim, out int parsedId))
+                {
+                    currentDefaultAccountId = parsedId;
+                }
+
+                // Load user accounts with the ID
+                await LoadUserAccounts();
+
+                // Map the defaultAccountId to the proper accountRef for the dropdown
+                if (currentDefaultAccountId.HasValue)
+                {
+                    var defaultAccount = userAccounts.FirstOrDefault(a => a.AccountId == currentDefaultAccountId.Value);
+                    if (defaultAccount != null)
+                    {
+                        selectedAccountRef = defaultAccount.AccountRef;
+                    }
+                }
+            }
+            else
+            {
+                NavigationManager.NavigateTo("/", true);
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error loading user data: {ex.Message}";
+            Console.WriteLine($"Exception in LoadUserData: {ex}");
+        }
+    }
+
+    private async Task LoadUserAccounts()
+    {
+        try
+        {
+            // Query for accounts the user has access to
+            string sql = @"
+                SELECT a.AccountId, a.Name, a.AccountRef, a.CreatedAt
+                FROM Accounts a
+                INNER JOIN AccountsUsers au ON a.AccountId = au.AccountId
+                WHERE au.UserId = @UserId
+                ORDER BY a.Name";
+
+            var accounts = await _data.LoadData<Account, dynamic>(
+                sql,
+                new { UserId = userId },
+                _config.GetConnectionString("default")
+            );
+
+            if (accounts != null && accounts.Any())
+            {
+                userAccounts = accounts;
+
+                // Validate that current default account exists in user's accounts
+                if (currentDefaultAccountId.HasValue &&
+                    !userAccounts.Any(a => a.AccountId == currentDefaultAccountId.Value))
+                {
+                    errorMessage = "Your currently set default account is no longer accessible. Please select a new one.";
+                    currentDefaultAccountId = null;
+                    selectedAccountRef = null;
+                }
+            }
+            else
+            {
+                userAccounts = new List<Account>();
+                errorMessage = "You don't have access to any accounts. Please contact an administrator.";
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error loading accounts: {ex.Message}";
+        }
+    }
+
+    private bool HasAccountChanges()
+    {
+        // Compare AccountRef for current default and selection
+        var currentAccountRef = userAccounts
+            .FirstOrDefault(a => a.AccountId == currentDefaultAccountId)?.AccountRef;
+
+        return selectedAccountRef != currentAccountRef;
+    }
+
+    private bool HasLanguageChanges()
+    {
+        return selectedLanguage != currentLanguage;
+    }
+
+    private async Task SaveAccountSetting()
+    {
+        try
+        {
+            isSavingAccount = true;
+            errorMessage = string.Empty;
+            successMessage = string.Empty;
+
+            Console.WriteLine($"Saving account setting for user ID: {userId}");
+            Console.WriteLine($"Current default account ID: {currentDefaultAccountId}, Selected account ref: {selectedAccountRef}");
+
+            // Find the AccountId that corresponds to the selected AccountRef
+            int? newAccountId = null;
+            if (!string.IsNullOrEmpty(selectedAccountRef))
+            {
+                var selectedAccountObj = userAccounts.FirstOrDefault(a => a.AccountRef == selectedAccountRef);
+                if (selectedAccountObj != null)
+                {
+                    newAccountId = selectedAccountObj.AccountId;
+                }
+            }
+
+            if (newAccountId == currentDefaultAccountId)
+            {
+                successMessage = "No changes were made to your default account.";
+                return;
+            }
+
+            string sql = "UPDATE Users SET DefaultAccount = ";
+            var parameters = new Dictionary<string, object>();
+
+            // Add the ID for WHERE clause
+            parameters.Add("Id", userId);
+
+            if (newAccountId.HasValue)
+            {
+                sql += "@DefaultAccount WHERE Id = @Id";
+                parameters.Add("DefaultAccount", newAccountId.Value);
+            }
+            else
+            {
+                sql += "NULL WHERE Id = @Id";
+            }
+
+            Console.WriteLine($"SQL Query: {sql}");
+            foreach (var param in parameters)
+            {
+                Console.WriteLine($"Parameter: {param.Key} = {param.Value}");
+            }
+
+            // Execute update
+            int result = await _data.SaveData(
+                sql,
+                parameters,
+                _config.GetConnectionString("default")
+            );
+
+            Console.WriteLine($"Update result: {result}");
+
+            if (result > 0)
+            {
+                successMessage = "Default account updated successfully. Please log out and log back in for changes to take effect.";
+                showLogoutButton = true;
+
+                // Update current value
+                currentDefaultAccountId = newAccountId;
+            }
+            else
+            {
+                errorMessage = $"Failed to update default account: {_data.LastError}";
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error saving account setting: {ex.Message}";
+            Console.WriteLine($"Exception in SaveAccountSetting: {ex}");
+        }
+        finally
+        {
+            isSavingAccount = false;
+        }
+    }
+
+    private async Task SaveLanguageSetting()
+    {
+        try
+        {
+            isSavingLanguage = true;
+            errorMessage = string.Empty;
+            successMessage = string.Empty;
+
+            Console.WriteLine($"Saving language setting for user ID: {userId}");
+            Console.WriteLine($"Current language: {currentLanguage}, Selected language: {selectedLanguage}");
+
+            if (selectedLanguage == currentLanguage)
+            {
+                successMessage = "No changes were made to your language preference.";
+                return;
+            }
+
+            string sql = "UPDATE Users SET Language = @Language WHERE Id = @Id";
+            var parameters = new Dictionary<string, object>
+            {
+                { "Id", userId },
+                { "Language", selectedLanguage }
+            };
+
+            Console.WriteLine($"SQL Query: {sql}");
+            foreach (var param in parameters)
+            {
+                Console.WriteLine($"Parameter: {param.Key} = {param.Value}");
+            }
+
+            // Execute update
+            int result = await _data.SaveData(
+                sql,
+                parameters,
+                _config.GetConnectionString("default")
+            );
+
+            Console.WriteLine($"Update result: {result}");
+
+            if (result > 0)
+            {
+                successMessage = "Language preference updated successfully. Please log out and log back in for changes to take effect.";
+                showLogoutButton = true;
+
+                // Update current value
+                currentLanguage = selectedLanguage;
+            }
+            else
+            {
+                errorMessage = $"Failed to update language preference: {_data.LastError}";
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error saving language setting: {ex.Message}";
+            Console.WriteLine($"Exception in SaveLanguageSetting: {ex}");
+        }
+        finally
+        {
+            isSavingLanguage = false;
+        }
+    }
+
+    private void LogoutUser()
+    {
+        NavigationManager.NavigateTo("/logout", true);
+    }
+
+    private string GetLanguageDisplayName(string code)
+    {
+        var language = languageOptions.FirstOrDefault(l => l.Value == code);
+        return language?.Text ?? "Unknown";
+    }
+
+    private string GetAccountDisplayName(int? accountId)
+    {
+        if (!accountId.HasValue)
+            return "None";
+
+        var account = userAccounts.FirstOrDefault(a => a.AccountId == accountId.Value);
+        return account?.Name ?? "Unknown Account";
+    }
+
+    private class LanguageOption
+    {
+        public string Value { get; set; }
+        public string Text { get; set; }
+    }
+
+    // Simple class just for ID retrieval
+    private class UserIdOnly
+    {
+        public int Id { get; set; }
+    }
+}

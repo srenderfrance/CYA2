@@ -9,7 +9,7 @@ namespace ModelsLibrary;
         public string Name { get; set; } = string.Empty;
         public string Language { get; set; } = "en";
         public string AuthLevel { get; set; } = "User";
-        public string DefaultAccount { get; set; }
+        public int? DefaultAccount { get; set; } = null;
         public string Prefrence { get; set; } = "default"; // Default preference
         public DateTime DateCreated { get; set; } = DateTime.UtcNow;
 
@@ -19,7 +19,7 @@ namespace ModelsLibrary;
     // Constructor with required members
 
         [SetsRequiredMembers]
-        public User(string googleId, string email, string name, string language, string authLevel, string defaultAccount)
+        public User(string googleId, string email, string name, string language, string authLevel, int? defaultAccount)
         {
             GoogleId = googleId;
             Email = email;

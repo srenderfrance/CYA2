@@ -3,9 +3,9 @@
 @inject IConfiguration Configuration
 
 <div class="page">
-    <header>
+    <div class="navbar">
         <NavMenu />
-    </header>
+    </div>
 
     <main>
         <article class="content px-4">
@@ -15,4 +15,6 @@
         <DatabaseStatus ConnectionString="@Configuration.GetConnectionString("default")" />
     </main>
 </div>
+
+<RadzenNotification />
 
