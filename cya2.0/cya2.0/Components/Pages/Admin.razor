@@ -16,54 +16,120 @@
     
     <!-- Staff Members Selection -->
     <RadzenCard>
-        <RadzenStack Orientation="Orientation.Horizontal" Gap="1rem" AlignItems="AlignItems.Center">
-            <RadzenDropDown TValue="string"
-                            Data="@staff"
-                            TextProperty="Name"
-                            ValueProperty="Name"
-                            @bind-Value="staffMember"
-                            Change="@(args => staffSelection(args?.ToString()))"
-                            Placeholder="Select Staff Member"
-                            Style="width: 300px;" />
-                            
-            <RadzenStack Orientation="Orientation.Vertical" Gap="0.5rem">
-                <RadzenFormField Text="Name" Variant="Variant.Outlined">
-                    <RadzenTextBox @bind-Value="@newName" />
-                </RadzenFormField>
+        <!-- Three-column layout -->
+        <RadzenStack Orientation="Orientation.Horizontal" Gap="2rem" Class="rz-mb-2">
+            <!-- Left column: Dropdown and Name input -->
+            <RadzenStack Orientation="Orientation.Vertical" Gap="1rem" Style="width: 30%;">
+                <RadzenText TextStyle="TextStyle.Subtitle2" Style="font-weight: bold;">Staff Member</RadzenText>
+                <RadzenDropDown TValue="string"
+                               Data="@staff"
+                               TextProperty="Name"
+                               ValueProperty="Name"
+                               @bind-Value="staffMember"
+                               Change="@(args => staffSelection(args?.ToString()))"
+                               Placeholder="Select Staff Member"
+                               Style="width: 100%;" />
                 
-                <RadzenFormField Text="Email" Variant="Variant.Outlined">
-                    <RadzenTextBox @bind-Value="@newEmail" />
+                <RadzenFormField Text="New Name" Variant="Variant.Outlined">
+                    <RadzenTextBox @bind-Value="@newName" Placeholder="Enter updated name" />
                 </RadzenFormField>
             </RadzenStack>
-        </RadzenStack>
-    </RadzenCard>
-    
-    <!-- Accounts Section -->
-    <RadzenCard>
-        <RadzenText TextStyle="TextStyle.H5">Accounts</RadzenText>
-        
-        <RadzenStack Orientation="Orientation.Vertical" Gap="0.5rem">
-            @foreach (var sharedAccount in sharedAccountsBool)
-            {
-                <div class="rz-p-1">
-                    <RadzenCheckBox @bind-Value="sharedAccount.IsSelected" 
-                                   TValue="bool" 
-                                   Name="@($"account-{sharedAccount.Account.AccountId}")" />
-                    <RadzenLabel Text="@sharedAccount.Account.Name" 
-                               Component="@($"account-{sharedAccount.Account.AccountId}")" 
-                               Style="margin-left: 8px;" />
+            
+            <!-- Middle column: Current email and Email input -->
+            <RadzenStack Orientation="Orientation.Vertical" Gap="1rem" Style="width: 30%;">
+                <RadzenText TextStyle="TextStyle.Subtitle2" Style="font-weight: bold;">Current Email</RadzenText>
+                <div class="rz-p-2 rz-border-radius-1 rz-border-1" style="height: 38px; display: flex; align-items: center; border: var(--rz-input-border); background-color: var(--rz-input-background-color);">
+                    <RadzenText TextStyle="TextStyle.Subtitle2">
+                        @(string.IsNullOrEmpty(selectedStaffEmail) ? " " : selectedStaffEmail)
+                    </RadzenText>
                 </div>
-            }
+                
+                <RadzenFormField Text="New Email" Variant="Variant.Outlined">
+                    <RadzenTextBox @bind-Value="@newEmail" Placeholder="Enter updated email" />
+                </RadzenFormField>
+            </RadzenStack>
+            
+            <!-- Right column: Account management -->
+            <RadzenStack Orientation="Orientation.Vertical" Gap="1rem" Style="width: 30%;">
+                <RadzenText TextStyle="TextStyle.Subtitle2" Style="font-weight: bold;">Account Management</RadzenText>
+                
+                <!-- Add Account section -->
+                <RadzenStack Orientation="Orientation.Vertical" Gap="0.5rem">
+                    <RadzenText TextStyle="TextStyle.Subtitle2">Add Account Access</RadzenText>
+                    <RadzenDropDown TValue="string"
+                                    Data="@allAccounts"
+                                    TextProperty="Name"
+                                    ValueProperty="Name"
+                                    @bind-Value="accountToAdd"
+                                    Placeholder="Select Account"
+                                    Style="width: 100%;" />
+                    
+                    <RadzenButton 
+                        Text="Link Account to Staff" 
+                        ButtonStyle="ButtonStyle.Primary" 
+                        Click="LinkAccountToStaff" 
+                        Disabled="@(string.IsNullOrEmpty(staffMember) || string.IsNullOrEmpty(accountToAdd))"
+                        Style="width: fit-content;" />
+                </RadzenStack>
+                
+                <!-- Remove Account section -->
+                <RadzenStack Orientation="Orientation.Vertical" Gap="0.5rem" Class="rz-mt-3">
+                    <RadzenText TextStyle="TextStyle.Body2">Remove Account Access</RadzenText>
+                    <RadzenDropDown TValue="int"
+                                    Data="@userAccounts"
+                                    TextProperty="Name"
+                                    ValueProperty="AccountId"
+                                    @bind-Value="selectedLinkedAccountId"
+                                    Placeholder="Select account to remove"
+                                    Style="width: 100%;" />
+                    
+                    <RadzenButton 
+                        Text="Remove Account Link" 
+                        ButtonStyle="ButtonStyle.Danger" 
+                        Click="RemoveAccountLink" 
+                        Disabled="@(selectedLinkedAccountId == 0 || string.IsNullOrEmpty(staffMember))"
+                        Style="width: fit-content;" />
+                </RadzenStack>
+            </RadzenStack>
         </RadzenStack>
         
-        <RadzenDropDown TValue="string"
-                        Data="@allAccounts"
-                        TextProperty="Name"
-                        ValueProperty="Name"
-                        @bind-Value="accountToAdd"
-                        Change="@(args => accountSeletion(args?.ToString()))"
-                        Placeholder="All Accounts"
-                        Style="width: 300px; margin-top: 16px;" />
+        <!-- Staff update error/success messages -->
+        @if (!string.IsNullOrEmpty(staffUpdateError))
+        {
+            <RadzenAlert AlertStyle="AlertStyle.Danger" ShowIcon="true" Variant="Variant.Filled" Class="rz-mt-3">
+                @staffUpdateError
+            </RadzenAlert>
+        }
+        
+        @if (!string.IsNullOrEmpty(staffUpdateSuccess))
+        {
+            <RadzenAlert AlertStyle="AlertStyle.Success" ShowIcon="true" Variant="Variant.Filled" Class="rz-mt-3">
+                @staffUpdateSuccess
+            </RadzenAlert>
+        }
+        
+        <!-- Account link error/success messages -->
+        @if (!string.IsNullOrEmpty(accountLinkError))
+        {
+            <RadzenAlert AlertStyle="AlertStyle.Danger" ShowIcon="true" Variant="Variant.Filled" Class="rz-mt-3">
+                @accountLinkError
+            </RadzenAlert>
+        }
+        
+        @if (!string.IsNullOrEmpty(accountLinkSuccess))
+        {
+            <RadzenAlert AlertStyle="AlertStyle.Success" ShowIcon="true" Variant="Variant.Filled" Class="rz-mt-3">
+                @accountLinkSuccess
+            </RadzenAlert>
+        }
+        
+        <!-- Update button -->
+        <RadzenButton 
+            Text="Update Staff Member" 
+            ButtonStyle="ButtonStyle.Primary" 
+            Click="UpdateStaffMember" 
+            Disabled="@(string.IsNullOrEmpty(staffMember))"
+            Style="margin-top: 1rem;" />
     </RadzenCard>
     
     <!-- Create New User Form -->
@@ -84,12 +150,17 @@
                     <RadzenLengthValidator Component="Name" Min="2" Max="100" Text="Name must be between 2 and 100 characters" />
                 </RadzenFormField>
                 
-                <RadzenButton Text="Register New User" ButtonType="ButtonType.Submit" ButtonStyle="ButtonStyle.Primary" />
+                <div class="d-flex">
+                    <RadzenButton Text="Register New User" 
+                                  ButtonType="ButtonType.Submit" 
+                                  ButtonStyle="ButtonStyle.Primary" 
+                                  Style="width: auto;" />
+                </div>
             </RadzenStack>
         </RadzenTemplateForm>
     </RadzenCard>
     
-    <!-- Funds Section -->
+    <!-- COMMENTED OUT: Funds Section 
     <RadzenCard>
         <RadzenStack Orientation="Orientation.Horizontal" Gap="1rem">
             <RadzenButton Text="Get Distinct Funds" Click="@GetDistinctFunds" ButtonStyle="ButtonStyle.Secondary" />
@@ -153,29 +224,201 @@
             </RadzenStack>
         }
     </RadzenCard>
+    -->
 </RadzenStack>
 
 @code {
     private string? staffMember;
     private List<UserData> staff = new List<UserData>();
+    private string selectedStaffEmail = string.Empty;
 
     public string selectedStaff;
     public string newName = string.Empty;
     public string newEmail = string.Empty;
 
-    public async Task staffSelection(string accountName)
-    {
-        if (string.IsNullOrEmpty(accountName)) return;
-        Console.WriteLine($"TESTING: {selectedStaff}");
-    }
-    
+    private string staffUpdateError = string.Empty;
+    private string staffUpdateSuccess = string.Empty;
+
+    // Account management properties
+    private string accountLinkError = string.Empty;
+    private string accountLinkSuccess = string.Empty;
     private string? accountToAdd;
     private List<Account> allAccounts = new List<Account>();
-    
+    private List<Account> sharedAccounts = new List<Account>();
+    private List<SharedAccountBool> sharedAccountsBool = new List<SharedAccountBool>();
+    private List<Account> userAccounts = new List<Account>();
+    private int selectedLinkedAccountId = 0;
+
+    // User form properties
+    [SupplyParameterFromForm]
+    private UserFormModel formModel { get; set; } = new UserFormModel();
+
+    // Fund properties
+    private string? successMessage;
+    private string? errorMessage;
+    private List<string>? funds;
+    private List<(string name, string accountRef, bool success, string errorMessage)> createdAccounts = new();
+
     protected override async Task OnInitializedAsync()
     {
         await base.OnInitializedAsync();
-        await LoadAllAccounts();
+        await Task.WhenAll(
+         LoadAllAccounts(),
+         LoadAllStaff()
+        );
+    }
+
+    // Staff selection and update methods
+    public void staffSelection(string staffName)
+    {
+        if (string.IsNullOrEmpty(staffName)) return;
+
+        selectedStaff = staffName;
+
+        // Find the selected staff member and update the displayed email
+        var selectedUser = staff.FirstOrDefault(u => u.Name == staffName);
+        if (selectedUser != null)
+        {
+            selectedStaffEmail = selectedUser.Email;
+
+            // Load the user's accounts
+            LoadUserAccounts(selectedUser.Id).ConfigureAwait(false);
+        }
+    }
+
+    private async Task UpdateStaffMember()
+    {
+        // Clear previous messages
+        staffUpdateError = string.Empty;
+        staffUpdateSuccess = string.Empty;
+
+        Console.WriteLine("UpdateStaffMember called");
+
+        if (string.IsNullOrEmpty(staffMember))
+        {
+            staffUpdateError = "Please select a staff member to update";
+            return;
+        }
+
+        try
+        {
+            var selectedUser = staff.FirstOrDefault(u => u.Name == staffMember);
+            if (selectedUser == null)
+            {
+                staffUpdateError = "Selected staff member not found";
+                return;
+            }
+
+            // Build update parts based on what the user entered
+            bool hasChanges = false;
+            string sql = "UPDATE Users SET ";
+            var parameters = new Dictionary<string, object>();
+
+            // Add the ID for WHERE clause
+            parameters.Add("Id", selectedUser.Id);
+
+            // Check if name should be updated
+            if (!string.IsNullOrWhiteSpace(newName))
+            {
+                sql += "Name = @Name, ";
+                parameters.Add("Name", newName);
+                hasChanges = true;
+            }
+
+            // Check if email should be updated
+            if (!string.IsNullOrWhiteSpace(newEmail))
+            {
+                sql += "Email = @Email, ";
+                parameters.Add("Email", newEmail);
+                hasChanges = true;
+            }
+
+            // If nothing to update, show message
+            if (!hasChanges)
+            {
+                staffUpdateError = "No changes provided for update";
+                return;
+            }
+
+            // Remove trailing comma and space
+            sql = sql.TrimEnd(',', ' ');
+
+            // Add WHERE clause
+            sql += " WHERE Id = @Id";
+
+            // Execute update
+            Console.WriteLine($"Executing SQL: {sql}");
+            Console.WriteLine($"Parameters: {string.Join(", ", parameters.Select(p => $"{p.Key}={p.Value}"))}");
+
+            int result = await _data.SaveData(
+                sql,
+                parameters,
+                _config.GetConnectionString("default")
+            );
+
+            Console.WriteLine($"Update result: {result}");
+
+            if (result > 0)
+            {
+                staffUpdateSuccess = "Staff member updated successfully";
+
+                // Clear input fields
+                newName = string.Empty;
+                newEmail = string.Empty;
+
+                // Refresh staff list
+                await LoadAllStaff();
+
+                // Update the current selection to show updated info
+                staffSelection(staffMember);
+            }
+            else
+            {
+                staffUpdateError = "Failed to update staff member";
+            }
+        }
+        catch (Exception ex)
+        {
+            staffUpdateError = $"Error updating staff member: {ex.Message}";
+        }
+    }
+
+    // Loading methods
+    private async Task LoadAllStaff()
+    {
+        try
+        {
+            string sql = "SELECT Id, Email, Name, Language, AuthLevel, DefaultAccount FROM Users ORDER BY Name";
+            var users = await _data.LoadData<User, dynamic>(
+                sql,
+                new { },
+                _config.GetConnectionString("default")
+            );
+
+            if (users != null)
+            {
+                // Use constructor to properly set the read-only Id property
+                staff = users.Select(u => new UserData(
+                    u.Id,                       
+                    u.Email ?? string.Empty,
+                    u.Name ?? string.Empty,
+                    u.Language ?? string.Empty,
+                    u.AuthLevel ?? string.Empty,
+                    u.DefaultAccount.HasValue ? u.DefaultAccount.Value.ToString() : string.Empty,  // Convert int? to string
+                    new List<Account>(),        
+                    string.Empty                
+                )).ToList();
+            }
+            else
+            {
+                staff = new List<UserData>();
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error loading staff members: {ex.Message}";
+            staff = new List<UserData>();
+        }
     }
 
     private async Task LoadAllAccounts()
@@ -202,21 +445,202 @@
         }
     }
 
+    // Account management methods
     public async Task accountSeletion(string account)
     {
         if (string.IsNullOrEmpty(account)) return;
-        Console.WriteLine($"TESTING: {accountToAdd}");
-    }
-    
-    private List<Account>sharedAccounts = new List<Account>();
-    private List<SharedAccountBool>sharedAccountsBool = new List<SharedAccountBool>();
-    
-    public async Task sharedAccountSeletion(string account)
-    {
-        Console.WriteLine($"TESTING: {sharedAccounts}");
+        Console.WriteLine($"Selected account: {accountToAdd}");
     }
 
-    private class SharedAccountBool    {
+    public async Task sharedAccountSeletion(string account)
+    {
+        Console.WriteLine($"Shared account selected: {account}");
+    }
+
+    private async Task LinkAccountToStaff()
+    {
+        // Clear previous messages
+        accountLinkError = string.Empty;
+        accountLinkSuccess = string.Empty;
+
+        if (string.IsNullOrEmpty(staffMember))
+        {
+            accountLinkError = "Please select a staff member";
+            return;
+        }
+
+        if (string.IsNullOrEmpty(accountToAdd))
+        {
+            accountLinkError = "Please select an account to add";
+            return;
+        }
+
+        try
+        {
+            // Get the user ID from the selected staff
+            var selectedUser = staff.FirstOrDefault(u => u.Name == staffMember);
+            if (selectedUser == null)
+            {
+                accountLinkError = "Selected staff member not found";
+                return;
+            }
+
+            // Get the account ID from the selected account
+            var account = allAccounts.FirstOrDefault(a => a.Name == accountToAdd);
+            if (account == null)
+            {
+                accountLinkError = "Selected account not found";
+                return;
+            }
+
+            // Check if the association already exists
+            string checkSql = @"
+                SELECT COUNT(*) FROM AccountsUsers
+                WHERE UserId = @UserId AND AccountId = @AccountId";
+
+            var existingAssociations = await _data.LoadData<int, dynamic>(
+                checkSql,
+                new { UserId = selectedUser.Id, AccountId = account.AccountId },
+                _config.GetConnectionString("default")
+            );
+
+            if (existingAssociations != null && existingAssociations.FirstOrDefault() > 0)
+            {
+                accountLinkError = $"Account '{accountToAdd}' is already linked to this staff member";
+                return;
+            }
+
+            // Insert the new association
+            string insertSql = @"
+                INSERT INTO AccountsUsers (UserId, AccountId)
+                VALUES (@UserId, @AccountId)";
+
+            int result = await _data.SaveData(
+                insertSql,
+                new { UserId = selectedUser.Id, AccountId = account.AccountId },
+                _config.GetConnectionString("default")
+            );
+
+            if (result > 0)
+            {
+                accountLinkSuccess = $"Successfully linked account '{accountToAdd}' to {staffMember}";
+
+                // Reset the selected account
+                accountToAdd = string.Empty;
+
+                // Refresh the user's accounts list
+                await LoadUserAccounts(selectedUser.Id);
+            }
+            else
+            {
+                accountLinkError = "Failed to link account";
+            }
+        }
+        catch (Exception ex)
+        {
+            accountLinkError = $"Error linking account: {ex.Message}";
+        }
+    }
+
+    private async Task RemoveAccountLink()
+    {
+        // Clear previous messages
+        accountLinkError = string.Empty;
+        accountLinkSuccess = string.Empty;
+
+        if (string.IsNullOrEmpty(staffMember))
+        {
+            accountLinkError = "Please select a staff member";
+            return;
+        }
+
+        if (selectedLinkedAccountId == 0)
+        {
+            accountLinkError = "Please select an account to remove";
+            return;
+        }
+
+        try
+        {
+            // Get the user ID from the selected staff
+            var selectedUser = staff.FirstOrDefault(u => u.Name == staffMember);
+            if (selectedUser == null)
+            {
+                accountLinkError = "Selected staff member not found";
+                return;
+            }
+
+            // Get the account name for the success message
+            var selectedAccount = userAccounts.FirstOrDefault(a => a.AccountId == selectedLinkedAccountId);
+            string accountName = selectedAccount?.Name ?? "Unknown";
+
+            // Delete the association
+            string deleteSql = @"
+                DELETE FROM AccountsUsers
+                WHERE UserId = @UserId AND AccountId = @AccountId";
+
+            int result = await _data.SaveData(
+                deleteSql,
+                new { UserId = selectedUser.Id, AccountId = selectedLinkedAccountId },
+                _config.GetConnectionString("default")
+            );
+
+            if (result > 0)
+            {
+                accountLinkSuccess = $"Successfully removed account '{accountName}' from {staffMember}";
+
+                // Reset the selected account
+                selectedLinkedAccountId = 0;
+
+                // Refresh the user's accounts list
+                await LoadUserAccounts(selectedUser.Id);
+            }
+            else
+            {
+                accountLinkError = "Failed to remove account link";
+            }
+        }
+        catch (Exception ex)
+        {
+            accountLinkError = $"Error removing account link: {ex.Message}";
+        }
+    }
+
+    private async Task LoadUserAccounts(int userId)
+    {
+        try
+        {
+            string sql = @"
+                SELECT a.AccountId, a.Name, a.AccountRef, a.CreatedAt
+                FROM Accounts a
+                INNER JOIN AccountsUsers au ON a.AccountId = au.AccountId
+                WHERE au.UserId = @UserId
+                ORDER BY a.Name";
+
+            var userAccountsResult = await _data.LoadData<Account, dynamic>(
+                sql,
+                new { UserId = userId },
+                _config.GetConnectionString("default")
+            );
+
+            // Clear existing list
+            userAccounts.Clear();
+
+            // Populate with user's accounts
+            if (userAccountsResult != null && userAccountsResult.Any())
+            {
+                userAccounts.AddRange(userAccountsResult);
+            }
+        }
+        catch (Exception ex)
+        {
+            accountLinkError = $"Error loading user accounts: {ex.Message}";
+        }
+    }
+
+    // Helper classes
+    private class SharedAccountBool
+    {
         public Account Account { get; set; }
         public bool IsSelected { get; set; }
 
@@ -226,15 +650,19 @@
             IsSelected = isSelected;
         }
     }
-    
-    [SupplyParameterFromForm]
-    private UserFormModel formModel { get; set; } = new UserFormModel();
 
-    private string? successMessage;
-    private string? errorMessage;
-    private List<string>? funds;
-    private List<(string name, string accountRef, bool success, string errorMessage)> createdAccounts = new();
+    public class UserFormModel
+    {
+        [Required(ErrorMessage = "Email is required")]
+        [EmailAddress(ErrorMessage = "Please enter a valid email address")]
+        public string Email { get; set; } = string.Empty;
 
+        [Required(ErrorMessage = "Name is required")]
+        [StringLength(100, MinimumLength = 2, ErrorMessage = "Name must be between 2 and 100 characters")]
+        public string Name { get; set; } = string.Empty;
+    }
+
+    // Form submission handling
     private async Task HandleValidSubmit()
     {
         try
@@ -251,17 +679,7 @@
         }
     }
 
-    public class UserFormModel
-    {
-        [Required(ErrorMessage = "Email is required")]
-        [EmailAddress(ErrorMessage = "Please enter a valid email address")]
-        public string Email { get; set; } = string.Empty;
-
-        [Required(ErrorMessage = "Name is required")]
-        [StringLength(100, MinimumLength = 2, ErrorMessage = "Name must be between 2 and 100 characters")]
-        public string Name { get; set; } = string.Empty;
-    }
-
+    // Fund-related methods
     public async Task GetDistinctFunds()
     {
         try

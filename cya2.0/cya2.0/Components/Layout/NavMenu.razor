@@ -7,52 +7,53 @@
 @rendermode InteractiveServer
 
 <CascadingAuthenticationState>
+    <!-- Increase the spacing between nav items -->
     <div class="navbar">
-        <div class="nav-item px-3">
+        <div class="nav-item px-4">
             <NavLink class="nav-link" href="" Match="NavLinkMatch.All">
                 <span class="bi bi-house-door-fill-nav-menu" aria-hidden="true"></span> CYA Home
             </NavLink>
         </div>
-        
+
         <div class="nav-item px-3 d-flex navbar-group">
-            <div class="nav-item px-3">
+            <div class="nav-item px-5 nav-link-block">
                 <NavLink class="nav-link" href="donations">
                     <span class="bi bi-list-nested-nav-menu" aria-hidden="true"></span> Donations
                 </NavLink>
             </div>
-            <div class="nav-item px-3">
+            <div class="nav-item px-5 nav-link-block">
                 <NavLink class="nav-link" href="expenses">
                     <span class="bi bi-list-nested-nav-menu" aria-hidden="true"></span> Expenses
                 </NavLink>
             </div>
-            <div class="nav-item px-3">
+            <div class="nav-item px-5 nav-link-block">
                 <NavLink class="nav-link" href="donors">
                     <span class="bi bi-list-nested-nav-menu" aria-hidden="true"></span> Donors
                 </NavLink>
             </div>
         </div>
-        
+
         <div class="nav-item px-3 d-flex navbar-group">
-            <div class="nav-item px-3">
+            <div class="nav-item px-5 nav-link-block">
                 <NavLink class="nav-link" href="usersettings">
-                    <span class="bi bi-gear-fill" aria-hidden="true"></span> Settings
+                    <span class=bi-gear-fill-nav-menu " aria-hidden="true"></span> Settings
                 </NavLink>
             </div>
-            
+
             <AuthorizeView Roles="Admin">
                 <Authorized>
-                    <div class="nav-item px-3">
+                    <div class="nav-item px-5 nav-link-block">
                         <NavLink class="nav-link" href="/admin" Match="NavLinkMatch.All">
-                            <span class="bi bi-shield-lock" aria-hidden="true"></span> Admin
+                            <span class="bi bi-shield-lock-nav-menu" aria-hidden="true"></span> Admin
                         </NavLink>
                     </div>
                 </Authorized>
             </AuthorizeView>
         </div>
-        
-        <div class="nav-item px-3">
+
+        <div class="nav-item px-4">
             <a href="/logout" class="nav-link">
-                <span class="bi bi-box-arrow-right" aria-hidden="true"></span> Logout
+                <span class="bi bi-box-arrow-right-nav-menu" aria-hidden="true"></span> Logout
             </a>
         </div>
     </div>

@@ -68,6 +68,7 @@ builder.Services.AddServerSideBlazor()
     });
 
 builder.Services.AddRadzenComponents();
+
 // Add authentication services
 builder.Services.AddScoped<UserAuth.UserRepository>(provider =>
 {
@@ -225,8 +226,9 @@ builder.Services.AddAuthentication(options =>
                     var identity = (ClaimsIdentity)context.Principal.Identity;
                     identity.AddClaim(new Claim(ClaimTypes.Role, user.AuthLevel ?? "User"));
                     identity.AddClaim(new Claim("AuthLevel", user.AuthLevel ?? ""));
-                    identity.AddClaim(new Claim("DefaultAccount", user.DefaultAccount ?? ""));
+                    identity.AddClaim(new Claim("DefaultAccount", user.DefaultAccount?.ToString() ?? ""));
                     identity.AddClaim(new Claim("Language", user.Language ?? ""));
+                    identity.AddClaim(new Claim("UserId", user.Id.ToString()));
 
                     logger.LogInformation("User {Email} successfully authenticated with role {Role}", email, user.AuthLevel ?? "User");
 
