@@ -3,6 +3,7 @@
 @attribute [AllowAnonymous]
 @using Microsoft.AspNetCore.Authorization
 @inject IJSRuntime JSRuntime
+@inject AppState AppState
 @rendermode InteractiveServer
 
 <PageTitle>Logged Out - CYA</PageTitle>
@@ -62,12 +63,15 @@
         if (firstRender)
         {
             try {
+                // Ensure AppState is cleared
+                AppState.ClearUserData();
+                
                 // Clear authentication cookies via JS
                 await JSRuntime.InvokeVoidAsync("eval", 
                     "document.cookie.split(';').forEach(c => document.cookie = c.trim().split('=')[0] + '=;' + 'expires=Thu, 01 Jan 1970 00:00:00 UTC;path=/;');");
             }
             catch (Exception ex) {
-                Console.WriteLine($"Error clearing cookies: {ex.Message}");
+                Console.WriteLine($"Error clearing session data: {ex.Message}");
             }
         }
     }

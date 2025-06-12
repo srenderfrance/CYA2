@@ -1,5 +1,278 @@
 @page "/expenses"
+@using static Microsoft.AspNetCore.Components.Web.RenderMode
+@using Microsoft.Extensions.Configuration
+@using ModelsLibrary
+@using DataLibrary
+@using UtilityClassLibrary
+@using Radzen
+@using Microsoft.AspNetCore.Components.Authorization
+@using System.Security.Claims
+@inject AuthenticationStateProvider AuthStateProvider
+@inject IDataAccess _data
+@inject IConfiguration _config
+@inject AppState AppState
+@inject DataLoadingService DataLoader
+@rendermode InteractiveServer
+@attribute [StreamRendering]
 
-<PageTitle>Expenses</PageTitle>
+<PageTitle>EXPENSES</PageTitle>
 
-	<h1>Expense info goes here.</h1>
+<RadzenStack Orientation="Orientation.Vertical" Gap="1rem" Class="rz-p-4">
+    <div class="d-flex justify-content-between align-items-center">
+        <RadzenText TextStyle="TextStyle.H3">Account: @selectedAccount</RadzenText>
+        <RadzenDropDown TValue="string"
+                        Data="@userAccounts"
+                        TextProperty="Name"
+                        ValueProperty="Name"
+                        @bind-Value="selectedAccount"
+                        Change="@(args => accountSelection(args?.ToString()))"
+                        Placeholder="Choose Account"
+                        Style="width: 250px;" />
+    </div>
+
+    <RadzenStack Orientation="Orientation.Horizontal" Gap="1rem" JustifyContent="JustifyContent.Start" AlignItems="AlignItems.Center">
+        <RadzenText TextStyle="TextStyle.Subtitle2">Date Range:</RadzenText>
+        <RadzenLabel Text="Start Date" />
+        <RadzenDatePicker @bind-Value="@startDate" DateFormat="MM/dd/yyyy" />
+
+        <RadzenLabel Text="End Date" />
+        <RadzenDatePicker @bind-Value="@endDate" DateFormat="MM/dd/yyyy" />
+
+        <RadzenButton Text="Apply Filter" Icon="filter_alt" Click="@selectDateRange" ButtonStyle="ButtonStyle.Primary" />
+    </RadzenStack>
+
+    @if (!string.IsNullOrEmpty(errorMessage))
+    {
+        <RadzenAlert AlertStyle="AlertStyle.Danger" ShowIcon="true" Variant="Variant.Filled" Class="mt-3">
+            @errorMessage
+        </RadzenAlert>
+    }
+
+    <RadzenCard>
+        <RadzenDataGrid Data="@selectedExpenses"
+                        TItem="UserDataExpenses"
+                        AllowFiltering="true"
+                        AllowColumnResize="true"
+                        AllowSorting="true"
+                        PageSize="10"
+                        AllowPaging="true"
+                        FilterMode="FilterMode.Advanced"
+                        EmptyText="No expenses found">
+            <Columns>
+                <RadzenDataGridColumn TItem="UserDataExpenses" Property="Date" Title="Date" FormatString="{0:MM/dd/yyyy}" />
+                <RadzenDataGridColumn TItem="UserDataExpenses" Property="Account" Title="Account" />
+                <RadzenDataGridColumn TItem="UserDataExpenses" Property="Description" Title="Description" />
+                <RadzenDataGridColumn TItem="UserDataExpenses" Property="StaffAccount" Title="Staff Account" />
+                <RadzenDataGridColumn TItem="UserDataExpenses" Property="Amount" Title="Amount">
+                    <Template Context="data">
+                        <span class="@(data.Amount >= 0 ? "text-success" : "text-danger")">
+                            $@Math.Abs(data.Amount).ToString("N2")
+                            @(data.Amount < 0 ? " (negative)" : "")
+                        </span>
+                    </Template>
+                </RadzenDataGridColumn>
+            </Columns>
+        </RadzenDataGrid>
+    </RadzenCard>
+</RadzenStack>
+
+@code {
+    private int userId;
+    private bool isAdmin = false;
+    private List<AccountingDataModel> accountingData = new List<AccountingDataModel>();
+    private List<Account> userAccounts = new List<Account>();
+    private List<UserDataExpenses> expenses = new List<UserDataExpenses>();
+    private List<UserDataExpenses> selectedExpenses = new List<UserDataExpenses>();
+    private string errorMessage = string.Empty;
+
+    private DateTime startDate = new DateTime(DateTime.Now.Year, DateTime.Now.Month, 1);
+    private DateTime endDate = DateTime.Now;
+    private string selectedAccount = "No Account Selected";
+    private Account currentAccount = null;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try {
+            // Create a local copy to prevent binding to shared state
+            userAccounts = new List<Account>();
+            
+            // Get the authentication state and extract the user
+            var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+            var user = authState.User;
+            
+            // Initialize user data with the user object (ClaimsPrincipal)
+            await DataLoader.InitializeUserDataAsync(user);
+            
+            // Make a local copy - important for UI stability
+            userAccounts = AppState.UserAccounts.ToList();
+            Console.WriteLine($"Loaded {userAccounts.Count} accounts for dropdown");
+            
+            // Set selected account to default
+            if (!string.IsNullOrEmpty(AppState.DefaultAccount))
+            {
+                selectedAccount = AppState.DefaultAccount;
+                currentAccount = userAccounts.FirstOrDefault(a => a.Name == selectedAccount);
+                
+                // Get accounting data
+                if (currentAccount != null && AppState.IsAccountDataLoaded(currentAccount.Name))
+                {
+                    accountingData = AppState.AccountDataCache[currentAccount.Name].AccountingData;
+                    await ProcessExpenses();
+                }
+            }
+        }
+        catch (Exception ex) {
+            errorMessage = $"Error initializing data: {ex.Message}";
+            Console.WriteLine($"Error in OnInitializedAsync: {ex.Message}");
+        }
+    }
+
+    public async Task accountSelection(string accountName)
+    {
+        if (string.IsNullOrEmpty(accountName)) return;
+
+        selectedAccount = accountName;
+        currentAccount = userAccounts.FirstOrDefault(a => a.Name == accountName);
+        
+        Console.WriteLine($"Selected Account: {selectedAccount}");
+        errorMessage = string.Empty;
+        
+        // Check if data is already loaded
+        if (currentAccount != null)
+        {
+            if (!AppState.IsAccountDataLoaded(accountName))
+            {
+                // Load data for this account
+                await DataLoader.LoadAccountDataAsync(currentAccount);
+            }
+            
+            // Get data from cache
+            if (AppState.IsAccountDataLoaded(accountName))
+            {
+                accountingData = AppState.AccountDataCache[accountName].AccountingData;
+            }
+        }
+        
+        await ProcessExpenses();
+    }
+
+    private async Task ProcessExpenses()
+    {
+        try
+        {
+            // Add timeout protection
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+            
+            // Clear any previous errors and expenses
+            errorMessage = string.Empty;
+            expenses.Clear();
+            selectedExpenses.Clear();
+
+            // Force UI update
+            StateHasChanged();
+
+            // Make sure accounting data is loaded
+            if (accountingData == null || !accountingData.Any())
+            {
+                errorMessage = "No accounting data available for this account.";
+                return;
+            }
+
+            // Filter for expense records
+            var expenseRecords = accountingData
+                .Where(a => IsExpense(a.type))
+                .ToList();
+
+            Console.WriteLine($"Found {expenseRecords.Count} expense records for account '{selectedAccount}'");
+
+            if (expenseRecords.Count == 0)
+            {
+                errorMessage = "No expense records found for this account.";
+                return;
+            }
+
+            // Convert to UserDataExpenses format
+            expenses = expenseRecords
+                .Where(a => a.date > new DateTime(1900, 1, 1)) // Filter out invalid dates
+                .Select(a => new UserDataExpenses(
+                    staffAccount: !string.IsNullOrEmpty(a.designation) ? a.designation : selectedAccount,
+                    amount: a.amount,
+                    date: a.date,
+                    description: !string.IsNullOrEmpty(a.account) ? a.account : "Unknown",
+                    account: !string.IsNullOrEmpty(a.account) ? a.account : "Unknown",
+                    num: !string.IsNullOrEmpty(a.num) ? a.num : string.Empty,
+                    accountNumber: !string.IsNullOrEmpty(a.accountnum) ? a.accountnum : string.Empty
+                ))
+                .ToList();
+
+            Console.WriteLine($"Converted {expenses.Count} records to UserDataExpenses");
+
+            // Apply date filter
+            selectDateRange();
+
+            // Force UI update after processing is complete
+            StateHasChanged();
+        }
+        catch (TaskCanceledException)
+        {
+            errorMessage = "The operation timed out. Database may be unavailable.";
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error processing expenses: {ex.Message}";
+            Console.WriteLine($"Error processing expenses: {ex.Message}");
+        }
+    }
+
+    private bool IsExpense(string type)
+    {
+        if (string.IsNullOrEmpty(type))
+            return false;
+
+        return type.Equals("expense", StringComparison.OrdinalIgnoreCase) ||
+               type.Equals("payroll check", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private void selectDateRange()
+    {
+        try
+        {
+            selectedExpenses = SelectData(expenses, startDate, endDate);
+            Console.WriteLine($"Applied date filter - Start: {startDate:MM/dd/yyyy}, End: {endDate:MM/dd/yyyy}");
+            Console.WriteLine($"Filtered to {selectedExpenses.Count} expense records");
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error applying date filter: {ex.Message}";
+            Console.WriteLine($"Error in selectDateRange: {ex.Message}");
+        }
+    }
+
+    private List<UserDataExpenses> SelectData(List<UserDataExpenses> data, DateTime? start = null, DateTime? end = null)
+    {
+        if (data == null) return new List<UserDataExpenses>();
+
+        if (start == null && end == null)
+        {
+            return data;
+        }
+        else if (start != null && end == null)
+        {
+            return data.Where(d => d.Date >= start).ToList();
+        }
+        else if (start == null && end != null)
+        {
+            return data.Where(d => d.Date <= end).ToList();
+        }
+        else
+        {
+            return data.Where(d => d.Date >= start && d.Date <= end).ToList();
+        }
+    }
+
+    // Simple class just for ID retrieval
+    private class UserIdOnly
+    {
+        public int Id { get; set; }
+    }
+}

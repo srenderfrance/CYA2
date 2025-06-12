@@ -3,7 +3,7 @@
     public class AccountingDataModel
     {
         public required int id { get; set; }
-        public required string designation { get; set; }
+        public required string designation { get; set; } //is name "class" in the csv
         public required DateTime date { get; set; }
         public required string num { get; set; }
         public required double amount { get; set; }

@@ -6,6 +6,7 @@
 @inject UserRepository UserRepository
 @inject IDataAccess _data
 @inject IConfiguration _config
+@inject AppState AppState
 @using ModelsLibrary
 @using System.ComponentModel.DataAnnotations
 @using DataLibrary
@@ -530,6 +531,20 @@
 
                 // Refresh the user's accounts list
                 await LoadUserAccounts(selectedUser.Id);
+                
+                // If this is the only account for the user, set it as default and update AppState
+                if (userAccounts.Count == 1)
+                {
+                    string updateDefaultSql = "UPDATE Users SET DefaultAccount = @AccountId WHERE Id = @UserId";
+                    await _data.SaveData(
+                        updateDefaultSql,
+                        new { AccountId = account.AccountId, UserId = selectedUser.Id },
+                        _config.GetConnectionString("default")
+                    );
+                    
+                    // Update AppState if this is for the current user (would need additional logic to determine)
+                    // This would require knowing who the current user is, which might not be available in admin context
+                }
             }
             else
             {
@@ -635,6 +650,42 @@
         catch (Exception ex)
         {
             accountLinkError = $"Error loading user accounts: {ex.Message}";
+        }
+    }
+
+    private async Task SetAccountAsDefault(int userId, int accountId)
+    {
+        try
+        {
+            string sql = "UPDATE Users SET DefaultAccount = @AccountId WHERE Id = @UserId";
+            
+            int result = await _data.SaveData(
+                sql,
+                new { AccountId = accountId, UserId = userId },
+                _config.GetConnectionString("default")
+            );
+            
+            if (result > 0)
+            {
+                // Find the account name
+                var account = allAccounts.FirstOrDefault(a => a.AccountId == accountId);
+                if (account != null)
+                {
+                    // If we're updating the default for the current user session, update AppState
+                    // We would need a way to determine if this is the current user
+                    // AppState.DefaultAccount = account.Name;
+                    
+                    accountLinkSuccess = $"Set '{account.Name}' as default account for {staffMember}";
+                }
+            }
+            else
+            {
+                accountLinkError = "Failed to set default account";
+            }
+        }
+        catch (Exception ex)
+        {
+            accountLinkError = $"Error setting default account: {ex.Message}";
         }
     }
 

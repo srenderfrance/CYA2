@@ -5,8 +5,13 @@
 @using DataLibrary
 @using UtilityClassLibrary
 @using Radzen
+@using Microsoft.AspNetCore.Components.Authorization
+@using System.Security.Claims
+@inject AuthenticationStateProvider AuthStateProvider
 @inject IDataAccess _data
 @inject IConfiguration _config
+@inject AppState AppState
+@inject DataLoadingService DataLoader
 @rendermode InteractiveServer
 @attribute [StreamRendering]
 
@@ -16,9 +21,10 @@
     <div class="d-flex justify-content-between align-items-center">
         <RadzenText TextStyle="TextStyle.H3">Account: @selectedAccount</RadzenText>
         <RadzenDropDown TValue="string"
-                        Data="@userAccounts"
+                        Data="@AppState.UserAccounts"
                         TextProperty="Name"
                         ValueProperty="Name"
+                        @bind-Value="selectedAccount"
                         Change="@(args => accountSelection(args?.ToString()))"
                         Placeholder="Choose Account"
                         Style="width: 250px;" />
@@ -28,150 +34,244 @@
         <RadzenText TextStyle="TextStyle.Subtitle2">Date Range:</RadzenText>
         <RadzenLabel Text="Start Date" />
         <RadzenDatePicker @bind-Value="@startDate" DateFormat="MM/dd/yyyy" />
-        
+
         <RadzenLabel Text="End Date" />
         <RadzenDatePicker @bind-Value="@endDate" DateFormat="MM/dd/yyyy" />
-        
+
         <RadzenButton Text="Apply Filter" Icon="filter_alt" Click="@selectDateRange" ButtonStyle="ButtonStyle.Primary" />
     </RadzenStack>
 
-    <RadzenCard>
-        <RadzenDataGrid Data="@selectedDonations" 
-                        TItem="UserDataDonations" 
-                        AllowFiltering="true"
-                        AllowColumnResize="true" 
-                        AllowSorting="true" 
-                        PageSize="10"
-                        AllowPaging="true"
-                        FilterMode="FilterMode.Advanced" 
-                        EmptyText="No donations found">
-            <Columns>
-                <RadzenDataGridColumn TItem="UserDataDonations" Property="Account" Title="Account" />
-                <RadzenDataGridColumn TItem="UserDataDonations" Property="Donor" Title="Donor" />
-                <RadzenDataGridColumn TItem="UserDataDonations" Property="Date" Title="Date" FormatString="{0:MM/dd/yyyy}" />
-                <RadzenDataGridColumn TItem="UserDataDonations" Property="Amount" Title="Amount" FormatString="{0:C2}" />
-                <RadzenDataGridColumn TItem="UserDataDonations" Property="Frequency" Title="Frequency" />
-                <RadzenDataGridColumn TItem="UserDataDonations" Property="TransactionType" Title="Transaction Type" />
-            </Columns>
-        </RadzenDataGrid>
-    </RadzenCard>
+    @if (!string.IsNullOrEmpty(errorMessage))
+    {
+        <RadzenAlert AlertStyle="AlertStyle.Danger" ShowIcon="true" Variant="Variant.Filled" Class="mt-3">
+            @errorMessage
+        </RadzenAlert>
+    }
+
+    @if (isLoading)
+    {
+        <div class="mt-4">
+            <RadzenProgressBar Value="100" ShowValue="false" Mode="ProgressBarMode.Indeterminate" />
+            <p class="text-muted mt-2">Loading donation data...</p>
+        </div>
+    }
+    else
+    {
+        <RadzenCard>
+            <RadzenDataGrid Data="@selectedDonations"
+                            TItem="UserDataDonations"
+                            AllowFiltering="true"
+                            AllowColumnResize="true"
+                            AllowSorting="true"
+                            PageSize="10"
+                            AllowPaging="true"
+                            FilterMode="FilterMode.Advanced"
+                            EmptyText="No donations found">
+                <Columns>
+                    <RadzenDataGridColumn TItem="UserDataDonations" Property="Account" Title="Account" />
+                    <RadzenDataGridColumn TItem="UserDataDonations" Property="Donor" Title="Donor" />
+                    <RadzenDataGridColumn TItem="UserDataDonations" Property="Date" Title="Date" FormatString="{0:MM/dd/yyyy}" />
+                    <RadzenDataGridColumn TItem="UserDataDonations" Property="Amount" Title="Amount" FormatString="{0:C2}" />
+                    <RadzenDataGridColumn TItem="UserDataDonations" Property="Frequency" Title="Frequency" />
+                    <RadzenDataGridColumn TItem="UserDataDonations" Property="TransactionType" Title="Transaction Type" />
+                </Columns>
+            </RadzenDataGrid>
+        </RadzenCard>
+    }
 </RadzenStack>
 
 @code {
-    List<DonationsDataModel> donationData;
-    List<string> userAccountsSimple = new List<string>();
-    List<UserDataDonations> donations = new List<UserDataDonations>();
-    List<UserDataDonations> selectedDonations = new List<UserDataDonations>();
-    List<AccountNameOptions> userAccounts = new List<AccountNameOptions>();
-    List<DonationsDataModel> accountDonationsData = new List<DonationsDataModel>();
-    public DateTime startDate = new DateTime(DateTime.Now.Year, DateTime.Now.Month, 1, 0, 0, 0);
-    public DateTime endDate = DateTime.Now;
+    private List<UserDataDonations> donations = new List<UserDataDonations>();
+    private List<UserDataDonations> selectedDonations = new List<UserDataDonations>();
 
-    public string selectedAccount;
-    private string? staffMember;
-    private List<UserData> staff = new List<UserData>();
-
-    string selection = "";
-    public async Task accountSelection(string accountName)
-    {
-        if (string.IsNullOrEmpty(accountName)) return;
-        
-        selectedAccount = accountName;
-        Console.WriteLine($"TESTING: {selectedAccount}");
-        await getAccount();
-    }
-
-    public async Task getAccount()
-    {
-        Console.WriteLine($"GET ACCOUNT Selected Account: {selectedAccount}"); 
-        foreach (var account in userAccounts)
-        {
-            if (account.Name == selectedAccount)
-            {
-                selection = account.WholeString;
-                Console.WriteLine($"SELECTION BEFORE BREAK: {selection}");
-                break;
-            }
-        }
-        string sql = $"select * from etapestry where fund = @Fund";
-        donationData = await _data.LoadData<DonationsDataModel, dynamic>(sql, new {Fund = selection}, _config.GetConnectionString("default"));
-        if (donationData != null)
-        {
-            Console.WriteLine($"Total donationData records: {donationData.Count}");
-            proccessDonations();
-        }
-        else
-        {
-            Console.WriteLine("No data returned from the SQL query.");
-        }
-    }
+    private DateTime startDate = new DateTime(DateTime.Now.Year, DateTime.Now.Month, 1, 0, 0, 0);
+    private DateTime endDate = DateTime.Now;
+    private string selectedAccount = string.Empty;
+    private string errorMessage = string.Empty;
+    private bool isLoading = true;
+    private Account currentAccount = null;
 
     protected override async Task OnInitializedAsync()
     {
-        string sql3 = "select distinct fund from etapestry";
-
-        userAccountsSimple = await _data.LoadData<string, dynamic>(sql3, new { }, _config.GetConnectionString("default"));
-        if (userAccountsSimple != null)
+        try
         {
-            foreach (var account in userAccountsSimple)
+            // Initialize user data
+            var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+            await DataLoader.InitializeUserDataAsync(authState.User);
+
+            // Check if we have accounts
+            if (AppState.UserAccounts.Any())
             {
-                if (account.Contains(":"))
+                // Set default account if available
+                if (!string.IsNullOrEmpty(AppState.DefaultAccount))
                 {
-                    string[] accountSplit = account.Split(":");
-                    var accountOptions = new AccountNameOptions(account, accountSplit[0], accountSplit[1]);
-                    userAccounts.Add(accountOptions);
+                    selectedAccount = AppState.DefaultAccount;
+                    currentAccount = AppState.UserAccounts.FirstOrDefault(a => a.Name == selectedAccount);
+
+                    // Load donations data for the default account
+                    await LoadDonationsForAccount(currentAccount);
                 }
-                else
+                else if (AppState.UserAccounts.Any())
                 {
-                    var accountOptions = new AccountNameOptions(account, account, account);
-                    userAccounts.Add(accountOptions);
+                    // Use first account as default if no default set
+                    selectedAccount = AppState.UserAccounts.First().Name;
+                    currentAccount = AppState.UserAccounts.First();
+                    await LoadDonationsForAccount(currentAccount);
                 }
             }
+
+            isLoading = false;
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error loading data: {ex.Message}";
+            Console.WriteLine($"Error in OnInitializedAsync: {ex.Message}");
+            isLoading = false;
         }
     }
 
-    public void proccessDonations()
+    public async Task accountSelection(string accountName)
     {
-        Console.WriteLine($"About to Process: Donations: {donations.Count}");
-        donations.Clear(); // Clear the list to avoid duplicate entries
-        Console.WriteLine($"Second Count: {donations.Count}"); 
-        Console.WriteLine($"Processing donations..."); 
-        foreach (var donation in donationData)
+        if (string.IsNullOrEmpty(accountName)) return;
+
+        try
         {
-            int seperator = donation.fund.IndexOf(":");
-            
-            if (seperator > 0)
+            isLoading = true;
+            errorMessage = string.Empty;
+
+            // Clear existing data
+            donations.Clear();
+            selectedDonations.Clear();
+
+            // Update UI
+            StateHasChanged();
+
+            selectedAccount = accountName;
+
+            // Update AppState with the selected account
+            AppState.DefaultAccount = accountName;
+
+            // Find account in UserAccounts
+            currentAccount = AppState.UserAccounts.FirstOrDefault(a => a.Name == selectedAccount);
+
+            if (currentAccount != null)
             {
-                var newDonation = new UserDataDonations(
-                    donation.fund.Remove(seperator, donation.fund.Length - seperator), 
-                    donation.accountname, 
-                    donation.date, 
-                    donation.amount, 
-                    donation.recurring, 
-                    donation.gifttype);
-                donations.Add(newDonation);
+                await LoadDonationsForAccount(currentAccount);
+            }
+
+            isLoading = false;
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error selecting account: {ex.Message}";
+            Console.WriteLine($"Error in accountSelection: {ex.Message}");
+            isLoading = false;
+        }
+    }
+
+    private async Task LoadDonationsForAccount(Account account)
+    {
+        try
+        {
+            if (account == null)
+            {
+                errorMessage = "No account selected";
+                return;
+            }
+
+            // Check if data is already in AppState
+            if (AppState.IsAccountDataLoaded(account.Name))
+            {
+                var accountData = AppState.AccountDataCache[account.Name];
+                ProcessDonationData(accountData.DonationData);
             }
             else
             {
-                var newDonation = new UserDataDonations(
-                    donation.fund,
-                    donation.accountname,
-                    donation.date,
-                    donation.amount,
-                    donation.recurring,
-                    donation.gifttype);
-                donations.Add(newDonation);
+                // Load from database if not in cache
+                await DataLoader.LoadAccountDataAsync(account);
+
+                // Check if loading was successful
+                if (AppState.IsAccountDataLoaded(account.Name))
+                {
+                    var accountData = AppState.AccountDataCache[account.Name];
+                    ProcessDonationData(accountData.DonationData);
+                }
+                else
+                {
+                    // Fallback to direct database query if something went wrong with DataLoader
+                    string sql = "SELECT * FROM etapestry WHERE fund = @Fund";
+                    var donationData = await _data.LoadData<DonationsDataModel, dynamic>(
+                        sql,
+                        new { Fund = account.AccountRef },
+                        _config.GetConnectionString("default")
+                    );
+
+                    if (donationData != null)
+                    {
+                        ProcessDonationData(donationData);
+                    }
+                    else
+                    {
+                        errorMessage = "No donation data found for this account";
+                    }
+                }
             }
+
+            // Apply date filter
+            selectDateRange();
         }
-        Console.WriteLine($"Total donations processed: {donations.Count}");
-        selectDateRange();
+        catch (Exception ex)
+        {
+            errorMessage = $"Error loading donation data: {ex.Message}";
+            Console.WriteLine($"Error in LoadDonationsForAccount: {ex.Message}");
+        }
     }
 
-    List<UserDataDonations> selectedData = new List<UserDataDonations>();
-    List<DateTime> selectedDates = new List<DateTime>();
-    
-    public List<UserDataDonations> SelectData(List<UserDataDonations> data, DateTime? start = null, DateTime? end = null)
+    private void ProcessDonationData(List<DonationsDataModel> donationData)
     {
+        try
+        {
+            donations.Clear();
+
+            foreach (var donation in donationData)
+            {
+                int separatorIndex = donation.fund.IndexOf(":");
+
+                if (separatorIndex > 0)
+                {
+                    var newDonation = new UserDataDonations(
+                        donation.fund.Remove(separatorIndex, donation.fund.Length - separatorIndex),
+                        donation.accountname,
+                        donation.date,
+                        donation.amount,
+                        donation.recurring,
+                        donation.gifttype);
+                    donations.Add(newDonation);
+                }
+                else
+                {
+                    var newDonation = new UserDataDonations(
+                        donation.fund,
+                        donation.accountname,
+                        donation.date,
+                        donation.amount,
+                        donation.recurring,
+                        donation.gifttype);
+                    donations.Add(newDonation);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error processing donation data: {ex.Message}";
+            Console.WriteLine($"Error in ProcessDonationData: {ex.Message}");
+        }
+    }
+
+    private List<UserDataDonations> SelectData(List<UserDataDonations> data, DateTime? start = null, DateTime? end = null)
+    {
+        if (data == null) return new List<UserDataDonations>();
+
         if (start == null && end == null)
         {
             return data;
@@ -189,11 +289,17 @@
             return data.Where(d => d.Date >= start && d.Date <= end).ToList();
         }
     }
-    
-    public void selectDateRange()
+
+    private void selectDateRange()
     {
-        selectedDonations = SelectData(donations, startDate, endDate);
-        Console.WriteLine("DATA SELECTED");
-        Console.WriteLine($"Start: {startDate} End: {endDate}");
+        try
+        {
+            selectedDonations = SelectData(donations, startDate, endDate);
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error applying date filter: {ex.Message}";
+            Console.WriteLine($"Error in selectDateRange: {ex.Message}");
+        }
     }
 }
