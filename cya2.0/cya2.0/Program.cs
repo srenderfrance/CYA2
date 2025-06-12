@@ -58,6 +58,12 @@ builder.Services.AddLogging(configure =>
 });
 
 // Add services to the container.
+
+// Find the existing services configuration section and add:
+
+builder.Services.AddSingleton<AppState>();
+builder.Services.AddScoped<DataLoadingService>();
+
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
 
@@ -229,6 +235,8 @@ builder.Services.AddAuthentication(options =>
                     identity.AddClaim(new Claim("DefaultAccount", user.DefaultAccount?.ToString() ?? ""));
                     identity.AddClaim(new Claim("Language", user.Language ?? ""));
                     identity.AddClaim(new Claim("UserId", user.Id.ToString()));
+                    // Add our own custom claim for the user's name from our database
+                    identity.AddClaim(new Claim("UserName", user.Name ?? ""));
 
                     logger.LogInformation("User {Email} successfully authenticated with role {Role}", email, user.AuthLevel ?? "User");
 
@@ -706,16 +714,19 @@ app.MapGet("/api/login", (HttpContext context, DatabaseMonitorService dbMonitor,
         IsPersistent = true
     };
 
-    // Issue the authentication challenge
+    // iIssue the authentication challenge
     return Results.Challenge(properties, new[] { GoogleDefaults.AuthenticationScheme });
 });
 
-// Update logout endpoint to use HTTP redirect instead of Results.Redirect
-app.MapGet("/logout", async (HttpContext context) =>
+// Update logout endpoint to clear AppState
+app.MapGet("/logout", async (HttpContext context, AppState appState) =>
 {
+    // Clear AppState before logout
+    appState.ClearUserData();
+    
+    // Sign out from cookie authentication
     await context.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
 
-    // Use HTTP redirect instead of Results.Redirect
     context.Response.Redirect("/logged-out");
     return Task.CompletedTask;
 });

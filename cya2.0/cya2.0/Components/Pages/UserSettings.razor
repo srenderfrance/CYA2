@@ -6,6 +6,7 @@
 @inject IDataAccess _data
 @inject IConfiguration _config
 @inject NavigationManager NavigationManager
+@inject AppState AppState
 @using ModelsLibrary
 @rendermode InteractiveServer
 
@@ -185,6 +186,9 @@
                     if (defaultAccount != null)
                     {
                         selectedAccountRef = defaultAccount.AccountRef;
+                        
+                        // Update AppState with the default account name
+                        AppState.DefaultAccount = defaultAccount.Name;
                     }
                 }
             }
@@ -270,12 +274,14 @@
 
             // Find the AccountId that corresponds to the selected AccountRef
             int? newAccountId = null;
+            string newAccountName = null;
             if (!string.IsNullOrEmpty(selectedAccountRef))
             {
                 var selectedAccountObj = userAccounts.FirstOrDefault(a => a.AccountRef == selectedAccountRef);
                 if (selectedAccountObj != null)
                 {
                     newAccountId = selectedAccountObj.AccountId;
+                    newAccountName = selectedAccountObj.Name;
                 }
             }
 
@@ -318,10 +324,17 @@
 
             if (result > 0)
             {
-                successMessage = "Default account updated successfully. Please log out and log back in for changes to take effect.";
-                showLogoutButton = true;
+                // Update AppState with the new default account
+                if (!string.IsNullOrEmpty(newAccountName))
+                {
+                    AppState.DefaultAccount = newAccountName;
+                }
+                else
+                {
+                    AppState.DefaultAccount = string.Empty;
+                }
 
-                // Update current value
+                successMessage = "Default account updated successfully. Changes applied immediately.";
                 currentDefaultAccountId = newAccountId;
             }
             else
