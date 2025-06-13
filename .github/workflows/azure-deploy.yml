@@ -19,7 +19,7 @@ jobs:
 
     - name: Build and publish
       run: |
-        cd <path-to-your-project-or-solution> # Add this line to navigate to the directory containing your .csproj or .sln file
+        cd </CYA2.0 # Add this line to navigate to the directory containing your .csproj or .sln file
         dotnet restore
         dotnet build --configuration Release
         dotnet publish -c Release -o ./publish
