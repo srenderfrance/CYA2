@@ -32,6 +32,6 @@ jobs:
     - name: Deploy to Azure Web App
       uses: azure/webapps-deploy@v2
       with:
-        app-name: 'your-app-name'  # Replace with your Azure Web App name
+        app-name: 'CYA2'  # Replace with your Azure Web App name
         slot-name: 'production'
         package: ./publish
