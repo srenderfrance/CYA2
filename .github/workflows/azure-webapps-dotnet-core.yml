@@ -20,10 +20,9 @@
 name: Build and deploy ASP.Net Core app to an Azure Web App
 
 env:
-  AZURE_WEBAPP_NAME: CYA2    # set this to the name of your Azure Web App
-  AZURE_WEBAPP_PACKAGE_PATH: './cya2.0/bin/Release/net8.0/publish'     # set this to the path to your web app project, defaults to the repository root
-  DOTNET_VERSION: '8.0.x'                 # set this to the .NET Core version to use
-
+  AZURE_WEBAPP_NAME: CYA2   
+  AZURE_WEBAPP_PACKAGE_PATH: '${{env.DOTNET_ROOT}}/myapp'  
+  DOTNET_VERSION: '8.0.x'              
 on:
   push:
     branches: [ "main" ]
