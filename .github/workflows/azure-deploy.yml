@@ -22,7 +22,7 @@ jobs:
         cd cya2.0 
         dotnet restore
         dotnet build --configuration Release
-        dotnet publish -c Release -o ./publish
+         dotnet publish --configuration Release --output ./publish
 
     - name: Login to Azure
       uses: azure/login@v1
