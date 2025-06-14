@@ -58,7 +58,12 @@ jobs:
         run: dotnet build cya2.0/cya2.0.sln --configuration Release
 
       - name: dotnet publish
-        run: dotnet publish cya2.0/cya2.0.sln --configuration Release --output cya2.0/bin/Release/net8.0/publish
+        run: |
+          cd cya2.0
+          dotnet publish --configuration Release --output ${{env.DOTNET_ROOT}}/myapp
+      
+      - name: Check publish output
+        run: ls -la ${{env.DOTNET_ROOT}}/myapp
       
       - name: Upload artifact for deployment job
         uses: actions/upload-artifact@v4
