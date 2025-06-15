@@ -21,7 +21,7 @@ name: Build and deploy ASP.Net Core app to an Azure Web App
 
 env:
   AZURE_WEBAPP_NAME: CYA2   
-  AZURE_WEBAPP_PACKAGE_PATH: './myapp'
+  AZURE_WEBAPP_PACKAGE_PATH: './.net-app'
   DOTNET_VERSION: '8.0.x'              
 on:
   push:
@@ -59,7 +59,7 @@ jobs:
       - name: dotnet publish
         run: |
           cd cya2.0
-          dotnet publish --configuration Release --output ${{env.DOTNET_ROOT}}/myapp
+          dotnet publish --configuration Release --output ./myapp
       
       - name: Check publish output
         run: ls -la ${{env.DOTNET_ROOT}}/myapp
