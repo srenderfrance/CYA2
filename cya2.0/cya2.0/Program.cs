@@ -761,5 +761,27 @@ app.MapGet("/api/check-db", async (HttpContext context, IDataAccess dataAccess, 
     }
 });
 
+app.MapGet("/api/test-db-connection", async (HttpContext context) =>
+{
+    try {
+        var conn = new MySqlConnection(
+            "Server=mysql-db-srenderfrance-cya.i.aivencloud.com;" +
+            "Port=11931;Database=defaultdb;User Id=avnadmin;" + 
+            "Password=REDACTED;SslMode=Required;" +
+            "AllowPublicKeyRetrieval=true");
+            
+        await conn.OpenAsync();
+        await conn.CloseAsync();
+        return Results.Ok(new { success = true, message = "Connection successful" });
+    }
+    catch (Exception ex) {
+        return Results.Ok(new { 
+            success = false, 
+            message = ex.Message,
+            fullDetails = ex.ToString()
+        });
+    }
+});
+
 app.Run();
 
