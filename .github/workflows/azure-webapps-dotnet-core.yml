@@ -20,10 +20,9 @@
 name: Build and deploy ASP.Net Core app to an Azure Web App
 
 env:
-  AZURE_WEBAPP_NAME: CYA2    # set this to the name of your Azure Web App
-  AZURE_WEBAPP_PACKAGE_PATH: './cya2.0/bin/Release/net8.0/publish'     # set this to the path to your web app project, defaults to the repository root
-  DOTNET_VERSION: '8.0.x'                 # set this to the .NET Core version to use
-
+  AZURE_WEBAPP_NAME: CYA2   
+  AZURE_WEBAPP_PACKAGE_PATH: 'cya2.0/myapp'
+  DOTNET_VERSION: '8.0.x'              
 on:
   push:
     branches: [ "main" ]
@@ -60,16 +59,18 @@ jobs:
       - name: dotnet publish
         run: |
           cd cya2.0
-          dotnet publish --configuration Release --output ${{env.DOTNET_ROOT}}/myapp
+          dotnet publish --configuration Release --output ./myapp
       
       - name: Check publish output
-        run: ls -la ${{env.DOTNET_ROOT}}/myapp
+        run: ls -la cya2.0/myapp
       
       - name: Upload artifact for deployment job
         uses: actions/upload-artifact@v4
         with:
           name: .net-app
-          path: ${{env.DOTNET_ROOT}}/myapp
+          path: cya2.0/myapp
+        
+     
 
   deploy:
     permissions:
@@ -85,11 +86,29 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: .net-app
-
+          path: cya2.0/myapp
+   
+      - name: 'Login to Azure'
+        uses: azure/login@v1
+        with:
+          creds: |
+            {
+              "clientId": "${{ secrets.AZURE_CLIENT_ID }}",
+              "clientSecret": "${{ secrets.AZURE_CLIENT_SECRET }}",
+              "subscriptionId": "${{ secrets.AZURE_SUBSCRIPTION_ID }}",
+              "tenantId": "${{ secrets.AZURE_TENANT_ID }}",
+              "activeDirectoryEndpointUrl": "https://login.microsoftonline.com",
+              "resourceManagerEndpointUrl": "https://management.azure.com/",
+              "activeDirectoryGraphResourceId": "https://graph.windows.net/",
+              "sqlManagementEndpointUrl": "https://management.core.windows.net:8443/",
+              "galleryEndpointUrl": "https://gallery.azure.com/",
+              "managementEndpointUrl": "https://management.core.windows.net/"
+            }
+      
       - name: Deploy to Azure Web App
         id: deploy-to-webapp
         uses: azure/webapps-deploy@v2
         with:
           app-name: ${{ env.AZURE_WEBAPP_NAME }}
           publish-profile: ${{ secrets.AZURE_WEBAPP_PUBLISH_PROFILE }}
-          package: ${{ env.AZURE_WEBAPP_PACKAGE_PATH }}
+          package: cya2.0/myapp
