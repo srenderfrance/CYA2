@@ -5,7 +5,7 @@ namespace cya2._0
     public static class GlobalSettings
     {
         public static bool AllowMySqlLoading { get; set; } = false;
-        public static bool BypassDatabaseMonitoring { get; set; } = false;
+        public static bool BypassDatabaseMonitoring { get; set; } = true;
 
         public static bool CheckDatabaseTcpConnection(string host, int port, int timeoutMs = 1000)
         {
