@@ -784,5 +784,55 @@ app.MapGet("/api/test-db-connection", async (HttpContext context) =>
 })
 .WithMetadata(new AllowAnonymousAttribute()); // Add this line to bypass authentication
 
+// Add a simple bypass toggle for the database monitoring system
+app.MapGet("/api/bypass-db-monitoring", (HttpContext context, DatabaseMonitorService dbMonitor, ILogger<Program> logger) =>
+{
+    // Toggle the bypass setting
+    bool newValue = !dbMonitor.BypassMonitoring;
+    dbMonitor.SetBypassMonitoring(newValue);
+    
+    // Return the current status
+    return Results.Ok(new { 
+        bypassEnabled = newValue,
+        message = newValue
+            ? "Database monitoring BYPASSED - using direct connections"
+            : "Database monitoring ACTIVE - using normal monitoring"
+    });
+})
+.WithMetadata(new AllowAnonymousAttribute()); // Allow anonymous access for testing
+
+// Add a direct connection test that bypasses the monitoring system
+app.MapGet("/api/direct-db-test", async (HttpContext context, IConfiguration config) =>
+{
+    try {
+        // Get the connection string directly from configuration
+        var connectionString = config.GetConnectionString("default");
+        
+        // Try a direct connection
+        using var conn = new MySqlConnection(connectionString + ";AllowPublicKeyRetrieval=true");
+        await conn.OpenAsync();
+        
+        // Test a simple query
+        using var cmd = new MySqlCommand("SELECT 1", conn);
+        var result = await cmd.ExecuteScalarAsync();
+        
+        await conn.CloseAsync();
+        
+        return Results.Ok(new { 
+            success = true, 
+            message = $"Direct connection successful, query result: {result}",
+            connectionStringFound = !string.IsNullOrEmpty(connectionString)
+        });
+    }
+    catch (Exception ex) {
+        return Results.Ok(new { 
+            success = false, 
+            message = ex.Message,
+            fullDetails = ex.ToString()
+        });
+    }
+})
+.WithMetadata(new AllowAnonymousAttribute()); // Allow anonymous access for testing
+
 app.Run();
 

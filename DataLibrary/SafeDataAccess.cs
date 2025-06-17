@@ -30,6 +30,14 @@ namespace DataLibrary
 
         public async Task<List<T>> LoadData<T, U>(string sql, U parameters, string connectionString)
         {
+            // If bypassing monitoring, go directly to inner data access
+            if (_dbMonitor.BypassMonitoring)
+            {
+                _logger.LogInformation("Bypassing database monitoring - direct database access");
+                return await _innerDataAccess.LoadData<T, U>(sql, parameters, connectionString);
+            }
+            
+            // Normal path with monitoring
             if (!_dbMonitor.IsConnected)
             {
                 _logger.LogWarning($"Database operation blocked (LoadData) - database unavailable");
@@ -41,6 +49,13 @@ namespace DataLibrary
 
         public async Task<int> SaveData<T>(string sql, T parameters, string connectionString, CancellationToken cancellationToken = default)
         {
+            // If bypassing monitoring, go directly to inner data access
+            if (_dbMonitor.BypassMonitoring)
+            {
+                _logger.LogInformation("Bypassing database monitoring - direct database access");
+                return await _innerDataAccess.SaveData(sql, parameters, connectionString, cancellationToken);
+            }
+            
             if (!_dbMonitor.IsConnected)
             {
                 _logger.LogWarning($"Database operation blocked (SaveData) - database unavailable");
@@ -59,6 +74,13 @@ namespace DataLibrary
             
             try
             {
+                // If bypassing monitoring, go directly to inner data access
+                if (_dbMonitor.BypassMonitoring)
+                {
+                    _logger.LogInformation("Bypassing database monitoring - direct connection check");
+                    return await _innerDataAccess.CheckConnection(connectionString);
+                }
+                
                 // Don't create a real connection if monitor shows database is disconnected
                 if (!_dbMonitor.IsConnected || !_dbMonitor.AllowMySqlOperations)
                 {
