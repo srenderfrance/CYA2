@@ -781,7 +781,8 @@ app.MapGet("/api/test-db-connection", async (HttpContext context) =>
             fullDetails = ex.ToString()
         });
     }
-});
+})
+.WithMetadata(new AllowAnonymousAttribute()); // Add this line to bypass authentication
 
 app.Run();
 
