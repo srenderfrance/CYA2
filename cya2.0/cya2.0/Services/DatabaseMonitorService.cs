@@ -25,6 +25,10 @@ namespace cya2._0.Services
         private readonly int _maxConsecutiveFailures = 3; // After this many failures, add a longer delay
         private readonly int _backoffSeconds = 30; // Wait this long after multiple failures
 
+        // Add this property and backing field
+        private bool _bypassMonitoring = false;
+        public bool BypassMonitoring => _bypassMonitoring;
+
         // Public properties now return our privately maintained state
         public bool IsConnected => _isConnected;
         public string LastError => _lastError;
@@ -51,6 +55,14 @@ namespace cya2._0.Services
         public void Suspend() => _suspended = true;
         public void Resume() => _suspended = false;
 
+        // Add a method to toggle the bypass
+        public void SetBypassMonitoring(bool bypass)
+        {
+            _bypassMonitoring = bypass;
+            _logger.LogWarning("Database monitoring bypass set to: {Status}", 
+                bypass ? "ENABLED" : "DISABLED");
+        }
+
         protected override Task ExecuteAsync(CancellationToken stoppingToken)
         {
             // Start a background thread for database monitoring
@@ -75,7 +87,7 @@ namespace cya2._0.Services
                     try
                     {
                         // Only perform checks when not suspended
-                        if (!_suspended)
+                        if (!_suspended && !_bypassMonitoring)
                         {
                             bool newConnectionState = false;
                             
@@ -149,6 +161,10 @@ namespace cya2._0.Services
                                 _isConnected = newConnectionState;
                                 OnConnectionStatusChanged(newConnectionState);
                             }
+                        }
+                        else if (_bypassMonitoring)
+                        {
+                            _logger.LogWarning("Database monitoring is bypassed - skipping check");
                         }
                         else
                         {
