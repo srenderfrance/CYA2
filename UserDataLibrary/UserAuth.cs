@@ -6,6 +6,14 @@ using System.Threading.Tasks;
 
 namespace UserAuth
 {
+    // Add this enum at the namespace level to formalize the available auth levels
+    public enum AuthLevel
+    {
+        User,       // Regular user - access to assigned accounts only
+        Viewer,     // New role - can view all accounts but no admin access
+        Admin       // Full administrator with all privileges
+    }
+
     public class UserRepository
     {
         private readonly IDataAccess _dataAccess;
@@ -16,6 +24,17 @@ namespace UserAuth
             _dataAccess = dataAccess;
             _connectionString = connectionString;
         }
+        
+        // Add a method to update a user's auth level
+        public async Task<bool> UpdateUserAuthLevelAsync(int userId, string authLevel)
+        {
+            var sql = @"UPDATE Users SET AuthLevel = @AuthLevel WHERE Id = @UserId;";
+            var parameters = new { UserId = userId, AuthLevel = authLevel };
+            
+            var rowsAffected = await _dataAccess.SaveData(sql, parameters, _connectionString);
+            return rowsAffected > 0;
+        }
+
         public async Task<User?> GetUserByGoogleIdAsync(string googleId)
         {
             var sql = "SELECT * FROM Users WHERE GoogleId = @GoogleId;";
@@ -103,6 +122,19 @@ namespace UserAuth
                 
             // User exists and has GoogleId - check if it matches
             return user.GoogleId == googleId;
+        }
+
+        // Helper method to determine if a user can view all accounts
+        public static bool CanViewAllAccounts(string authLevel)
+        {
+            return authLevel == AuthLevel.Admin.ToString() || 
+                   authLevel == AuthLevel.Viewer.ToString();
+        }
+
+        // Helper method to determine if a user can access admin features
+        public static bool CanAccessAdminFeatures(string authLevel)
+        {
+            return authLevel == AuthLevel.Admin.ToString();
         }
     }
 }
