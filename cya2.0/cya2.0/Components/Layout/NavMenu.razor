@@ -9,11 +9,25 @@
 <CascadingAuthenticationState>
     <!-- Increase the spacing between nav items -->
     <div class="navbar">
-        <div class="nav-item px-4">
-            <NavLink class="nav-link" href="" Match="NavLinkMatch.All">
-                <span class="bi bi-house-door-fill-nav-menu" aria-hidden="true"></span> CYA Home
-            </NavLink>
-        </div>
+        <!-- Conditional rendering of Home/Admin based on role -->
+        <AuthorizeView Roles="Admin">
+            <Authorized>
+                <!-- For admin users, show Admin link instead of Home -->
+                <div class="nav-item px-4">
+                    <NavLink class="nav-link" href="/admin" Match="NavLinkMatch.All">
+                        <span class="bi bi-shield-lock-nav-menu" aria-hidden="true"></span> Admin
+                    </NavLink>
+                </div>
+            </Authorized>
+            <NotAuthorized>
+                <!-- For non-admin users, show regular Home link -->
+                <div class="nav-item px-4">
+                    <NavLink class="nav-link" href="" Match="NavLinkMatch.All">
+                        <span class="bi bi-house-door-fill-nav-menu" aria-hidden="true"></span> CYA Home
+                    </NavLink>
+                </div>
+            </NotAuthorized>
+        </AuthorizeView>
 
         <div class="nav-item px-3 d-flex navbar-group">
             <div class="nav-item px-5 nav-link-block">
@@ -31,6 +45,15 @@
                     <span class="bi bi-list-nested-nav-menu" aria-hidden="true"></span> Donors
                 </NavLink>
             </div>
+            <AuthorizeView Roles="Admin,Viewer">
+                <Authorized>
+                    <div class="nav-item px-5 nav-link-block">
+                        <NavLink class="nav-link" href="all-balances">
+                            <span class="bi bi-list-nested-nav-menu" aria-hidden="true"></span> All Balances
+                        </NavLink>
+                    </div>
+                </Authorized>
+            </AuthorizeView>
         </div>
 
         <div class="nav-item px-3 d-flex navbar-group">
@@ -39,16 +62,6 @@
                     <span class="bi bi-gear-fill-nav-menu" aria-hidden="true"></span> Settings
                 </NavLink>
             </div>
-
-            <AuthorizeView Roles="Admin">
-                <Authorized>
-                    <div class="nav-item px-5 nav-link-block">
-                        <NavLink class="nav-link" href="/admin" Match="NavLinkMatch.All">
-                            <span class="bi bi-shield-lock-nav-menu" aria-hidden="true"></span> Admin
-                        </NavLink>
-                    </div>
-                </Authorized>
-            </AuthorizeView>
         </div>
 
         <div class="nav-item px-4">
@@ -98,5 +111,21 @@
     protected override void OnParametersSet()
     {
         _errorBoundary?.Recover();
+    }
+    
+    // Add this method to redirect admin users to admin page after login
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+            var isAdmin = authState.User.IsInRole("Admin");
+            
+            // If user is admin and currently on home page, redirect to admin page
+            if (isAdmin && NavigationManager.Uri.EndsWith("/"))
+            {
+                NavigationManager.NavigateTo("/admin");
+            }
+        }
     }
 }

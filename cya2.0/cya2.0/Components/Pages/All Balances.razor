@@ -1,0 +1,35 @@
+﻿@page "/all-balances"
+@using Microsoft.AspNetCore.Components.Web
+@using static Microsoft.AspNetCore.Components.Web.RenderMode
+@using Microsoft.AspNetCore.Authorization
+@attribute [Authorize(Roles = "Admin,Viewer")]
+@rendermode InteractiveServer
+
+<PageTitle>All Balances</PageTitle>
+
+<h3>All Account Balances</h3>
+
+<div class="container mt-4">
+    <div class="row">
+        <div class="col-12">
+            <p>This page displays balances for all accounts in the system. Only administrators and viewers have access to this information.</p>
+            
+            <!-- Placeholder for the actual balance display component -->
+            <div class="card mt-3">
+                <div class="card-header bg-primary text-white">
+                    Account Balances
+                </div>
+                <div class="card-body">
+                    <!-- This will be replaced with actual data -->
+                    <div class="alert alert-info">
+                        Loading balances... (Implementation in progress)
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    // Implementation to be added for fetching and displaying all account balances
+}
