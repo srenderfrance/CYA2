@@ -1,18 +1,19 @@
 ﻿@page "/"
+@using Microsoft.AspNetCore.Components.Web
+@using static Microsoft.AspNetCore.Components.Web.RenderMode
 @using Microsoft.AspNetCore.Authorization
+@using Radzen
+@using Radzen.Blazor
 @attribute [Authorize]
+@rendermode InteractiveServer
+@attribute [StreamRendering]
 @using System.Security.Claims
 @inject IDataAccess _data
 @inject IConfiguration _config
 @using ModelsLibrary
 @inject AppState AppState
 @inject DataLoadingService DataLoader
-@using static Microsoft.AspNetCore.Components.Web.RenderMode
-@rendermode InteractiveServer
-@attribute [StreamRendering]
 @inject AuthenticationStateProvider AuthStateProvider
-@using Radzen
-@using Radzen.Blazor
 @using UtilityClasses
 
 <PageTitle>Home</PageTitle>
@@ -93,8 +94,6 @@ else
                         </RadzenText>
                     </div>
                     
-                    <RadzenDivider Style="margin: 0.5rem 0;" />
-                    
                     <div class="d-flex justify-content-between">
                         <RadzenText TextStyle="TextStyle.Subtitle1">Balance:</RadzenText>
                         <RadzenText TextStyle="TextStyle.Subtitle1" class="@(currentMonthSummary.Balance >= 0 ? "text-success" : "text-danger")">
@@ -140,7 +139,6 @@ else
                         </RadzenText>
                     </div>
                     
-                    <RadzenDivider Style="margin: 0.5rem 0;" />
                     
                     <div class="d-flex justify-content-between">
                         <RadzenText TextStyle="TextStyle.Subtitle1">End Balance:</RadzenText>
@@ -187,7 +185,6 @@ else
                         </RadzenText>
                     </div>
                     
-                    <RadzenDivider Style="margin: 0.5rem 0;" />
                     
                     <div class="d-flex justify-content-between">
                         <RadzenText TextStyle="TextStyle.Subtitle1">Current Balance</RadzenText>
@@ -241,7 +238,6 @@ else
                         </RadzenText>
                     </div>
                     
-                    <RadzenDivider Style="margin: 0.5rem 0;" />
                     
                     <div class="d-flex justify-content-between">
                         <RadzenText TextStyle="TextStyle.Subtitle1">End of Year Balance:</RadzenText>
