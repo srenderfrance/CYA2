@@ -447,13 +447,13 @@
     }
 
     // Account management methods
-    public async Task accountSeletion(string account)
+    public void accountSeletion(string account)
     {
         if (string.IsNullOrEmpty(account)) return;
         Console.WriteLine($"Selected account: {accountToAdd}");
     }
 
-    public async Task sharedAccountSeletion(string account)
+    public void sharedAccountSeletion(string account)
     {
         Console.WriteLine($"Shared account selected: {account}");
     }
