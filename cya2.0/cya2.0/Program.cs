@@ -314,6 +314,16 @@ builder.Services.AddAuthorization(options =>
 
     // Add specific policy for error pages
     options.AddPolicy("ErrorPages", policy => policy.RequireAssertion(_ => true));
+    
+    // Add policy for admin-only pages
+    options.AddPolicy("RequireAdmin", policy => 
+        policy.RequireAuthenticatedUser()
+              .RequireClaim("AuthLevel", "Admin"));
+              
+    // Add policy for users who can view all accounts (Admin or Viewer)
+    options.AddPolicy("CanViewAllAccounts", policy => 
+        policy.RequireAuthenticatedUser()
+              .RequireClaim("AuthLevel", new[] { "Admin", "Viewer" }));
 });
 
 // Add Blazor authentication state provider

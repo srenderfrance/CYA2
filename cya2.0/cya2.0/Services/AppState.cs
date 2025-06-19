@@ -1,6 +1,7 @@
 ﻿using ModelsLibrary;
 using System.Collections.Generic;
-using System.Threading.Tasks;
+using System.Security.Claims;
+using UserAuth;
 
 namespace cya2._0.Services
 {
@@ -10,8 +11,12 @@ namespace cya2._0.Services
         public List<Account> UserAccounts { get; set; } = new List<Account>();
         public string DefaultAccount { get; set; } = string.Empty;
         public bool UserAccountsLoaded { get; set; } = false;
-        public int CurrentUserId { get; set; }
+        public int CurrentUserId { get; set; } = 0;
+        
+        // Auth level properties
         public bool IsAdmin { get; set; } = false;
+        public bool IsViewer { get; set; } = false;
+        public string AuthLevel { get; set; } = string.Empty;
         
         // Data tracking per account
         public Dictionary<string, AccountData> AccountDataCache { get; set; } = new Dictionary<string, AccountData>();
@@ -23,11 +28,36 @@ namespace cya2._0.Services
         public List<AccountingDataModel> AccountingData { get; set; } = new List<AccountingDataModel>();
         public List<DonationsDataModel> DonationData { get; set; } = new List<DonationsDataModel>();
         
+        // Initialize user data from claims
+        public void InitializeFromClaims(ClaimsPrincipal user)
+        {
+            if (user?.Identity?.IsAuthenticated == true)
+            {
+                var authLevel = user.FindFirstValue("AuthLevel") ?? "User";
+                AuthLevel = authLevel;
+                
+                // Set role-based properties
+                IsAdmin = authLevel == UserAuth.AuthLevel.Admin.ToString();
+                IsViewer = authLevel == UserAuth.AuthLevel.Viewer.ToString();
+                
+                // Get user ID
+                if (int.TryParse(user.FindFirstValue("UserId"), out int userId))
+                {
+                    CurrentUserId = userId;
+                }
+                
+                // Get default account
+                DefaultAccount = user.FindFirstValue("DefaultAccount") ?? string.Empty;
+            }
+        }
+        
         // Helper methods
-        public bool IsAccountDataLoaded(string accountName) => 
-            AccountDataCache.ContainsKey(accountName) && 
-            AccountDataCache[accountName].IsLoaded;
-            
+        public bool IsAccountDataLoaded(string accountName)
+        {
+            return AccountDataCache.ContainsKey(accountName) && 
+                   AccountDataCache[accountName].IsLoaded;
+        }
+        
         public void SetAccountData(string accountName, List<AccountingDataModel> accountingData, List<DonationsDataModel> donationData)
         {
             if (!AccountDataCache.ContainsKey(accountName))
@@ -39,26 +69,26 @@ namespace cya2._0.Services
             AccountDataCache[accountName].DonationData = donationData;
             AccountDataCache[accountName].IsLoaded = true;
         }
-
+        
         public void ClearUserData()
         {
-            // Clear all user-specific data
             UserAccounts.Clear();
-            DefaultAccount = string.Empty;
             UserAccountsLoaded = false;
-            CurrentUserId = 0;
-            IsAdmin = false;
             AccountDataCache.Clear();
-            IsLoadingData = false;
             AccountingData.Clear();
             DonationData.Clear();
-            
-            // Log the reset
-            Console.WriteLine("AppState has been cleared during logout");
+            IsAdmin = false;
+            IsViewer = false;
+            AuthLevel = string.Empty;
+            CurrentUserId = 0;
+            DefaultAccount = string.Empty;
         }
+        
+        // Property to check if user can view all accounts (both Admin and Viewer)
+        public bool CanViewAllAccounts => IsAdmin || IsViewer;
     }
     
-    // Class to hold data for a specific account
+    // Helper class to store data for an account
     public class AccountData
     {
         public List<AccountingDataModel> AccountingData { get; set; } = new List<AccountingDataModel>();
