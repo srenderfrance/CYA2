@@ -77,9 +77,7 @@
 </RadzenStack>
 
 @code {
-    private int userId;
     private bool isAdmin = false;
-    private List<AccountingDataModel> accountingData = new List<AccountingDataModel>();
     private List<Account> userAccounts = new List<Account>();
     private List<UserDataExpenses> expenses = new List<UserDataExpenses>();
     private List<UserDataExpenses> selectedExpenses = new List<UserDataExpenses>();
@@ -88,7 +86,7 @@
     private DateTime startDate = new DateTime(DateTime.Now.Year, DateTime.Now.Month, 1);
     private DateTime endDate = DateTime.Now;
     private string selectedAccount = "No Account Selected";
-    private Account currentAccount = null;
+    private Account? currentAccount = null;
 
     protected override async Task OnInitializedAsync()
     {
@@ -116,8 +114,8 @@
                 // Get accounting data
                 if (currentAccount != null && AppState.IsAccountDataLoaded(currentAccount.Name))
                 {
-                    accountingData = AppState.AccountDataCache[currentAccount.Name].AccountingData;
-                    await ProcessExpenses();
+                    var accountingData = AppState.AccountDataCache[currentAccount.Name].AccountingData;
+                    await ProcessExpenses(accountingData);
                 }
             }
         }
@@ -127,7 +125,7 @@
         }
     }
 
-    public async Task accountSelection(string accountName)
+    public async Task accountSelection(string? accountName)
     {
         if (string.IsNullOrEmpty(accountName)) return;
 
@@ -149,20 +147,16 @@
             // Get data from cache
             if (AppState.IsAccountDataLoaded(accountName))
             {
-                accountingData = AppState.AccountDataCache[accountName].AccountingData;
+                var accountingData = AppState.AccountDataCache[accountName].AccountingData;
+                await ProcessExpenses(accountingData);
             }
         }
-        
-        await ProcessExpenses();
     }
 
-    private async Task ProcessExpenses()
+    private Task ProcessExpenses(List<AccountingDataModel> accountingData)
     {
         try
         {
-            // Add timeout protection
-            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-            
             // Clear any previous errors and expenses
             errorMessage = string.Empty;
             expenses.Clear();
@@ -175,7 +169,7 @@
             if (accountingData == null || !accountingData.Any())
             {
                 errorMessage = "No accounting data available for this account.";
-                return;
+                return Task.CompletedTask;
             }
 
             // Filter for expense records
@@ -188,7 +182,7 @@
             if (expenseRecords.Count == 0)
             {
                 errorMessage = "No expense records found for this account.";
-                return;
+                return Task.CompletedTask;
             }
 
             // Convert to UserDataExpenses format
@@ -212,15 +206,14 @@
 
             // Force UI update after processing is complete
             StateHasChanged();
-        }
-        catch (TaskCanceledException)
-        {
-            errorMessage = "The operation timed out. Database may be unavailable.";
+            
+            return Task.CompletedTask;
         }
         catch (Exception ex)
         {
             errorMessage = $"Error processing expenses: {ex.Message}";
             Console.WriteLine($"Error processing expenses: {ex.Message}");
+            return Task.CompletedTask;
         }
     }
 
