@@ -875,5 +875,27 @@ app.MapGet("/api/check-user", async (HttpContext context, UserAuth.UserRepositor
 })
 .WithMetadata(new AllowAnonymousAttribute());
 
+// Add this endpoint to check authentication status
+app.MapGet("/api/auth-status", (HttpContext context) =>
+{
+    var isAuthenticated = context.User.Identity?.IsAuthenticated ?? false;
+    var claims = context.User.Claims.Select(c => new { type = c.Type, value = c.Value }).ToList();
+    
+    return Results.Ok(new {
+        isAuthenticated,
+        userName = context.User.Identity?.Name,
+        claims,
+        systemStatus = new {
+            completeBypass = GlobalSettings.CompleteBypass,
+            allowMySqlLoading = GlobalSettings.AllowMySqlLoading,
+            bypassDatabaseMonitoring = GlobalSettings.BypassDatabaseMonitoring,
+            databaseIsConnected = context.RequestServices.GetRequiredService<DatabaseMonitorService>().IsConnected,
+            isAzureEnvironment = !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("WEBSITE_SITE_NAME")),
+            requestPath = context.Request.Path.ToString()
+        }
+    });
+})
+.WithMetadata(new AllowAnonymousAttribute());
+
 app.Run();
 

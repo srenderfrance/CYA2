@@ -30,6 +30,14 @@ namespace cya2._0.Middleware
 
         public async Task InvokeAsync(HttpContext context, IDataAccess dataAccess)
         {
+            // TEMPORARY: Skip all database checks when CompleteBypass is enabled
+            // TODO: Remove this condition after Azure testing
+            if (GlobalSettings.CompleteBypass)
+            {
+                await _next(context);
+                return;
+            }
+
             // Skip database check for static files and error pages
             if (context.Request.Path.StartsWithSegments("/css") ||
                 context.Request.Path.StartsWithSegments("/js") ||
