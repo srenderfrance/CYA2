@@ -178,27 +178,69 @@ builder.Services.AddAuthentication(options =>
 
             try
             {
-                // Since we already checked database connectivity before initiating auth,
-                // we can assume it's available unless something changed in the meantime
-
                 var email = context.Principal.FindFirstValue(ClaimTypes.Email);
                 var name = context.Principal.FindFirstValue(ClaimTypes.Name);
                 var googleId = context.Principal.FindFirstValue(ClaimTypes.NameIdentifier);
 
-                logger.LogWarning("BYPASS: Forcing authentication for email {Email}", email);
+                // Try normal DB lookup first
+                if (GlobalSettings.AllowMySqlLoading && dbMonitor.IsConnected)
+                {
+                    try
+                    {
+                        var user = await userRepository.GetUserByEmailAsync(email);
+                        
+                        if (user != null)
+                        {
+                            logger.LogInformation("Found user in database: {Email}", email);
+                            
+                            // Apply claims from DB
+                            var identity = (ClaimsIdentity)context.Principal.Identity;
+                            identity.AddClaim(new Claim(ClaimTypes.Role, user.AuthLevel ?? "User"));
+                            identity.AddClaim(new Claim("AuthLevel", user.AuthLevel ?? ""));
+                            identity.AddClaim(new Claim("DefaultAccount", user.DefaultAccount?.ToString() ?? ""));
+                            identity.AddClaim(new Claim("Language", user.Language ?? ""));
+                            identity.AddClaim(new Claim("UserId", user.Id.ToString()));
+                            identity.AddClaim(new Claim("UserName", user.Name ?? ""));
+                            
+                            context.Properties.RedirectUri = "/";
+                            dbMonitor.Resume();
+                            return;
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        logger.LogError(ex, "Error looking up user in database: {Email}", email);
+                        // Continue to fallback
+                    }
+                }
 
-                // Create a temporary user with admin rights
-                var identity = (ClaimsIdentity)context.Principal.Identity;
-                identity.AddClaim(new Claim(ClaimTypes.Role, "Admin"));
-                identity.AddClaim(new Claim("AuthLevel", "Admin"));
-                identity.AddClaim(new Claim("DefaultAccount", "Test Account"));
-                identity.AddClaim(new Claim("Language", "en"));
-                identity.AddClaim(new Claim("UserId", "1"));
-                identity.AddClaim(new Claim("UserName", name ?? "Test User"));
+                // Fallback to temporary admin credentials in bypass mode
+                if (GlobalSettings.CompleteBypass)
+                {
+                    logger.LogWarning("BYPASS: Forcing authentication for email {Email}", email);
 
-                // Skip all database checks and force authentication
-                context.Properties.RedirectUri = "/";
-                logger.LogInformation("BYPASS: User {Email} forced authentication with Admin role", email);
+                    // Create a temporary user with admin rights
+                    var identity = (ClaimsIdentity)context.Principal.Identity;
+                    identity.AddClaim(new Claim(ClaimTypes.Role, "Admin"));
+                    identity.AddClaim(new Claim("AuthLevel", "Admin"));
+                    identity.AddClaim(new Claim("DefaultAccount", "Test Account"));
+                    identity.AddClaim(new Claim("Language", "en"));
+                    identity.AddClaim(new Claim("UserId", "1"));
+                    identity.AddClaim(new Claim("UserName", name ?? "Test User"));
+
+                    context.Properties.RedirectUri = "/";
+                    logger.LogInformation("BYPASS: User {Email} forced authentication with Admin role", email);
+                }
+                else
+                {
+                    // User not found and bypass not enabled
+                    logger.LogWarning("Authentication failed: User with email {Email} not found", email);
+                    context.Fail("User not registered in system");
+                    await context.HttpContext.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
+                    context.Response.Redirect("/not-authorized");
+                    context.HandleResponse();
+                }
+                
                 dbMonitor.Resume();
             }
             catch (Exception ex)
@@ -724,18 +766,43 @@ app.MapGet("/api/check-db", async (HttpContext context, IDataAccess dataAccess, 
     }
 });
 
-app.MapGet("/api/test-db-connection", async (HttpContext context) =>
+app.MapGet("/api/test-db-connection", async (HttpContext context, IConfiguration config) =>
 {
     try {
-        var conn = new MySqlConnection(
-            "Server=mysql-db-srenderfrance-cya.i.aivencloud.com;" +
-            "Port=11931;Database=defaultdb;User Id=avnadmin;" + 
-            "Password=REDACTED;SslMode=Required;" +
-            "AllowPublicKeyRetrieval=true");
-            
+        // Get the connection string from configuration
+        var connectionString = config.GetConnectionString("default");
+        
+        // Add essential SSL parameters for Azure
+        if (!connectionString.Contains("AllowPublicKeyRetrieval="))
+        {
+            connectionString += ";AllowPublicKeyRetrieval=true";
+        }
+        if (!connectionString.Contains("SslMode="))
+        {
+            connectionString += ";SslMode=Required";
+        }
+        
+        using var conn = new MySqlConnection(connectionString);
         await conn.OpenAsync();
         await conn.CloseAsync();
-        return Results.Ok(new { success = true, message = "Connection successful" });
+        
+        // Safer connection string masking
+        var maskedConnectionString = connectionString;
+        if (connectionString.Contains("Password=", StringComparison.OrdinalIgnoreCase))
+        {
+            int passwordStart = connectionString.IndexOf("Password=", StringComparison.OrdinalIgnoreCase);
+            int passwordEnd = connectionString.IndexOf(";", passwordStart);
+            if (passwordEnd == -1) passwordEnd = connectionString.Length;
+            
+            string passwordPart = connectionString.Substring(passwordStart, passwordEnd - passwordStart);
+            maskedConnectionString = connectionString.Replace(passwordPart, "Password=********");
+        }
+        
+        return Results.Ok(new { 
+            success = true, 
+            message = "Connection successful with SSL",
+            connectionString = maskedConnectionString
+        });
     }
     catch (Exception ex) {
         return Results.Ok(new { 
@@ -745,7 +812,7 @@ app.MapGet("/api/test-db-connection", async (HttpContext context) =>
         });
     }
 })
-.WithMetadata(new AllowAnonymousAttribute()); // Add this line to bypass authentication
+.WithMetadata(new AllowAnonymousAttribute());
 
 // Add a simple bypass toggle for the database monitoring system
 app.MapGet("/api/bypass-db-monitoring", (HttpContext context, DatabaseMonitorService dbMonitor, ILogger<Program> logger) =>
@@ -893,6 +960,98 @@ app.MapGet("/api/auth-status", (HttpContext context) =>
             isAzureEnvironment = !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("WEBSITE_SITE_NAME")),
             requestPath = context.Request.Path.ToString()
         }
+    });
+})
+.WithMetadata(new AllowAnonymousAttribute());
+
+// Add this endpoint to test MySQL connection variations
+app.MapGet("/api/mysql-test", async (HttpContext context, IConfiguration config) =>
+{
+    var results = new List<object>();
+    var baseConnectionString = config.GetConnectionString("default");
+    
+    // Test variations
+    var testConfigs = new[]
+    {
+        new {
+            name = "Default Connection",
+            connString = baseConnectionString
+        },
+        new {
+            name = "With Default Auth",
+            connString = baseConnectionString + ";DefaultAuthenticationType=MYSQL41"
+        },
+        new {
+            name = "With AllowPublicKeyRetrieval",
+            connString = baseConnectionString + ";AllowPublicKeyRetrieval=true"
+        },
+        new {
+            name = "With All Options",
+            connString = baseConnectionString + ";AllowPublicKeyRetrieval=true;SslMode=Required;DefaultAuthenticationType=MYSQL41"
+        },
+        new {
+            name = "With Certificate Bypass",
+            connString = baseConnectionString + ";SslMode=Required;SslCa=none;AllowPublicKeyRetrieval=true"
+        }
+    };
+    
+    foreach (var testConfig in testConfigs)
+    {
+        try
+        {
+            using var conn = new MySqlConnection(testConfig.connString);
+            await conn.OpenAsync();
+            
+            // Test a simple query
+            using var cmd = new MySqlCommand("SELECT 1", conn);
+            var result = await cmd.ExecuteScalarAsync();
+            
+            await conn.CloseAsync();
+            
+            // Safer connection string masking
+            var maskedConnectionString = testConfig.connString;
+            if (testConfig.connString.Contains("Password=", StringComparison.OrdinalIgnoreCase))
+            {
+                int passwordStart = testConfig.connString.IndexOf("Password=", StringComparison.OrdinalIgnoreCase);
+                int passwordEnd = testConfig.connString.IndexOf(";", passwordStart);
+                if (passwordEnd == -1) passwordEnd = testConfig.connString.Length;
+                
+                string passwordPart = testConfig.connString.Substring(passwordStart, passwordEnd - passwordStart);
+                maskedConnectionString = testConfig.connString.Replace(passwordPart, "Password=********");
+            }
+            
+            results.Add(new { 
+                testName = testConfig.name,
+                success = true,
+                message = $"Connection successful, query result: {result}",
+                connectionString = maskedConnectionString
+            });
+        }
+        catch (Exception ex)
+        {
+            results.Add(new { 
+                testName = testConfig.name,
+                success = false,
+                message = ex.Message
+            });
+        }
+    }
+    
+    // Safer connection string masking
+    var maskedBaseConnectionString = baseConnectionString;
+    if (baseConnectionString.Contains("Password=", StringComparison.OrdinalIgnoreCase))
+    {
+        int passwordStart = baseConnectionString.IndexOf("Password=", StringComparison.OrdinalIgnoreCase);
+        int passwordEnd = baseConnectionString.IndexOf(";", passwordStart);
+        if (passwordEnd == -1) passwordEnd = baseConnectionString.Length;
+        
+        string passwordPart = baseConnectionString.Substring(passwordStart, passwordEnd - passwordStart);
+        maskedBaseConnectionString = baseConnectionString.Replace(passwordPart, "Password=********");
+    }
+    
+    return Results.Ok(new { 
+        results,
+        baseConnectionString = maskedBaseConnectionString
     });
 })
 .WithMetadata(new AllowAnonymousAttribute());
