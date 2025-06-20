@@ -39,9 +39,14 @@ DatabaseMonitorService dbMonitorService = null; // Will be initialized after app
 // Replace your current AppDomain.AssemblyResolve handler with this more aggressive version
 AppDomain.CurrentDomain.AssemblyResolve += (sender, args) =>
 {
-    if (args.Name.Contains("MySql") && !cya2._0.GlobalSettings.AllowMySqlLoading)
+    if (args.Name.Contains("MySql") && !cya2._0.GlobalSettings.AllowMySqlLoading && !cya2._0.GlobalSettings.CompleteBypass)
     {
+        // TEMPORARY: Allow MySQL assemblies to load when in CompleteBypass mode
+        // TODO: Remove this condition after Azure testing (&& !cya2._0.GlobalSettings.CompleteBypass)
         Console.WriteLine($"Prevented loading of MySQL assembly: {args.Name}");
+
+
+        // Console.WriteLine($"Prevented loading of MySQL assembly: {args.Name}");
         // Instead of returning null, return a dummy assembly
         // This prevents the CLR from trying to load the real assembly
         return typeof(object).Assembly;
@@ -374,6 +379,30 @@ try
 
     var dbMonitor = app.Services.GetRequiredService<DatabaseMonitorService>();
     var configuration = app.Services.GetRequiredService<IConfiguration>();
+    
+    // Declare field at the broader scope for reuse
+    System.Reflection.FieldInfo isConnectedField = dbMonitor.GetType().GetField("_isConnected",
+        System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+
+    // TEMPORARY: Skip actual check and force connected state when in complete bypass mode
+    // TODO: Remove this condition after Azure testing
+    if (GlobalSettings.CompleteBypass)
+    {
+        logger.LogWarning("BYPASS MODE: Skipping actual database check");
+        initialDbConnected = true;
+        
+        // Use the field declared above
+        if (isConnectedField != null)
+        {
+            isConnectedField.SetValue(dbMonitor, true);
+        }
+        
+        // Force MySQL to be allowed
+        GlobalSettings.AllowMySqlLoading = true;
+        
+        logger.LogWarning("BYPASS MODE: Database state forced to connected");
+        goto SkipDbCheck; // Skip to the end of the try block
+    }
 
     // Parse connection string for host and port
     string connectionString = configuration.GetConnectionString("default") ?? "";
@@ -401,14 +430,14 @@ try
     logger.LogInformation("Initial TCP database check result: {Status}",
         initialDbConnected ? "Connected" : "Disconnected");
 
-    // Set the monitor state directly
-    var field = dbMonitor.GetType().GetField("_isConnected",
-        System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-
-    if (field != null)
+    // Set the monitor state directly using our previously declared field
+    if (isConnectedField != null)
     {
-        field.SetValue(dbMonitor, initialDbConnected);
+        isConnectedField.SetValue(dbMonitor, initialDbConnected);
     }
+
+    // Add the label here for the goto statement to target
+    SkipDbCheck: ;
 }
 catch (Exception ex)
 {
@@ -419,12 +448,12 @@ catch (Exception ex)
     try
     {
         var dbMonitor = app.Services.GetRequiredService<DatabaseMonitorService>();
-        var field = dbMonitor.GetType().GetField("_isConnected",
+        System.Reflection.FieldInfo isConnectedField = dbMonitor.GetType().GetField("_isConnected",
             System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
 
-        if (field != null)
+        if (isConnectedField != null)
         {
-            field.SetValue(dbMonitor, false);
+            isConnectedField.SetValue(dbMonitor, false);
         }
     }
     catch { /* Ignore errors */ }
@@ -841,6 +870,52 @@ app.MapGet("/api/direct-db-test", async (HttpContext context, IConfiguration con
             fullDetails = ex.ToString()
         });
     }
+})
+.WithMetadata(new AllowAnonymousAttribute()); // Allow anonymous access for testing
+
+// Add this endpoint after your other API endpoints
+app.MapGet("/api/complete-bypass", (HttpContext context, ILogger<Program> logger) =>
+{
+    // Toggle the complete bypass setting
+    bool newValue = !GlobalSettings.CompleteBypass;
+    GlobalSettings.CompleteBypass = newValue;
+    
+    // When enabling complete bypass, also:
+    if (newValue)
+    {
+        // Force enable MySQL loading
+        GlobalSettings.AllowMySqlLoading = true;
+        
+        // Force enable bypass monitoring
+        GlobalSettings.BypassDatabaseMonitoring = true;
+        
+        // Force the monitor to report connected
+        try
+        {
+            var dbMonitor = app.Services.GetRequiredService<DatabaseMonitorService>();
+            dbMonitor.SetBypassMonitoring(true);
+            
+            // Use reflection to set the private field
+            var field = dbMonitor.GetType().GetField("_isConnected",
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+            if (field != null)
+            {
+                field.SetValue(dbMonitor, true);
+            }
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Error setting monitor state during complete bypass");
+        }
+    }
+    
+    // Return the current status
+    return Results.Ok(new { 
+        completeBypass = newValue,
+        message = newValue
+            ? "COMPLETE BYPASS ENABLED - All database safety mechanisms disabled"
+            : "Complete bypass disabled - Normal safety mechanisms active"
+    });
 })
 .WithMetadata(new AllowAnonymousAttribute()); // Allow anonymous access for testing
 
