@@ -196,58 +196,29 @@ builder.Services.AddAuthentication(options =>
                 var name = context.Principal.FindFirstValue(ClaimTypes.Name);
                 var googleId = context.Principal.FindFirstValue(ClaimTypes.NameIdentifier);
 
-                // Try normal DB lookup first
-                if (GlobalSettings.AllowMySqlLoading && dbMonitor.IsConnected)
+                // Look up user in database
+                var user = await userRepository.GetUserByEmailAsync(email);
+                
+                if (user != null)
                 {
-                    try
-                    {
-                        var user = await userRepository.GetUserByEmailAsync(email);
-                        
-                        if (user != null)
-                        {
-                            logger.LogInformation("Found user in database: {Email}", email);
-                            
-                            // Apply claims from DB
-                            var identity = (ClaimsIdentity)context.Principal.Identity;
-                            identity.AddClaim(new Claim(ClaimTypes.Role, user.AuthLevel ?? "User"));
-                            identity.AddClaim(new Claim("AuthLevel", user.AuthLevel ?? ""));
-                            identity.AddClaim(new Claim("DefaultAccount", user.DefaultAccount?.ToString() ?? ""));
-                            identity.AddClaim(new Claim("Language", user.Language ?? ""));
-                            identity.AddClaim(new Claim("UserId", user.Id.ToString()));
-                            identity.AddClaim(new Claim("UserName", user.Name ?? ""));
-                            
-                            context.Properties.RedirectUri = "/";
-                            dbMonitor.Resume();
-                            return;
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        logger.LogError(ex, "Error looking up user in database: {Email}", email);
-                        // Continue to fallback
-                    }
-                }
-
-                // Fallback to temporary admin credentials in bypass mode
-                if (GlobalSettings.CompleteBypass)
-                {
-                    logger.LogWarning("BYPASS: Forcing authentication for email {Email}", email);
-
-                    // Create a temporary user with admin rights
+                    logger.LogInformation("Found user in database: {Email}", email);
+                    
+                    // Apply claims from DB
                     var identity = (ClaimsIdentity)context.Principal.Identity;
-                    identity.AddClaim(new Claim(ClaimTypes.Role, "Admin"));
-                    identity.AddClaim(new Claim("AuthLevel", "Admin"));
-                    identity.AddClaim(new Claim("DefaultAccount", "Test Account"));
-                    identity.AddClaim(new Claim("Language", "en"));
-                    identity.AddClaim(new Claim("UserId", "1"));
-                    identity.AddClaim(new Claim("UserName", name ?? "Test User"));
-
+                    identity.AddClaim(new Claim(ClaimTypes.Role, user.AuthLevel ?? "User"));
+                    identity.AddClaim(new Claim("AuthLevel", user.AuthLevel ?? ""));
+                    identity.AddClaim(new Claim("DefaultAccount", user.DefaultAccount?.ToString() ?? ""));
+                    identity.AddClaim(new Claim("Language", user.Language ?? ""));
+                    identity.AddClaim(new Claim("UserId", user.Id.ToString()));
+                    identity.AddClaim(new Claim("UserName", user.Name ?? ""));
+                    
                     context.Properties.RedirectUri = "/";
-                    logger.LogInformation("BYPASS: User {Email} forced authentication with Admin role", email);
+                    dbMonitor.Resume();
+                    return;
                 }
                 else
                 {
-                    // User not found and bypass not enabled
+                    // User not found - don't use bypass anymore
                     logger.LogWarning("Authentication failed: User with email {Email} not found", email);
                     context.Fail("User not registered in system");
                     await context.HttpContext.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
@@ -260,7 +231,7 @@ builder.Services.AddAuthentication(options =>
             catch (Exception ex)
             {
                 // Final catch for any other error
-                logger.LogError(ex, "Critical error in authentication flow");
+                logger.LogError(ex, "Critical error in authentication flow: {Error}", ex.Message);
                 context.Response.Redirect("/error");
                 context.HandleResponse();
                 dbMonitor.Resume();

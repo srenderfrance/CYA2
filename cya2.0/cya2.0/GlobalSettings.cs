@@ -6,7 +6,7 @@ namespace cya2._0
     {
         // TEMPORARY: Force everything to work regardless of actual database connection
         // TODO: Remove this property after Azure testing
-        public static bool CompleteBypass { get; set; } = true; // Set to true by default
+        public static bool CompleteBypass { get; set; } = false; // No longer needed by default
 
         public static bool AllowMySqlLoading { get; set; } = false;
         public static bool BypassDatabaseMonitoring { get; set; } = true;
