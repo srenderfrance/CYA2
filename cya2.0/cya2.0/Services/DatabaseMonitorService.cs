@@ -79,6 +79,16 @@ namespace cya2._0.Services
         {
             try
             {
+                // TEMPORARY: Skip monitoring entirely when in complete bypass mode
+                // TODO: Remove this condition after Azure testing
+                if (GlobalSettings.CompleteBypass)
+                {
+                    _isConnected = true;
+                    GlobalSettings.AllowMySqlLoading = true;
+                    Thread.Sleep(Timeout.Infinite); // Sleep forever, effectively disabling monitoring
+                    return;
+                }
+
                 // Initial wait to let the application stabilize
                 Thread.Sleep(5000);
 
@@ -205,5 +215,19 @@ namespace cya2._0.Services
                 _logger.LogError(ex, "Error raising ConnectionStatusChanged event");
             }
         }
+
+        // Add the InvokeAsync method
+       // public async Task InvokeAsync(HttpContext context, IDataAccess dataAccess)
+     //   {
+            // TEMPORARY: Skip database checks in complete bypass mode
+            // TODO: Remove this condition after Azure testing
+          //  if (GlobalSettings.CompleteBypass)
+         //   {
+         //       await _next(context);
+         //       return;
+        //    }
+
+            // Rest of the original method...
+     //   }
     }
 }
