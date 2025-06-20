@@ -192,6 +192,8 @@ namespace DataLibrary
 
         public async Task<bool> CheckConnection(string connectionString)
         {
+            connectionString = EnsureConnectionParameters(connectionString);
+            
             if (!ValidateConnectionString(connectionString))
             {
                 IsConnected = false;
@@ -271,6 +273,32 @@ namespace DataLibrary
                 IsConnected = false;
                 Console.WriteLine(LastError);
                 return false;
+            }
+        }
+
+        public static string EnsureConnectionParameters(string connectionString)
+        {
+            if (string.IsNullOrEmpty(connectionString))
+                return connectionString;
+                
+            try
+            {
+                var builder = new MySqlConnectionStringBuilder(connectionString);
+                
+                // Ensure SSL is properly configured
+                if (!connectionString.Contains("SslMode=", StringComparison.OrdinalIgnoreCase))
+                    builder.SslMode = MySqlSslMode.Required;
+                    
+                // Ensure public key retrieval is enabled
+                if (!connectionString.Contains("AllowPublicKeyRetrieval=", StringComparison.OrdinalIgnoreCase))
+                    builder["AllowPublicKeyRetrieval"] = true;
+                    
+                return builder.ConnectionString;
+            }
+            catch
+            {
+                // If we can't parse it, return the original
+                return connectionString;
             }
         }
     }

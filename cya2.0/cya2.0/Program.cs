@@ -56,6 +56,20 @@ AppDomain.CurrentDomain.AssemblyResolve += (sender, args) =>
 
 var builder = WebApplication.CreateBuilder(args);
 
+// Add this right after 'var builder = WebApplication.CreateBuilder(args);'
+// Direct connection string fallback from environment variables
+var mysqlConnStr = Environment.GetEnvironmentVariable("MYSQLCONNSTR_default");
+if (!string.IsNullOrEmpty(mysqlConnStr))
+{
+    // This manually adds the connection string to the configuration system
+    builder.Configuration["ConnectionStrings:default"] = mysqlConnStr;
+    Console.WriteLine("Added MySQL connection string from environment variable");
+}
+else 
+{
+    Console.WriteLine("MySQL connection string not found in environment variables");
+}
+
 builder.Services.AddLogging(configure =>
 {
     configure.AddConsole();
@@ -1086,5 +1100,34 @@ app.MapGet("/api/connection-config", (IConfiguration config) => {
 })
 .WithMetadata(new AllowAnonymousAttribute());
 
+// Add this endpoint to check environment variables
+app.MapGet("/api/env-vars", () => 
+{
+    var vars = Environment.GetEnvironmentVariables()
+        .Cast<System.Collections.DictionaryEntry>()
+        .Where(e => !e.Key.ToString().Contains("SECRET", StringComparison.OrdinalIgnoreCase) &&
+                    !e.Key.ToString().Contains("PASSWORD", StringComparison.OrdinalIgnoreCase) &&
+                    !e.Key.ToString().Contains("KEY", StringComparison.OrdinalIgnoreCase))
+        .Select(e => new { Name = e.Key.ToString(), Value = e.Value?.ToString() })
+        .OrderBy(e => e.Name)
+        .ToList();
+    
+    var mysqlVars = Environment.GetEnvironmentVariables()
+        .Cast<System.Collections.DictionaryEntry>()
+        .Where(e => e.Key.ToString().Contains("MYSQL", StringComparison.OrdinalIgnoreCase))
+        .Select(e => e.Key.ToString())
+        .ToList();
+    
+    return new { 
+        AllVariables = vars,
+        MySqlSpecificKeys = mysqlVars,
+        ConnectionString = Environment.GetEnvironmentVariable("MYSQLCONNSTR_default") != null ?
+            "Found (value hidden)" : "Not found"
+    };
+})
+.WithMetadata(new AllowAnonymousAttribute());
+
 app.Run();
+
+
 
