@@ -1069,5 +1069,22 @@ app.MapGet("/api/ping", () =>
 })
 .WithMetadata(new AllowAnonymousAttribute());
 
+// Add this endpoint to check connection configuration
+app.MapGet("/api/connection-config", (IConfiguration config) => {
+    var connectionString = config.GetConnectionString("default");
+    
+    return new {
+        hasConnectionString = !string.IsNullOrEmpty(connectionString),
+        connectionStringValue = connectionString != null ? 
+            "[" + connectionString.Substring(0, Math.Min(10, connectionString.Length)) + "...]" : null,
+        envVariables = new {
+            usingConnectionStringsSection = Environment.GetEnvironmentVariable("MYSQLCONNSTR_default") != null || 
+                                           Environment.GetEnvironmentVariable("CUSTOMCONNSTR_default") != null,
+            usingAppSettings = Environment.GetEnvironmentVariable("ConnectionStrings__default") != null
+        }
+    };
+})
+.WithMetadata(new AllowAnonymousAttribute());
+
 app.Run();
 
