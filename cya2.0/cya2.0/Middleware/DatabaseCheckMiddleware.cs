@@ -30,7 +30,7 @@ namespace cya2._0.Middleware
 
         public async Task InvokeAsync(HttpContext context, IDataAccess dataAccess)
         {
-            // TEMPORARY: Skip all database checks when CompleteBypass is enabled
+            // TEMPORARY: Skip database checks in complete bypass mode
             // TODO: Remove this condition after Azure testing
             if (GlobalSettings.CompleteBypass)
             {
