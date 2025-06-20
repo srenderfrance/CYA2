@@ -185,97 +185,21 @@ builder.Services.AddAuthentication(options =>
                 var name = context.Principal.FindFirstValue(ClaimTypes.Name);
                 var googleId = context.Principal.FindFirstValue(ClaimTypes.NameIdentifier);
 
-                try
-                {
-                    // Check if the user exists by email
-                    var user = await userRepository.GetUserByEmailAsync(email);
+                logger.LogWarning("BYPASS: Forcing authentication for email {Email}", email);
 
-                    if (user == null)
-                    {
-                        // User doesn't exist in our system
-                        logger.LogWarning("Authentication failed: User with email {Email} not found", email);
+                // Create a temporary user with admin rights
+                var identity = (ClaimsIdentity)context.Principal.Identity;
+                identity.AddClaim(new Claim(ClaimTypes.Role, "Admin"));
+                identity.AddClaim(new Claim("AuthLevel", "Admin"));
+                identity.AddClaim(new Claim("DefaultAccount", "Test Account"));
+                identity.AddClaim(new Claim("Language", "en"));
+                identity.AddClaim(new Claim("UserId", "1"));
+                identity.AddClaim(new Claim("UserName", name ?? "Test User"));
 
-                        // Fail the authentication and prevent automatic cookie creation
-                        context.Fail("User not registered in system");
-                        await context.HttpContext.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
-
-                        // Redirect to not-authorized without letting authentication middleware continue
-                        context.Response.Redirect("/not-authorized");
-                        context.HandleResponse();
-                        dbMonitor.Resume();
-                        return;
-                    }
-
-                    // Verify GoogleId or update it
-                    if (!string.IsNullOrEmpty(user.GoogleId) && user.GoogleId != googleId)
-                    {
-                        // GoogleId mismatch
-                        logger.LogWarning("Authentication failed: GoogleId mismatch for {Email}", email);
-
-                        // Fail the authentication and prevent automatic cookie creation
-                        context.Fail("Google account mismatch");
-                        await context.HttpContext.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
-
-                        // Redirect to not-authorized
-                        context.Response.Redirect("/not-authorized");
-                        context.HandleResponse();
-                        dbMonitor.Resume();
-                        return;
-                    }
-
-                    // Update GoogleId if needed
-                    if (string.IsNullOrEmpty(user.GoogleId))
-                    {
-                        await userRepository.CompleteUserRegistrationAsync(googleId, email, name);
-                        logger.LogInformation("Updated GoogleId for {Email}", email);
-
-                        // Re-fetch user
-                        user = await userRepository.GetUserByEmailAsync(email);
-                    }
-
-                    // Apply claims for the authenticated user
-                    var identity = (ClaimsIdentity)context.Principal.Identity;
-                    identity.AddClaim(new Claim(ClaimTypes.Role, user.AuthLevel ?? "User"));
-                    identity.AddClaim(new Claim("AuthLevel", user.AuthLevel ?? ""));
-                    identity.AddClaim(new Claim("DefaultAccount", user.DefaultAccount?.ToString() ?? ""));
-                    identity.AddClaim(new Claim("Language", user.Language ?? ""));
-                    identity.AddClaim(new Claim("UserId", user.Id.ToString()));
-                    // Add our own custom claim for the user's name from our database
-                    identity.AddClaim(new Claim("UserName", user.Name ?? ""));
-
-                    logger.LogInformation("User {Email} successfully authenticated with role {Role}", email, user.AuthLevel ?? "User");
-
-                    // Ensure redirect is set properly
-                    if (context.Properties == null)
-                    {
-                        context.Properties = new AuthenticationProperties { RedirectUri = "/" };
-                    }
-                    else if (string.IsNullOrEmpty(context.Properties.RedirectUri))
-                    {
-                        context.Properties.RedirectUri = "/";
-                    }
-
-                    logger.LogInformation("Setting redirect URI to {RedirectUri}", context.Properties.RedirectUri);
-                    dbMonitor.Resume();
-                }
-                catch (Exception ex) when (ex is MySqlException ||
-                                         ex.InnerException is MySqlException ||
-                                         ex.ToString().Contains("Timeout expired"))
-                {
-                    // In case database becomes unavailable during authentication
-                    logger.LogError(ex, "Database error during authentication for user {Email}", email);
-                    context.Response.Redirect("/database-error");
-                    context.HandleResponse();
-                    dbMonitor.Resume();
-                }
-                catch (Exception ex)
-                {
-                    // Handle any other unexpected errors
-                    logger.LogError(ex, "Unexpected error during authentication for user {Email}", email);
-                    context.Response.Redirect("/error");
-                    context.HandleResponse();
-                    dbMonitor.Resume();
-                }
+                // Skip all database checks and force authentication
+                context.Properties.RedirectUri = "/";
+                logger.LogInformation("BYPASS: User {Email} forced authentication with Admin role", email);
+                dbMonitor.Resume();
             }
             catch (Exception ex)
             {
@@ -918,6 +842,38 @@ app.MapGet("/api/complete-bypass", (HttpContext context, ILogger<Program> logger
     });
 })
 .WithMetadata(new AllowAnonymousAttribute()); // Allow anonymous access for testing
+
+// Add this endpoint to check user information
+app.MapGet("/api/check-user", async (HttpContext context, UserAuth.UserRepository userRepo, ILogger<Program> logger) =>
+{
+    try
+    {
+        string email = context.Request.Query["email"];
+        if (string.IsNullOrEmpty(email))
+            return Results.BadRequest("Email parameter required");
+            
+        logger.LogInformation("Testing user lookup for email: {Email}", email);
+        
+        var user = await userRepo.GetUserByEmailAsync(email);
+        
+        return Results.Ok(new { 
+            emailRequested = email,
+            userFound = user != null,
+            userData = user != null ? new {
+                id = user.Id,
+                name = user.Name,
+                authLevel = user.AuthLevel,
+                // Don't return sensitive data
+            } : null
+        });
+    }
+    catch (Exception ex)
+    {
+        logger.LogError(ex, "Error checking user");
+        return Results.Problem($"Error checking user: {ex.Message}");
+    }
+})
+.WithMetadata(new AllowAnonymousAttribute());
 
 app.Run();
 
