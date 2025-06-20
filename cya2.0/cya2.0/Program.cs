@@ -1056,5 +1056,18 @@ app.MapGet("/api/mysql-test", async (HttpContext context, IConfiguration config)
 })
 .WithMetadata(new AllowAnonymousAttribute());
 
+// Add this endpoint to test ping functionality
+app.MapGet("/api/ping", () => 
+{
+    return Results.Ok(new { 
+        timestamp = DateTime.UtcNow, 
+        message = "Ping successful",
+        environment = !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("WEBSITE_SITE_NAME")) 
+            ? "Azure" 
+            : "Local"
+    });
+})
+.WithMetadata(new AllowAnonymousAttribute());
+
 app.Run();
 
