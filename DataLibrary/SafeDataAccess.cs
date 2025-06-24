@@ -38,13 +38,10 @@ namespace DataLibrary
             }
             
             // Normal path with monitoring
-            if (!_dbMonitor.IsConnected)
-            {
-                _logger.LogWarning($"Database operation blocked (LoadData) - database unavailable");
-                return new List<T>(); // Return empty list
-            }
-            
-            return await _innerDataAccess.LoadData<T, U>(sql, parameters, connectionString);
+            return await ExecuteWithTimeoutProtection(
+                () => _innerDataAccess.LoadData<T, U>(sql, parameters, connectionString),
+                new List<T>()
+            );
         }
 
         public async Task<int> SaveData<T>(string sql, T parameters, string connectionString, CancellationToken cancellationToken = default)
@@ -56,13 +53,10 @@ namespace DataLibrary
                 return await _innerDataAccess.SaveData(sql, parameters, connectionString, cancellationToken);
             }
             
-            if (!_dbMonitor.IsConnected)
-            {
-                _logger.LogWarning($"Database operation blocked (SaveData) - database unavailable");
-                return 0;
-            }
-            
-            return await _innerDataAccess.SaveData(sql, parameters, connectionString, cancellationToken);
+            return await ExecuteWithTimeoutProtection(
+                () => _innerDataAccess.SaveData(sql, parameters, connectionString, cancellationToken),
+                0
+            );
         }
 
         public async Task<bool> CheckConnection(string connectionString)
@@ -88,7 +82,10 @@ namespace DataLibrary
                 }
                 
                 // Use the inner data access to check connection
-                return await _innerDataAccess.CheckConnection(connectionString);
+                return await ExecuteWithTimeoutProtection(
+                    () => _innerDataAccess.CheckConnection(connectionString),
+                    false
+                );
             }
             catch (Exception ex)
             {
@@ -101,6 +98,42 @@ namespace DataLibrary
         {
             // Always allow connection string validation
             return _innerDataAccess.ValidateConnectionString(connectionString);
+        }
+
+        // Add timeout protection to any database operation
+        private async Task<T> ExecuteWithTimeoutProtection<T>(Func<Task<T>> operation, T defaultValue)
+        {
+            // Don't even try if the database is already known to be unavailable
+            if (!_dbMonitor.IsConnected || !_dbMonitor.AllowMySqlOperations)
+            {
+                _logger.LogWarning("Database operation blocked - database unavailable");
+                return defaultValue;
+            }
+            
+            try
+            {
+                // Execute with timeout protection
+                var timeoutTask = Task.Delay(5000); // 5 second timeout
+                var operationTask = operation();
+                
+                var completedTask = await Task.WhenAny(operationTask, timeoutTask);
+                if (completedTask == timeoutTask)
+                {
+                    // Operation timed out - use the interface method instead of direct access
+                    _logger.LogWarning("Database operation timed out");
+                    _dbMonitor.MarkAsDisconnected("Operation timed out");
+                    return defaultValue;
+                }
+                
+                return await operationTask;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error in database operation");
+                // Use the interface method instead of direct access
+                _dbMonitor.MarkAsDisconnected(ex.Message);
+                return defaultValue;
+            }
         }
     }
 }

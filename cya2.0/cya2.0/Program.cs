@@ -39,16 +39,11 @@ DatabaseMonitorService dbMonitorService = null; // Will be initialized after app
 // Replace your current AppDomain.AssemblyResolve handler with this more aggressive version
 AppDomain.CurrentDomain.AssemblyResolve += (sender, args) =>
 {
-    if (args.Name.Contains("MySql") && !cya2._0.GlobalSettings.AllowMySqlLoading && !cya2._0.GlobalSettings.CompleteBypass)
+    // More aggressively prevent MySQL assembly loading
+    if ((args.Name.Contains("MySql") || args.Name.Contains("mysql", StringComparison.OrdinalIgnoreCase)) && 
+        !cya2._0.GlobalSettings.AllowMySqlLoading)
     {
-        // TEMPORARY: Allow MySQL assemblies to load when in CompleteBypass mode
-        // TODO: Remove this condition after Azure testing (&& !cya2._0.GlobalSettings.CompleteBypass)
         Console.WriteLine($"Prevented loading of MySQL assembly: {args.Name}");
-
-
-        // Console.WriteLine($"Prevented loading of MySQL assembly: {args.Name}");
-        // Instead of returning null, return a dummy assembly
-        // This prevents the CLR from trying to load the real assembly
         return typeof(object).Assembly;
     }
     return null; // let the runtime resolve normally
@@ -198,11 +193,11 @@ builder.Services.AddAuthentication(options =>
 
                 // Look up user in database
                 var user = await userRepository.GetUserByEmailAsync(email);
-                
+
                 if (user != null)
                 {
                     logger.LogInformation("Found user in database: {Email}", email);
-                    
+
                     // Apply claims from DB
                     var identity = (ClaimsIdentity)context.Principal.Identity;
                     identity.AddClaim(new Claim(ClaimTypes.Role, user.AuthLevel ?? "User"));
@@ -211,8 +206,27 @@ builder.Services.AddAuthentication(options =>
                     identity.AddClaim(new Claim("Language", user.Language ?? ""));
                     identity.AddClaim(new Claim("UserId", user.Id.ToString()));
                     identity.AddClaim(new Claim("UserName", user.Name ?? ""));
-                    
-                    context.Properties.RedirectUri = "/";
+
+                    // Log all claims for debugging purposes
+                    logger.LogInformation("Auth Claims set for user {Email}:", email);
+                    foreach (var claim in identity.Claims)
+                    {
+                        logger.LogInformation("Claim: {Type} = {Value}", claim.Type, claim.Value);
+                    }
+
+                    // Set redirect URI based on user role - direct admins to admin page
+                    if (user.AuthLevel == "Admin")
+                    {
+                        // This ensures the redirect is properly set in the authentication ticket
+                        context.Properties.RedirectUri = "/admin";
+                        logger.LogInformation("User is Admin - setting redirect to /admin");
+                    }
+                    else
+                    {
+                        context.Properties.RedirectUri = "/";
+                        logger.LogInformation("User is not Admin - setting redirect to /");
+                    }
+
                     dbMonitor.Resume();
                     return;
                 }
@@ -245,8 +259,8 @@ builder.Services.AddAuthentication(options =>
             logger.LogInformation("Creating ticket with redirect URI: {RedirectUri}",
                 context.Properties?.RedirectUri ?? "Not set");
 
-            // Force override redirect URI to home
-            if (context.Properties != null)
+            // Do not override the redirect URI if it has already been set
+            if (context.Properties?.RedirectUri == null)
             {
                 context.Properties.RedirectUri = "/";
                 logger.LogInformation("Force set redirect URI to /");
@@ -335,26 +349,6 @@ try
     System.Reflection.FieldInfo isConnectedField = dbMonitor.GetType().GetField("_isConnected",
         System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
 
-    // TEMPORARY: Skip actual check and force connected state when in complete bypass mode
-    // TODO: Remove this condition after Azure testing
-    if (GlobalSettings.CompleteBypass)
-    {
-        logger.LogWarning("BYPASS MODE: Skipping actual database check");
-        initialDbConnected = true;
-        
-        // Use the field declared above
-        if (isConnectedField != null)
-        {
-            isConnectedField.SetValue(dbMonitor, true);
-        }
-        
-        // Force MySQL to be allowed
-        GlobalSettings.AllowMySqlLoading = true;
-        
-        logger.LogWarning("BYPASS MODE: Database state forced to connected");
-        goto SkipDbCheck; // Skip to the end of the try block
-    }
-
     // Parse connection string for host and port
     string connectionString = configuration.GetConnectionString("default") ?? "";
 
@@ -386,9 +380,6 @@ try
     {
         isConnectedField.SetValue(dbMonitor, initialDbConnected);
     }
-
-    // Add the label here for the goto statement to target
-    SkipDbCheck: ;
 }
 catch (Exception ex)
 {
@@ -751,150 +742,6 @@ app.MapGet("/api/check-db", async (HttpContext context, IDataAccess dataAccess, 
     }
 });
 
-app.MapGet("/api/test-db-connection", async (HttpContext context, IConfiguration config) =>
-{
-    try {
-        // Get the connection string from configuration
-        var connectionString = config.GetConnectionString("default");
-        
-        // Add essential SSL parameters for Azure
-        if (!connectionString.Contains("AllowPublicKeyRetrieval="))
-        {
-            connectionString += ";AllowPublicKeyRetrieval=true";
-        }
-        if (!connectionString.Contains("SslMode="))
-        {
-            connectionString += ";SslMode=Required";
-        }
-        
-        using var conn = new MySqlConnection(connectionString);
-        await conn.OpenAsync();
-        await conn.CloseAsync();
-        
-        // Safer connection string masking
-        var maskedConnectionString = connectionString;
-        if (connectionString.Contains("Password=", StringComparison.OrdinalIgnoreCase))
-        {
-            int passwordStart = connectionString.IndexOf("Password=", StringComparison.OrdinalIgnoreCase);
-            int passwordEnd = connectionString.IndexOf(";", passwordStart);
-            if (passwordEnd == -1) passwordEnd = connectionString.Length;
-            
-            string passwordPart = connectionString.Substring(passwordStart, passwordEnd - passwordStart);
-            maskedConnectionString = connectionString.Replace(passwordPart, "Password=********");
-        }
-        
-        return Results.Ok(new { 
-            success = true, 
-            message = "Connection successful with SSL",
-            connectionString = maskedConnectionString
-        });
-    }
-    catch (Exception ex) {
-        return Results.Ok(new { 
-            success = false, 
-            message = ex.Message,
-            fullDetails = ex.ToString()
-        });
-    }
-})
-.WithMetadata(new AllowAnonymousAttribute());
-
-// Add a simple bypass toggle for the database monitoring system
-app.MapGet("/api/bypass-db-monitoring", (HttpContext context, DatabaseMonitorService dbMonitor, ILogger<Program> logger) =>
-{
-    // Toggle the bypass setting
-    bool newValue = !dbMonitor.BypassMonitoring;
-    dbMonitor.SetBypassMonitoring(newValue);
-    
-    // Return the current status
-    return Results.Ok(new { 
-        bypassEnabled = newValue,
-        message = newValue
-            ? "Database monitoring BYPASSED - using direct connections"
-            : "Database monitoring ACTIVE - using normal monitoring"
-    });
-})
-.WithMetadata(new AllowAnonymousAttribute()); // Allow anonymous access for testing
-
-// Add a direct connection test that bypasses the monitoring system
-app.MapGet("/api/direct-db-test", async (HttpContext context, IConfiguration config) =>
-{
-    try {
-        // Get the connection string directly from configuration
-        var connectionString = config.GetConnectionString("default");
-        
-        // Try a direct connection
-        using var conn = new MySqlConnection(connectionString + ";AllowPublicKeyRetrieval=true");
-        await conn.OpenAsync();
-        
-        // Test a simple query
-        using var cmd = new MySqlCommand("SELECT 1", conn);
-        var result = await cmd.ExecuteScalarAsync();
-        
-        await conn.CloseAsync();
-        
-        return Results.Ok(new { 
-            success = true, 
-            message = $"Direct connection successful, query result: {result}",
-            connectionStringFound = !string.IsNullOrEmpty(connectionString)
-        });
-    }
-    catch (Exception ex) {
-        return Results.Ok(new { 
-            success = false, 
-            message = ex.Message,
-            fullDetails = ex.ToString()
-        });
-    }
-})
-.WithMetadata(new AllowAnonymousAttribute()); // Allow anonymous access for testing
-
-// Add this endpoint after your other API endpoints
-app.MapGet("/api/complete-bypass", (HttpContext context, ILogger<Program> logger) =>
-{
-    // Toggle the complete bypass setting
-    bool newValue = !GlobalSettings.CompleteBypass;
-    GlobalSettings.CompleteBypass = newValue;
-    
-    // When enabling complete bypass, also:
-    if (newValue)
-    {
-        // Force enable MySQL loading
-        GlobalSettings.AllowMySqlLoading = true;
-        
-        // Force enable bypass monitoring
-        GlobalSettings.BypassDatabaseMonitoring = true;
-        
-        // Force the monitor to report connected
-        try
-        {
-            var dbMonitor = app.Services.GetRequiredService<DatabaseMonitorService>();
-            dbMonitor.SetBypassMonitoring(true);
-            
-            // Use reflection to set the private field
-            var field = dbMonitor.GetType().GetField("_isConnected",
-                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-            if (field != null)
-            {
-                field.SetValue(dbMonitor, true);
-            }
-        }
-        catch (Exception ex)
-        {
-            logger.LogError(ex, "Error setting monitor state during complete bypass");
-        }
-    }
-    
-    // Return the current status
-    return Results.Ok(new { 
-        completeBypass = newValue,
-        message = newValue
-            ? "COMPLETE BYPASS ENABLED - All database safety mechanisms disabled"
-            : "Complete bypass disabled - Normal safety mechanisms active"
-    });
-})
-.WithMetadata(new AllowAnonymousAttribute()); // Allow anonymous access for testing
-
 // Add this endpoint to check user information
 app.MapGet("/api/check-user", async (HttpContext context, UserAuth.UserRepository userRepo, ILogger<Program> logger) =>
 {
@@ -946,155 +793,6 @@ app.MapGet("/api/auth-status", (HttpContext context) =>
             requestPath = context.Request.Path.ToString()
         }
     });
-})
-.WithMetadata(new AllowAnonymousAttribute());
-
-// Add this endpoint to test MySQL connection variations
-app.MapGet("/api/mysql-test", async (HttpContext context, IConfiguration config) =>
-{
-    var results = new List<object>();
-    var baseConnectionString = config.GetConnectionString("default");
-    
-    // Test variations
-    var testConfigs = new[]
-    {
-        new {
-            name = "Default Connection",
-            connString = baseConnectionString
-        },
-        new {
-            name = "With Default Auth",
-            connString = baseConnectionString + ";DefaultAuthenticationType=MYSQL41"
-        },
-        new {
-            name = "With AllowPublicKeyRetrieval",
-            connString = baseConnectionString + ";AllowPublicKeyRetrieval=true"
-        },
-        new {
-            name = "With All Options",
-            connString = baseConnectionString + ";AllowPublicKeyRetrieval=true;SslMode=Required;DefaultAuthenticationType=MYSQL41"
-        },
-        new {
-            name = "With Certificate Bypass",
-            connString = baseConnectionString + ";SslMode=Required;SslCa=none;AllowPublicKeyRetrieval=true"
-        }
-    };
-    
-    foreach (var testConfig in testConfigs)
-    {
-        try
-        {
-            using var conn = new MySqlConnection(testConfig.connString);
-            await conn.OpenAsync();
-            
-            // Test a simple query
-            using var cmd = new MySqlCommand("SELECT 1", conn);
-            var result = await cmd.ExecuteScalarAsync();
-            
-            await conn.CloseAsync();
-            
-            // Safer connection string masking
-            var maskedConnectionString = testConfig.connString;
-            if (testConfig.connString.Contains("Password=", StringComparison.OrdinalIgnoreCase))
-            {
-                int passwordStart = testConfig.connString.IndexOf("Password=", StringComparison.OrdinalIgnoreCase);
-                int passwordEnd = testConfig.connString.IndexOf(";", passwordStart);
-                if (passwordEnd == -1) passwordEnd = testConfig.connString.Length;
-                
-                string passwordPart = testConfig.connString.Substring(passwordStart, passwordEnd - passwordStart);
-                maskedConnectionString = testConfig.connString.Replace(passwordPart, "Password=********");
-            }
-            
-            results.Add(new { 
-                testName = testConfig.name,
-                success = true,
-                message = $"Connection successful, query result: {result}",
-                connectionString = maskedConnectionString
-            });
-        }
-        catch (Exception ex)
-        {
-            results.Add(new { 
-                testName = testConfig.name,
-                success = false,
-                message = ex.Message
-            });
-        }
-    }
-    
-    // Safer connection string masking
-    var maskedBaseConnectionString = baseConnectionString;
-    if (baseConnectionString.Contains("Password=", StringComparison.OrdinalIgnoreCase))
-    {
-        int passwordStart = baseConnectionString.IndexOf("Password=", StringComparison.OrdinalIgnoreCase);
-        int passwordEnd = baseConnectionString.IndexOf(";", passwordStart);
-        if (passwordEnd == -1) passwordEnd = baseConnectionString.Length;
-        
-        string passwordPart = baseConnectionString.Substring(passwordStart, passwordEnd - passwordStart);
-        maskedBaseConnectionString = baseConnectionString.Replace(passwordPart, "Password=********");
-    }
-    
-    return Results.Ok(new { 
-        results,
-        baseConnectionString = maskedBaseConnectionString
-    });
-})
-.WithMetadata(new AllowAnonymousAttribute());
-
-// Add this endpoint to test ping functionality
-app.MapGet("/api/ping", () => 
-{
-    return Results.Ok(new { 
-        timestamp = DateTime.UtcNow, 
-        message = "Ping successful",
-        environment = !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("WEBSITE_SITE_NAME")) 
-            ? "Azure" 
-            : "Local"
-    });
-})
-.WithMetadata(new AllowAnonymousAttribute());
-
-// Add this endpoint to check connection configuration
-app.MapGet("/api/connection-config", (IConfiguration config) => {
-    var connectionString = config.GetConnectionString("default");
-    
-    return new {
-        hasConnectionString = !string.IsNullOrEmpty(connectionString),
-        connectionStringValue = connectionString != null ? 
-            "[" + connectionString.Substring(0, Math.Min(10, connectionString.Length)) + "...]" : null,
-        envVariables = new {
-            usingConnectionStringsSection = Environment.GetEnvironmentVariable("MYSQLCONNSTR_default") != null || 
-                                           Environment.GetEnvironmentVariable("CUSTOMCONNSTR_default") != null,
-            usingAppSettings = Environment.GetEnvironmentVariable("ConnectionStrings__default") != null
-        }
-    };
-})
-.WithMetadata(new AllowAnonymousAttribute());
-
-// Add this endpoint to check environment variables
-app.MapGet("/api/env-vars", () => 
-{
-    var vars = Environment.GetEnvironmentVariables()
-        .Cast<System.Collections.DictionaryEntry>()
-        .Where(e => !e.Key.ToString().Contains("SECRET", StringComparison.OrdinalIgnoreCase) &&
-                    !e.Key.ToString().Contains("PASSWORD", StringComparison.OrdinalIgnoreCase) &&
-                    !e.Key.ToString().Contains("KEY", StringComparison.OrdinalIgnoreCase))
-        .Select(e => new { Name = e.Key.ToString(), Value = e.Value?.ToString() })
-        .OrderBy(e => e.Name)
-        .ToList();
-    
-    var mysqlVars = Environment.GetEnvironmentVariables()
-        .Cast<System.Collections.DictionaryEntry>()
-        .Where(e => e.Key.ToString().Contains("MYSQL", StringComparison.OrdinalIgnoreCase))
-        .Select(e => e.Key.ToString())
-        .ToList();
-    
-    return new { 
-        AllVariables = vars,
-        MySqlSpecificKeys = mysqlVars,
-        ConnectionString = Environment.GetEnvironmentVariable("MYSQLCONNSTR_default") != null ?
-            "Found (value hidden)" : "Not found"
-    };
 })
 .WithMetadata(new AllowAnonymousAttribute());
 

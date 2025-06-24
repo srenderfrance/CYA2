@@ -30,13 +30,13 @@ namespace cya2._0.Services
                 // Skip if already initialized
                 if (_appState.UserAccountsLoaded) return;
 
-                // Check if user is Admin
+                // Check if user is Admin first
                 _appState.IsAdmin = user.IsInRole("Admin") ||
                                     user.FindFirstValue("AuthLevel")?.Equals("Admin", StringComparison.OrdinalIgnoreCase) == true;
 
                 Console.WriteLine($"User is Admin: {_appState.IsAdmin}");
 
-                // Get user ID
+                // Get user ID (needed for both admin and non-admin users)
                 var userIdClaim = user.FindFirstValue("UserId");
                 if (!string.IsNullOrEmpty(userIdClaim) && int.TryParse(userIdClaim, out int id))
                 {
@@ -74,42 +74,54 @@ namespace cya2._0.Services
                     }
                 }
 
-                // Load all accounts user has access to
-                await LoadUserAccountsAsync();
-
-                // Get default account from claims
-                var defaultAccountClaim = user.FindFirstValue("DefaultAccount");
-                int? defaultAccountId = null;
-
-                if (!string.IsNullOrEmpty(defaultAccountClaim) && int.TryParse(defaultAccountClaim, out int accountId))
+                if (_appState.IsAdmin)
                 {
-                    defaultAccountId = accountId;
+                    // For admin users, just load the account list for the dropdown
+                    await LoadUserAccountsAsync();
 
-                    // Find the default account in the user's accounts
-                    var defaultAccount = _appState.UserAccounts.FirstOrDefault(a => a.AccountId == defaultAccountId);
-                    if (defaultAccount != null)
+                    // Only load default account data if one is specified
+                    var defaultAccountClaim = user.FindFirstValue("DefaultAccount");
+                    if (!string.IsNullOrEmpty(defaultAccountClaim) && int.TryParse(defaultAccountClaim, out int accountId))
                     {
-                        _appState.DefaultAccount = defaultAccount.Name;
-                        Console.WriteLine($"Default account set to: {_appState.DefaultAccount}");
-
-                        // Load accounting data for the default account
-                        await LoadAccountDataAsync(defaultAccount);
+                        var defaultAccount = _appState.UserAccounts.FirstOrDefault(a => a.AccountId == accountId);
+                        if (defaultAccount != null)
+                        {
+                            _appState.DefaultAccount = defaultAccount.Name;
+                            Console.WriteLine($"Admin default account set to: {_appState.DefaultAccount}");
+                            // Load data only for the default account
+                            await LoadAccountDataAsync(defaultAccount);
+                        }
                     }
+                    // Don't set a default account or load any data if no default specified
                 }
-                else if (_appState.UserAccounts.Any())
+                else
                 {
-                    // If no default account, use the first account
-                    _appState.DefaultAccount = _appState.UserAccounts.First().Name;
-                    Console.WriteLine($"No default account found, using first account: {_appState.DefaultAccount}");
+                    // Regular user behavior remains unchanged
+                    await LoadUserAccountsAsync();
 
-                    // Load accounting data for the first account
-                    await LoadAccountDataAsync(_appState.UserAccounts.First());
-                }
+                    var defaultAccountClaim = user.FindFirstValue("DefaultAccount");
+                    if (!string.IsNullOrEmpty(defaultAccountClaim) && int.TryParse(defaultAccountClaim, out int accountId))
+                    {
+                        var defaultAccount = _appState.UserAccounts.FirstOrDefault(a => a.AccountId == accountId);
+                        if (defaultAccount != null)
+                        {
+                            _appState.DefaultAccount = defaultAccount.Name;
+                            Console.WriteLine($"Default account set to: {_appState.DefaultAccount}");
+                            await LoadAccountDataAsync(defaultAccount);
+                        }
+                    }
+                    else if (_appState.UserAccounts.Any())
+                    {
+                        _appState.DefaultAccount = _appState.UserAccounts.First().Name;
+                        Console.WriteLine($"No default account found, using first account: {_appState.DefaultAccount}");
+                        await LoadAccountDataAsync(_appState.UserAccounts.First());
+                    }
 
-                // For non-admin users, start background loading of all account data
-                if (!_appState.IsAdmin && _appState.UserAccounts.Count > 1)
-                {
-                    _ = Task.Run(async () => await LoadAllUserAccountDataAsync());
+                    // Start background loading for non-admin users
+                    if (_appState.UserAccounts.Count > 1)
+                    {
+                        _ = Task.Run(async () => await LoadAllUserAccountDataAsync());
+                    }
                 }
             }
             catch (Exception ex)

@@ -49,6 +49,30 @@ namespace cya2._0.Services
             _configuration = configuration;
             _logger = logger;
             _suspended = true; // Start suspended
+
+            // Add global first-chance exception handler for MySQL exceptions
+            AppDomain.CurrentDomain.FirstChanceException += (sender, args) =>
+            {
+                try
+                {
+                    if (args.Exception != null && 
+                        (args.Exception.ToString().Contains("MySql") || 
+                         args.Exception.ToString().Contains("Timeout")))
+                    {
+                        // Log and mark database as disconnected immediately
+                        _logger.LogWarning("First-chance MySQL exception: {Message}", args.Exception.Message);
+                        _isConnected = false;
+                        GlobalSettings.AllowMySqlLoading = false;
+                        
+                        // Trigger event on separate thread to avoid deadlocks
+                        Task.Run(() => OnConnectionStatusChanged(false));
+                    }
+                }
+                catch
+                {
+                    // Never throw from exception handlers
+                }
+            };
         }
 
         // Required to maintain API compatibility
@@ -81,13 +105,6 @@ namespace cya2._0.Services
             {
                 // TEMPORARY: Skip monitoring entirely when in complete bypass mode
                 // TODO: Remove this condition after Azure testing
-                if (GlobalSettings.CompleteBypass)
-                {
-                    _isConnected = true;
-                    GlobalSettings.AllowMySqlLoading = true;
-                    Thread.Sleep(Timeout.Infinite); // Sleep forever, effectively disabling monitoring
-                    return;
-                }
 
                 // Initial wait to let the application stabilize
                 Thread.Sleep(5000);
@@ -229,5 +246,17 @@ namespace cya2._0.Services
 
             // Rest of the original method...
      //   }
+
+        public void MarkAsDisconnected(string reason)
+        {
+            _lastError = reason;
+            _isConnected = false;
+            GlobalSettings.AllowMySqlLoading = false;
+            
+            _logger.LogWarning("Database marked as disconnected: {Reason}", reason);
+            
+            // Notify listeners
+            OnConnectionStatusChanged(false);
+        }
     }
 }

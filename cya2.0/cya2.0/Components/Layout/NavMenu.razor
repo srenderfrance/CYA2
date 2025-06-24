@@ -54,6 +54,15 @@
                     </div>
                 </Authorized>
             </AuthorizeView>
+            <AuthorizeView Roles="Admin">
+                <Authorized>
+                    <div class="nav-item px-5 nav-link-block">
+                        <NavLink class="nav-link" href="/account-summaries" Match="NavLinkMatch.All">
+                            <span class="bi bi-list-nested-nav-menu" aria-hidden="true"></span> Account Summaries
+                        </NavLink>
+                    </div>
+                </Authorized>
+            </AuthorizeView>
         </div>
 
         <div class="nav-item px-3 d-flex navbar-group">
