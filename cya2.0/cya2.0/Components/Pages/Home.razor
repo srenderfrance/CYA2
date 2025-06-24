@@ -1,4 +1,5 @@
 ﻿@page "/"
+@page "/account-summaries"
 @using Microsoft.AspNetCore.Components.Web
 @using static Microsoft.AspNetCore.Components.Web.RenderMode
 @using Microsoft.AspNetCore.Authorization
@@ -15,6 +16,7 @@
 @inject DataLoadingService DataLoader
 @inject AuthenticationStateProvider AuthStateProvider
 @using UtilityClasses
+@inject NavigationManager Navigation
 
 <PageTitle>Home</PageTitle>
 
@@ -286,15 +288,27 @@ else
     {
         try
         {
-            // Create a local copy to prevent binding to shared state
-            userAccounts = new List<Account>();
-            
             // Get authentication state directly from the provider
             var authState = await AuthStateProvider.GetAuthenticationStateAsync();
             var user = authState.User;
 
             if (user.Identity.IsAuthenticated)
             {
+                // Check if user is admin first AND we're on the root route
+                var authLevel = user.FindFirstValue("AuthLevel");
+                bool isAdmin = authLevel == "Admin";
+                bool isRootRoute = Navigation.Uri.EndsWith("/");
+
+                // Only redirect admin users if they're on the root route
+                if (isAdmin && isRootRoute)
+                {
+                    Navigation.NavigateTo("/admin", true);
+                    return;
+                }
+
+                // Create a local copy to prevent binding to shared state
+                userAccounts = new List<Account>();
+                
                 // Prioritize our database name over Google's claims
                 userName = user.FindFirstValue("UserName") ??   // Our custom claim
                     user.FindFirstValue(ClaimTypes.GivenName) ?? 
@@ -303,24 +317,23 @@ else
                     user.FindFirstValue(ClaimTypes.Email) ?? 
                     "User";
 
-                Console.WriteLine("HOME DEBUG: Starting user data initialization");
+                Console.WriteLine($"HOME DEBUG: Starting user data initialization for {(isAdmin ? "admin" : "regular")} user");
                 
                 // Initialize user data
                 await DataLoader.InitializeUserDataAsync(user);
                 
-                // Make a local copy - EXACTLY like Expenses.razor does
+                // Make a local copy of accounts
                 userAccounts = AppState.UserAccounts.ToList();
                 
                 Console.WriteLine($"HOME DEBUG: Loaded {userAccounts.Count} accounts for dropdown");
                 
-                // Set default account from AppState - SAME pattern as Expenses.razor
+                // Set default account from AppState
                 if (!string.IsNullOrEmpty(AppState.DefaultAccount) && userAccounts.Any())
                 {
                     userAccount = userAccounts.FirstOrDefault(a => a.Name == AppState.DefaultAccount);
                     
                     if (userAccount == null)
                     {
-                        // If default account not found, use first account
                         userAccount = userAccounts.First();
                         AppState.DefaultAccount = userAccount.Name;
                     }
@@ -329,38 +342,17 @@ else
                     
                     Console.WriteLine($"HOME DEBUG: Selected account: {selectedAccount}");
                     
-                    // IMPORTANT: Explicitly check if data needs to be loaded and load it
+                    // Load account data if needed
                     if (!AppState.IsAccountDataLoaded(userAccount.Name))
                     {
                         Console.WriteLine($"HOME DEBUG: Data not loaded for {userAccount.Name}, loading now...");
                         await DataLoader.LoadAccountDataAsync(userAccount);
                     }
                     
-                    // Get data for the default account
+                    // Get data from cache
                     if (AppState.IsAccountDataLoaded(userAccount.Name))
                     {
-                        try {
-                            var accountData = AppState.AccountDataCache[userAccount.Name];
-                            accountingData = accountData.AccountingData;
-                            donations = accountData.DonationData?.Select(d => new DonationData {
-                                Id = d.id,
-                                Date = d.date,
-                                Amount = (decimal)d.amount,
-                                Fund = d.fund
-                            }).ToList() ?? new List<DonationData>();
-                            
-                            Console.WriteLine($"HOME DEBUG: Loaded {accountingData.Count} accounting records and {donations.Count} donations");
-                            
-                            // Calculate statistics
-                            CalculateStatistics();
-                        }
-                        catch (Exception ex) {
-                            Console.WriteLine($"HOME DEBUG: Error loading account data: {ex.Message}");
-                        }
-                    }
-                    else
-                    {
-                        Console.WriteLine($"HOME DEBUG: Failed to load data for account: {userAccount.Name}");
+                        LoadAccountData();
                     }
                 }
                 else if (userAccounts.Any())
@@ -372,22 +364,11 @@ else
                     
                     Console.WriteLine($"HOME DEBUG: No default account, using first account: {selectedAccount}");
                     
-                    // Load data for this account
                     await DataLoader.LoadAccountDataAsync(userAccount);
                     
                     if (AppState.IsAccountDataLoaded(userAccount.Name))
                     {
-                        var accountData = AppState.AccountDataCache[userAccount.Name];
-                        accountingData = accountData.AccountingData;
-                        donations = accountData.DonationData?.Select(d => new DonationData {
-                            Id = d.id,
-                            Date = d.date,
-                            Amount = (decimal)d.amount,
-                            Fund = d.fund
-                        }).ToList() ?? new List<DonationData>();
-                        
-                        // Calculate statistics
-                        CalculateStatistics();
+                        LoadAccountData();
                     }
                 }
             }
@@ -399,6 +380,31 @@ else
             Console.WriteLine($"HOME DEBUG: Error in OnInitializedAsync: {ex.Message}");
             Console.WriteLine($"HOME DEBUG: Stack trace: {ex.StackTrace}");
             isLoading = false;
+        }
+    }
+
+    // Helper method to load account data from cache
+    private void LoadAccountData()
+    {
+        try
+        {
+            var accountData = AppState.AccountDataCache[userAccount.Name];
+            accountingData = accountData.AccountingData;
+            donations = accountData.DonationData?.Select(d => new DonationData {
+                Id = d.id,
+                Date = d.date,
+                Amount = (decimal)d.amount,
+                Fund = d.fund
+            }).ToList() ?? new List<DonationData>();
+            
+            Console.WriteLine($"HOME DEBUG: Loaded {accountingData.Count} accounting records and {donations.Count} donations");
+            
+            // Calculate statistics
+            CalculateStatistics();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"HOME DEBUG: Error loading account data: {ex.Message}");
         }
     }
 

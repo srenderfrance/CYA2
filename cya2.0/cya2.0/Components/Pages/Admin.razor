@@ -7,6 +7,8 @@
 @inject IDataAccess _data
 @inject IConfiguration _config
 @inject AppState AppState
+@inject NavigationManager Navigation
+@inject AuthenticationStateProvider AuthStateProvider
 @using ModelsLibrary
 @using System.ComponentModel.DataAnnotations
 @using DataLibrary
@@ -262,11 +264,29 @@
 
     protected override async Task OnInitializedAsync()
     {
-        await base.OnInitializedAsync();
-        await Task.WhenAll(
-         LoadAllAccounts(),
-         LoadAllStaff()
-        );
+        try
+        {
+            // Get authentication state
+            var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+            var user = authState.User;
+
+            if (!user.IsInRole("Admin"))
+            {
+                // If not admin, redirect to home
+                Navigation.NavigateTo("/", true);
+                return;
+            }
+
+            await base.OnInitializedAsync();
+            await Task.WhenAll(
+                LoadAllAccounts(),
+                LoadAllStaff()
+            );
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error initializing admin page: {ex.Message}";
+        }
     }
 
     // Staff selection and update methods

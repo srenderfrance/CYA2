@@ -1,6 +1,7 @@
 ﻿using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
+using System.Security.Claims;
 
 namespace cya2._0.Middleware
 {
@@ -17,41 +18,43 @@ namespace cya2._0.Middleware
 
         public async Task InvokeAsync(HttpContext context)
         {
-            // Check if this is the signin-google path
             bool isSignInCallback = context.Request.Path.StartsWithSegments("/signin-google");
 
-            // Call the next middleware in the pipeline
             await _next(context);
 
-            // If this is the signin-google callback URL
             if (isSignInCallback && context.User?.Identity?.IsAuthenticated == true)
             {
                 _logger.LogInformation("Post-auth middleware: User is authenticated on signin-google callback");
 
-                // The user has been authenticated - redirect to home using JavaScript
+                // Determine where to redirect based on user's role
+                var authLevel = context.User.FindFirstValue("AuthLevel");
+                var redirectPath = authLevel == "Admin" ? "/admin" : "/";
+
+                _logger.LogInformation($"Post-auth middleware: User is {authLevel}, redirecting to {redirectPath}");
+
                 if (!context.Response.HasStarted)
                 {
-                    _logger.LogInformation("Post-auth middleware: Setting up JS redirect");
+                    _logger.LogInformation($"Post-auth middleware: Setting up redirect to {redirectPath}");
 
-                    // Add a JS script that will redirect
-                    var script = @"
-                    <script>
-                        console.log('Authentication successful, redirecting to home...');
-                        window.localStorage.setItem('redirectToHome', 'true');
-                        window.location.href = '/';
-                    </script>";
+                    var script = $@"
+            <script>
+                console.log('Authentication successful, redirecting to {redirectPath}...');
+                // Use sessionStorage instead of localStorage
+                sessionStorage.setItem('authRedirectPath', '{redirectPath}');
+                window.location.href = '{redirectPath}';
+            </script>";
 
-                    // Append the script to the response
                     await context.Response.WriteAsync(script);
                 }
                 else
                 {
-                    _logger.LogWarning("Post-auth middleware: Cannot set up redirect, response already started");
+                    _logger.LogWarning("Post-auth middleware: Cannot redirect, response already started");
                 }
             }
         }
     }
 
+    // Extension method to easily add this middleware to the pipeline
     public static class PostAuthenticationRedirectMiddlewareExtensions
     {
         public static IApplicationBuilder UsePostAuthenticationRedirect(

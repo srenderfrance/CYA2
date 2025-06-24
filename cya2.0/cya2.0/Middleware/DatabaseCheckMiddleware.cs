@@ -30,24 +30,6 @@ namespace cya2._0.Middleware
 
         public async Task InvokeAsync(HttpContext context, IDataAccess dataAccess)
         {
-            // TEMPORARY: Skip database checks in complete bypass mode
-            // TODO: Remove this condition after Azure testing
-            if (GlobalSettings.CompleteBypass)
-            {
-                await _next(context);
-                return;
-            }
-
-            // Skip middleware for diagnostic API endpoints
-            if (context.Request.Path.StartsWithSegments("/api/mysql-test") ||
-                context.Request.Path.StartsWithSegments("/api/test-db-connection") ||
-                context.Request.Path.StartsWithSegments("/api/direct-db-test") ||
-                context.Request.Path.StartsWithSegments("/api/auth-status"))
-            {
-                await _next(context);
-                return;
-            }
-
             // Skip database check for static files and error pages
             if (context.Request.Path.StartsWithSegments("/css") ||
                 context.Request.Path.StartsWithSegments("/js") ||
