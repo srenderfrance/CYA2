@@ -18,38 +18,31 @@ namespace cya2._0.Middleware
 
         public async Task InvokeAsync(HttpContext context)
         {
-            bool isSignInCallback = context.Request.Path.StartsWithSegments("/signin-google");
-
-            await _next(context);
-
-            if (isSignInCallback && context.User?.Identity?.IsAuthenticated == true)
+            // Only handle Google sign-in callbacks
+            if (context.Request.Path.StartsWithSegments("/signin-google"))
             {
-                _logger.LogInformation("Post-auth middleware: User is authenticated on signin-google callback");
+                _logger.LogInformation("Processing Google sign-in callback");
+                
+                // Keep these cache control headers
+                context.Response.Headers.CacheControl = "no-store, no-cache";
+                context.Response.Headers.Pragma = "no-cache";
+                context.Response.Headers.Expires = "-1";
+                
+                await _next(context);
 
-                // Determine where to redirect based on user's role
-                var authLevel = context.User.FindFirstValue("AuthLevel");
-                var redirectPath = authLevel == "Admin" ? "/admin" : "/";
-
-                _logger.LogInformation($"Post-auth middleware: User is {authLevel}, redirecting to {redirectPath}");
-
-                if (!context.Response.HasStarted)
+                if (context.User?.Identity?.IsAuthenticated == true && !context.Response.HasStarted)
                 {
-                    _logger.LogInformation($"Post-auth middleware: Setting up redirect to {redirectPath}");
+                    var authLevel = context.User.FindFirstValue("AuthLevel");
+                    var redirectPath = authLevel == "Admin" ? "/admin" : "/";
 
-                    var script = $@"
-            <script>
-                console.log('Authentication successful, redirecting to {redirectPath}...');
-                // Use sessionStorage instead of localStorage
-                sessionStorage.setItem('authRedirectPath', '{redirectPath}');
-                window.location.href = '{redirectPath}';
-            </script>";
-
-                    await context.Response.WriteAsync(script);
+                    // Simplified redirect - no need for JavaScript
+                    context.Response.Redirect(redirectPath, false);
+                    return;
                 }
-                else
-                {
-                    _logger.LogWarning("Post-auth middleware: Cannot redirect, response already started");
-                }
+            }
+            else
+            {
+                await _next(context);
             }
         }
     }

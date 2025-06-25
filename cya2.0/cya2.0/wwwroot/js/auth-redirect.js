@@ -2,29 +2,22 @@
 window.authHelpers = {
     // Essential redirect helper for login preparation
     prepareForLogin: function() {
-        // Clear any existing redirect flags
-        sessionStorage.removeItem('authRedirectPath');
+        console.log('prepareForLogin called');
+        // Clear any existing redirect flags and auth state
+        sessionStorage.clear();
+        
+        // Clear specific cookies
+        document.cookie = '.AspNetCore.Cookies=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
     },
     
-    // Check if redirect is needed and redirect if necessary
-    checkAndRedirect: function() {
-        const redirectPath = sessionStorage.getItem('authRedirectPath');
-        if (redirectPath) {
-            sessionStorage.removeItem('authRedirectPath');
-            window.location.href = redirectPath;
-            return true;
-        }
-        return false;
+    // Clear auth in progress state
+    clearAuthInProgress: function() {
+        sessionStorage.removeItem('authInProgress');
     }
 };
 
 // Run on page load
 (function() {
     console.log('Auth redirect helper loaded');
-    
-    // Check for Google sign-in callback in referrer
-    if (document.referrer.includes('signin-google')) {
-        console.log("Detected return from Google authentication");
-        window.authHelpers.checkAndRedirect();
-    }
+    window.authHelpers.clearAuthInProgress();
 })();

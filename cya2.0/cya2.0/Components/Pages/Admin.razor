@@ -52,6 +52,24 @@
                 </RadzenFormField>
             </RadzenStack>
             
+            <!-- Add Auth Level Column -->
+            <RadzenStack Orientation="Orientation.Vertical" Gap="1rem" Style="width: 30%;">
+                <RadzenText TextStyle="TextStyle.Subtitle2" Style="font-weight: bold;">Auth Level</RadzenText>
+                <div class="rz-p-2 rz-border-radius-1 rz-border-1" style="height: 38px; display: flex; align-items: center; border: var(--rz-input-border); background-color: var(--rz-input-background-color);">
+                    <RadzenText TextStyle="TextStyle.Subtitle2">
+                        @(string.IsNullOrEmpty(selectedStaffAuthLevel) ? " " : selectedStaffAuthLevel)
+                    </RadzenText>
+                </div>
+                
+                <RadzenFormField Text="New Auth Level" Variant="Variant.Outlined">
+                    <RadzenDropDown TValue="string"
+                                   Data="@authLevels"
+                                   @bind-Value="@newAuthLevel"
+                                   Placeholder="Select new auth level"
+                                   Style="width: 100%;" />
+                </RadzenFormField>
+            </RadzenStack>
+            
             <!-- Right column: Account management -->
             <RadzenStack Orientation="Orientation.Vertical" Gap="1rem" Style="width: 30%;">
                 <RadzenText TextStyle="TextStyle.Subtitle2" Style="font-weight: bold;">Account Management</RadzenText>
@@ -234,6 +252,9 @@
     private string? staffMember;
     private List<UserData> staff = new List<UserData>();
     private string selectedStaffEmail = string.Empty;
+    private string selectedStaffAuthLevel = string.Empty;
+    private string newAuthLevel = string.Empty;
+    private List<string> authLevels = new List<string> { "User", "Viewer", "Admin" };
 
     public string selectedStaff;
     public string newName = string.Empty;
@@ -296,11 +317,12 @@
 
         selectedStaff = staffName;
 
-        // Find the selected staff member and update the displayed email
+        // Find the selected staff member and update the displayed email and auth level
         var selectedUser = staff.FirstOrDefault(u => u.Name == staffName);
         if (selectedUser != null)
         {
             selectedStaffEmail = selectedUser.Email;
+            selectedStaffAuthLevel = selectedUser.AuthLevel;
 
             // Load the user's accounts
             LoadUserAccounts(selectedUser.Id).ConfigureAwait(false);
@@ -354,6 +376,14 @@
                 hasChanges = true;
             }
 
+            // Check if auth level should be updated
+            if (!string.IsNullOrWhiteSpace(newAuthLevel))
+            {
+                sql += "AuthLevel = @AuthLevel, ";
+                parameters.Add("AuthLevel", newAuthLevel);
+                hasChanges = true;
+            }
+
             // If nothing to update, show message
             if (!hasChanges)
             {
@@ -386,6 +416,7 @@
                 // Clear input fields
                 newName = string.Empty;
                 newEmail = string.Empty;
+                newAuthLevel = string.Empty;
 
                 // Refresh staff list
                 await LoadAllStaff();

@@ -23,27 +23,25 @@
                     <NotAuthorized>
                         @if (context.User?.Identity?.IsAuthenticated != true)
                         {
-                            @if (!DbMonitor.IsConnected)
-                            {
-                                <div class="alert alert-danger m-4">
-                                    <h4 class="alert-heading">Database Error</h4>
-                                    <p>The application database is currently unavailable.</p>
-                                    <hr>
-                                    <p class="mb-0">
-                                        <a href="/database-error" class="btn btn-primary">View Database Status</a>
-                                    </p>
+                            <div class="container mt-5">
+                                <div class="row justify-content-center">
+                                    <div class="col-md-6">
+                                        <div class="card">
+                                            <div class="card-body text-center">
+                                                <h3>Login Required</h3>
+                                                <p>Please sign in to access this resource.</p>
+                                                <a href="/api/login" class="btn btn-primary">
+                                                    <i class="bi bi-google me-2"></i> Sign in with Google
+                                                </a>
+                                            </div>
+                                        </div>
+                                    </div>
                                 </div>
-                            }
-                            else
-                            {
-                                <RedirectToLogin />
-                            }
+                            </div>
                         }
                         else
                         {
-                            <p class="alert alert-danger">
-                                You are not authorized to access this resource.
-                            </p>
+                            <p class="alert alert-danger">Not authorized to access this resource.</p>
                         }
                     </NotAuthorized>
                     <Authorizing>

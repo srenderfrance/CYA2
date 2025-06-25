@@ -104,24 +104,36 @@ builder.Services.AddAuthentication(options =>
 })
 .AddCookie(options =>
 {
-    // Configure cookie auth for automatic redirect
     options.LoginPath = "/api/login";
     options.AccessDeniedPath = "/not-authorized";
     options.ExpireTimeSpan = TimeSpan.FromHours(24);
     options.SlidingExpiration = false;
-
-    // Add this to ensure redirects work properly after authentication
-    options.Events.OnRedirectToLogin = context =>
+    
+    // Add cache control
+    options.Cookie.HttpOnly = true;
+    options.Cookie.SecurePolicy = CookieSecurePolicy.Always;
+    
+    options.Events = new CookieAuthenticationEvents
     {
-        if (context.Request.Path.StartsWithSegments("/api"))
+        OnRedirectToLogin = context =>
         {
-            context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+            // Ignore Blazor framework requests
+            if (context.Request.Path.StartsWithSegments("/_blazor") ||
+                context.Request.Path.StartsWithSegments("/_framework"))
+            {
+                return Task.CompletedTask;
+            }
+
+            if (context.Request.Path.StartsWithSegments("/api"))
+            {
+                context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+            }
+            else
+            {
+                context.Response.Redirect(context.RedirectUri);
+            }
+            return Task.CompletedTask;
         }
-        else
-        {
-            context.Response.Redirect(context.RedirectUri);
-        }
-        return Task.CompletedTask;
     };
 })
 .AddGoogle(options =>
@@ -130,39 +142,28 @@ builder.Services.AddAuthentication(options =>
     options.ClientSecret = builder.Configuration["Authentication:Google:ClientSecret"];
     options.CallbackPath = "/signin-google";
 
-    options.SaveTokens = true; // Save the access token
-
     options.Events = new OAuthEvents
     {
-        // This runs before the Google challenge is issued - check DB before redirecting
         OnRedirectToAuthorizationEndpoint = context =>
         {
             var logger = context.HttpContext.RequestServices.GetRequiredService<ILogger<Program>>();
-            var dbMonitor = context.HttpContext.RequestServices.GetRequiredService<DatabaseMonitorService>();
 
-            // Check DB connectivity before starting Google authentication
-            if (!dbMonitor.IsConnected)
+            // Ignore Blazor framework requests
+            if (context.Request.Path.StartsWithSegments("/_blazor") ||
+                context.Request.Path.StartsWithSegments("/_framework"))
             {
-                logger.LogWarning("Database unavailable - preventing Google authentication redirect");
-                context.Response.Redirect("/database-error", false);
                 return Task.CompletedTask;
             }
 
-            // DB is available, proceed with normal flow
-            if (context.Properties.RedirectUri == "/api/login")
-            {
-                logger.LogWarning("Found incorrect RedirectUri: /api/login, changing to /");
-                context.Properties.RedirectUri = "/";
-            }
+            // Add cache control headers
+            context.Response.Headers.CacheControl = "no-store, no-cache";
+            context.Response.Headers.Pragma = "no-cache";
 
-            logger.LogInformation("Redirecting to Google with final RedirectUri: {RedirectUri}",
-                context.Properties.RedirectUri);
-
+            logger.LogInformation("Redirecting to Google auth");
             context.Response.Redirect(context.RedirectUri);
             return Task.CompletedTask;
         },
 
-        // This runs when the Google authentication process fails
         OnRemoteFailure = context =>
         {
             var logger = context.HttpContext.RequestServices.GetRequiredService<ILogger<Program>>();
@@ -176,6 +177,10 @@ builder.Services.AddAuthentication(options =>
         // This runs after successful authentication with Google
         OnTicketReceived = async context =>
         {
+            // Add cache control headers
+            context.Response.Headers.CacheControl = "no-store, no-cache";
+            context.Response.Headers.Pragma = "no-cache";
+
             var logger = context.HttpContext.RequestServices.GetRequiredService<ILogger<Program>>();
             var userRepository = context.HttpContext.RequestServices.GetRequiredService<UserAuth.UserRepository>();
             var dataAccess = context.HttpContext.RequestServices.GetRequiredService<IDataAccess>();
@@ -660,13 +665,30 @@ app.Use(async (context, next) =>
 // Add authentication middleware
 app.UseAuthentication();
 app.UseAuthorization();
-
-// Add after app.UseAuthorization() and before app.UsePostAuthenticationRedirect()
 app.UseDatabaseCheck();
-
-// Add post-authentication redirect middleware
 app.UsePostAuthenticationRedirect();
 
+app.Use(async (context, next) =>
+{
+    if (context.Request.Path == "/")
+    {
+        var user = context.User;
+        if (user?.Identity?.IsAuthenticated == true)
+        {
+            var authLevel = user.FindFirstValue("AuthLevel");
+            if (authLevel == "Admin")
+            {
+                context.Response.Redirect("/admin", false);
+                return;
+            }
+        }
+    }
+    await next();
+});
+
+// Add after route handling
+
+// Map components after all middleware
 app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();
 
@@ -675,28 +697,48 @@ app.MapGet("/api/login", (HttpContext context, DatabaseMonitorService dbMonitor,
 {
     logger.LogInformation("Login endpoint hit - checking database availability");
 
-    // Use the monitor's cached state instead of direct check
-    if (!dbMonitor.IsConnected)
+    try
     {
-        // Database is down, redirect to error page without starting auth
-        logger.LogWarning("Database unavailable - redirecting to error page");
-        context.Response.Redirect("/database-error", false);
-        return Results.Empty;
+        // Clear any existing auth cookies
+        foreach (var cookie in context.Request.Cookies.Keys)
+        {
+            if (cookie.Contains("AspNetCore") || cookie.Contains("Microsoft"))
+            {
+                context.Response.Cookies.Delete(cookie);
+            }
+        }
+
+        // Add cache control headers
+        context.Response.Headers.CacheControl = "no-store, no-cache";
+        context.Response.Headers.Pragma = "no-cache";
+
+        if (!dbMonitor.IsConnected)
+        {
+            logger.LogWarning("Database unavailable - redirecting to error page");
+            context.Response.Redirect("/database-error", false);
+            return Results.Empty;
+        }
+
+        logger.LogInformation("Database is available, proceeding with authentication");
+
+        var properties = new AuthenticationProperties
+        {
+            RedirectUri = "/",
+            AllowRefresh = true,
+            ExpiresUtc = DateTimeOffset.UtcNow.AddHours(24),
+            IsPersistent = true,
+            // Add timestamp to prevent caching
+            Items = { { "ts", DateTimeOffset.UtcNow.ToUnixTimeSeconds().ToString() } }
+        };
+
+        logger.LogInformation("Issuing challenge");
+        return Results.Challenge(properties, new[] { GoogleDefaults.AuthenticationScheme });
     }
-
-    // Database is available, proceed with authentication
-    logger.LogInformation("Database is available, proceeding with authentication");
-
-    var properties = new AuthenticationProperties
+    catch (Exception ex)
     {
-        RedirectUri = "/",
-        AllowRefresh = true,
-        ExpiresUtc = DateTimeOffset.UtcNow.AddHours(24),
-        IsPersistent = true
-    };
-
-    // iIssue the authentication challenge
-    return Results.Challenge(properties, new[] { GoogleDefaults.AuthenticationScheme });
+        logger.LogError(ex, "Error in login endpoint");
+        throw;
+    }
 });
 
 // Update logout endpoint to clear AppState
@@ -741,38 +783,6 @@ app.MapGet("/api/check-db", async (HttpContext context, IDataAccess dataAccess, 
         return Results.Ok(new { status = "error", message = ex.Message });
     }
 });
-
-// Add this endpoint to check user information
-app.MapGet("/api/check-user", async (HttpContext context, UserAuth.UserRepository userRepo, ILogger<Program> logger) =>
-{
-    try
-    {
-        string email = context.Request.Query["email"];
-        if (string.IsNullOrEmpty(email))
-            return Results.BadRequest("Email parameter required");
-            
-        logger.LogInformation("Testing user lookup for email: {Email}", email);
-        
-        var user = await userRepo.GetUserByEmailAsync(email);
-        
-        return Results.Ok(new { 
-            emailRequested = email,
-            userFound = user != null,
-            userData = user != null ? new {
-                id = user.Id,
-                name = user.Name,
-                authLevel = user.AuthLevel,
-                // Don't return sensitive data
-            } : null
-        });
-    }
-    catch (Exception ex)
-    {
-        logger.LogError(ex, "Error checking user");
-        return Results.Problem($"Error checking user: {ex.Message}");
-    }
-})
-.WithMetadata(new AllowAnonymousAttribute());
 
 // Add this endpoint to check authentication status
 app.MapGet("/api/auth-status", (HttpContext context) =>
