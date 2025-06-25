@@ -288,87 +288,44 @@ else
     {
         try
         {
-            // Get authentication state directly from the provider
             var authState = await AuthStateProvider.GetAuthenticationStateAsync();
             var user = authState.User;
 
             if (user.Identity.IsAuthenticated)
             {
-                // Check if user is admin first AND we're on the root route
-                var authLevel = user.FindFirstValue("AuthLevel");
-                bool isAdmin = authLevel == "Admin";
-                bool isRootRoute = Navigation.Uri.EndsWith("/");
-
-                // Only redirect admin users if they're on the root route
-                if (isAdmin && isRootRoute)
-                {
-                    Navigation.NavigateTo("/admin", true);
-                    return;
-                }
-
-                // Create a local copy to prevent binding to shared state
-                userAccounts = new List<Account>();
-                
-                // Prioritize our database name over Google's claims
-                userName = user.FindFirstValue("UserName") ??   // Our custom claim
+                userName = user.FindFirstValue("UserName") ??
                     user.FindFirstValue(ClaimTypes.GivenName) ?? 
                     user.FindFirstValue(ClaimTypes.Name) ?? 
                     user.Identity.Name ?? 
                     user.FindFirstValue(ClaimTypes.Email) ?? 
                     "User";
 
-                Console.WriteLine($"HOME DEBUG: Starting user data initialization for {(isAdmin ? "admin" : "regular")} user");
-                
-                // Initialize user data
+                // Initialize user data and wait for it to complete
                 await DataLoader.InitializeUserDataAsync(user);
                 
-                // Make a local copy of accounts
-                userAccounts = AppState.UserAccounts.ToList();
+                // Get accounts from AppState after initialization
+                userAccounts = AppState.UserAccounts;
                 
-                Console.WriteLine($"HOME DEBUG: Loaded {userAccounts.Count} accounts for dropdown");
-                
-                // Set default account from AppState
-                if (!string.IsNullOrEmpty(AppState.DefaultAccount) && userAccounts.Any())
+                // Set default account if available
+                if (!string.IsNullOrEmpty(AppState.DefaultAccount))
                 {
-                    userAccount = userAccounts.FirstOrDefault(a => a.Name == AppState.DefaultAccount);
+                    selectedAccount = AppState.DefaultAccount;
+                    userAccount = userAccounts.FirstOrDefault(a => a.Name == selectedAccount);
                     
-                    if (userAccount == null)
+                    if (userAccount != null && AppState.IsAccountDataLoaded(userAccount.Name))
                     {
-                        userAccount = userAccounts.First();
-                        AppState.DefaultAccount = userAccount.Name;
-                    }
-                    
-                    selectedAccount = userAccount.Name;
-                    
-                    Console.WriteLine($"HOME DEBUG: Selected account: {selectedAccount}");
-                    
-                    // Load account data if needed
-                    if (!AppState.IsAccountDataLoaded(userAccount.Name))
-                    {
-                        Console.WriteLine($"HOME DEBUG: Data not loaded for {userAccount.Name}, loading now...");
-                        await DataLoader.LoadAccountDataAsync(userAccount);
-                    }
-                    
-                    // Get data from cache
-                    if (AppState.IsAccountDataLoaded(userAccount.Name))
-                    {
-                        LoadAccountData();
-                    }
-                }
-                else if (userAccounts.Any())
-                {
-                    // If no default account but accounts exist, use the first one
-                    userAccount = userAccounts.First();
-                    selectedAccount = userAccount.Name;
-                    AppState.DefaultAccount = selectedAccount;
-                    
-                    Console.WriteLine($"HOME DEBUG: No default account, using first account: {selectedAccount}");
-                    
-                    await DataLoader.LoadAccountDataAsync(userAccount);
-                    
-                    if (AppState.IsAccountDataLoaded(userAccount.Name))
-                    {
-                        LoadAccountData();
+                        var accountData = AppState.AccountDataCache[userAccount.Name];
+                        accountingData = accountData.AccountingData;
+                        donations = accountData.DonationData.Select(d => new DonationData
+                        {
+                            Id = d.id,
+                            Date = d.date,
+                            Amount = (decimal)d.amount,
+                            Fund = d.fund
+                        }).ToList();
+
+                        // Calculate statistics once data is loaded
+                        CalculateStatistics();
                     }
                 }
             }

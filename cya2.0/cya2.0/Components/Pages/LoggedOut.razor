@@ -2,8 +2,8 @@
 @using static Microsoft.AspNetCore.Components.Web.RenderMode
 @attribute [AllowAnonymous]
 @using Microsoft.AspNetCore.Authorization
-@inject IJSRuntime JSRuntime
 @inject AppState AppState
+@inject NavigationManager Navigation
 @rendermode InteractiveServer
 
 <PageTitle>Logged Out - CYA</PageTitle>
@@ -18,7 +18,7 @@
                     </div>
                     <h2 class="card-title mb-3">You've been logged out</h2>
                     <p class="card-text mb-4">Thank you for using CYA. You have successfully logged out of your account.</p>
-                    <a href="/api/login" class="btn btn-primary btn-lg" @onclick="PrepareForLogin">
+                    <a href="/" class="btn btn-primary btn-lg">
                         <i class="bi bi-google me-2"></i> Sign in with Google
                     </a>
                 </div>
@@ -28,52 +28,12 @@
             </div>
         </div>
     </div>
-    <div class="row mt-4">
-        <div class="col text-center">
-            <button class="btn btn-outline-secondary btn-sm" @onclick="ShowDiagnostics">Show Auth Diagnostics</button>
-        </div>
-    </div>
 </div>
 
 @code {
-    private async Task PrepareForLogin()
+    protected override void OnInitialized()
     {
-        try {
-            await JSRuntime.InvokeVoidAsync("authHelpers.prepareForLogin");
-            await JSRuntime.InvokeVoidAsync("authHelpers.diagnostics.logEvent", "login-button-clicked", new { page = "LoggedOut" });
-        }
-        catch (Exception ex) {
-            Console.WriteLine($"Error in PrepareForLogin: {ex.Message}");
-        }
-    }
-
-    private async Task ShowDiagnostics()
-    {
-        try {
-            await JSRuntime.InvokeVoidAsync("authHelpers.diagnostics.show");
-        }
-        catch (Exception ex) {
-            Console.WriteLine($"Error in ShowDiagnostics: {ex.Message}");
-        }
-    }
-
-    // Clear cookies after render
-    protected override async Task OnAfterRenderAsync(bool firstRender)
-    {
-        if (firstRender)
-        {
-            try {
-                // Ensure AppState is cleared
-                AppState.ClearUserData();
-                
-                // Clear authentication cookies via JS
-                await JSRuntime.InvokeVoidAsync("eval", 
-                    "document.cookie.split(';').forEach(c => document.cookie = c.trim().split('=')[0] + '=;' + 'expires=Thu, 01 Jan 1970 00:00:00 UTC;path=/;');");
-            }
-            catch (Exception ex) {
-                Console.WriteLine($"Error clearing session data: {ex.Message}");
-            }
-        }
+        AppState.ClearUserData();
     }
 }
 
