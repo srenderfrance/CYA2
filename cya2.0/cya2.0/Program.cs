@@ -78,6 +78,14 @@ builder.Services.AddLogging(configure =>
 builder.Services.AddSingleton<AppState>();
 builder.Services.AddScoped<DataLoadingService>();
 
+// Authentication & Authorization services - move these together
+builder.Services.AddAuthenticationCore();
+builder.Services.AddScoped<AuthenticationStateProvider, ServerAuthenticationStateProvider>();
+builder.Services.AddScoped<IHostEnvironmentAuthenticationStateProvider>(sp => 
+    (ServerAuthenticationStateProvider)sp.GetRequiredService<AuthenticationStateProvider>());
+builder.Services.AddCascadingAuthenticationState();
+builder.Services.AddAuthorizationCore();
+
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
 
@@ -300,9 +308,6 @@ builder.Services.AddAuthorization(options =>
         policy.RequireAuthenticatedUser()
               .RequireClaim("AuthLevel", new[] { "Admin", "Viewer" }));
 });
-
-// Add Blazor authentication state provider
-builder.Services.AddScoped<AuthenticationStateProvider, ServerAuthenticationStateProvider>();
 
 // Replace the problematic health checks registration with this:
 builder.Services.AddHealthChecks()
@@ -666,7 +671,6 @@ app.Use(async (context, next) =>
 app.UseAuthentication();
 app.UseAuthorization();
 app.UseDatabaseCheck();
-app.UsePostAuthenticationRedirect();
 
 app.Use(async (context, next) =>
 {

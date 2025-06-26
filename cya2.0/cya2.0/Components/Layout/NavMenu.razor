@@ -6,7 +6,6 @@
 @inject IConfiguration Config
 @rendermode InteractiveServer
 
-<CascadingAuthenticationState>
     <!-- Increase the spacing between nav items -->
     <div class="navbar">
         <!-- Conditional rendering of Home/Admin based on role -->
@@ -87,7 +86,6 @@
             <RadzenText TextStyle="TextStyle.Body1">Some features may be unavailable until connection is restored.</RadzenText>
         </RadzenAlert>
     }
-</CascadingAuthenticationState>
 
 @code {
     private bool _showConnectionError = false;
