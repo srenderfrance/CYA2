@@ -1,14 +1,12 @@
 @using ModelsLibrary
 @using UtilityClasses
+@using System.Globalization
 @inject AppState AppState
 @inject DataLoadingService DataLoader
 @inject AuthenticationStateProvider AuthStateProvider
 @inject IStringLocalizer<Resource> Localizer
 
-<RadzenStack Orientation="Orientation.Vertical" Gap="1rem" Class="rz-p-3"
-             Style="height:100%; overflow:auto;">
-    <RadzenText TextStyle="TextStyle.H5">@Localizer["AccountSummaries"]</RadzenText>
-
+<RadzenStack Orientation="Orientation.Vertical" Gap="1rem" Class="rz-p-3" Style="height:100%; overflow:auto;">
     @if (_loading)
     {
         <RadzenProgressBar Value="100" ShowValue="false" Mode="ProgressBarMode.Indeterminate" />
@@ -16,56 +14,242 @@
     }
     else if (!_accounts.Any())
     {
-        <RadzenAlert AlertStyle="AlertStyle.Info" ShowIcon="true" Variant="Variant.Filled">
-            @Localizer["NoAccountFound"]
-        </RadzenAlert>
+        <RadzenAlert AlertStyle="AlertStyle.Info" ShowIcon="true" Variant="Variant.Filled">@Localizer["NoAccountFound"]</RadzenAlert>
     }
     else
     {
-        <RadzenCard>
-            <RadzenStack Orientation="Orientation.Horizontal" Gap="1rem" AlignItems="AlignItems.Center">
-                <RadzenText TextStyle="TextStyle.H6">@Localizer["Account"]</RadzenText>
+        <RadzenCard class="mt-2">
+            <RadzenStack Orientation="Orientation.Horizontal" Gap="1rem" JustifyContent="JustifyContent.Start" AlignItems="AlignItems.Center">
+                <RadzenText TextStyle="TextStyle.H5">@Localizer["Account"]</RadzenText>
+
                 <RadzenDropDown TValue="string"
                                 Data="@_accounts"
                                 TextProperty="Name"
                                 ValueProperty="Name"
-                                Value="@_selectedAccountName"
-                                Change="@(args => OnAccountSelection(args?.ToString()))"
+                                @bind-Value="_selectedAccountName"
+                                @bind-Value:after="OnAccountChangedAsync"
                                 Placeholder="@Localizer["ChooseAccount"]"
-                                Style="width: 280px;" />
+                                Style="width: 250px;" />
+
+                @if (_selectedAccount != null)
+                {
+                    <RadzenBadge BadgeStyle="BadgeStyle.Info" Class="rz-ml-2">
+                        acc: @_accounting.Count, don: @_donations.Count
+                    </RadzenBadge>
+                }
             </RadzenStack>
         </RadzenCard>
 
         @if (_selectedAccount != null)
         {
-            <RadzenStack Orientation="Orientation.Horizontal" Gap="1rem" Class="mt-4" Style="overflow-x:auto;">
+            <RadzenStack Orientation="Orientation.Horizontal" Gap="1rem" Class="mt-4" JustifyContent="JustifyContent.SpaceBetween" Style="overflow-x: auto;">
                 <!-- Current Month -->
-                <RadzenCard Style="min-width: 260px;">
-                    <RadzenText TextStyle="TextStyle.H5">@Localizer["CurrentMonth"]</RadzenText>
-                    <RadzenText TextStyle="TextStyle.Subtitle2">@_currentMonth.Period</RadzenText>
-                    @SummaryRows(_currentMonth, Localizer["Balance"])
-                </RadzenCard>
+                <RadzenStack Orientation="Orientation.Vertical" Style="width: 24%; min-width: 260px;">
+                    <RadzenCard Style="height: 100%;">
+                        <RadzenText TextStyle="TextStyle.H5">@Localizer["CurrentMonth"]</RadzenText>
+                        <RadzenText TextStyle="TextStyle.Subtitle2">@_currentMonth.Period</RadzenText>
+
+                        <RadzenStack Gap="0.5rem" Class="mt-3">
+                            <div class="d-flex justify-content-between">
+                                <RadzenText TextStyle="TextStyle.Body1">@Localizer["Donations"]</RadzenText>
+                                <RadzenText TextStyle="TextStyle.Body1"><span class="fw-bold">@_currentMonth.TotalDonations.ToString("C", CultureInfo.CurrentCulture)</span></RadzenText>
+                            </div>
+
+                            <hr class="my-2" />
+
+                            <div class="d-flex justify-content-between">
+                                <RadzenText TextStyle="TextStyle.Body1">@Localizer["Expenses"]</RadzenText>
+                                <RadzenText TextStyle="TextStyle.Body1"><span class="fw-bold">@_currentMonth.TotalExpenses.ToString("C", CultureInfo.CurrentCulture)</span></RadzenText>
+                            </div>
+
+                            <hr class="my-2" />
+
+                            <div class="d-flex justify-content-between">
+                                <RadzenText TextStyle="TextStyle.Body1">@Localizer["Overhead"]</RadzenText>
+                                <RadzenText TextStyle="TextStyle.Body1"><span class="fw-bold">@_currentMonth.TotalOverhead.ToString("C", CultureInfo.CurrentCulture)</span></RadzenText>
+                            </div>
+
+                            <hr class="my-2" />
+
+                            <div class="d-flex justify-content-between">
+                                <RadzenText TextStyle="TextStyle.Body1">@Localizer["InternalTransfers"]</RadzenText>
+                                <RadzenText TextStyle="TextStyle.Body1"><span class="fw-bold">@_currentMonth.InternalTransfers.ToString("C", CultureInfo.CurrentCulture)</span></RadzenText>
+                            </div>
+
+                            <hr class="my-2" />
+
+                            <div class="d-flex justify-content-between align-items-center">
+                                <RadzenText TextStyle="TextStyle.Subtitle1">@Localizer["Balance"]</RadzenText>
+                                <RadzenText TextStyle="TextStyle.Subtitle1">
+                                    <span class="fw-bold" style="font-size:1.1em;">
+                                        @Math.Abs(_currentMonth.Balance).ToString("C", CultureInfo.CurrentCulture)
+                                        @(_currentMonth.Balance < 0 ? $" {Localizer["Deficit"]}" : "")
+                                    </span>
+                                </RadzenText>
+                            </div>
+                        </RadzenStack>
+                    </RadzenCard>
+                </RadzenStack>
 
                 <!-- Prior Month -->
-                <RadzenCard Style="min-width: 260px;">
-                    <RadzenText TextStyle="TextStyle.H5">@Localizer["PriorMonth"]</RadzenText>
-                    <RadzenText TextStyle="TextStyle.Subtitle2">@_priorMonth.Period</RadzenText>
-                    @SummaryRows(_priorMonth, Localizer["EndBalance"])
-                </RadzenCard>
+                <RadzenStack Orientation="Orientation.Vertical" Style="width: 24%; min-width: 260px;">
+                    <RadzenCard Style="height: 100%;">
+                        <RadzenText TextStyle="TextStyle.H5">@Localizer["PriorMonth"]</RadzenText>
+                        <RadzenText TextStyle="TextStyle.Subtitle2">@_priorMonth.Period</RadzenText>
+
+                        <RadzenStack Gap="0.5rem" Class="mt-3">
+                            <div class="d-flex justify-content-between">
+                                <RadzenText TextStyle="TextStyle.Body1">@Localizer["Donations"]</RadzenText>
+                                <div class="text-end">
+                                    <RadzenText TextStyle="TextStyle.Body1"><span class="fw-bold">@_priorMonth.TotalDonations.ToString("C", CultureInfo.CurrentCulture)</span></RadzenText>
+                                </div>
+                            </div>
+
+                            <hr class="my-2" />
+
+                            <div class="d-flex justify-content-between">
+                                <RadzenText TextStyle="TextStyle.Body1">@Localizer["Expenses"]</RadzenText>
+                                <div class="text-end">
+                                    <RadzenText TextStyle="TextStyle.Body1"><span class="fw-bold">@_priorMonth.TotalExpenses.ToString("C", CultureInfo.CurrentCulture)</span></RadzenText>
+                                </div>
+                            </div>
+
+                            <hr class="my-2" />
+
+                            <div class="d-flex justify-content-between">
+                                <RadzenText TextStyle="TextStyle.Body1">@Localizer["Overhead"]</RadzenText>
+                                <RadzenText TextStyle="TextStyle.Body1"><span class="fw-bold">@_priorMonth.TotalOverhead.ToString("C", CultureInfo.CurrentCulture)</span></RadzenText>
+                            </div>
+
+                            <hr class="my-2" />
+
+                            <div class="d-flex justify-content-between">
+                                <RadzenText TextStyle="TextStyle.Body1">@Localizer["InternalTransfers"]</RadzenText>
+                                <RadzenText TextStyle="TextStyle.Body1"><span class="fw-bold">@_priorMonth.InternalTransfers.ToString("C", CultureInfo.CurrentCulture)</span></RadzenText>
+                            </div>
+
+                            <hr class="my-2" />
+
+                            <div class="d-flex justify-content-between align-items-center">
+                                <RadzenText TextStyle="TextStyle.Subtitle1">@Localizer["EndBalance"]</RadzenText>
+                                <RadzenText TextStyle="TextStyle.Subtitle1">
+                                    <span class="fw-bold" style="font-size:1.1em;">
+                                        @Math.Abs(_priorMonth.Balance).ToString("C", CultureInfo.CurrentCulture)
+                                        @(_priorMonth.Balance < 0 ? $" {Localizer["Deficit"]}" : "")
+                                    </span>
+                                </RadzenText>
+                            </div>
+                        </RadzenStack>
+                    </RadzenCard>
+                </RadzenStack>
 
                 <!-- Current Year -->
-                <RadzenCard Style="min-width: 260px;">
-                    <RadzenText TextStyle="TextStyle.H5">@Localizer["CurrentYear"]</RadzenText>
-                    <RadzenText TextStyle="TextStyle.Subtitle2">@_currentYear.Period</RadzenText>
-                    @SummaryRows(_currentYear, Localizer["CurrentBalance"])
-                </RadzenCard>
+                <RadzenStack Orientation="Orientation.Vertical" Style="width: 24%; min-width: 260px;">
+                    <RadzenCard Style="height: 100%;">
+                        <RadzenText TextStyle="TextStyle.H5">@Localizer["CurrentYear"]</RadzenText>
+                        <RadzenText TextStyle="TextStyle.Subtitle2">@_currentYear.Period</RadzenText>
+
+                        <RadzenStack Gap="0.75rem" Class="mt-3">
+                            <div>
+                                <RadzenText TextStyle="TextStyle.Body1">@Localizer["Donations"]</RadzenText>
+                                <div class="text-end">
+                                    <div><span>@Localizer["Total"]:</span><span class="fw-bold ms-1">@_currentYear.TotalDonations.ToString("C", CultureInfo.CurrentCulture)</span></div>
+                                    <div class="text-muted" style="font-size: .85em;"><span>@Localizer["MonthlyAverage"]:</span><span class="fw-bold ms-1">@_currentYear.AvgMonthlyDonations.ToString("C", CultureInfo.CurrentCulture)</span></div>
+                                </div>
+                            </div>
+
+                            <hr class="my-2" />
+
+                            <div>
+                                <RadzenText TextStyle="TextStyle.Body1">@Localizer["Expenses"]</RadzenText>
+                                <div class="text-end">
+                                    <div><span>@Localizer["Total"]:</span><span class="fw-bold ms-1">@_currentYear.TotalExpenses.ToString("C", CultureInfo.CurrentCulture)</span></div>
+                                    <div class="text-muted" style="font-size: .85em;"><span>@Localizer["MonthlyAverage"]:</span><span class="fw-bold ms-1">@_currentYear.AvgMonthlyExpenses.ToString("C", CultureInfo.CurrentCulture)</span></div>
+                                </div>
+                            </div>
+
+                            <hr class="my-2" />
+
+                            <div class="d-flex justify-content-between">
+                                <RadzenText TextStyle="TextStyle.Body1">@Localizer["Overhead"]</RadzenText>
+                                <RadzenText TextStyle="TextStyle.Body1"><span class="fw-bold">@_currentYear.TotalOverhead.ToString("C", CultureInfo.CurrentCulture)</span></RadzenText>
+                            </div>
+
+                            <hr class="my-2" />
+
+                            <div class="d-flex justify-content-between">
+                                <RadzenText TextStyle="TextStyle.Body1">@Localizer["InternalTransfers"]</RadzenText>
+                                <RadzenText TextStyle="TextStyle.Body1"><span class="fw-bold">@_currentYear.InternalTransfers.ToString("C", CultureInfo.CurrentCulture)</span></RadzenText>
+                            </div>
+
+                            <hr class="my-2" />
+
+                            <div class="d-flex justify-content-between align-items-center">
+                                <RadzenText TextStyle="TextStyle.Subtitle1">@Localizer["CurrentBalance"]</RadzenText>
+                                <RadzenText TextStyle="TextStyle.Subtitle1">
+                                    <span class="fw-bold" style="font-size:1.1em;">
+                                        @Math.Abs(_currentYear.Balance).ToString("C", CultureInfo.CurrentCulture)
+                                        @(_currentYear.Balance < 0 ? $" {Localizer["Deficit"]}" : "")
+                                    </span>
+                                </RadzenText>
+                            </div>
+                        </RadzenStack>
+                    </RadzenCard>
+                </RadzenStack>
 
                 <!-- Prior Year -->
-                <RadzenCard Style="min-width: 260px;">
-                    <RadzenText TextStyle="TextStyle.H5">@Localizer["PriorYear"]</RadzenText>
-                    <RadzenText TextStyle="TextStyle.Subtitle2">@_priorYear.Period</RadzenText>
-                    @SummaryRows(_priorYear, Localizer["EndOfYearBalance"])
-                </RadzenCard>
+                <RadzenStack Orientation="Orientation.Vertical" Style="width: 24%; min-width: 260px;">
+                    <RadzenCard Style="height: 100%;">
+                        <RadzenText TextStyle="TextStyle.H5">@Localizer["PriorYear"]</RadzenText>
+                        <RadzenText TextStyle="TextStyle.Subtitle2">@_priorYear.Period</RadzenText>
+
+                        <RadzenStack Gap="0.75rem" Class="mt-3">
+                            <div>
+                                <RadzenText TextStyle="TextStyle.Body1">@Localizer["Donations"]</RadzenText>
+                                <div class="text-end">
+                                    <div><span>@Localizer["Total"]:</span><span class="fw-bold ms-1">@_priorYear.TotalDonations.ToString("C", CultureInfo.CurrentCulture)</span></div>
+                                    <div class="text-muted" style="font-size: .85em;"><span>@Localizer["MonthlyAverage"]:</span><span class="fw-bold ms-1">@_priorYear.AvgMonthlyDonations.ToString("C", CultureInfo.CurrentCulture)</span></div>
+                                </div>
+                            </div>
+
+                            <hr class="my-2" />
+
+                            <div>
+                                <RadzenText TextStyle="TextStyle.Body1">@Localizer["Expenses"]</RadzenText>
+                                <div class="text-end">
+                                    <div><span>@Localizer["Total"]:</span><span class="fw-bold ms-1">@_priorYear.TotalExpenses.ToString("C", CultureInfo.CurrentCulture)</span></div>
+                                    <div class="text-muted" style="font-size: .85em;"><span>@Localizer["MonthlyAverage"]:</span><span class="fw-bold ms-1">@_priorYear.AvgMonthlyExpenses.ToString("C", CultureInfo.CurrentCulture)</span></div>
+                                </div>
+                            </div>
+
+                            <hr class="my-2" />
+
+                            <div class="d-flex justify-content-between">
+                                <RadzenText TextStyle="TextStyle.Body1">@Localizer["Overhead"]</RadzenText>
+                                <RadzenText TextStyle="TextStyle.Body1"><span class="fw-bold">@_priorYear.TotalOverhead.ToString("C", CultureInfo.CurrentCulture)</span></RadzenText>
+                            </div>
+
+                            <hr class="my-2" />
+
+                            <div class="d-flex justify-content-between">
+                                <RadzenText TextStyle="TextStyle.Body1">@Localizer["InternalTransfers"]</RadzenText>
+                                <RadzenText TextStyle="TextStyle.Body1"><span class="fw-bold">@_priorYear.InternalTransfers.ToString("C", CultureInfo.CurrentCulture)</span></RadzenText>
+                            </div>
+
+                            <hr class="my-2" />
+
+                            <div class="d-flex justify-content-between align-items-center">
+                                <RadzenText TextStyle="TextStyle.Subtitle1">@Localizer["EndOfYearBalance"]</RadzenText>
+                                <RadzenText TextStyle="TextStyle.Subtitle1">
+                                    <span class="fw-bold" style="font-size:1.1em;">
+                                        @Math.Abs(_priorYear.Balance).ToString("C", CultureInfo.CurrentCulture)
+                                        @(_priorYear.Balance < 0 ? $" {Localizer["Deficit"]}" : "")
+                                    </span>
+                                </RadzenText>
+                            </div>
+                        </RadzenStack>
+                    </RadzenCard>
+                </RadzenStack>
             </RadzenStack>
         }
     }
@@ -77,11 +261,9 @@
     private string? _selectedAccountName;
     private Account? _selectedAccount;
 
-    // data sources
     private List<AccountingDataModel> _accounting = new();
     private List<DonationData> _donations = new();
 
-    // summaries
     private FinancialSummary _currentMonth = new();
     private FinancialSummary _priorMonth = new();
     private FinancialSummary _currentYear = new();
@@ -93,39 +275,35 @@
     {
         var auth = await AuthStateProvider.GetAuthenticationStateAsync();
         var user = auth.User;
-        if (!user.Identity?.IsAuthenticated ?? true)
-        {
-            _loading = false;
-            return;
-        }
+        if (!user.Identity?.IsAuthenticated ?? true) { _loading = false; return; }
 
-        // Initialize user data (same as Home)
         await DataLoader.InitializeUserDataAsync(user);
-
         _accounts = AppState.UserAccounts ?? new List<Account>();
 
-        // choose default
-        _selectedAccountName = DefaultAccountName ?? AppState.DefaultAccount ?? _accounts.FirstOrDefault()?.Name;
+        _selectedAccountName = new[] { DefaultAccountName, AppState.DefaultAccount, _accounts.FirstOrDefault()?.Name }
+            .FirstOrDefault(s => !string.IsNullOrWhiteSpace(s));
 
-        if (!string.IsNullOrEmpty(_selectedAccountName))
+        if (!string.IsNullOrWhiteSpace(_selectedAccountName))
         {
             await LoadAccountAndCompute(_selectedAccountName);
         }
 
         _loading = false;
-        StateHasChanged();
+        await InvokeAsync(StateHasChanged);
     }
 
-    private async Task OnAccountSelection(string? accountName)
+    private async Task OnAccountChangedAsync()
     {
-        if (string.IsNullOrEmpty(accountName)) return;
+        var accountName = _selectedAccountName;
+        if (string.IsNullOrWhiteSpace(accountName)) return;
+
         _loading = true;
-        StateHasChanged();
+        await InvokeAsync(StateHasChanged);
 
         await LoadAccountAndCompute(accountName);
 
         _loading = false;
-        StateHasChanged();
+        await InvokeAsync(StateHasChanged);
     }
 
     private async Task LoadAccountAndCompute(string accountName)
@@ -134,15 +312,17 @@
         _selectedAccount = _accounts.FirstOrDefault(a => a.Name == accountName);
         AppState.DefaultAccount = accountName;
 
-        if (_selectedAccount != null && !AppState.IsAccountDataLoaded(accountName))
+        if (_selectedAccount == null) return;
+
+        if (!AppState.IsAccountDataLoaded(accountName))
         {
             await DataLoader.LoadAccountDataAsync(_selectedAccount);
         }
 
-        if (_selectedAccount != null && AppState.IsAccountDataLoaded(accountName))
+        if (AppState.IsAccountDataLoaded(accountName) &&
+            AppState.AccountDataCache.TryGetValue(accountName, out var cache))
         {
-            var cache = AppState.AccountDataCache[accountName];
-            _accounting = cache.AccountingData;
+            _accounting = cache.AccountingData ?? new List<AccountingDataModel>();
             _donations = cache.DonationData?.Select(d => new DonationData
             {
                 Id = d.id,
@@ -153,20 +333,22 @@
 
             ComputeSummaries();
         }
+        else
+        {
+            _currentMonth = new FinancialSummary { Period = Localizer["Loading"] };
+        }
     }
 
     private void ComputeSummaries()
     {
-        // You already have mature summary code in Home.razor.
-        // For brevity, replicate the same logic patterns here.
-        DateTime now = DateTime.Now;
+        var now = DateTime.Now;
+        var startingBalance = 7812.65m;
 
-        decimal startingBalance = 7812.65m;
-        decimal currentBalance = CalculateBalanceAsOfDate(now, startingBalance);
-        DateTime priorMonthEnd = new DateTime(now.Year, now.Month, 1).AddDays(-1);
-        decimal priorMonthBalance = CalculateBalanceAsOfDate(priorMonthEnd, startingBalance);
-        DateTime priorYearEnd = new DateTime(now.Year - 1, 12, 31);
-        decimal priorYearBalance = CalculateBalanceAsOfDate(priorYearEnd, startingBalance);
+        var currentBalance = CalculateBalanceAsOfDate(now, startingBalance);
+        var priorMonthEnd = new DateTime(now.Year, now.Month, 1).AddDays(-1);
+        var priorMonthBalance = CalculateBalanceAsOfDate(priorMonthEnd, startingBalance);
+        var priorYearEnd = new DateTime(now.Year - 1, 12, 31);
+        var priorYearBalance = CalculateBalanceAsOfDate(priorYearEnd, startingBalance);
 
         CalculateCurrentMonthSummary(now, currentBalance);
         CalculatePriorMonthSummary(now, priorMonthBalance);
@@ -176,7 +358,6 @@
 
     private decimal CalculateBalanceAsOfDate(DateTime asOfDate, decimal originalStartingBalance)
     {
-        // mirror Home.razor
         decimal startingBalance = 7812.65m;
         decimal missingDonations = 9000.00m;
         decimal actualOverhead = -24065.88m;
@@ -280,30 +461,6 @@
             Balance = priorYearBalance
         };
     }
-
-    private RenderFragment SummaryRows(FinancialSummary s, string balanceLabel) => builder =>
-    {
-        void Row(string label, string value)
-        {
-            builder.OpenElement(0, "div");
-            builder.AddAttribute(1, "class", "d-flex justify-content-between");
-            builder.OpenComponent<RadzenText>(2);
-            builder.AddAttribute(3, "TextStyle", TextStyle.Body1);
-            builder.AddContent(4, label);
-            builder.CloseComponent();
-            builder.OpenComponent<RadzenText>(5);
-            builder.AddAttribute(6, "TextStyle", TextStyle.Body1);
-            builder.AddContent(7, value);
-            builder.CloseComponent();
-            builder.CloseElement();
-        }
-
-        Row(Localizer["Donations"], s.TotalDonations.ToString("N2"));
-        Row(Localizer["Expenses"], s.TotalExpenses.ToString("N2"));
-        Row(Localizer["Overhead"], s.TotalOverhead.ToString("N2"));
-        Row(Localizer["InternalTransfers"], s.InternalTransfers.ToString("N2"));
-        Row(balanceLabel, Math.Abs(s.Balance).ToString("C"));
-    };
 
     private class FinancialSummary
     {

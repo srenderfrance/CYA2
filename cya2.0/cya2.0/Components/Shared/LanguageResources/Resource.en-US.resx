@@ -372,4 +372,10 @@
   <data name="DefaultAccount" xml:space="preserve">
     <value>Default Account</value>
   </data>
+  <data name="Total" xml:space="preserve">
+    <value>Total</value>
+  </data>
+  <data name="MonthlyAverage" xml:space="preserve">
+    <value>Monthly Average</value>
+  </data>
 </root>
