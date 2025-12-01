@@ -5,8 +5,9 @@
 @inject AppState AppState
 @inject NavigationManager Navigation
 @rendermode InteractiveServer
+@inject IStringLocalizer<Resource> Localizer
 
-<PageTitle>Logged Out - CYA</PageTitle>
+<PageTitle>@Localizer["LoggedOutTitle"]</PageTitle>
 
 <div class="container mt-5">
     <div class="row justify-content-center">
@@ -16,14 +17,14 @@
                     <div class="mb-4">
                         <i class="bi bi-box-arrow-right" style="font-size: 3rem; color: #0d6efd;"></i>
                     </div>
-                    <h2 class="card-title mb-3">You've been logged out</h2>
-                    <p class="card-text mb-4">Thank you for using CYA. You have successfully logged out of your account.</p>
+                    <h2 class="card-title mb-3">@Localizer["LoggedOutHeader"]</h2>
+                    <p class="card-text mb-4">@Localizer["LoggedOutMessage"]</p>
                     <a href="/" class="btn btn-primary btn-lg">
-                        <i class="bi bi-google me-2"></i> Sign in with Google
+                        <i class="bi bi-google me-2"></i> @Localizer["SignInWithGoogle"]
                     </a>
                 </div>
                 <div class="card-footer text-center text-muted py-3">
-                    <small>&copy; @DateTime.Now.Year - CYA Application</small>
+                    <small>&copy; @DateTime.Now.Year - @Localizer["AppName"]</small>
                 </div>
             </div>
         </div>

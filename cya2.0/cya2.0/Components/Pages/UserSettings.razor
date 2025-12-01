@@ -9,24 +9,27 @@
 @inject AppState AppState
 @using ModelsLibrary
 @rendermode InteractiveServer
+@inject IStringLocalizer<Resource> Localizer
+@inject IJSRuntime JS
+@inject IHttpContextAccessor HttpContextAccessor
 
-<PageTitle>User Settings</PageTitle>
+<PageTitle>@Localizer["UserSettings"]</PageTitle>
 
 <div class="container mt-4">
     <RadzenCard>
-        <RadzenText TextStyle="TextStyle.H3">User Settings</RadzenText>
+        <RadzenText TextStyle="TextStyle.H3">@Localizer["UserSettings"]</RadzenText>
 
         @if (!string.IsNullOrEmpty(errorMessage))
         {
             <RadzenAlert AlertStyle="AlertStyle.Danger" ShowIcon="true" Variant="Variant.Filled" Class="mt-3 mb-3">
-                @errorMessage
+                @Localizer[errorMessage]
             </RadzenAlert>
         }
 
         @if (!string.IsNullOrEmpty(successMessage))
         {
             <RadzenAlert AlertStyle="AlertStyle.Success" ShowIcon="true" Variant="Variant.Filled" Class="mt-3 mb-3">
-                @successMessage
+                @Localizer[successMessage]
             </RadzenAlert>
         }
 
@@ -36,10 +39,10 @@
             <RadzenStack Orientation="Orientation.Vertical" Gap="1rem" Style="width: 48%;">
                 <RadzenCard>
                     <RadzenStack Gap="1rem">
-                        <RadzenText TextStyle="TextStyle.H5">Default Account</RadzenText>
+                        <RadzenText TextStyle="TextStyle.H5">@Localizer["DefaultAccount"]</RadzenText>
                         
                         <RadzenText TextStyle="TextStyle.Body2">
-                            Current default: <strong>@GetAccountDisplayName(currentDefaultAccountId)</strong>
+                            @Localizer["CurrentDefault"]: <strong>@GetAccountDisplayName(currentDefaultAccountId)</strong>
                         </RadzenText>
                         
                         <RadzenDropDown TValue="string"
@@ -47,11 +50,11 @@
                                         TextProperty="Name"
                                         ValueProperty="AccountRef"
                                         @bind-Value="selectedAccountRef"
-                                        Placeholder="Select a default account"
+                                        Placeholder="@Localizer["SelectDefaultAccount"]"
                                         Style="width: 100%;"
                                         Disabled="@(userAccounts == null || userAccounts.Count == 0)" />
                         
-                        <RadzenButton Text="Update Account"
+                        <RadzenButton Text="@Localizer["UpdateAccount"]"
                                       Click="SaveAccountSetting"
                                       ButtonStyle="ButtonStyle.Primary"
                                       Size="ButtonSize.Medium"
@@ -65,10 +68,10 @@
             <RadzenStack Orientation="Orientation.Vertical" Gap="1rem" Style="width: 48%;">
                 <RadzenCard>
                     <RadzenStack Gap="1rem">
-                        <RadzenText TextStyle="TextStyle.H5">Language Preference</RadzenText>
+                        <RadzenText TextStyle="TextStyle.H5">@Localizer["LanguagePreference"]</RadzenText>
                         
                         <RadzenText TextStyle="TextStyle.Body2">
-                            Current language: <strong>@GetLanguageDisplayName(currentLanguage)</strong>
+                            @Localizer["CurrentLanguage"]: <strong>@GetLanguageDisplayName(currentLanguage)</strong>
                         </RadzenText>
                         
                         <RadzenDropDown TValue="string"
@@ -78,7 +81,7 @@
                                         @bind-Value="selectedLanguage"
                                         Style="width: 100%;" />
                         
-                        <RadzenButton Text="Update Language"
+                        <RadzenButton Text="@Localizer["UpdateLanguage"]"
                                       Click="SaveLanguageSetting"
                                       ButtonStyle="ButtonStyle.Primary"
                                       Size="ButtonSize.Medium"
@@ -94,27 +97,24 @@
 @code {
     private int userId;
     private int? currentDefaultAccountId;
-    private string currentLanguage = "en";
-    private string selectedAccountRef;
-    private string selectedLanguage = "en";
     private List<Account> userAccounts = new List<Account>();
-    private List<LanguageOption> languageOptions = new List<LanguageOption>();
+    private List<LanguageOption> languageOptions = new List<LanguageOption>
+    {
+        new LanguageOption { Value = "en-US", Text = "English" },
+        new LanguageOption { Value = "es-US", Text = "Spanish" }
+    };
     private string errorMessage;
     private string successMessage;
     private bool isSavingAccount = false;
     private bool isSavingLanguage = false;
     private bool showLogoutButton = false;
+    private string currentLanguage = "en-US";
+    private string selectedAccountRef;
+    private string selectedLanguage = "en-US";
 
     protected override async Task OnInitializedAsync()
     {
-        // Initialize language options
-        languageOptions = new List<LanguageOption>
-        {
-            new LanguageOption { Value = "en", Text = "English" },
-            new LanguageOption { Value = "es", Text = "Spanish" }
-        };
-
-        // Get the current user information
+        // Language options already set above
         await LoadUserData();
     }
 
@@ -125,7 +125,6 @@
             errorMessage = string.Empty;
             successMessage = string.Empty;
 
-            // Get the current user claims
             var authState = await AuthStateProvider.GetAuthenticationStateAsync();
             var user = authState.User;
 
@@ -136,13 +135,12 @@
                 if (!string.IsNullOrEmpty(userIdClaim) && int.TryParse(userIdClaim, out int id))
                 {
                     userId = id;
-                    Console.WriteLine($"User ID from claims: {userId}");
+                    Console.WriteLine($"[DEBUG] User ID from claims: {userId}");
                 }
                 else
                 {
-                    // Fallback to database lookup if claim not found
                     var email = user.FindFirstValue(ClaimTypes.Email);
-                    Console.WriteLine($"User ID claim not found, using email: {email} for DB lookup");
+                    Console.WriteLine($"[DEBUG] User ID claim not found, using email: {email} for DB lookup");
 
                     string userSql = "SELECT Id FROM Users WHERE Email = @Email";
                     var userResults = await _data.LoadData<UserIdOnly, dynamic>(
@@ -154,7 +152,7 @@
                     if (userResults != null && userResults.Any())
                     {
                         userId = userResults.First().Id;
-                        Console.WriteLine($"User ID from database: {userId}");
+                        Console.WriteLine($"[DEBUG] User ID from database: {userId}");
                     }
                     else
                     {
@@ -164,8 +162,21 @@
                 }
 
                 // Get language from claims or use default
-                currentLanguage = user.FindFirstValue("Language") ?? "en";
+                var lang = GetCurrentCultureFromCookie();
+                currentLanguage = lang;
                 selectedLanguage = currentLanguage;
+
+                Console.WriteLine($"[DEBUG] currentLanguage: {currentLanguage}");
+                Console.WriteLine($"[DEBUG] selectedLanguage: {selectedLanguage}");
+
+                // Log language options
+                foreach (var opt in languageOptions)
+                {
+                    Console.WriteLine($"[DEBUG] languageOptions: Value={opt.Value}, Text={opt.Text}");
+                }
+
+                // Log what GetLanguageDisplayName returns
+                Console.WriteLine($"[DEBUG] GetLanguageDisplayName(currentLanguage): {GetLanguageDisplayName(currentLanguage)}");
 
                 // Get default account ID from claims (stored as an integer)
                 var defaultAccountClaim = user.FindFirstValue("DefaultAccount");
@@ -176,18 +187,14 @@
                     currentDefaultAccountId = parsedId;
                 }
 
-                // Load user accounts with the ID
                 await LoadUserAccounts();
 
-                // Map the defaultAccountId to the proper accountRef for the dropdown
                 if (currentDefaultAccountId.HasValue)
                 {
                     var defaultAccount = userAccounts.FirstOrDefault(a => a.AccountId == currentDefaultAccountId.Value);
                     if (defaultAccount != null)
                     {
                         selectedAccountRef = defaultAccount.AccountRef;
-                        
-                        // Update AppState with the default account name
                         AppState.DefaultAccount = defaultAccount.Name;
                     }
                 }
@@ -200,7 +207,7 @@
         catch (Exception ex)
         {
             errorMessage = $"Error loading user data: {ex.Message}";
-            Console.WriteLine($"Exception in LoadUserData: {ex}");
+            Console.WriteLine($"[DEBUG] Exception in LoadUserData: {ex}");
         }
     }
 
@@ -361,12 +368,12 @@
             errorMessage = string.Empty;
             successMessage = string.Empty;
 
-            Console.WriteLine($"Saving language setting for user ID: {userId}");
-            Console.WriteLine($"Current language: {currentLanguage}, Selected language: {selectedLanguage}");
+            // Only allow "en-US" or "es-US"
+            var langToSave = selectedLanguage == "es-US" ? "es-US" : "en-US";
 
-            if (selectedLanguage == currentLanguage)
+            if (langToSave == currentLanguage)
             {
-                successMessage = "No changes were made to your language preference.";
+                successMessage = Localizer["NoLanguageChange"];
                 return;
             }
 
@@ -374,41 +381,37 @@
             var parameters = new Dictionary<string, object>
             {
                 { "Id", userId },
-                { "Language", selectedLanguage }
+                { "Language", langToSave }
             };
 
-            Console.WriteLine($"SQL Query: {sql}");
-            foreach (var param in parameters)
-            {
-                Console.WriteLine($"Parameter: {param.Key} = {param.Value}");
-            }
-
-            // Execute update
             int result = await _data.SaveData(
                 sql,
                 parameters,
                 _config.GetConnectionString("default")
             );
 
-            Console.WriteLine($"Update result: {result}");
-
             if (result > 0)
             {
-                successMessage = "Language preference updated successfully. Please log out and log back in for changes to take effect.";
-                showLogoutButton = true;
+                // Update AppState (if you store language there)
+                // AppState.Language = langToSave; // Add this property if needed
 
-                // Update current value
-                currentLanguage = selectedLanguage;
+                // Set the culture cookie so the new language takes effect immediately
+                await JS.InvokeVoidAsync("blazorCulture.set", langToSave);
+
+                // Optionally, update currentLanguage and show a message
+                currentLanguage = langToSave;
+                successMessage = Localizer["LanguageUpdated"];
+                // Refresh the browser to apply the new culture
+                NavigationManager.NavigateTo(NavigationManager.Uri, forceLoad: true);
             }
             else
             {
-                errorMessage = $"Failed to update language preference: {_data.LastError}";
+                errorMessage = Localizer["LanguageUpdateFailed"];
             }
         }
         catch (Exception ex)
         {
-            errorMessage = $"Error saving language setting: {ex.Message}";
-            Console.WriteLine($"Exception in SaveLanguageSetting: {ex}");
+            errorMessage = $"{Localizer["ErrorSavingLanguage"]} {ex.Message}";
         }
         finally
         {
@@ -424,7 +427,8 @@
     private string GetLanguageDisplayName(string code)
     {
         var language = languageOptions.FirstOrDefault(l => l.Value == code);
-        return language?.Text ?? "Unknown";
+        Console.WriteLine($"[DEBUG] GetLanguageDisplayName input: {code}, found: {language?.Text}");
+        return language?.Text ?? code;
     }
 
     private string GetAccountDisplayName(int? accountId)
@@ -446,5 +450,14 @@
     private class UserIdOnly
     {
         public int Id { get; set; }
+    }
+
+    private string GetCurrentCultureFromCookie()
+    {
+        var cookie = HttpContextAccessor.HttpContext?.Request?.Cookies[".AspNetCore.Culture"];
+        if (string.IsNullOrEmpty(cookie))
+            return "en-US";
+        var match = System.Text.RegularExpressions.Regex.Match(cookie, @"c=([a-zA-Z\-]+)");
+        return match.Success ? match.Groups[1].Value : "en-US";
     }
 }

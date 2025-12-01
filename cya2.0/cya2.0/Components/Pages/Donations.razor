@@ -13,38 +13,39 @@
 @inject AppState AppState
 @inject DataLoadingService DataLoader
 @rendermode InteractiveServer
+@inject IStringLocalizer<Resource> Localizer
 @attribute [StreamRendering]
 
-<PageTitle>DONATIONS</PageTitle>
+<PageTitle>@Localizer["DonationsNav"]</PageTitle>
 
 <RadzenStack Orientation="Orientation.Vertical" Gap="1rem" Class="rz-p-4">
     <div class="d-flex justify-content-between align-items-center">
-        <RadzenText TextStyle="TextStyle.H3">Account: @selectedAccount</RadzenText>
+        <RadzenText TextStyle="TextStyle.H3">@Localizer["Account"]: @selectedAccount</RadzenText>
         <RadzenDropDown TValue="string"
                         Data="@AppState.UserAccounts"
                         TextProperty="Name"
                         ValueProperty="Name"
                         @bind-Value="selectedAccount"
                         Change="@(args => accountSelection(args?.ToString()))"
-                        Placeholder="Choose Account"
+                        Placeholder="@Localizer["ChooseAccount"]"
                         Style="width: 250px;" />
     </div>
 
     <RadzenStack Orientation="Orientation.Horizontal" Gap="1rem" JustifyContent="JustifyContent.Start" AlignItems="AlignItems.Center">
-        <RadzenText TextStyle="TextStyle.Subtitle2">Date Range:</RadzenText>
-        <RadzenLabel Text="Start Date" />
+        <RadzenText TextStyle="TextStyle.Subtitle2">@Localizer["DateRange"]</RadzenText>
+        <RadzenLabel Text="@Localizer["StartDate"]" />
         <RadzenDatePicker @bind-Value="@startDate" DateFormat="MM/dd/yyyy" />
 
-        <RadzenLabel Text="End Date" />
+        <RadzenLabel Text="@Localizer["EndDate"]" />
         <RadzenDatePicker @bind-Value="@endDate" DateFormat="MM/dd/yyyy" />
 
-        <RadzenButton Text="Apply Filter" Icon="filter_alt" Click="@selectDateRange" ButtonStyle="ButtonStyle.Primary" />
+        <RadzenButton Text="@Localizer["ApplyFilter"]" Icon="filter_alt" Click="@selectDateRange" ButtonStyle="ButtonStyle.Primary" />
     </RadzenStack>
 
     @if (!string.IsNullOrEmpty(errorMessage))
     {
         <RadzenAlert AlertStyle="AlertStyle.Danger" ShowIcon="true" Variant="Variant.Filled" Class="mt-3">
-            @errorMessage
+            @Localizer[errorMessage]
         </RadzenAlert>
     }
 
@@ -52,7 +53,7 @@
     {
         <div class="mt-4">
             <RadzenProgressBar Value="100" ShowValue="false" Mode="ProgressBarMode.Indeterminate" />
-            <p class="text-muted mt-2">Loading donation data...</p>
+            <p class="text-muted mt-2">@Localizer["LoadingDonations"]</p>
         </div>
     }
     else
@@ -65,14 +66,14 @@
                             AllowSorting="true"
                             AllowPaging="false"
                             FilterMode="FilterMode.Advanced"
-                            EmptyText="No donations found">
+                            EmptyText="@Localizer["NoDonationsFound"]">
                 <Columns>
-                    <RadzenDataGridColumn TItem="UserDataDonations" Property="Account" Title="Account" />
-                    <RadzenDataGridColumn TItem="UserDataDonations" Property="Donor" Title="Donor" />
-                    <RadzenDataGridColumn TItem="UserDataDonations" Property="Date" Title="Date" FormatString="{0:MM/dd/yyyy}" />
-                    <RadzenDataGridColumn TItem="UserDataDonations" Property="Amount" Title="Amount" FormatString="{0:C2}" />
-                    <RadzenDataGridColumn TItem="UserDataDonations" Property="Frequency" Title="Frequency" />
-                    <RadzenDataGridColumn TItem="UserDataDonations" Property="TransactionType" Title="Transaction Type" />
+                    <RadzenDataGridColumn TItem="UserDataDonations" Property="Account" Title="@Localizer["Account"]" />
+                    <RadzenDataGridColumn TItem="UserDataDonations" Property="Donor" Title="@Localizer["Donor"]" />
+                    <RadzenDataGridColumn TItem="UserDataDonations" Property="Date" Title="@Localizer["Date"]" FormatString="{0:MM/dd/yyyy}" />
+                    <RadzenDataGridColumn TItem="UserDataDonations" Property="Amount" Title="@Localizer["Amount"]" FormatString="{0:C2}" />
+                    <RadzenDataGridColumn TItem="UserDataDonations" Property="Frequency" Title="@Localizer["Frequency"]" />
+                    <RadzenDataGridColumn TItem="UserDataDonations" Property="TransactionType" Title="@Localizer["TransactionType"]" />
                 </Columns>
             </RadzenDataGrid>
         </RadzenCard>

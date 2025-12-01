@@ -1,4 +1,4 @@
-using cya2._0.Services;
+using cya2.Services;
 using DataLibrary;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Configuration;
@@ -7,7 +7,7 @@ using MySql.Data.MySqlClient;
 using System;
 using System.Threading.Tasks;
 
-namespace cya2._0.Middleware
+namespace cya2.Middleware
 {
     public class DatabaseCheckMiddleware
     {

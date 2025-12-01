@@ -1,138 +1,70 @@
 ﻿@inject NavigationManager NavigationManager
-@using static Microsoft.AspNetCore.Components.Web.RenderMode
-@using Microsoft.AspNetCore.Components.Authorization
 @inject AuthenticationStateProvider AuthStateProvider
-@inject IDataAccess DataAccess
-@inject IConfiguration Config
-@rendermode InteractiveServer
+@inject IStringLocalizer<Resource> Localizer
 
-    <!-- Increase the spacing between nav items -->
-    <div class="navbar">
-        <!-- Conditional rendering of Home/Admin based on role -->
+<nav class="nav-container d-flex justify-content-between align-items-center">
+    <!-- Left: Admin Panel (only for Admin) -->
+    <div class="nav-left d-flex align-items-center">
         <AuthorizeView Roles="Admin">
             <Authorized>
-                <!-- For admin users, show Admin link instead of Home -->
                 <div class="nav-item px-4">
                     <NavLink class="nav-link" href="/admin" Match="NavLinkMatch.All">
-                        <span class="bi bi-shield-lock-nav-menu" aria-hidden="true"></span> Admin
+                        <span class="bi bi-shield-lock-nav-menu"></span> @Localizer["AdminPanel"]
                     </NavLink>
                 </div>
             </Authorized>
             <NotAuthorized>
-                <!-- For non-admin users, show regular Home link -->
                 <div class="nav-item px-4">
-                    <NavLink class="nav-link" href="" Match="NavLinkMatch.All">
-                        <span class="bi bi-house-door-fill-nav-menu" aria-hidden="true"></span> CYA Home
+                    <NavLink class="nav-link" href="/" Match="NavLinkMatch.All">
+                        <span class="bi bi-house-door-fill-nav-menu"></span> @Localizer["CYAHome"]
                     </NavLink>
                 </div>
             </NotAuthorized>
         </AuthorizeView>
+    </div>
 
-        <div class="nav-item px-3 d-flex navbar-group">
-            <div class="nav-item px-5 nav-link-block">
-                <NavLink class="nav-link" href="donations">
-                    <span class="bi bi-list-nested-nav-menu" aria-hidden="true"></span> Donations
-                </NavLink>
-            </div>
-            <div class="nav-item px-5 nav-link-block">
-                <NavLink class="nav-link" href="expenses">
-                    <span class="bi bi-list-nested-nav-menu" aria-hidden="true"></span> Expenses
-                </NavLink>
-            </div>
-            <div class="nav-item px-5 nav-link-block">
-                <NavLink class="nav-link" href="donors">
-                    <span class="bi bi-list-nested-nav-menu" aria-hidden="true"></span> Donors
-                </NavLink>
-            </div>
-            <AuthorizeView Roles="Admin,Viewer">
-                <Authorized>
-                    <div class="nav-item px-5 nav-link-block">
-                        <NavLink class="nav-link" href="all-balances">
-                            <span class="bi bi-list-nested-nav-menu" aria-hidden="true"></span> All Balances
-                        </NavLink>
-                    </div>
-                </Authorized>
-            </AuthorizeView>
-            <AuthorizeView Roles="Admin">
-                <Authorized>
-                    <div class="nav-item px-5 nav-link-block">
-                        <NavLink class="nav-link" href="/account-summaries" Match="NavLinkMatch.All">
-                            <span class="bi bi-list-nested-nav-menu" aria-hidden="true"></span> Account Summaries
-                        </NavLink>
-                    </div>
-                </Authorized>
-            </AuthorizeView>
+    <!-- Center: Main navigation links -->
+    <div class="nav-center d-flex navbar-group justify-content-center flex-grow-1">
+        <div class="nav-item px-5 nav-link-block">
+            <NavLink class="nav-link" href="/donations">
+                <span class="bi bi-list-nested-nav-menu"></span> @Localizer["DonationsNav"]
+            </NavLink>
         </div>
-
-        <div class="nav-item px-3 d-flex navbar-group">
-            <div class="nav-item px-5 nav-link-block">
-                <NavLink class="nav-link" href="usersettings">
-                    <span class="bi bi-gear-fill-nav-menu" aria-hidden="true"></span> Settings
-                </NavLink>
-            </div>
+        <div class="nav-item px-5 nav-link-block">
+            <NavLink class="nav-link" href="/expenses">
+                <span class="bi bi-list-nested-nav-menu"></span> @Localizer["ExpensesNav"]
+            </NavLink>
         </div>
-
-        <div class="nav-item px-4">
-            <a href="/logout" class="nav-link">
-                <span class="bi bi-box-arrow-right-nav-menu" aria-hidden="true"></span> Logout
-            </a>
+        <div class="nav-item px-5 nav-link-block">
+            <NavLink class="nav-link" href="/donors">
+                <span class="bi bi-list-nested-nav-menu"></span> @Localizer["DonorsNav"]
+            </NavLink>
         </div>
     </div>
 
-    @if (_showConnectionError)
-    {
-        <RadzenAlert AlertStyle="AlertStyle.Warning" ShowIcon="true" Class="rz-m-2">
-            <RadzenText TextStyle="TextStyle.Subtitle1">Database connection issues detected.</RadzenText>
-            <RadzenText TextStyle="TextStyle.Body1">Some features may be unavailable until connection is restored.</RadzenText>
-        </RadzenAlert>
-    }
+    <!-- Right: User Settings + Logout -->
+    <div class="nav-right d-flex align-items-center">
+        <div class="nav-item px-5 nav-link-block">
+            <NavLink class="nav-link" href="/usersettings">
+                <span class="bi bi-gear-fill-nav-menu"></span> @Localizer["UserSettings"]
+            </NavLink>
+        </div>
+        <div class="nav-item px-4">
+            <a href="/logout" class="nav-link">
+                <span class="bi bi-box-arrow-right-nav-menu"></span> @Localizer["Logout"]
+            </a>
+        </div>
+    </div>
+</nav>
 
 @code {
-    private bool _showConnectionError = false;
-    private ErrorBoundary _errorBoundary;
-    
-    protected override void OnInitialized()
-    {
-        // Initialize error boundary
-        _errorBoundary = new ErrorBoundary();
-    }
-    
-    protected override async Task OnInitializedAsync()
-    {
-        try
-        {
-            // Check database connection but don't throw if it fails
-            var connectionString = Config.GetConnectionString("default");
-            if (!string.IsNullOrEmpty(connectionString))
-            {
-                _showConnectionError = !(await DataAccess.CheckConnection(connectionString));
-            }
-        }
-        catch (Exception)
-        {
-            _showConnectionError = true;
-        }
-    }
-    
-    // Reset error boundary when parameters change
-    protected override void OnParametersSet()
-    {
-        _errorBoundary?.Recover();
-    }
-    
-    // Add this method to redirect admin users to admin page after login
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (firstRender)
+        if (!firstRender) return;
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        if (authState.User.IsInRole("Admin") && NavigationManager.Uri.EndsWith("/"))
         {
-            var authState = await AuthStateProvider.GetAuthenticationStateAsync();
-            var isAdmin = authState.User.IsInRole("Admin");
-            
-            // If user is admin and currently on home page, redirect to admin page
-            if (isAdmin && NavigationManager.Uri.EndsWith("/"))
-            {
-                NavigationManager.NavigateTo("/admin");
-            }
+            NavigationManager.NavigateTo("/admin");
         }
     }
 }

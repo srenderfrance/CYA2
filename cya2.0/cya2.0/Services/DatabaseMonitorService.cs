@@ -7,7 +7,7 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace cya2._0.Services
+namespace cya2.Services
 {
     public class DatabaseMonitorService : BackgroundService, DataLibrary.IDatabaseMonitor
     {
@@ -34,7 +34,7 @@ namespace cya2._0.Services
         public string LastError => _lastError;
 
         // Add this property to DatabaseMonitorService class
-        public bool AllowMySqlOperations => cya2._0.GlobalSettings.AllowMySqlLoading;
+        public bool AllowMySqlOperations => cya2.GlobalSettings.AllowMySqlLoading;
 
         // Event for connection status changes
         public event EventHandler<bool> ConnectionStatusChanged;
@@ -138,17 +138,17 @@ namespace cya2._0.Services
                             }
                             
                             // Use a TCP check that doesn't need MySQL assemblies
-                            newConnectionState = cya2._0.GlobalSettings.CheckDatabaseTcpConnection(host, port, 2000);
+                            newConnectionState = cya2.GlobalSettings.CheckDatabaseTcpConnection(host, port, 2000);
                             
                             // If TCP check succeeds but MySQL operations are disabled, re-enable them
-                            if (newConnectionState && !cya2._0.GlobalSettings.AllowMySqlLoading)
+                            if (newConnectionState && !cya2.GlobalSettings.AllowMySqlLoading)
                             {
                                 _logger.LogInformation("Database is now available - enabling MySQL operations");
-                                cya2._0.GlobalSettings.AllowMySqlLoading = true;
+                                cya2.GlobalSettings.AllowMySqlLoading = true;
                             }
                             
                             // Now do the full MySQL check only if allowed
-                            if (cya2._0.GlobalSettings.AllowMySqlLoading)
+                            if (cya2.GlobalSettings.AllowMySqlLoading)
                             {
                                 using (var scope = _serviceProvider.CreateScope())
                                 {
@@ -219,7 +219,7 @@ namespace cya2._0.Services
             try
             {
                 // Update GlobalSettings when connection state changes
-                cya2._0.GlobalSettings.AllowMySqlLoading = isConnected;
+                cya2.GlobalSettings.AllowMySqlLoading = isConnected;
 
                 _logger.LogInformation("Database connection state changed to {State}. MySQL operations are now {Action}.",
                     isConnected ? "connected" : "disconnected",

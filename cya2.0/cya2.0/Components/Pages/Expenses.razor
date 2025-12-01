@@ -14,37 +14,38 @@
 @inject DataLoadingService DataLoader
 @rendermode InteractiveServer
 @attribute [StreamRendering]
+@inject IStringLocalizer<Resource> Localizer
 
-<PageTitle>EXPENSES</PageTitle>
+<PageTitle>@Localizer["ExpensesNav"]</PageTitle>
 
 <RadzenStack Orientation="Orientation.Vertical" Gap="1rem" Class="rz-p-4">
     <div class="d-flex justify-content-between align-items-center">
-        <RadzenText TextStyle="TextStyle.H3">Account: @selectedAccount</RadzenText>
+        <RadzenText TextStyle="TextStyle.H3">@Localizer["Account"] @selectedAccount</RadzenText>
         <RadzenDropDown TValue="string"
                         Data="@userAccounts"
                         TextProperty="Name"
                         ValueProperty="Name"
                         @bind-Value="selectedAccount"
                         Change="@(args => accountSelection(args?.ToString()))"
-                        Placeholder="Choose Account"
+                        Placeholder="@Localizer["ChooseAccount"]"
                         Style="width: 250px;" />
     </div>
 
     <RadzenStack Orientation="Orientation.Horizontal" Gap="1rem" JustifyContent="JustifyContent.Start" AlignItems="AlignItems.Center">
-        <RadzenText TextStyle="TextStyle.Subtitle2">Date Range:</RadzenText>
-        <RadzenLabel Text="Start Date" />
+        <RadzenText TextStyle="TextStyle.Subtitle2">@Localizer["DateRange"]</RadzenText>
+        <RadzenLabel Text="@Localizer["StartDate"]" />
         <RadzenDatePicker @bind-Value="@startDate" DateFormat="MM/dd/yyyy" />
 
-        <RadzenLabel Text="End Date" />
+        <RadzenLabel Text="@Localizer["EndDate"]" />
         <RadzenDatePicker @bind-Value="@endDate" DateFormat="MM/dd/yyyy" />
 
-        <RadzenButton Text="Apply Filter" Icon="filter_alt" Click="@selectDateRange" ButtonStyle="ButtonStyle.Primary" />
+        <RadzenButton Text="@Localizer["ApplyFilter"]" Icon="filter_alt" Click="@selectDateRange" ButtonStyle="ButtonStyle.Primary" />
     </RadzenStack>
 
     @if (!string.IsNullOrEmpty(errorMessage))
     {
         <RadzenAlert AlertStyle="AlertStyle.Danger" ShowIcon="true" Variant="Variant.Filled" Class="mt-3">
-            @errorMessage
+            @Localizer[errorMessage]
         </RadzenAlert>
     }
 
@@ -56,17 +57,17 @@
                         AllowSorting="true"
                         AllowPaging="false"
                         FilterMode="FilterMode.Advanced"
-                        EmptyText="No expenses found">
+                        EmptyText="@Localizer["NoExpensesFound"]">
             <Columns>
-                <RadzenDataGridColumn TItem="UserDataExpenses" Property="Date" Title="Date" FormatString="{0:MM/dd/yyyy}" />
-                <RadzenDataGridColumn TItem="UserDataExpenses" Property="Account" Title="Account" />
-                <RadzenDataGridColumn TItem="UserDataExpenses" Property="Description" Title="Description" />
-                <RadzenDataGridColumn TItem="UserDataExpenses" Property="StaffAccount" Title="Staff Account" />
-                <RadzenDataGridColumn TItem="UserDataExpenses" Property="Amount" Title="Amount">
+                <RadzenDataGridColumn TItem="UserDataExpenses" Property="Date" Title="@Localizer["Date"]" FormatString="{0:d}" />
+                <RadzenDataGridColumn TItem="UserDataExpenses" Property="Account" Title="@Localizer["Account"]" />
+                <RadzenDataGridColumn TItem="UserDataExpenses" Property="Description" Title="@Localizer["Description"]" />
+                <RadzenDataGridColumn TItem="UserDataExpenses" Property="StaffAccount" Title="@Localizer["StaffAccount"]" />
+                <RadzenDataGridColumn TItem="UserDataExpenses" Property="Amount" Title="@Localizer["Amount"]">
                     <Template Context="data">
                         <span class="@(data.Amount >= 0 ? "text-success" : "text-danger")">
-                            $@Math.Abs(data.Amount).ToString("N2")
-                            @(data.Amount < 0 ? " (negative)" : "")
+                            @Math.Abs(data.Amount).ToString("C", CultureInfo.CurrentCulture)
+                            @(data.Amount < 0 ? $" {Localizer["Deficit"]}" : "")
                         </span>
                     </Template>
                 </RadzenDataGridColumn>
