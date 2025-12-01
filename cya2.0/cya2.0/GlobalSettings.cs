@@ -1,6 +1,6 @@
 ﻿using System.Net.Sockets;
 
-namespace cya2._0
+namespace cya2
 {
     public static class GlobalSettings
     {
@@ -12,25 +12,19 @@ namespace cya2._0
         {
             try
             {
-                using (var client = new TcpClient())
+                using var client = new TcpClient();
+                var connectResult = client.BeginConnect(host, port, null, null);
+                var success = connectResult.AsyncWaitHandle.WaitOne(timeoutMs);
+                if (!success) return false;
+
+                try
                 {
-                    var connectResult = client.BeginConnect(host, port, null, null);
-                    var success = connectResult.AsyncWaitHandle.WaitOne(timeoutMs);
-
-                    if (!success)
-                    {
-                        return false; // Connection timed out
-                    }
-
-                    try
-                    {
-                        client.EndConnect(connectResult);
-                        return true; // Successfully connected
-                    }
-                    catch
-                    {
-                        return false; // Connection failed
-                    }
+                    client.EndConnect(connectResult);
+                    return true;
+                }
+                catch
+                {
+                    return false;
                 }
             }
             catch

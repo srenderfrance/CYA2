@@ -9,6 +9,8 @@
 @rendermode InteractiveServer
 @attribute [StreamRendering]
 @using System.Security.Claims
+@using System.Threading
+@using System.Globalization
 @inject IDataAccess _data
 @inject IConfiguration _config
 @using ModelsLibrary
@@ -17,14 +19,16 @@
 @inject AuthenticationStateProvider AuthStateProvider
 @using UtilityClasses
 @inject NavigationManager Navigation
+@inject IHttpContextAccessor HttpContextAccessor
+@inject IStringLocalizer<Resource> Localizer
 
-<PageTitle>Home</PageTitle>
+<PageTitle>@Localizer["CYAHome"]</PageTitle>
 
 <h1 class="h3">
-    @userName, Welcome to your Fundraising Account.
+    @Localizer["WelcomeUser", userName]
     @if (AppState.IsAdmin)
     {
-        <span class="badge bg-danger ms-2">Admin Mode</span>
+        <span class="badge bg-danger ms-2">@Localizer["AdminMode"]</span>
     }
 </h1>
 
@@ -32,22 +36,22 @@
 {
     <div class="mt-4">
         <RadzenProgressBar Value="100" ShowValue="false" Mode="ProgressBarMode.Indeterminate" />
-        <p class="text-muted mt-2">Loading your account data...</p>
+        <p class="text-muted mt-2">@Localizer["Loading"]</p>
     </div>
 }
 else if (userAccount == null)
 {
     <div class="alert alert-info mt-4">
-        <h4>No Account Found</h4>
-        <p>You don't have any accounts associated with your profile, or there was an error loading your account information.</p>
-        <p>Please contact your administrator if you believe this is an error.</p>
+        <h4>@Localizer["NoAccountFound"]</h4>
+        <p>@Localizer["NoAccountMessage"]</p>
+        <p>@Localizer["ContactAdmin"]</p>
     </div>
 }
 else
 {
     <RadzenCard class="mt-4">
         <RadzenStack Orientation="Orientation.Horizontal" Gap="1rem" JustifyContent="JustifyContent.Start" AlignItems="AlignItems.Center">
-            <RadzenText TextStyle="TextStyle.H5">Account:</RadzenText>
+            <RadzenText TextStyle="TextStyle.H5">@Localizer["Account"]</RadzenText>
             
             <RadzenDropDown TValue="string"
                             Data="@userAccounts"
@@ -55,7 +59,7 @@ else
                             ValueProperty="Name"
                             Value="@selectedAccount"
                             Change="@(args => accountSelection(args?.ToString()))"
-                            Placeholder="Choose Account"
+                            Placeholder="@Localizer["ChooseAccount"]"
                             Style="width: 250px;" />
         </RadzenStack>
     </RadzenCard>
@@ -64,43 +68,43 @@ else
         <!-- Current Month -->
         <RadzenStack Orientation="Orientation.Vertical" Style="width: 24%; min-width: 260px;">
             <RadzenCard Style="height: 100%;">
-                <RadzenText TextStyle="TextStyle.H5">Current Month</RadzenText>
+                <RadzenText TextStyle="TextStyle.H5">@Localizer["CurrentMonth"]</RadzenText>
                 <RadzenText TextStyle="TextStyle.Subtitle2">@currentMonthSummary.Period</RadzenText>
                 
                 <RadzenStack Gap="0.5rem" Class="mt-3">
                     <div class="d-flex justify-content-between">
-                        <RadzenText TextStyle="TextStyle.Body1">Donations:</RadzenText>
-                        <RadzenText TextStyle="TextStyle.Body1" class="text-success">
-                            $@currentMonthSummary.TotalDonations.ToString("N2")
+                        <RadzenText TextStyle="TextStyle.Body1">@Localizer["Donations"]</RadzenText>
+                        <RadzenText TextStyle="TextStyle.Body1">
+                            @currentMonthSummary.TotalDonations
                         </RadzenText>
                     </div>
                     
                     <div class="d-flex justify-content-between">
-                        <RadzenText TextStyle="TextStyle.Body1">Expenses:</RadzenText>
-                        <RadzenText TextStyle="TextStyle.Body1" class="text-danger">
-                            $@currentMonthSummary.TotalExpenses.ToString("N2")
+                        <RadzenText TextStyle="TextStyle.Body1">@Localizer["Expenses"]</RadzenText>
+                        <RadzenText TextStyle="TextStyle.Body1">
+                            @currentMonthSummary.TotalExpenses
                         </RadzenText>
                     </div>
                     
                     <div class="d-flex justify-content-between">
-                        <RadzenText TextStyle="TextStyle.Body1">Overhead:</RadzenText>
-                        <RadzenText TextStyle="TextStyle.Body1" class="text-warning">
-                            $@currentMonthSummary.TotalOverhead.ToString("N2")
+                        <RadzenText TextStyle="TextStyle.Body1">@Localizer["Overhead"]</RadzenText>
+                        <RadzenText TextStyle="TextStyle.Body1">
+                            @currentMonthSummary.TotalOverhead
                         </RadzenText>
                     </div>
                     
                     <div class="d-flex justify-content-between">
-                        <RadzenText TextStyle="TextStyle.Body1">Internal Transfers:</RadzenText>
-                        <RadzenText TextStyle="TextStyle.Body1" class="text-info">
-                            $@currentMonthSummary.InternalTransfers.ToString("N2")
+                        <RadzenText TextStyle="TextStyle.Body1">@Localizer["InternalTransfers"]</RadzenText>
+                        <RadzenText TextStyle="TextStyle.Body1">
+                            @currentMonthSummary.InternalTransfers
                         </RadzenText>
                     </div>
                     
                     <div class="d-flex justify-content-between">
-                        <RadzenText TextStyle="TextStyle.Subtitle1">Balance:</RadzenText>
-                        <RadzenText TextStyle="TextStyle.Subtitle1" class="@(currentMonthSummary.Balance >= 0 ? "text-success" : "text-danger")">
-                            $@Math.Abs(currentMonthSummary.Balance).ToString("N2")
-                            @(currentMonthSummary.Balance < 0 ? " (deficit)" : "")
+                        <RadzenText TextStyle="TextStyle.Subtitle1">@Localizer["Balance"]</RadzenText>
+                        <RadzenText TextStyle="TextStyle.Subtitle1">
+                            @Math.Abs(currentMonthSummary.Balance).ToString("C", CultureInfo.CurrentCulture)
+                            @(currentMonthSummary.Balance < 0 ? $" {Localizer["Deficit"]}" : "")
                         </RadzenText>
                     </div>
                 </RadzenStack>
@@ -110,43 +114,43 @@ else
         <!-- Prior Month -->
         <RadzenStack Orientation="Orientation.Vertical" Style="width: 24%; min-width: 260px;">
             <RadzenCard Style="height: 100%;">
-                <RadzenText TextStyle="TextStyle.H5">Prior Month</RadzenText>
+                <RadzenText TextStyle="TextStyle.H5">@Localizer["PriorMonth"]</RadzenText>
                 <RadzenText TextStyle="TextStyle.Subtitle2">@priorMonthSummary.Period</RadzenText>
                 
                 <RadzenStack Gap="0.5rem" Class="mt-3">
                     <div class="d-flex justify-content-between">
-                        <RadzenText TextStyle="TextStyle.Body1">Donations:</RadzenText>
+                        <RadzenText TextStyle="TextStyle.Body1">@Localizer["Donations"]</RadzenText>
                         <div class="text-end">
-                            <RadzenText TextStyle="TextStyle.Body1" class="text-success">
-                                $@priorMonthSummary.TotalDonations.ToString("N2")
-                                <span class="ms-1 text-muted" style="font-size: 0.9em;">(Avg: $@priorMonthSummary.AvgMonthlyDonations.ToString("N2")/mo)</span>
+                            <RadzenText TextStyle="TextStyle.Body1">
+                                @priorMonthSummary.TotalDonations
+                                <span class="ms-1 text-muted" style="font-size: 0.9em;">@Localizer["AveragePerMonth", priorMonthSummary.AvgMonthlyDonations.ToString("N2")]</span>
                             </RadzenText>
                         </div>
                     </div>
                     
                     <div class="d-flex justify-content-between">
-                        <RadzenText TextStyle="TextStyle.Body1">Expenses:</RadzenText>
+                        <RadzenText TextStyle="TextStyle.Body1">@Localizer["Expenses"]</RadzenText>
                         <div class="text-end">
-                            <RadzenText TextStyle="TextStyle.Body1" class="text-danger">
-                                $@priorMonthSummary.TotalExpenses.ToString("N2")
-                                <span class="ms-1 text-muted" style="font-size: 0.9em;">(Avg: $@priorMonthSummary.AvgMonthlyExpenses.ToString("N2")/mo)</span>
+                            <RadzenText TextStyle="TextStyle.Body1">
+                                @priorMonthSummary.TotalExpenses
+                                <span class="ms-1" style="font-size: 0.9em;">@Localizer["AveragePerMonth", priorMonthSummary.AvgMonthlyExpenses.ToString("N2")]</span>
                             </RadzenText>
                         </div>
                     </div>
                     
                     <div class="d-flex justify-content-between">
-                        <RadzenText TextStyle="TextStyle.Body1">Overhead:</RadzenText>
-                        <RadzenText TextStyle="TextStyle.Body1" class="text-warning">
-                            $@priorMonthSummary.TotalOverhead.ToString("N2")
+                        <RadzenText TextStyle="TextStyle.Body1">@Localizer["Overhead"]</RadzenText>
+                        <RadzenText TextStyle="TextStyle.Body1">
+                            @priorMonthSummary.TotalOverhead
                         </RadzenText>
                     </div>
                     
                     
                     <div class="d-flex justify-content-between">
-                        <RadzenText TextStyle="TextStyle.Subtitle1">End Balance:</RadzenText>
-                        <RadzenText TextStyle="TextStyle.Subtitle1" class="@(priorMonthSummary.Balance >= 0 ? "text-success" : "text-danger")">
-                            $@Math.Abs(priorMonthSummary.Balance).ToString("N2")
-                            @(priorMonthSummary.Balance < 0 ? " (deficit)" : "")
+                        <RadzenText TextStyle="TextStyle.Subtitle1">@Localizer["EndBalance"]</RadzenText>
+                        <RadzenText TextStyle="TextStyle.Subtitle1">
+                            @Math.Abs(priorMonthSummary.Balance).ToString("C", CultureInfo.CurrentCulture)
+                            @(priorMonthSummary.Balance < 0 ? $" {Localizer["Deficit"]}" : "")
                         </RadzenText>
                     </div>
                 </RadzenStack>
@@ -156,43 +160,43 @@ else
         <!-- Current Year -->
         <RadzenStack Orientation="Orientation.Vertical" Style="width: 24%; min-width: 260px;">
             <RadzenCard Style="height: 100%;">
-                <RadzenText TextStyle="TextStyle.H5">Current Year</RadzenText>
+                <RadzenText TextStyle="TextStyle.H5">@Localizer["CurrentYear"]</RadzenText>
                 <RadzenText TextStyle="TextStyle.Subtitle2">@currentYearSummary.Period</RadzenText>
                 
                 <RadzenStack Gap="0.5rem" Class="mt-3">
                     <div class="d-flex justify-content-between">
-                        <RadzenText TextStyle="TextStyle.Body1">Donations:</RadzenText>
+                        <RadzenText TextStyle="TextStyle.Body1">@Localizer["Donations"]</RadzenText>
                         <div class="text-end">
-                            <RadzenText TextStyle="TextStyle.Body1" class="text-success">
-                                $@currentYearSummary.TotalDonations.ToString("N2")
-                                <span class="ms-1 text-muted" style="font-size: 0.9em;">(Avg: $@currentYearSummary.AvgMonthlyDonations.ToString("N2")/mo)</span>
+                            <RadzenText TextStyle="TextStyle.Body1">
+                               @currentYearSummary.TotalDonations
+                                <span class="ms-1" style="font-size: 0.9em;">@Localizer["Average p/m", currentYearSummary.AvgMonthlyDonations]</span>
                             </RadzenText>
                         </div>
                     </div>
                     
                     <div class="d-flex justify-content-between">
-                        <RadzenText TextStyle="TextStyle.Body1">Expenses:</RadzenText>
+                        <RadzenText TextStyle="TextStyle.Body1">@Localizer["Expenses"]</RadzenText>
                         <div class="text-end">
-                            <RadzenText TextStyle="TextStyle.Body1" class="text-danger">
-                                $@currentYearSummary.TotalExpenses.ToString("N2")
-                                <span class="ms-1 text-muted" style="font-size: 0.9em;">(Avg: $@currentYearSummary.AvgMonthlyExpenses.ToString("N2")/mo)</span>
+                            <RadzenText TextStyle="TextStyle.Body1">
+                                @currentYearSummary.TotalExpenses
+                                <span class="ms-1" style="font-size: 0.9em;">@Localizer["Average p/m", currentYearSummary.AvgMonthlyExpenses.ToString("N2")]</span>
                             </RadzenText>
                         </div>
                     </div>
                     
                     <div class="d-flex justify-content-between">
-                        <RadzenText TextStyle="TextStyle.Body1">Overhead:</RadzenText>
-                        <RadzenText TextStyle="TextStyle.Body1" class="text-warning">
-                            $@currentYearSummary.TotalOverhead.ToString("N2")
+                        <RadzenText TextStyle="TextStyle.Body1">@Localizer["Overhead"]</RadzenText>
+                        <RadzenText TextStyle="TextStyle.Body1">
+                          @currentYearSummary.TotalOverhead
                         </RadzenText>
                     </div>
                     
                     
                     <div class="d-flex justify-content-between">
-                        <RadzenText TextStyle="TextStyle.Subtitle1">Current Balance</RadzenText>
-                        <RadzenText TextStyle="TextStyle.Subtitle1" class="@(currentYearSummary.Balance >= 0 ? "text-success" : "text-danger")">
-                            $@Math.Abs(currentYearSummary.Balance).ToString("N2")
-                            @(currentYearSummary.Balance < 0 ? " (deficit)" : "")
+                        <RadzenText TextStyle="TextStyle.Subtitle1">@Localizer["CurrentBalance"]</RadzenText>
+                        <RadzenText TextStyle="TextStyle.Subtitle1">
+                            @Math.Abs(currentYearSummary.Balance).ToString("C", CultureInfo.CurrentCulture)
+                            @(currentYearSummary.Balance < 0 ? $" {Localizer["Deficit"]}" : "")
                         </RadzenText>
                     </div>
                 </RadzenStack>
@@ -202,73 +206,58 @@ else
         <!-- Prior Year -->
         <RadzenStack Orientation="Orientation.Vertical" Style="width: 24%; min-width: 260px;">
             <RadzenCard Style="height: 100%;">
-                <RadzenText TextStyle="TextStyle.H5">Prior Year</RadzenText>
+                <RadzenText TextStyle="TextStyle.H5">@Localizer["PriorYear"]</RadzenText>
                 <RadzenText TextStyle="TextStyle.Subtitle2">@priorYearSummary.Period</RadzenText>
                 
                 <RadzenStack Gap="0.5rem" Class="mt-3">
                     <div class="d-flex justify-content-between">
-                        <RadzenText TextStyle="TextStyle.Body1">Donations:</RadzenText>
+                        <RadzenText TextStyle="TextStyle.Body1">@Localizer["Donations"]</RadzenText>
                         <div class="text-end">
-                            <RadzenText TextStyle="TextStyle.Body1" class="text-success">
-                                $@priorYearSummary.TotalDonations.ToString("N2")
-                                <span class="ms-1 text-muted" style="font-size: 0.9em;">(Avg: $@priorYearSummary.AvgMonthlyDonations.ToString("N2")/mo)</span>
+                            <RadzenText TextStyle="TextStyle.Body1">
+                                @priorYearSummary.TotalDonations
+                                <span class="ms-1" style="font-size: 0.9em;">@Localizer["Average p/m", priorYearSummary.AvgMonthlyDonations.ToString("N2")]</span>
                             </RadzenText>
                         </div>
                     </div>
                     
                     <div class="d-flex justify-content-between">
-                        <RadzenText TextStyle="TextStyle.Body1">Expenses:</RadzenText>
+                        <RadzenText TextStyle="TextStyle.Body1">@Localizer["Expenses"]</RadzenText>
                         <div class="text-end">
-                            <RadzenText TextStyle="TextStyle.Body1" class="text-danger">
-                                $@priorYearSummary.TotalExpenses.ToString("N2")
-                                <span class="ms-1 text-muted" style="font-size: 0.9em;">(Avg: $@priorYearSummary.AvgMonthlyExpenses.ToString("N2")/mo)</span>
+                            <RadzenText TextStyle="TextStyle.Body1">
+                                @priorYearSummary.TotalExpenses
+                                <span class="ms-1" style="font-size: 0.9em;">@Localizer["Average p/m", priorYearSummary.AvgMonthlyExpenses.ToString("N2")]</span>
                             </RadzenText>
                         </div>
                     </div>
                     
                     <div class="d-flex justify-content-between">
-                        <RadzenText TextStyle="TextStyle.Body1">Overhead:</RadzenText>
-                        <RadzenText TextStyle="TextStyle.Body1" class="text-warning">
-                            $@priorYearSummary.TotalOverhead.ToString("N2")
+                        <RadzenText TextStyle="TextStyle.Body1">@Localizer["Overhead"]</RadzenText>
+                        <RadzenText TextStyle="TextStyle.Body1">
+                            @priorYearSummary.TotalOverhead
                         </RadzenText>
                     </div>
                     
                     <div class="d-flex justify-content-between">
-                        <RadzenText TextStyle="TextStyle.Body1">Internal Transfers:</RadzenText>
-                        <RadzenText TextStyle="TextStyle.Body1" class="text-info">
-                            $@priorYearSummary.InternalTransfers.ToString("N2")
+                        <RadzenText TextStyle="TextStyle.Body1">@Localizer["InternalTransfers"]</RadzenText>
+                        <RadzenText TextStyle="TextStyle.Body1">
+                            @priorYearSummary.InternalTransfers
                         </RadzenText>
                     </div>
-                    
                     
                     <div class="d-flex justify-content-between">
-                        <RadzenText TextStyle="TextStyle.Subtitle1">End of Year Balance:</RadzenText>
-                        <RadzenText TextStyle="TextStyle.Subtitle1" class="@(priorYearSummary.Balance >= 0 ? "text-success" : "text-danger")">
-                            $@Math.Abs(priorYearSummary.Balance).ToString("N2")
-                            @(priorYearSummary.Balance < 0 ? " (deficit)" : "")
+                        <RadzenText TextStyle="TextStyle.Subtitle1">@Localizer["EndOfYearBalance"]</RadzenText>
+                        <RadzenText TextStyle="TextStyle.Subtitle1">
+                            @Math.Abs(priorYearSummary.Balance).ToString("C", CultureInfo.CurrentCulture)
+                            @(priorYearSummary.Balance < 0 ? $" {Localizer["Deficit"]}" : "")
                         </RadzenText>
                     </div>
+
+                    
                 </RadzenStack>
             </RadzenCard>
         </RadzenStack>
     </RadzenStack>
-
-    @if (userAccount != null)
-    {
-        <div class="mt-4">
-            @if (AppState.IsAdmin)
-            {
-                <RadzenButton Text="Debug Uncategorized Transactions" 
-                              ButtonStyle="ButtonStyle.Info" 
-                              Click="@DebugUncategorizedTransactions"
-                              Style="margin-right: 10px;" />
-                          
-                <RadzenButton Text="Debug Balance Calculation" 
-                              ButtonStyle="ButtonStyle.Warning" 
-                              Click="@DebugBalanceCalculation" />
-            }
-        </div>
-    }
+    
 }
 
 @code {
@@ -1089,4 +1078,5 @@ else
             Console.WriteLine($"Balance as of {checkpointDate:MM/dd/yyyy}: ${checkpointBalance:N2}");
         }
     }
+
 }

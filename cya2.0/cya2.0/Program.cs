@@ -1,8 +1,8 @@
-using cya2._0;
-using cya2._0.Components;
-using cya2._0.Components.Shared;
-using cya2._0.Middleware;
-using cya2._0.Services;
+using cya2;
+using cya2.Components;
+using cya2.Components.Shared;
+using cya2.Middleware;
+using cya2.Services;
 using Dapper;
 using DataLibrary;
 using Microsoft.AspNetCore.Authentication;
@@ -11,127 +11,96 @@ using Microsoft.AspNetCore.Authentication.Google;
 using Microsoft.AspNetCore.Authentication.OAuth;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Components.Authorization;
-using Microsoft.AspNetCore.Components.Forms;
-using Microsoft.AspNetCore.Components.Routing;
 using Microsoft.AspNetCore.Components.Server;
-using Microsoft.AspNetCore.Components.Web;
-using Microsoft.AspNetCore.Components.Web.Virtualization;
-using Microsoft.Extensions.Configuration;
-using Microsoft.JSInterop;
-using ModelsLibrary;
-using MySql.Data.MySqlClient;
+using Microsoft.AspNetCore.Localization;
+using Microsoft.Extensions.Localization;
 using Radzen;
-using System.Net;
-using System.Net.Http;
-using System.Net.Http.Json;
-using System.Net.Sockets;
+using System.Globalization;
 using System.Security.Claims;
-using System.Timers;
-using UserAuth;
-using static Microsoft.AspNetCore.Components.Web.RenderMode;
+using System.Threading;
 
-// Add this near the top with other variables
 var _unhandledExceptionCount = 0;
 var _lastResetTime = DateTime.Now;
 var _lockObject = new object();
-DatabaseMonitorService dbMonitorService = null; // Will be initialized after app is built
+DatabaseMonitorService dbMonitorService = null;
 
-// Replace your current AppDomain.AssemblyResolve handler with this more aggressive version
 AppDomain.CurrentDomain.AssemblyResolve += (sender, args) =>
 {
-    // More aggressively prevent MySQL assembly loading
-    if ((args.Name.Contains("MySql") || args.Name.Contains("mysql", StringComparison.OrdinalIgnoreCase)) && 
-        !cya2._0.GlobalSettings.AllowMySqlLoading)
+    if ((args.Name.Contains("MySql") || args.Name.Contains("mysql", StringComparison.OrdinalIgnoreCase)) &&
+        !GlobalSettings.AllowMySqlLoading)
     {
         Console.WriteLine($"Prevented loading of MySQL assembly: {args.Name}");
         return typeof(object).Assembly;
     }
-    return null; // let the runtime resolve normally
+    return null;
 };
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Add this right after 'var builder = WebApplication.CreateBuilder(args);'
-// Direct connection string fallback from environment variables
+// Environment connection string fallback
 var mysqlConnStr = Environment.GetEnvironmentVariable("MYSQLCONNSTR_default");
 if (!string.IsNullOrEmpty(mysqlConnStr))
 {
-    // This manually adds the connection string to the configuration system
     builder.Configuration["ConnectionStrings:default"] = mysqlConnStr;
     Console.WriteLine("Added MySQL connection string from environment variable");
 }
-else 
+else
 {
     Console.WriteLine("MySQL connection string not found in environment variables");
 }
 
-builder.Services.AddLogging(configure =>
+builder.Services.AddLogging(l =>
 {
-    configure.AddConsole();
-    configure.AddDebug();
+    l.AddConsole();
+    l.AddDebug();
 });
 
-// Add services to the container.
+// Add HttpContextAccessor for component injection
+builder.Services.AddHttpContextAccessor();
 
-// Find the existing services configuration section and add:
-
+// Core application services
 builder.Services.AddSingleton<AppState>();
 builder.Services.AddScoped<DataLoadingService>();
+builder.Services.AddSingleton<DatabaseMonitorService>();
+builder.Services.AddSingleton<IHostedService>(sp => sp.GetRequiredService<DatabaseMonitorService>());
+builder.Services.AddScoped<IDataAccess>(sp =>
+{
+    var logger = sp.GetRequiredService<ILogger<SafeDataAccess>>();
+    var inner = new DataAccess();
+    var monitor = sp.GetRequiredService<DatabaseMonitorService>();
+    return new SafeDataAccess(inner, monitor, logger);
+});
 
-// Authentication & Authorization services - move these together
+// Auth & Authorization
 builder.Services.AddAuthenticationCore();
 builder.Services.AddScoped<AuthenticationStateProvider, ServerAuthenticationStateProvider>();
-builder.Services.AddScoped<IHostEnvironmentAuthenticationStateProvider>(sp => 
+builder.Services.AddScoped<IHostEnvironmentAuthenticationStateProvider>(sp =>
     (ServerAuthenticationStateProvider)sp.GetRequiredService<AuthenticationStateProvider>());
 builder.Services.AddCascadingAuthenticationState();
 builder.Services.AddAuthorizationCore();
 
-builder.Services.AddRazorComponents()
-    .AddInteractiveServerComponents();
-
-builder.Services.AddServerSideBlazor()
-    .AddHubOptions(options =>
-    {
-        options.MaximumReceiveMessageSize = 32 * 1024 * 1024; // 32MB for larger JavaScript interactions
-    });
-
-builder.Services.AddRadzenComponents();
-
-// Add authentication services
-builder.Services.AddScoped<UserAuth.UserRepository>(provider =>
+builder.Services.AddAuthentication(opts =>
 {
-    var dataAccess = provider.GetRequiredService<IDataAccess>();
-    var connectionString = builder.Configuration.GetConnectionString("default");
-    return new UserAuth.UserRepository(dataAccess, connectionString);
-});
-
-builder.Services.AddAuthentication(options =>
-{
-    options.DefaultScheme = CookieAuthenticationDefaults.AuthenticationScheme;
-    options.DefaultChallengeScheme = GoogleDefaults.AuthenticationScheme;
+    opts.DefaultScheme = CookieAuthenticationDefaults.AuthenticationScheme;
+    opts.DefaultChallengeScheme = GoogleDefaults.AuthenticationScheme;
 })
-.AddCookie(options =>
+.AddCookie(opts =>
 {
-    options.LoginPath = "/api/login";
-    options.AccessDeniedPath = "/not-authorized";
-    options.ExpireTimeSpan = TimeSpan.FromHours(24);
-    options.SlidingExpiration = false;
-    
-    // Add cache control
-    options.Cookie.HttpOnly = true;
-    options.Cookie.SecurePolicy = CookieSecurePolicy.Always;
-    
-    options.Events = new CookieAuthenticationEvents
+    opts.LoginPath = "/api/login";
+    opts.AccessDeniedPath = "/not-authorized";
+    opts.ExpireTimeSpan = TimeSpan.FromHours(24);
+    opts.SlidingExpiration = false;
+    opts.Cookie.HttpOnly = true;
+    opts.Cookie.SecurePolicy = CookieSecurePolicy.Always;
+    opts.Events = new CookieAuthenticationEvents
     {
         OnRedirectToLogin = context =>
         {
-            // Ignore Blazor framework requests
             if (context.Request.Path.StartsWithSegments("/_blazor") ||
                 context.Request.Path.StartsWithSegments("/_framework"))
             {
                 return Task.CompletedTask;
             }
-
             if (context.Request.Path.StartsWithSegments("/api"))
             {
                 context.Response.StatusCode = StatusCodes.Status401Unauthorized;
@@ -149,499 +118,257 @@ builder.Services.AddAuthentication(options =>
     options.ClientId = builder.Configuration["Authentication:Google:ClientId"];
     options.ClientSecret = builder.Configuration["Authentication:Google:ClientSecret"];
     options.CallbackPath = "/signin-google";
-
     options.Events = new OAuthEvents
     {
         OnRedirectToAuthorizationEndpoint = context =>
         {
-            var logger = context.HttpContext.RequestServices.GetRequiredService<ILogger<Program>>();
-
-            // Ignore Blazor framework requests
             if (context.Request.Path.StartsWithSegments("/_blazor") ||
                 context.Request.Path.StartsWithSegments("/_framework"))
-            {
                 return Task.CompletedTask;
-            }
-
-            // Add cache control headers
             context.Response.Headers.CacheControl = "no-store, no-cache";
             context.Response.Headers.Pragma = "no-cache";
-
-            logger.LogInformation("Redirecting to Google auth");
             context.Response.Redirect(context.RedirectUri);
             return Task.CompletedTask;
         },
-
         OnRemoteFailure = context =>
         {
-            var logger = context.HttpContext.RequestServices.GetRequiredService<ILogger<Program>>();
-            logger.LogError("Google authentication failed: {Error}", context.Failure?.Message);
-
             context.Response.Redirect("/not-authorized");
             context.HandleResponse();
             return Task.CompletedTask;
         },
-
-        // This runs after successful authentication with Google
         OnTicketReceived = async context =>
         {
-            // Add cache control headers
-            context.Response.Headers.CacheControl = "no-store, no-cache";
-            context.Response.Headers.Pragma = "no-cache";
-
             var logger = context.HttpContext.RequestServices.GetRequiredService<ILogger<Program>>();
-            var userRepository = context.HttpContext.RequestServices.GetRequiredService<UserAuth.UserRepository>();
-            var dataAccess = context.HttpContext.RequestServices.GetRequiredService<IDataAccess>();
-            var connectionString = builder.Configuration.GetConnectionString("default");
-            var dbMonitor = context.HttpContext.RequestServices.GetRequiredService<DatabaseMonitorService>();
-
-            // Suspend database monitoring during this operation
-            dbMonitor.Suspend();
-
+            var userRepo = context.HttpContext.RequestServices.GetRequiredService<UserAuth.UserRepository>();
+            var monitor = context.HttpContext.RequestServices.GetRequiredService<DatabaseMonitorService>();
+            monitor.Suspend();
             try
             {
                 var email = context.Principal.FindFirstValue(ClaimTypes.Email);
-                var name = context.Principal.FindFirstValue(ClaimTypes.Name);
-                var googleId = context.Principal.FindFirstValue(ClaimTypes.NameIdentifier);
-
-                // Look up user in database
-                var user = await userRepository.GetUserByEmailAsync(email);
-
-                if (user != null)
+                var user = await userRepo.GetUserByEmailAsync(email);
+                if (user == null)
                 {
-                    logger.LogInformation("Found user in database: {Email}", email);
-
-                    // Apply claims from DB
-                    var identity = (ClaimsIdentity)context.Principal.Identity;
-                    identity.AddClaim(new Claim(ClaimTypes.Role, user.AuthLevel ?? "User"));
-                    identity.AddClaim(new Claim("AuthLevel", user.AuthLevel ?? ""));
-                    identity.AddClaim(new Claim("DefaultAccount", user.DefaultAccount?.ToString() ?? ""));
-                    identity.AddClaim(new Claim("Language", user.Language ?? ""));
-                    identity.AddClaim(new Claim("UserId", user.Id.ToString()));
-                    identity.AddClaim(new Claim("UserName", user.Name ?? ""));
-
-                    // Log all claims for debugging purposes
-                    logger.LogInformation("Auth Claims set for user {Email}:", email);
-                    foreach (var claim in identity.Claims)
-                    {
-                        logger.LogInformation("Claim: {Type} = {Value}", claim.Type, claim.Value);
-                    }
-
-                    // Set redirect URI based on user role - direct admins to admin page
-                    if (user.AuthLevel == "Admin")
-                    {
-                        // This ensures the redirect is properly set in the authentication ticket
-                        context.Properties.RedirectUri = "/admin";
-                        logger.LogInformation("User is Admin - setting redirect to /admin");
-                    }
-                    else
-                    {
-                        context.Properties.RedirectUri = "/";
-                        logger.LogInformation("User is not Admin - setting redirect to /");
-                    }
-
-                    dbMonitor.Resume();
-                    return;
-                }
-                else
-                {
-                    // User not found - don't use bypass anymore
-                    logger.LogWarning("Authentication failed: User with email {Email} not found", email);
-                    context.Fail("User not registered in system");
+                    logger.LogWarning("User not registered: {Email}", email);
+                    context.Fail("User not registered");
                     await context.HttpContext.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
                     context.Response.Redirect("/not-authorized");
                     context.HandleResponse();
+                    monitor.Resume();
+                    return;
                 }
-                
-                dbMonitor.Resume();
+
+                var identity = (ClaimsIdentity)context.Principal.Identity!;
+                identity.AddClaim(new Claim(ClaimTypes.Role, user.AuthLevel ?? "User"));
+                identity.AddClaim(new Claim("AuthLevel", user.AuthLevel ?? ""));
+                identity.AddClaim(new Claim("DefaultAccount", user.DefaultAccount?.ToString() ?? ""));
+                identity.AddClaim(new Claim("Language", user.Language ?? ""));
+                identity.AddClaim(new Claim("UserId", user.Id.ToString()));
+                identity.AddClaim(new Claim("UserName", user.Name ?? ""));
+
+                context.Properties.RedirectUri = user.AuthLevel == "Admin" ? "/admin" : "/";
+
+                monitor.Resume();
             }
             catch (Exception ex)
             {
-                // Final catch for any other error
-                logger.LogError(ex, "Critical error in authentication flow: {Error}", ex.Message);
                 context.Response.Redirect("/error");
                 context.HandleResponse();
-                dbMonitor.Resume();
+                monitor.Resume();
             }
         },
-
-        // Add this event to ensure successful redirection after authentication
         OnCreatingTicket = context =>
         {
-            var logger = context.HttpContext.RequestServices.GetRequiredService<ILogger<Program>>();
-            logger.LogInformation("Creating ticket with redirect URI: {RedirectUri}",
-                context.Properties?.RedirectUri ?? "Not set");
-
-            // Do not override the redirect URI if it has already been set
             if (context.Properties?.RedirectUri == null)
-            {
                 context.Properties.RedirectUri = "/";
-                logger.LogInformation("Force set redirect URI to /");
-            }
-
             return Task.CompletedTask;
         }
     };
 });
 
-// Update authorization settings in your Program.cs file
+// Authorization policies
 builder.Services.AddAuthorization(options =>
 {
-    // This sets the default policy to require authentication for all pages
     options.FallbackPolicy = new AuthorizationPolicyBuilder()
         .RequireAuthenticatedUser()
         .Build();
 
-    // Define a policy for pages that should be accessible without authentication
-    options.AddPolicy("AllowAnonymous", policy => policy.RequireAssertion(_ => true));
-
-    // Add specific policy for error pages
-    options.AddPolicy("ErrorPages", policy => policy.RequireAssertion(_ => true));
-    
-    // Add policy for admin-only pages
-    options.AddPolicy("RequireAdmin", policy => 
-        policy.RequireAuthenticatedUser()
-              .RequireClaim("AuthLevel", "Admin"));
-              
-    // Add policy for users who can view all accounts (Admin or Viewer)
-    options.AddPolicy("CanViewAllAccounts", policy => 
-        policy.RequireAuthenticatedUser()
-              .RequireClaim("AuthLevel", new[] { "Admin", "Viewer" }));
+    options.AddPolicy("AllowAnonymous", p => p.RequireAssertion(_ => true));
+    options.AddPolicy("ErrorPages", p => p.RequireAssertion(_ => true));
+    options.AddPolicy("RequireAdmin", p =>
+        p.RequireAuthenticatedUser().RequireClaim("AuthLevel", "Admin"));
+    options.AddPolicy("CanViewAllAccounts", p =>
+        p.RequireAuthenticatedUser().RequireClaim("AuthLevel", new[] { "Admin", "Viewer" }));
 });
 
-// Replace the problematic health checks registration with this:
+// Health checks
 builder.Services.AddHealthChecks()
     .AddCheck("Database", () =>
-    {
-        try
-        {
-            // Use a factory pattern instead of directly accessing app.Services
-            return Microsoft.Extensions.Diagnostics.HealthChecks.HealthCheckResult.Healthy("Health check will be performed when database is accessed");
-        }
-        catch (Exception ex)
-        {
-            return Microsoft.Extensions.Diagnostics.HealthChecks.HealthCheckResult.Unhealthy(ex.Message);
-        }
-    });
-
-// Add a flag to control whether the database monitor service should run
-builder.Services.AddSingleton<DatabaseMonitorService>();
-
-// Use a simple factory to allow the host to control when the service starts
-builder.Services.AddSingleton<IHostedService>(sp =>
+        Microsoft.Extensions.Diagnostics.HealthChecks.HealthCheckResult.Healthy("Deferred DB check"));
+//Localiation
+builder.Services.AddLocalization();
+// Razor Components + Radzen
+builder.Services.AddRazorComponents()
+    .AddInteractiveServerComponents();
+builder.Services.AddRadzenComponents();
+builder.Services.AddScoped<UserAuth.UserRepository>(sp =>
 {
-    // Return the already registered service
-    return sp.GetRequiredService<DatabaseMonitorService>();
+    var da = sp.GetRequiredService<IDataAccess>();
+    var cs = builder.Configuration.GetConnectionString("default");
+    return new UserAuth.UserRepository(da, cs);
 });
 
-bool initialDbConnected = false; // Define this at the top level
-
-// Add a factory that will capture the initialDbConnected value later
-builder.Services.AddScoped<IDataAccess>(provider => {
-    var logger = provider.GetRequiredService<ILogger<SafeDataAccess>>();
-    var innerDataAccess = new DataAccess();
-    var dbMonitor = provider.GetRequiredService<DatabaseMonitorService>();
-    return new SafeDataAccess(innerDataAccess, dbMonitor, logger);
-});
-
+// Build AFTER all service registrations
 var app = builder.Build();
 
-// Initial DB check using lightweight TCP connection before loading MySQL assemblies
+string[] supportedCultures = ["en-US", "es-US"];
+var localizationOptions = new RequestLocalizationOptions()
+    .SetDefaultCulture(supportedCultures[0])
+    .AddSupportedCultures(supportedCultures)
+    .AddSupportedUICultures(supportedCultures);
+app.UseRequestLocalization(localizationOptions);
+
+// Initial lightweight DB check
+bool initialDbConnected = false;
 try
 {
     var logger = app.Services.GetRequiredService<ILogger<Program>>();
-    logger.LogInformation("Performing lightweight database check at startup...");
+    logger.LogInformation("Lightweight DB check...");
+    var monitor = app.Services.GetRequiredService<DatabaseMonitorService>();
+    var config = app.Services.GetRequiredService<IConfiguration>();
 
-    var dbMonitor = app.Services.GetRequiredService<DatabaseMonitorService>();
-    var configuration = app.Services.GetRequiredService<IConfiguration>();
-    
-    // Declare field at the broader scope for reuse
-    System.Reflection.FieldInfo isConnectedField = dbMonitor.GetType().GetField("_isConnected",
-        System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-
-    // Parse connection string for host and port
-    string connectionString = configuration.GetConnectionString("default") ?? "";
-
-    // Default MySQL port
-    int port = 3306;
+    string connectionString = config.GetConnectionString("default") ?? "";
     string host = "localhost";
-
-    // Try to extract host and port from connection string
+    int port = 3306;
     foreach (var part in connectionString.Split(';'))
     {
-        if (part.Trim().StartsWith("server=", StringComparison.OrdinalIgnoreCase) ||
-            part.Trim().StartsWith("host=", StringComparison.OrdinalIgnoreCase))
-        {
-            host = part.Substring(part.IndexOf('=') + 1).Trim();
-        }
-        else if (part.Trim().StartsWith("port=", StringComparison.OrdinalIgnoreCase))
-        {
-            int.TryParse(part.Substring(part.IndexOf('=') + 1).Trim(), out port);
-        }
+        if (part.StartsWith("server=", StringComparison.OrdinalIgnoreCase) ||
+            part.StartsWith("host=", StringComparison.OrdinalIgnoreCase))
+            host = part[(part.IndexOf('=') + 1)..].Trim();
+        else if (part.StartsWith("port=", StringComparison.OrdinalIgnoreCase))
+            int.TryParse(part[(part.IndexOf('=') + 1)..].Trim(), out port);
     }
 
-    // Do a lightweight TCP check
-    initialDbConnected = cya2._0.GlobalSettings.CheckDatabaseTcpConnection(host, port, 2000);
-    logger.LogInformation("Initial TCP database check result: {Status}",
-        initialDbConnected ? "Connected" : "Disconnected");
-
-    // Set the monitor state directly using our previously declared field
-    if (isConnectedField != null)
-    {
-        isConnectedField.SetValue(dbMonitor, initialDbConnected);
-    }
+    initialDbConnected = GlobalSettings.CheckDatabaseTcpConnection(host, port, 2000);
+    var field = monitor.GetType().GetField("_isConnected",
+        System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+    field?.SetValue(monitor, initialDbConnected);
 }
-catch (Exception ex)
+catch
 {
-    Console.Error.WriteLine($"Error during lightweight database check: {ex.Message}");
     initialDbConnected = false;
-
-    // Ensure database is marked as disconnected
-    try
-    {
-        var dbMonitor = app.Services.GetRequiredService<DatabaseMonitorService>();
-        System.Reflection.FieldInfo isConnectedField = dbMonitor.GetType().GetField("_isConnected",
-            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-
-        if (isConnectedField != null)
-        {
-            isConnectedField.SetValue(dbMonitor, false);
-        }
-    }
-    catch { /* Ignore errors */ }
 }
 
-// Only allow MySQL to be loaded if the DB is available
-cya2._0.GlobalSettings.AllowMySqlLoading = initialDbConnected;
-
-// If DB is disconnected, we want to avoid any MySQL operations
+GlobalSettings.AllowMySqlLoading = initialDbConnected;
 if (!initialDbConnected)
-{
-    Console.WriteLine("Database unavailable - application will run in limited mode");
-}
+    Console.WriteLine("Database unavailable - limited mode");
 
-// Much more aggressive unhandled exception handler
 AppDomain.CurrentDomain.UnhandledException += (sender, args) =>
 {
-    var exceptionObject = args.ExceptionObject as Exception;
-
-    Console.Error.WriteLine($"Unhandled exception: {exceptionObject?.Message}");
-
-    // For ANY unhandled exception, disable MySQL operations
+    var ex = args.ExceptionObject as Exception;
+    Console.Error.WriteLine($"Unhandled exception: {ex?.Message}");
     GlobalSettings.AllowMySqlLoading = false;
-    
-    try {
-        // Force the database monitor to mark the database as disconnected
-        var dbMonitor = (DatabaseMonitorService)app.Services.GetService(typeof(DatabaseMonitorService));
-        if (dbMonitor != null)
-        {
-            // Use reflection to set the private field
-            var field = dbMonitor.GetType().GetField("_isConnected",
-                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-            if (field != null)
-            {
-                field.SetValue(dbMonitor, false);
-            }
-        }
-    }
-    catch {
-        // Last resort fallback
-    }
-};
-
-// Replace your current TaskScheduler.UnobservedTaskException handler with this more robust one
-TaskScheduler.UnobservedTaskException += (sender, args) =>
-{
-    // Always mark as observed first to prevent app crash
-    args.SetObserved();
-
     try
     {
-        var exception = args.Exception;
-
-        Console.Error.WriteLine($"Unobserved task exception (handled): {exception?.Message}");
-
-        // Check if it's a database timeout or MySQL exception
-        if (exception != null &&
-           (exception.ToString().Contains("MySql") ||
-            exception.ToString().Contains("Timeout expired")))
-        {
-            Console.Error.WriteLine("Database connection issue detected - disabling MySQL operations");
-
-            // Actively disable MySQL operations on database errors
-            cya2._0.GlobalSettings.AllowMySqlLoading = false;
-
-            // Force the database monitor to suspend
-            try
-            {
-                dbMonitorService.Suspend();
-            }
-            catch
-            {
-                // Ignore errors in the handler
-            }
-        }
+        var monitor = app.Services.GetRequiredService<DatabaseMonitorService>();
+        var field = monitor.GetType().GetField("_isConnected",
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+        field?.SetValue(monitor, false);
     }
-    catch
+    catch { }
+};
+
+TaskScheduler.UnobservedTaskException += (sender, args) =>
+{
+    args.SetObserved();
+    var ex = args.Exception;
+    if (ex != null && (ex.ToString().Contains("MySql") || ex.ToString().Contains("Timeout expired")))
     {
-        // Last resort fallback
-        Console.Error.WriteLine("Error handling unobserved task exception");
+        GlobalSettings.AllowMySqlLoading = false;
+        try
+        {
+            dbMonitorService?.Suspend();
+        }
+        catch { }
     }
 };
 
 app.MapHealthChecks("/health");
 
-// Ensure database monitoring is initially suspended to prevent crashes during startup
+// Initialize monitor service
 dbMonitorService = app.Services.GetRequiredService<DatabaseMonitorService>();
 dbMonitorService.Suspend();
-
-// Replace with this conditional version
-app.Lifetime.ApplicationStarted.Register(() => {
-    // Give the app a moment to stabilize
-    Task.Delay(5000).ContinueWith(_ => {
-        try {
-            // IMPORTANT: Only resume monitoring if we initially detected a connection
-            if (initialDbConnected) {
-                cya2._0.GlobalSettings.AllowMySqlLoading = true;
-                dbMonitorService.Resume();
-                app.Services.GetRequiredService<ILogger<Program>>()
-                    .LogInformation("Database monitoring resumed after startup");
-            } else {
-                app.Services.GetRequiredService<ILogger<Program>>()
-                    .LogWarning("Database was unavailable at startup - starting periodic reconnection attempts");
-                // Start periodic check for database availability
-                ThreadPool.QueueUserWorkItem(async _ => await PeriodicReconnectionCheck(app));
-            }
-        }
-        catch (Exception ex) {
-            app.Services.GetRequiredService<ILogger<Program>>()
-                .LogError(ex, "Error resuming database monitoring");
-        }
-    });
-});
-
-// Update the PeriodicReconnectionCheck method in Program.cs to better handle transitions
-static async Task PeriodicReconnectionCheck(WebApplication app)
+app.Lifetime.ApplicationStarted.Register(() =>
 {
-    var logger = app.Services.GetRequiredService<ILogger<Program>>();
-    var dbMonitor = app.Services.GetRequiredService<DatabaseMonitorService>();
-    var config = app.Services.GetRequiredService<IConfiguration>();
-    
-    while (true) 
+    Task.Delay(5000).ContinueWith(_ =>
     {
         try
         {
-            // Parse connection string for host and port
-            string connectionString = config.GetConnectionString("default") ?? "";
+            if (initialDbConnected)
+            {
+                GlobalSettings.AllowMySqlLoading = true;
+                dbMonitorService.Resume();
+            }
+            else
+            {
+                ThreadPool.QueueUserWorkItem(async _ => await PeriodicReconnectionCheck(app));
+            }
+        }
+        catch { }
+    });
+});
+
+static async Task PeriodicReconnectionCheck(WebApplication appRef)
+{
+    var logger = appRef.Services.GetRequiredService<ILogger<Program>>();
+    var monitor = appRef.Services.GetRequiredService<DatabaseMonitorService>();
+    var config = appRef.Services.GetRequiredService<IConfiguration>();
+
+    while (true)
+    {
+        try
+        {
+            string cs = config.GetConnectionString("default") ?? "";
             string host = "localhost";
             int port = 3306;
-            
-            // Extract host and port
-            foreach (var part in connectionString.Split(';'))
+            foreach (var part in cs.Split(';'))
             {
-                if (part.Trim().StartsWith("server=", StringComparison.OrdinalIgnoreCase) ||
-                    part.Trim().StartsWith("host=", StringComparison.OrdinalIgnoreCase))
-                {
-                    host = part.Substring(part.IndexOf('=') + 1).Trim();
-                }
-                else if (part.Trim().StartsWith("port=", StringComparison.OrdinalIgnoreCase))
-                {
-                    int.TryParse(part.Substring(part.IndexOf('=') + 1).Trim(), out port);
-                }
+                if (part.StartsWith("server=", StringComparison.OrdinalIgnoreCase) ||
+                    part.StartsWith("host=", StringComparison.OrdinalIgnoreCase))
+                    host = part[(part.IndexOf('=') + 1)..].Trim();
+                else if (part.StartsWith("port=", StringComparison.OrdinalIgnoreCase))
+                    int.TryParse(part[(part.IndexOf('=') + 1)..].Trim(), out port);
             }
-            
-            // Important: First disable MySQL operations to prevent crashes
-            // Only then perform the check which might cause a crash
-            bool lastKnownState = dbMonitor.IsConnected;
-            
-            if (lastKnownState) {
-                // If we currently think we're connected, check if that's still true
-                // Use a very conservative approach - if there's any doubt, disable
-                try
-                {
-                    // Lightweight TCP check is safer than MySQL connection check
-                    bool isConnected = GlobalSettings.CheckDatabaseTcpConnection(host, port, 2000);
-                    
-                    if (!isConnected) {
-                        // Immediately disable MySQL operations if TCP check fails
-                        logger.LogWarning("TCP check failed - disabling MySQL operations");
-                        GlobalSettings.AllowMySqlLoading = false;
-                        
-                        // Directly update the _isConnected field using reflection
-                        var field = dbMonitor.GetType().GetField("_isConnected", 
-                            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-                        if (field != null)
-                        {
-                            field.SetValue(dbMonitor, false);
-                            logger.LogInformation("Updated database monitor connection state to disconnected");
-                        }
-                        
-                        // Explicitly call OnConnectionStatusChanged
-                        var method = dbMonitor.GetType().GetMethod("OnConnectionStatusChanged", 
-                            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-                        if (method != null)
-                        {
-                            method.Invoke(dbMonitor, new object[] { false });
-                            logger.LogInformation("Raised connection status changed event");
-                        }
-                    }
-                }
-                catch (Exception ex)
-                {
-                    // Any error means the database is likely unavailable
-                    logger.LogError(ex, "Error checking database connection - marking as disconnected");
-                    GlobalSettings.AllowMySqlLoading = false;
-                    
-                    // Directly update the _isConnected field using reflection
-                    var field = dbMonitor.GetType().GetField("_isConnected", 
-                        System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-                    if (field != null)
-                    {
-                        field.SetValue(dbMonitor, false);
-                        logger.LogInformation("Updated database monitor connection state to disconnected");
-                    }
-                }
+
+            bool last = monitor.IsConnected;
+            bool tcp = GlobalSettings.CheckDatabaseTcpConnection(host, port, 2000);
+
+            if (last && !tcp)
+            {
+                GlobalSettings.AllowMySqlLoading = false;
+                var field = monitor.GetType().GetField("_isConnected",
+                    System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+                field?.SetValue(monitor, false);
+                var method = monitor.GetType().GetMethod("OnConnectionStatusChanged",
+                    System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+                method?.Invoke(monitor, new object[] { false });
             }
-            else {
-                // If we think we're disconnected, check if we can reconnect
-                bool isConnected = GlobalSettings.CheckDatabaseTcpConnection(host, port, 2000);
-                
-                if (isConnected) {
-                    logger.LogInformation("Database reconnection detected - enabling MySQL operations");
-                    GlobalSettings.AllowMySqlLoading = true;
-                    
-                    // Directly update the _isConnected field using reflection
-                    var field = dbMonitor.GetType().GetField("_isConnected", 
-                        System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-                    if (field != null)
-                    {
-                        field.SetValue(dbMonitor, true);
-                        logger.LogInformation("Updated database monitor connection state to connected");
-                    }
-                    
-                    // Explicitly call OnConnectionStatusChanged
-                    var method = dbMonitor.GetType().GetMethod("OnConnectionStatusChanged", 
-                        System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-                    if (method != null)
-                    {
-                        method.Invoke(dbMonitor, new object[] { true });
-                        logger.LogInformation("Raised connection status changed event");
-                    }
-                    
-                    dbMonitor.Resume();
-                }
+            else if (!last && tcp)
+            {
+                GlobalSettings.AllowMySqlLoading = true;
+                var field = monitor.GetType().GetField("_isConnected",
+                    System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+                field?.SetValue(monitor, true);
+                var method = monitor.GetType().GetMethod("OnConnectionStatusChanged",
+                    System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+                method?.Invoke(monitor, new object[] { true });
+                monitor.Resume();
             }
         }
-        catch (Exception ex)
+        catch
         {
-            logger.LogError(ex, "Error in periodic reconnection check");
-            
-            // Be conservative - if there's any error, assume the database is unavailable
             GlobalSettings.AllowMySqlLoading = false;
         }
-        
-        // Wait before checking again
-        await Task.Delay(5000); // Check every 5 seconds
+        await Task.Delay(5000);
     }
 }
 
@@ -649,7 +376,6 @@ static async Task PeriodicReconnectionCheck(WebApplication app)
 if (!app.Environment.IsDevelopment())
 {
     app.UseExceptionHandler("/Error", createScopeForErrors: true);
-    // The default HSTS value is 30 days. You may want to change this for production scenarios, see https://aka.ms/aspnetcore-hsts.
     app.UseHsts();
 }
 
@@ -657,7 +383,6 @@ app.UseHttpsRedirection();
 app.UseStaticFiles();
 app.UseAntiforgery();
 
-// Add middleware for better security
 app.Use(async (context, next) =>
 {
     context.Response.Headers["X-Content-Type-Options"] = "nosniff";
@@ -667,7 +392,6 @@ app.Use(async (context, next) =>
     await next();
 });
 
-// Add authentication middleware
 app.UseAuthentication();
 app.UseAuthorization();
 app.UseDatabaseCheck();
@@ -677,140 +401,94 @@ app.Use(async (context, next) =>
     if (context.Request.Path == "/")
     {
         var user = context.User;
-        if (user?.Identity?.IsAuthenticated == true)
+        if (user?.Identity?.IsAuthenticated == true &&
+            user.FindFirstValue("AuthLevel") == "Admin")
         {
-            var authLevel = user.FindFirstValue("AuthLevel");
-            if (authLevel == "Admin")
-            {
-                context.Response.Redirect("/admin", false);
-                return;
-            }
+            context.Response.Redirect("/admin", false);
+            return;
         }
     }
     await next();
 });
 
-// Add after route handling
-
-// Map components after all middleware
+// Razor Components endpoint
 app.MapRazorComponents<App>()
-    .AddInteractiveServerRenderMode();
+   .AddInteractiveServerRenderMode();
 
-// Update your login endpoint to check DB first - improved version
-app.MapGet("/api/login", (HttpContext context, DatabaseMonitorService dbMonitor, ILogger<Program> logger) =>
+// Endpoints
+app.MapGet("/api/login", (HttpContext ctx, DatabaseMonitorService monitor, ILogger<Program> logger) =>
 {
-    logger.LogInformation("Login endpoint hit - checking database availability");
+    logger.LogInformation("Login endpoint invoked");
+    foreach (var cookie in ctx.Request.Cookies.Keys)
+    {
+        if (cookie.Contains("AspNetCore") || cookie.Contains("Microsoft"))
+            ctx.Response.Cookies.Delete(cookie);
+    }
+    ctx.Response.Headers.CacheControl = "no-store, no-cache";
+    ctx.Response.Headers.Pragma = "no-cache";
 
+    if (!monitor.IsConnected)
+    {
+        ctx.Response.Redirect("/database-error", false);
+        return Results.Empty;
+    }
+
+    var props = new AuthenticationProperties
+    {
+        RedirectUri = "/",
+        AllowRefresh = true,
+        ExpiresUtc = DateTimeOffset.UtcNow.AddHours(24),
+        IsPersistent = true,
+        Items = { { "ts", DateTimeOffset.UtcNow.ToUnixTimeSeconds().ToString() } }
+    };
+    return Results.Challenge(props, new[] { GoogleDefaults.AuthenticationScheme });
+});
+
+app.MapGet("/logout", async (HttpContext ctx, AppState state) =>
+{
+    state.ClearUserData();
+    await ctx.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
+    ctx.Response.Redirect("/logged-out");
+});
+
+app.MapGet("/api/check-db", async (HttpContext ctx, IDataAccess da, IConfiguration cfg, ILogger<Program> logger, DatabaseMonitorService monitor) =>
+{
+    monitor.Suspend();
     try
     {
-        // Clear any existing auth cookies
-        foreach (var cookie in context.Request.Cookies.Keys)
-        {
-            if (cookie.Contains("AspNetCore") || cookie.Contains("Microsoft"))
-            {
-                context.Response.Cookies.Delete(cookie);
-            }
-        }
-
-        // Add cache control headers
-        context.Response.Headers.CacheControl = "no-store, no-cache";
-        context.Response.Headers.Pragma = "no-cache";
-
-        if (!dbMonitor.IsConnected)
-        {
-            logger.LogWarning("Database unavailable - redirecting to error page");
-            context.Response.Redirect("/database-error", false);
-            return Results.Empty;
-        }
-
-        logger.LogInformation("Database is available, proceeding with authentication");
-
-        var properties = new AuthenticationProperties
-        {
-            RedirectUri = "/",
-            AllowRefresh = true,
-            ExpiresUtc = DateTimeOffset.UtcNow.AddHours(24),
-            IsPersistent = true,
-            // Add timestamp to prevent caching
-            Items = { { "ts", DateTimeOffset.UtcNow.ToUnixTimeSeconds().ToString() } }
-        };
-
-        logger.LogInformation("Issuing challenge");
-        return Results.Challenge(properties, new[] { GoogleDefaults.AuthenticationScheme });
+        var cs = cfg.GetConnectionString("default");
+        var ok = await da.CheckConnection(cs);
+        monitor.Resume();
+        return Results.Ok(ok ? new { status = "connected" } :
+            new { status = "disconnected", message = da.LastError });
     }
     catch (Exception ex)
     {
-        logger.LogError(ex, "Error in login endpoint");
-        throw;
-    }
-});
-
-// Update logout endpoint to clear AppState
-app.MapGet("/logout", async (HttpContext context, AppState appState) =>
-{
-    // Clear AppState before logout
-    appState.ClearUserData();
-    
-    // Sign out from cookie authentication
-    await context.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
-
-    context.Response.Redirect("/logged-out");
-    return Task.CompletedTask;
-});
-
-// Suspend monitoring during API calls too
-app.MapGet("/api/check-db", async (HttpContext context, IDataAccess dataAccess, IConfiguration config, ILogger<Program> logger, DatabaseMonitorService dbMonitor) =>
-{
-    // Suspend database monitoring during check to prevent concurrent access
-    dbMonitor.Suspend();
-
-    try
-    {
-        var connectionString = config.GetConnectionString("default");
-        var isConnected = await dataAccess.CheckConnection(connectionString);
-
-        if (isConnected)
-        {
-            dbMonitor.Resume();
-            return Results.Ok(new { status = "connected" });
-        }
-        else
-        {
-            dbMonitor.Resume();
-            return Results.Ok(new { status = "disconnected", message = dataAccess.LastError });
-        }
-    }
-    catch (Exception ex)
-    {
-        logger.LogError(ex, "Error checking database connection");
-        dbMonitor.Resume();
+        monitor.Resume();
         return Results.Ok(new { status = "error", message = ex.Message });
     }
 });
 
-// Add this endpoint to check authentication status
-app.MapGet("/api/auth-status", (HttpContext context) =>
+app.MapGet("/api/auth-status", (HttpContext ctx) =>
 {
-    var isAuthenticated = context.User.Identity?.IsAuthenticated ?? false;
-    var claims = context.User.Claims.Select(c => new { type = c.Type, value = c.Value }).ToList();
-    
-    return Results.Ok(new {
-        isAuthenticated,
-        userName = context.User.Identity?.Name,
+    var isAuth = ctx.User.Identity?.IsAuthenticated ?? false;
+    var claims = ctx.User.Claims.Select(c => new { type = c.Type, value = c.Value }).ToList();
+    return Results.Ok(new
+    {
+        isAuthenticated = isAuth,
+        userName = ctx.User.Identity?.Name,
         claims,
-        systemStatus = new {
-            completeBypass = GlobalSettings.CompleteBypass,
-            allowMySqlLoading = GlobalSettings.AllowMySqlLoading,
-            bypassDatabaseMonitoring = GlobalSettings.BypassDatabaseMonitoring,
-            databaseIsConnected = context.RequestServices.GetRequiredService<DatabaseMonitorService>().IsConnected,
+        systemStatus = new
+        {
+            GlobalSettings.CompleteBypass,
+            GlobalSettings.AllowMySqlLoading,
+            GlobalSettings.BypassDatabaseMonitoring,
+            databaseIsConnected = ctx.RequestServices.GetRequiredService<DatabaseMonitorService>().IsConnected,
             isAzureEnvironment = !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("WEBSITE_SITE_NAME")),
-            requestPath = context.Request.Path.ToString()
+            requestPath = ctx.Request.Path.ToString()
         }
     });
-})
-.WithMetadata(new AllowAnonymousAttribute());
+}).WithMetadata(new AllowAnonymousAttribute());
 
 app.Run();
-
-
 

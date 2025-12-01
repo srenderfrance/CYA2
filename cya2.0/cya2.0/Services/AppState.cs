@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.Security.Claims;
 using UserAuth;
 
-namespace cya2._0.Services
+namespace cya2.Services
 {
     public class AppState
     {

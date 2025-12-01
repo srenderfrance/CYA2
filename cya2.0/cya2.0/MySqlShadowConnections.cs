@@ -3,7 +3,7 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace cya2._0
+namespace cya2
 {
     // Shadow implementation to use when database is unavailable
     public class MySqlShadowConnection : IDisposable

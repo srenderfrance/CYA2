@@ -16,99 +16,106 @@
 @inject ILogger<Admin> _logger
 @rendermode InteractiveServer
 @using Radzen.Blazor
+@inject IStringLocalizer<Resource> Localizer
 
 <RadzenStack Orientation="Orientation.Vertical" Gap="1rem" Class="rz-p-4">
-    <RadzenText TextStyle="TextStyle.H3">Admin Panel</RadzenText>
-    
-    <!-- Staff Members Selection -->
+    <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="1rem">
+        <RadzenText TextStyle="TextStyle.H3">@Localizer["AdminPanel"]</RadzenText>
+
+        <RadzenButton Text="@Localizer["AllBalances"]"
+                      ButtonStyle="ButtonStyle.Secondary"
+                      Click="@(async () => await OpenAllBalancesDialog())" />
+
+        <RadzenButton Text="@Localizer["AccountSummaries"]"
+                      ButtonStyle="ButtonStyle.Secondary"
+                      Click="@(async () => await OpenAccountSummariesDialog())" />
+    </RadzenStack>
+
     <RadzenCard>
-        <!-- Three-column layout -->
         <RadzenStack Orientation="Orientation.Horizontal" Gap="2rem" Class="rz-mb-2">
-            <!-- Left column: Dropdown and Name input -->
+            <!-- Staff -->
             <RadzenStack Orientation="Orientation.Vertical" Gap="1rem" Style="width: 30%;">
-                <RadzenText TextStyle="TextStyle.Subtitle2" Style="font-weight: bold;">Staff Member</RadzenText>
+                <RadzenText TextStyle="TextStyle.Subtitle2" Style="font-weight: bold;">@Localizer["StaffMember"]</RadzenText>
                 <RadzenDropDown TValue="string"
                                Data="@staff"
                                TextProperty="Name"
                                ValueProperty="Name"
                                @bind-Value="staffMember"
                                Change="@(args => staffSelection(args?.ToString()))"
-                               Placeholder="Select Staff Member"
+                               Placeholder="@Localizer["SelectStaffMember"]"
                                Style="width: 100%;" />
                 
-                <RadzenFormField Text="New Name" Variant="Variant.Outlined">
-                    <RadzenTextBox @bind-Value="@newName" Placeholder="Enter updated name" />
+                <RadzenFormField Text="@Localizer["NewName"]" Variant="Variant.Outlined">
+                    <RadzenTextBox @bind-Value="@newName" Placeholder="@Localizer["EnterUpdatedName"]" />
                 </RadzenFormField>
             </RadzenStack>
             
-            <!-- Middle column: Current email and Email input -->
+            <!-- Email -->
             <RadzenStack Orientation="Orientation.Vertical" Gap="1rem" Style="width: 30%;">
-                <RadzenText TextStyle="TextStyle.Subtitle2" Style="font-weight: bold;">Current Email</RadzenText>
-                <div class="rz-p-2 rz-border-radius-1 rz-border-1" style="height: 38px; display: flex; align-items: center; border: var(--rz-input-border); background-color: var(--rz-input-background-color);">
+                <RadzenText TextStyle="TextStyle.Subtitle2" Style="font-weight: bold;">@Localizer["CurrentEmail"]</RadzenText>
+                <div class="rz-p-2 rz-border-radius-1 rz-border-1" style="height: 38px; display: flex; align-items: center;">
                     <RadzenText TextStyle="TextStyle.Subtitle2">
                         @(string.IsNullOrEmpty(selectedStaffEmail) ? " " : selectedStaffEmail)
                     </RadzenText>
                 </div>
                 
-                <RadzenFormField Text="New Email" Variant="Variant.Outlined">
-                    <RadzenTextBox @bind-Value="@newEmail" Placeholder="Enter updated email" />
+                <RadzenFormField Text="@Localizer["NewEmail"]" Variant="Variant.Outlined">
+                    <RadzenTextBox @bind-Value="@newEmail" Placeholder="@Localizer["EnterUpdatedEmail"]" />
                 </RadzenFormField>
             </RadzenStack>
             
-            <!-- Add Auth Level Column -->
+            <!-- Auth Level -->
             <RadzenStack Orientation="Orientation.Vertical" Gap="1rem" Style="width: 30%;">
-                <RadzenText TextStyle="TextStyle.Subtitle2" Style="font-weight: bold;">Auth Level</RadzenText>
-                <div class="rz-p-2 rz-border-radius-1 rz-border-1" style="height: 38px; display: flex; align-items: center; border: var(--rz-input-border); background-color: var(--rz-input-background-color);">
+                <RadzenText TextStyle="TextStyle.Subtitle2" Style="font-weight: bold;">@Localizer["AuthLevel"]</RadzenText>
+                <div class="rz-p-2 rz-border-radius-1 rz-border-1" style="height: 38px; display: flex; align-items: center;">
                     <RadzenText TextStyle="TextStyle.Subtitle2">
                         @(string.IsNullOrEmpty(selectedStaffAuthLevel) ? " " : selectedStaffAuthLevel)
                     </RadzenText>
                 </div>
                 
-                <RadzenFormField Text="New Auth Level" Variant="Variant.Outlined">
+                <RadzenFormField Text="@Localizer["NewAuthLevel"]" Variant="Variant.Outlined">
                     <RadzenDropDown TValue="string"
                                    Data="@authLevels"
                                    @bind-Value="@newAuthLevel"
-                                   Placeholder="Select new auth level"
+                                   Placeholder="@Localizer["SelectNewAuthLevel"]"
                                    Style="width: 100%;" />
                 </RadzenFormField>
             </RadzenStack>
             
-            <!-- Right column: Account management -->
+            <!-- Account Management -->
             <RadzenStack Orientation="Orientation.Vertical" Gap="1rem" Style="width: 30%;">
-                <RadzenText TextStyle="TextStyle.Subtitle2" Style="font-weight: bold;">Account Management</RadzenText>
+                <RadzenText TextStyle="TextStyle.Subtitle2" Style="font-weight: bold;">@Localizer["AccountManagement"]</RadzenText>
                 
-                <!-- Add Account section -->
                 <RadzenStack Orientation="Orientation.Vertical" Gap="0.5rem">
-                    <RadzenText TextStyle="TextStyle.Subtitle2">Add Account Access</RadzenText>
+                    <RadzenText TextStyle="TextStyle.Subtitle2">@Localizer["AddAccountAccess"]</RadzenText>
                     <RadzenDropDown TValue="string"
                                     Data="@allAccounts"
                                     TextProperty="Name"
                                     ValueProperty="Name"
                                     @bind-Value="accountToAdd"
-                                    Placeholder="Select Account"
+                                    Placeholder="@Localizer["SelectAccount"]"
                                     Style="width: 100%;" />
                     
                     <RadzenButton 
-                        Text="Link Account to Staff" 
+                        Text="@Localizer["LinkAccountToStaff"]" 
                         ButtonStyle="ButtonStyle.Primary" 
                         Click="LinkAccountToStaff" 
                         Disabled="@(string.IsNullOrEmpty(staffMember) || string.IsNullOrEmpty(accountToAdd))"
                         Style="width: fit-content;" />
                 </RadzenStack>
                 
-                <!-- Remove Account section -->
                 <RadzenStack Orientation="Orientation.Vertical" Gap="0.5rem" Class="rz-mt-3">
-                    <RadzenText TextStyle="TextStyle.Body2">Remove Account Access</RadzenText>
+                    <RadzenText TextStyle="TextStyle.Body2">@Localizer["RemoveAccountAccess"]</RadzenText>
                     <RadzenDropDown TValue="int"
                                     Data="@userAccounts"
                                     TextProperty="Name"
                                     ValueProperty="AccountId"
                                     @bind-Value="selectedLinkedAccountId"
-                                    Placeholder="Select account to remove"
+                                    Placeholder="@Localizer["SelectAccountToRemove"]"
                                     Style="width: 100%;" />
                     
                     <RadzenButton 
-                        Text="Remove Account Link" 
+                        Text="@Localizer["RemoveAccountLink"]" 
                         ButtonStyle="ButtonStyle.Danger" 
                         Click="RemoveAccountLink" 
                         Disabled="@(selectedLinkedAccountId == 0 || string.IsNullOrEmpty(staffMember))"
@@ -121,7 +128,7 @@
         @if (!string.IsNullOrEmpty(staffUpdateError))
         {
             <RadzenAlert AlertStyle="AlertStyle.Danger" ShowIcon="true" Variant="Variant.Filled" Class="rz-mt-3">
-                @staffUpdateError
+                @Localizer[staffUpdateError]
             </RadzenAlert>
         }
         
@@ -150,14 +157,14 @@
         <!-- Update and Delete buttons -->
         <div style="margin-top: 1rem;">
             <RadzenButton 
-                Text="Update Staff Member" 
+                Text="@Localizer["UpdateStaffMember"]" 
                 ButtonStyle="ButtonStyle.Primary" 
                 Click="UpdateStaffMember" 
                 Disabled="@(string.IsNullOrEmpty(staffMember))"
                 Style="margin-right: 1rem;" />
                 
             <RadzenButton 
-                Text="Delete Staff Member" 
+                Text="@Localizer["DeleteStaffMember"]" 
                 ButtonStyle="ButtonStyle.Danger" 
                 Click="@(() => { userToDelete = staffMember; showDeleteConfirmation = true; })"
                 Disabled="@(string.IsNullOrEmpty(staffMember))"
@@ -165,108 +172,45 @@
         </div>
     </RadzenCard>
     
-    <!-- Create New User Form -->
     <RadzenCard>
-        <RadzenText TextStyle="TextStyle.H5">Create New User</RadzenText>
+        <RadzenText TextStyle="TextStyle.H5">@Localizer["CreateNewUser"]</RadzenText>
         
         <RadzenTemplateForm TItem="UserFormModel" Data="@formModel" Submit="@HandleValidSubmit">
             <RadzenStack Orientation="Orientation.Vertical" Gap="1rem">
-                <RadzenFormField Text="Email" Variant="Variant.Outlined">
+                <RadzenFormField Text="@Localizer["Email"]" Variant="Variant.Outlined">
                     <RadzenTextBox @bind-Value="@formModel.Email" Name="Email" />
-                    <RadzenRequiredValidator Component="Email" Text="Email is required" />
-                    <RadzenEmailValidator Component="Email" Text="Please enter a valid email" />
+                    <RadzenRequiredValidator Component="Email" Text="@Localizer["EmailRequired"]" />
+                    <RadzenEmailValidator Component="Email" Text="@Localizer["ValidEmailRequired"]" />
                 </RadzenFormField>
                 
-                <RadzenFormField Text="Name" Variant="Variant.Outlined">
+                <RadzenFormField Text="@Localizer["Name"]" Variant="Variant.Outlined">
                     <RadzenTextBox @bind-Value="@formModel.Name" Name="Name" />
-                    <RadzenRequiredValidator Component="Name" Text="Name is required" />
-                    <RadzenLengthValidator Component="Name" Min="2" Max="100" Text="Name must be between 2 and 100 characters" />
+                    <RadzenRequiredValidator Component="Name" Text="@Localizer["NameRequired"]" />
+                    <RadzenLengthValidator Component="Name" Min="2" Max="100" Text="@Localizer["NameLength"]" />
                 </RadzenFormField>
                 
                 <div class="d-flex">
-                    <RadzenButton Text="Register New User" 
+                    <RadzenButton Text="@Localizer["RegisterNewUser"]" 
                                   ButtonType="ButtonType.Submit" 
-                                  ButtonStyle="ButtonStyle.Primary" 
-                                  Style="width: auto;" />
+                                  ButtonStyle="ButtonStyle.Primary" />
                 </div>
             </RadzenStack>
         </RadzenTemplateForm>
     </RadzenCard>
-    
-    <!-- COMMENTED OUT: Funds Section 
-    <RadzenCard>
-        <RadzenStack Orientation="Orientation.Horizontal" Gap="1rem">
-            <RadzenButton Text="Get Distinct Funds" Click="@GetDistinctFunds" ButtonStyle="ButtonStyle.Secondary" />
-            <RadzenButton Text="Create Accounts from Funds" Click="@CreateAccountsFromFunds" 
-                         ButtonStyle="ButtonStyle.Primary" 
-                         Disabled="@(funds == null || !funds.Any())" />
-        </RadzenStack>
-        
-        @if (successMessage != null)
-        {
-            <RadzenAlert AlertStyle="AlertStyle.Success" ShowIcon="true" Variant="Variant.Filled" Class="rz-mt-3">
-                @successMessage
-            </RadzenAlert>
-        }
-        
-        @if (errorMessage != null)
-        {
-            <RadzenAlert AlertStyle="AlertStyle.Danger" ShowIcon="true" Variant="Variant.Filled" Class="rz-mt-3">
-                @errorMessage
-            </RadzenAlert>
-        }
-        
-        @if (funds != null && funds.Any())
-        {
-            <RadzenStack Class="rz-mt-4" Orientation="Orientation.Vertical">
-                <RadzenText TextStyle="TextStyle.H6">Distinct Funds (@funds.Count)</RadzenText>
-                <RadzenList>
-                    @foreach (var fund in funds)
-                    {
-                        <RadzenListItem>@fund</RadzenListItem>
-                    }
-                </RadzenList>
-            </RadzenStack>
-        }
-        
-        @if (createdAccounts != null && createdAccounts.Any())
-        {
-            <RadzenStack Class="rz-mt-4" Orientation="Orientation.Vertical">
-                <RadzenText TextStyle="TextStyle.H6">Created Accounts (@createdAccounts.Count)</RadzenText>
-                <RadzenDataGrid Data="@createdAccounts" TItem="(string name, string accountRef, bool success, string errorMessage)">
-                    <Columns>
-                        <RadzenDataGridColumn TItem="(string name, string accountRef, bool success, string errorMessage)" 
-                                             Property="name" Title="Name" />
-                        <RadzenDataGridColumn TItem="(string name, string accountRef, bool success, string errorMessage)" 
-                                             Property="accountRef" Title="Account Reference" />
-                        <RadzenDataGridColumn TItem="(string name, string accountRef, bool success, string errorMessage)" 
-                                             Property="success" Title="Result">
-                            <Template Context="data">
-                                @if (data.success)
-                                {
-                                    <RadzenBadge BadgeStyle="BadgeStyle.Success" Text="Created" />
-                                }
-                                else
-                                {
-                                    <RadzenBadge BadgeStyle="BadgeStyle.Danger" Text="@data.errorMessage" />
-                                }
-                            </Template>
-                        </RadzenDataGridColumn>
-                    </Columns>
-                </RadzenDataGrid>
-            </RadzenStack>
-        }
-    </RadzenCard>
-    -->
 </RadzenStack>
 
-<!-- Add this near your other dialog-related code -->
 <ConfirmDialog 
     Show="@showDeleteConfirmation"
-    Title="Delete Staff Member"
-    Message="@($"Are you sure you want to delete {userToDelete}?")"
+    Title="@Localizer["DeleteStaffMember"]"
+    Message="@Localizer["ConfirmDeleteStaffMember", userToDelete]"
     OnConfirm="@ConfirmDelete"
     OnCancel="@(() => showDeleteConfirmation = false)" />
+
+<!-- Radzen hosts inside the Admin interactive island -->
+<RadzenDialog />
+<RadzenNotification />
+<RadzenContextMenu />
+<RadzenTooltip />
 
 @code {
     private string? staffMember;
@@ -1087,5 +1031,37 @@
         {
             errorMessage = $"Error creating accounts: {ex.Message}";
         }
+    }
+
+    private async Task OpenAllBalancesDialog()
+    {
+        await DialogService.OpenAsync<AllBalancesView>(
+            title: Localizer["AllBalances"],
+            options: new DialogOptions
+            {
+                Width = "90vw",              // large but not full width
+                Height = "85vh",
+                Resizable = true,
+                Draggable = false,
+                Style = "position:fixed; top:50%; left:50%; transform:translate(-50%,-50%); max-width:none;"
+            });
+    }
+
+    private async Task OpenAccountSummariesDialog()
+    {
+        await DialogService.OpenAsync<AccountSummariesView>(
+            title: Localizer["AccountSummaries"],
+            parameters: new Dictionary<string, object>
+            {
+                { "DefaultAccountName", AppState.DefaultAccount }
+            },
+            options: new DialogOptions
+            {
+                Width = "90vw",
+                Height = "85vh",
+                Resizable = true,
+                Draggable = false,
+                Style = "position:fixed; top:50%; left:50%; transform:translate(-50%,-50%); max-width:none;"
+            });
     }
 }

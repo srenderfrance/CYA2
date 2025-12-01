@@ -1,0 +1,25 @@
+@using Radzen.Blazor
+@inject IStringLocalizer<Resource> Localizer
+
+<RadzenStack Orientation="Orientation.Vertical" Gap="1rem" Class="rz-p-3"
+             Style="height:100%; overflow:auto;">
+    <RadzenText TextStyle="TextStyle.H5">@Localizer["AllBalances"]</RadzenText>
+
+    <div class="container mt-2">
+        <div class="row">
+            <div class="col-12">
+                <div class="card mt-2">
+                    <div class="card-header bg-primary text-white">
+                        @Localizer["AllBalances"]
+                    </div>
+                    <div class="card-body" style="max-height: 60vh; overflow: auto;">
+                        <div class="alert alert-info">
+                            @Localizer["Loading"]
+                        </div>
+                        <!-- TODO: hook up real balances grid/content -->
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</RadzenStack>

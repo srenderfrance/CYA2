@@ -7,7 +7,7 @@ using DataLibrary;
 using Microsoft.Extensions.Configuration;
 using ModelsLibrary;
 
-namespace cya2._0.Services
+namespace cya2.Services
 {
     public class DataLoadingService
     {

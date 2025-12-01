@@ -108,6 +108,8 @@
 
 .nav-container {
     width: 100%;
+    display: flex;
+    justify-content: space-between;
     background-image: linear-gradient(90deg, rgb(5, 39, 103) 0%, rgb(3, 166, 150) 70%);
 }
 

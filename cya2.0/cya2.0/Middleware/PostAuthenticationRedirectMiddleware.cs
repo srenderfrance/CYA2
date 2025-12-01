@@ -3,7 +3,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
 using System.Security.Claims;
 
-namespace cya2._0.Middleware
+namespace cya2.Middleware
 {
     public class PostAuthenticationRedirectMiddleware
     {
