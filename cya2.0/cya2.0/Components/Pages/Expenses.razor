@@ -19,27 +19,47 @@
 <PageTitle>@Localizer["ExpensesNav"]</PageTitle>
 
 <RadzenStack Orientation="Orientation.Vertical" Gap="1rem" Class="rz-p-4">
-    <div class="d-flex justify-content-between align-items-center">
-        <RadzenText TextStyle="TextStyle.H3">@Localizer["Account"] @selectedAccount</RadzenText>
-        <RadzenDropDown TValue="string"
-                        Data="@userAccounts"
-                        TextProperty="Name"
-                        ValueProperty="Name"
-                        @bind-Value="selectedAccount"
-                        Change="@(args => accountSelection(args?.ToString()))"
-                        Placeholder="@Localizer["ChooseAccount"]"
-                        Style="width: 250px;" />
-    </div>
 
-    <RadzenStack Orientation="Orientation.Horizontal" Gap="1rem" JustifyContent="JustifyContent.Start" AlignItems="AlignItems.Center">
-        <RadzenText TextStyle="TextStyle.Subtitle2">@Localizer["DateRange"]</RadzenText>
-        <RadzenLabel Text="@Localizer["StartDate"]" />
-        <RadzenDatePicker @bind-Value="@startDate" DateFormat="MM/dd/yyyy" />
+    <!-- Top two control sections (match Donations layout) -->
+    <RadzenStack Orientation="Orientation.Horizontal"
+                 Gap="2rem"
+                 JustifyContent="JustifyContent.SpaceBetween"
+                 AlignItems="AlignItems.Start"
+                 Style="width:100%;">
 
-        <RadzenLabel Text="@Localizer["EndDate"]" />
-        <RadzenDatePicker @bind-Value="@endDate" DateFormat="MM/dd/yyyy" />
+        <!-- Date range section (left) -->
+        <RadzenStack Orientation="Orientation.Vertical" Gap="0.5rem" Style="flex:1;">
+            <RadzenText TextStyle="TextStyle.Subtitle2">@Localizer["DateRange"]</RadzenText>
+            <RadzenStack Orientation="Orientation.Horizontal"
+                         Gap="0.75rem"
+                         AlignItems="AlignItems.Center"
+                         Wrap="FlexWrap.Wrap">
+                <RadzenLabel Text="@Localizer["StartDate"]" />
+                <RadzenDatePicker @bind-Value="@startDate" DateFormat="MM/dd/yyyy" Style="max-width:130px" />
 
-        <RadzenButton Text="@Localizer["ApplyFilter"]" Icon="filter_alt" Click="@selectDateRange" ButtonStyle="ButtonStyle.Primary" />
+                <RadzenLabel Text="@Localizer["EndDate"]" />
+                <RadzenDatePicker @bind-Value="@endDate" DateFormat="MM/dd/yyyy" Style="max-width:130px" />
+
+                <RadzenButton Text="@Localizer["ApplyFilter"]"
+                              Icon="filter_alt"
+                              Click="@selectDateRange"
+                              ButtonStyle="ButtonStyle.Primary" />
+            </RadzenStack>
+        </RadzenStack>
+
+        <!-- Account selection section (right) -->
+        <RadzenStack Orientation="Orientation.Vertical" Gap="0.5rem" Style="flex:1; max-width:300px;">
+            <RadzenText TextStyle="TextStyle.Subtitle2">@Localizer["Account"]</RadzenText>
+            <RadzenDropDown TValue="string"
+                            Data="@userAccounts"
+                            TextProperty="Name"
+                            ValueProperty="Name"
+                            @bind-Value="selectedAccount"
+                            Change="@(args => accountSelection(args?.ToString()))"
+                            Placeholder="@Localizer["ChooseAccount"]"
+                            Style="width: 250px;" />
+        </RadzenStack>
+
     </RadzenStack>
 
     @if (!string.IsNullOrEmpty(errorMessage))
@@ -90,27 +110,21 @@
     protected override async Task OnInitializedAsync()
     {
         try {
-            // Create a local copy to prevent binding to shared state
             userAccounts = new List<Account>();
-            
-            // Get the authentication state and extract the user
+
             var authState = await AuthStateProvider.GetAuthenticationStateAsync();
             var user = authState.User;
-            
-            // Initialize user data with the user object (ClaimsPrincipal)
+
             await DataLoader.InitializeUserDataAsync(user);
-            
-            // Make a local copy - important for UI stability
+
             userAccounts = AppState.UserAccounts.ToList();
             Console.WriteLine($"Loaded {userAccounts.Count} accounts for dropdown");
-            
-            // Set selected account to default
+
             if (!string.IsNullOrEmpty(AppState.DefaultAccount))
             {
                 selectedAccount = AppState.DefaultAccount;
                 currentAccount = userAccounts.FirstOrDefault(a => a.Name == selectedAccount);
-                
-                // Get accounting data
+
                 if (currentAccount != null && AppState.IsAccountDataLoaded(currentAccount.Name))
                 {
                     var accountingData = AppState.AccountDataCache[currentAccount.Name].AccountingData;
@@ -262,7 +276,6 @@
         }
     }
 
-    // Simple class just for ID retrieval
     private class UserIdOnly
     {
         public int Id { get; set; }

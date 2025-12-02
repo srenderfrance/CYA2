@@ -18,108 +18,313 @@
 
 <PageTitle>@Localizer["DonationsNav"]</PageTitle>
 
-<RadzenStack Orientation="Orientation.Vertical" Gap="1rem" Class="rz-p-4">
-    <div class="d-flex justify-content-between align-items-center">
-        <RadzenText TextStyle="TextStyle.H3">@Localizer["Account"]: @selectedAccount</RadzenText>
-        <RadzenDropDown TValue="string"
-                        Data="@AppState.UserAccounts"
-                        TextProperty="Name"
-                        ValueProperty="Name"
-                        @bind-Value="selectedAccount"
-                        Change="@(args => accountSelection(args?.ToString()))"
-                        Placeholder="@Localizer["ChooseAccount"]"
-                        Style="width: 250px;" />
-    </div>
+<style>
+    .giving-grid .rz-data-grid { font-size: 0.75rem; }
+    .giving-grid .rz-cell,
+    .giving-grid .rz-column-header,
+    .giving-grid .rz-column-footer { padding: 2px 4px; line-height: 1.1; }
+    .giving-grid .rz-column-header { font-size: 0.70rem; font-weight: 600; white-space: nowrap; }
 
-    <RadzenStack Orientation="Orientation.Horizontal" Gap="1rem" JustifyContent="JustifyContent.Start" AlignItems="AlignItems.Center">
-        <RadzenText TextStyle="TextStyle.Subtitle2">@Localizer["DateRange"]</RadzenText>
-        <RadzenLabel Text="@Localizer["StartDate"]" />
-        <RadzenDatePicker @bind-Value="@startDate" DateFormat="MM/dd/yyyy" />
+    /* Left-align all headers (column titles) while keeping cell padding consistent */
+    .giving-grid .rz-column-header .rz-column-title {
+        width: 100%;
+        display: block;
+        text-align: left;
+    }
 
-        <RadzenLabel Text="@Localizer["EndDate"]" />
-        <RadzenDatePicker @bind-Value="@endDate" DateFormat="MM/dd/yyyy" />
+    .giving-grid .donor-cell {
+        white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 160px; display: inline-block;
+    }
+    .view-mode-buttons .rz-button { padding: 4px 10px; font-size: 0.75rem; }
 
-        <RadzenButton Text="@Localizer["ApplyFilter"]" Icon="filter_alt" Click="@selectDateRange" ButtonStyle="ButtonStyle.Primary" />
+    /* Vertically center dropdown text (selected value and items) */
+    .rz-dropdown .rz-inputtext {
+        display: flex;
+        align-items: center; /* center the label container vertically */
+    }
+    .rz-dropdown .rz-dropdown-label {
+        display: flex;
+        align-items: center; /* center the text within the label */
+        height: 100%;
+        width: 100%;
+    }
+    .rz-dropdown-panel .rz-dropdown-item {
+        display: flex;
+        align-items: center;
+    }
+</style>
+
+<RadzenStack Orientation="Orientation.Vertical" Gap="0.75rem" Class="rz-p-4">
+
+    <RadzenStack Orientation="Orientation.Horizontal"
+                 Gap="2rem"
+                 JustifyContent="JustifyContent.SpaceBetween"
+                 AlignItems="AlignItems.Start"
+                 Style="width:100%;">
+
+        <RadzenStack Orientation="Orientation.Vertical" Gap="0.4rem" Style="flex:1;">
+            <RadzenText TextStyle="TextStyle.Subtitle1">@Localizer["DateRange"]</RadzenText>
+            <RadzenStack Orientation="Orientation.Horizontal"
+                         Gap="0.5rem"
+                         AlignItems="AlignItems.Center"
+                         Wrap="FlexWrap.Wrap">
+                <RadzenLabel Text="@Localizer["StartDate"]" />
+                <RadzenDatePicker @bind-Value="@pendingStartDate" DateFormat="MM/dd/yyyy" Style="max-width:130px" />
+                <RadzenLabel Text="@Localizer["EndDate"]" />
+                <RadzenDatePicker @bind-Value="@pendingEndDate" DateFormat="MM/dd/yyyy" Style="max-width:130px" />
+
+                <!-- Preset dropdown -->
+                <RadzenDropDown TValue="DateRangePreset"
+                                Data="@presetOptions"
+                                TextProperty="Text"
+                                ValueProperty="Value"
+                                @bind-Value="@selectedPreset"
+                                Change="@(args => ApplyPreset((DateRangePreset)args))"
+                                Style="width: 180px;" />
+
+                <RadzenButton Text="@Localizer["ApplyFilter"]"
+                              Icon="filter_alt"
+                              Click="@selectDateRange"
+                              Size="ButtonSize.Small"
+                              ButtonStyle="ButtonStyle.Primary" />
+            </RadzenStack>
+        </RadzenStack>
+
+        <RadzenStack Orientation="Orientation.Vertical" Gap="0.4rem" Style="flex:1; max-width:300px;">
+            <RadzenText TextStyle="TextStyle.Subtitle1">@Localizer["Account"]</RadzenText>
+            <RadzenDropDown TValue="string"
+                            Data="@AppState.UserAccounts"
+                            TextProperty="Name"
+                            ValueProperty="Name"
+                            @bind-Value="selectedAccount"
+                            Change="@(args => accountSelection(args?.ToString()))"
+                            Placeholder="@Localizer["ChooseAccount"]"
+                            Style="width: 240px;" />
+        </RadzenStack>
+    </RadzenStack>
+
+    <RadzenStack Orientation="Orientation.Horizontal"
+                 Gap="0.5rem"
+                 AlignItems="AlignItems.Center"
+                 Class="view-mode-buttons">
+        <RadzenButton Text="@Localizer["GivingGrid"]"
+                      ButtonStyle="@(currentView == ViewMode.GivingGrid ? ButtonStyle.Primary : ButtonStyle.Light)"
+                      Size="ButtonSize.Small"
+                      Click="@(() => SetView(ViewMode.GivingGrid))" />
+        <RadzenButton Text="@Localizer["DonationList"]"
+                      ButtonStyle="@(currentView == ViewMode.DonationList ? ButtonStyle.Primary : ButtonStyle.Light)"
+                      Size="ButtonSize.Small"
+                      Click="@(() => SetView(ViewMode.DonationList))" />
+        <RadzenButton Text="@Localizer["Graphs"]"
+                      ButtonStyle="@(currentView == ViewMode.Graphs ? ButtonStyle.Primary : ButtonStyle.Light)"
+                      Size="ButtonSize.Small"
+                      Click="@(() => SetView(ViewMode.Graphs))" />
     </RadzenStack>
 
     @if (!string.IsNullOrEmpty(errorMessage))
     {
-        <RadzenAlert AlertStyle="AlertStyle.Danger" ShowIcon="true" Variant="Variant.Filled" Class="mt-3">
+        <RadzenAlert AlertStyle="AlertStyle.Danger" ShowIcon="true" Variant="Variant.Filled" Class="mt-2">
             @Localizer[errorMessage]
         </RadzenAlert>
     }
 
     @if (isLoading)
     {
-        <div class="mt-4">
+        <div class="mt-3">
             <RadzenProgressBar Value="100" ShowValue="false" Mode="ProgressBarMode.Indeterminate" />
-            <p class="text-muted mt-2">@Localizer["LoadingDonations"]</p>
+            <p class="text-muted mt-1">@Localizer["LoadingDonations"]</p>
         </div>
     }
     else
     {
-        <RadzenCard>
-            <RadzenDataGrid Data="@selectedDonations"
-                            TItem="UserDataDonations"
-                            AllowFiltering="true"
-                            AllowColumnResize="true"
-                            AllowSorting="true"
-                            AllowPaging="false"
-                            FilterMode="FilterMode.Advanced"
-                            EmptyText="@Localizer["NoDonationsFound"]">
-                <Columns>
-                    <RadzenDataGridColumn TItem="UserDataDonations" Property="Account" Title="@Localizer["Account"]" />
-                    <RadzenDataGridColumn TItem="UserDataDonations" Property="Donor" Title="@Localizer["Donor"]" />
-                    <RadzenDataGridColumn TItem="UserDataDonations" Property="Date" Title="@Localizer["Date"]" FormatString="{0:MM/dd/yyyy}" />
-                    <RadzenDataGridColumn TItem="UserDataDonations" Property="Amount" Title="@Localizer["Amount"]" FormatString="{0:C2}" />
-                    <RadzenDataGridColumn TItem="UserDataDonations" Property="Frequency" Title="@Localizer["Frequency"]" />
-                    <RadzenDataGridColumn TItem="UserDataDonations" Property="TransactionType" Title="@Localizer["TransactionType"]" />
-                </Columns>
-            </RadzenDataGrid>
-        </RadzenCard>
+        @if (currentView == ViewMode.GivingGrid)
+        {
+            @* Giving Grid *@
+            <RadzenCard Style="padding:0.5rem;">
+                <RadzenDataGrid TItem="DonationPivotRow"
+                                Data="@pivotRows"
+                                Class="giving-grid"
+                                AllowPaging="false"
+                                AllowSorting="false"
+                                AllowFiltering="false"
+                                AllowVirtualization="false"
+                                AllowColumnReorder="false"
+                                @ref="givingGridRef"
+                                CellRender="@OnGivingGridCellRender"
+                                EmptyText="@Localizer["NoDonationsFound"]">
+                    <Columns>
+                        <!-- Donor: header/cell left -->
+                        <RadzenDataGridColumn TItem="DonationPivotRow"
+                                              Title="@(Localizer["Donor"])"
+                                              Width="160px"
+                                              OrderIndex="0"
+                                              TextAlign="TextAlign.Left">
+                            <Template Context="row">
+                                <span class="donor-cell" title="@row.Donor">@row.Donor</span>
+                            </Template>
+                            <FooterTemplate>
+                                <strong>@Localizer["Total"]</strong>
+                            </FooterTemplate>
+                        </RadzenDataGridColumn>
+
+                        @for (var i = 0; i < monthColumns.Count; i++)
+                        {
+                            var month = monthColumns[i];
+                            <!-- Months: header left, cell will be right via CellRender -->
+                            <RadzenDataGridColumn @key="month"
+                                                  TItem="DonationPivotRow"
+                                                  Title="@(GetMonthHeader(month))"
+                                                  TextAlign="TextAlign.Left"
+                                                  Width="@MonthColumnWidth"
+                                                  OrderIndex="@(i + 1)">
+                                <Template Context="row">
+                                    @{
+                                        var has = row.Monthly.TryGetValue(month, out var amt);
+                                    }
+                                    @(has && amt != 0m ? amt.ToString("C0") : "")
+                                </Template>
+                                <FooterTemplate>
+                                    @{
+                                        var mt = monthTotals.TryGetValue(month, out var t) ? t : 0m;
+                                    }
+                                    <strong>@mt.ToString("C0")</strong>
+                                </FooterTemplate>
+                            </RadzenDataGridColumn>
+                        }
+
+                        <!-- Total: header left, cell will be right via CellRender -->
+                        <RadzenDataGridColumn TItem="DonationPivotRow"
+                                              Title="@(Localizer["Total"])"
+                                              TextAlign="TextAlign.Left"
+                                              Width="85px"
+                                              OrderIndex="@(monthColumns.Count + 1)">
+                            <Template Context="row">
+                                <strong>@row.Total.ToString("C0")</strong>
+                            </Template>
+                            <FooterTemplate>
+                                <strong>@grandTotal.ToString("C0")</strong>
+                            </FooterTemplate>
+                        </RadzenDataGridColumn>
+                    </Columns>
+                </RadzenDataGrid>
+            </RadzenCard>
+        }
+        else if (currentView == ViewMode.DonationList)
+        {
+            <!-- Existing donation list -->
+            <RadzenCard>
+                <RadzenDataGrid Data="@selectedDonations"
+                                TItem="UserDataDonations"
+                                AllowFiltering="true"
+                                AllowColumnResize="true"
+                                AllowSorting="true"
+                                AllowPaging="false"
+                                FilterMode="FilterMode.Advanced"
+                                EmptyText="@Localizer["NoDonationsFound"]">
+                    <Columns>
+                        <RadzenDataGridColumn TItem="UserDataDonations" Property="Account" Title="@(Localizer["Account"])" />
+                        <RadzenDataGridColumn TItem="UserDataDonations" Property="Donor" Title="@(Localizer["Donor"])" />
+                        <RadzenDataGridColumn TItem="UserDataDonations" Property="Date" Title="@(Localizer["Date"])" FormatString="{0:MM/dd/yyyy}" />
+                        <RadzenDataGridColumn TItem="UserDataDonations" Property="Amount" Title="@(Localizer["Amount"])" FormatString="{0:C2}" />
+                        <RadzenDataGridColumn TItem="UserDataDonations" Property="Frequency" Title="@(Localizer["Frequency"])" />
+                        <RadzenDataGridColumn TItem="UserDataDonations" Property="TransactionType" Title="@(Localizer["TransactionType"])" />
+                    </Columns>
+                </RadzenDataGrid>
+            </RadzenCard>
+        }
+        else
+        {
+            <!-- Graphs placeholder -->
+            <RadzenCard>
+                <RadzenText TextStyle="TextStyle.Subtitle2">@Localizer["Graphs"]</RadzenText>
+                <div class="text-muted">@Localizer["ComingSoon"]</div>
+            </RadzenCard>
+        }
     }
 </RadzenStack>
 
 @code {
-    private List<UserDataDonations> donations = new List<UserDataDonations>();
-    private List<UserDataDonations> selectedDonations = new List<UserDataDonations>();
+    private List<UserDataDonations> donations = new();
+    private List<UserDataDonations> selectedDonations = new();
 
     private DateTime startDate = new DateTime(DateTime.Now.Year, DateTime.Now.Month, 1, 0, 0, 0);
     private DateTime endDate = DateTime.Now;
+
+    private DateTime pendingStartDate;
+    private DateTime pendingEndDate;
+
     private string selectedAccount = string.Empty;
     private string errorMessage = string.Empty;
     private bool isLoading = true;
     private Account currentAccount = null;
 
+    private enum ViewMode { GivingGrid, DonationList, Graphs }
+    private ViewMode currentView = ViewMode.GivingGrid;
+    private void SetView(ViewMode mode) => currentView = mode;
+
+    private readonly List<DateTime> monthColumns = new();
+    private readonly List<DonationPivotRow> pivotRows = new();
+    private readonly Dictionary<DateTime, decimal> monthTotals = new();
+    private decimal grandTotal = 0m;
+
+    private RadzenDataGrid<DonationPivotRow> givingGridRef;
+
+    private string MonthColumnWidth => monthColumns.Count <= 12 ? "70px" : "55px";
+
+    private string GetMonthHeader(DateTime m)
+    {
+        var singleYear = startDate.Year == endDate.Year;
+        return singleYear ? m.ToString("MMM") : m.ToString("MMM yy");
+    }
+
+    private enum DateRangePreset { ThisYear, Previous12Months, LastYear }
+    private DateRangePreset selectedPreset = DateRangePreset.ThisYear;
+
+    private sealed class PresetOption
+    {
+        public string Text { get; set; } = string.Empty;
+        public DateRangePreset Value { get; set; }
+    }
+
+    private List<PresetOption> presetOptions = new();
+
     protected override async Task OnInitializedAsync()
     {
         try
         {
-            // Initialize user data
             var authState = await AuthStateProvider.GetAuthenticationStateAsync();
             await DataLoader.InitializeUserDataAsync(authState.User);
 
-            // Check if we have accounts
+            presetOptions = new List<PresetOption>
+            {
+                new() { Text = Localizer["ThisYear"], Value = DateRangePreset.ThisYear },
+                new() { Text = Localizer["Previous12Months"], Value = DateRangePreset.Previous12Months },
+                new() { Text = Localizer["LastYear"], Value = DateRangePreset.LastYear }
+            };
+
+            selectedPreset = DateRangePreset.ThisYear;
+            ApplyPreset(selectedPreset);
+
             if (AppState.UserAccounts.Any())
             {
-                // Set default account if available
                 if (!string.IsNullOrEmpty(AppState.DefaultAccount))
                 {
                     selectedAccount = AppState.DefaultAccount;
                     currentAccount = AppState.UserAccounts.FirstOrDefault(a => a.Name == selectedAccount);
-
-                    // Load donations data for the default account
-                    await LoadDonationsForAccount(currentAccount);
                 }
-                else if (AppState.UserAccounts.Any())
+                else
                 {
-                    // Use first account as default if no default set
                     selectedAccount = AppState.UserAccounts.First().Name;
                     currentAccount = AppState.UserAccounts.First();
+                }
+
+                if (currentAccount != null)
+                {
                     await LoadDonationsForAccount(currentAccount);
                 }
             }
 
+            await selectDateRange();
             isLoading = false;
         }
         catch (Exception ex)
@@ -127,6 +332,29 @@
             errorMessage = $"Error loading data: {ex.Message}";
             Console.WriteLine($"Error in OnInitializedAsync: {ex.Message}");
             isLoading = false;
+        }
+    }
+
+    private void ApplyPreset(DateRangePreset preset)
+    {
+        var now = DateTime.Now;
+        switch (preset)
+        {
+            case DateRangePreset.ThisYear:
+                pendingStartDate = new DateTime(now.Year, 1, 1);
+                pendingEndDate = now;
+                break;
+            case DateRangePreset.Previous12Months:
+                var firstOfCurrentMonth = new DateTime(now.Year, now.Month, 1);
+                pendingStartDate = firstOfCurrentMonth.AddMonths(-12);
+                var lastDayPrevMonth = firstOfCurrentMonth.AddDays(-1);
+                pendingEndDate = new DateTime(lastDayPrevMonth.Year, lastDayPrevMonth.Month, lastDayPrevMonth.Day);
+                break;
+            case DateRangePreset.LastYear:
+                var lastYear = now.Year - 1;
+                pendingStartDate = new DateTime(lastYear, 1, 1);
+                pendingEndDate = new DateTime(lastYear, 12, 31);
+                break;
         }
     }
 
@@ -139,19 +367,14 @@
             isLoading = true;
             errorMessage = string.Empty;
 
-            // Clear existing data
             donations.Clear();
             selectedDonations.Clear();
 
-            // Update UI
             StateHasChanged();
 
             selectedAccount = accountName;
-
-            // Update AppState with the selected account
             AppState.DefaultAccount = accountName;
 
-            // Find account in UserAccounts
             currentAccount = AppState.UserAccounts.FirstOrDefault(a => a.Name == selectedAccount);
 
             if (currentAccount != null)
@@ -169,6 +392,7 @@
         }
     }
 
+    // KEEP ONLY THIS SINGLE METHOD
     private async Task LoadDonationsForAccount(Account account)
     {
         try
@@ -179,7 +403,6 @@
                 return;
             }
 
-            // Check if data is already in AppState
             if (AppState.IsAccountDataLoaded(account.Name))
             {
                 var accountData = AppState.AccountDataCache[account.Name];
@@ -187,10 +410,8 @@
             }
             else
             {
-                // Load from database if not in cache
                 await DataLoader.LoadAccountDataAsync(account);
 
-                // Check if loading was successful
                 if (AppState.IsAccountDataLoaded(account.Name))
                 {
                     var accountData = AppState.AccountDataCache[account.Name];
@@ -198,7 +419,6 @@
                 }
                 else
                 {
-                    // Fallback to direct database query if something went wrong with DataLoader
                     string sql = "SELECT * FROM etapestry WHERE fund = @Fund";
                     var donationData = await _data.LoadData<DonationsDataModel, dynamic>(
                         sql,
@@ -217,8 +437,7 @@
                 }
             }
 
-            // Apply date filter
-            selectDateRange();
+            // Do not call selectDateRange here; OnInitializedAsync or the Apply button will do it
         }
         catch (Exception ex)
         {
@@ -236,29 +455,19 @@
             foreach (var donation in donationData)
             {
                 int separatorIndex = donation.fund.IndexOf(":");
+                var fundName = separatorIndex > 0
+                    ? donation.fund.Remove(separatorIndex, donation.fund.Length - separatorIndex)
+                    : donation.fund;
 
-                if (separatorIndex > 0)
-                {
-                    var newDonation = new UserDataDonations(
-                        donation.fund.Remove(separatorIndex, donation.fund.Length - separatorIndex),
-                        donation.accountname,
-                        donation.date,
-                        donation.amount,
-                        donation.recurring,
-                        donation.gifttype);
-                    donations.Add(newDonation);
-                }
-                else
-                {
-                    var newDonation = new UserDataDonations(
-                        donation.fund,
-                        donation.accountname,
-                        donation.date,
-                        donation.amount,
-                        donation.recurring,
-                        donation.gifttype);
-                    donations.Add(newDonation);
-                }
+                var newDonation = new UserDataDonations(
+                    fundName,
+                    donation.accountname,
+                    donation.date,
+                    donation.amount,
+                    donation.recurring,
+                    donation.gifttype);
+
+                donations.Add(newDonation);
             }
         }
         catch (Exception ex)
@@ -271,35 +480,110 @@
     private List<UserDataDonations> SelectData(List<UserDataDonations> data, DateTime? start = null, DateTime? end = null)
     {
         if (data == null) return new List<UserDataDonations>();
-
-        if (start == null && end == null)
-        {
-            return data;
-        }
-        else if (start != null && end == null)
-        {
-            return data.Where(d => d.Date >= start).ToList();
-        }
-        else if (start == null && end != null)
-        {
-            return data.Where(d => d.Date <= end).ToList();
-        }
-        else
-        {
-            return data.Where(d => d.Date >= start && d.Date <= end).ToList();
-        }
+        if (start == null && end == null) return data;
+        if (start != null && end == null) return data.Where(d => d.Date >= start).ToList();
+        if (start == null && end != null) return data.Where(d => d.Date <= end).ToList();
+        return data.Where(d => d.Date >= start && d.Date <= end).ToList();
     }
 
-    private void selectDateRange()
+    private async Task selectDateRange()
     {
         try
         {
+            startDate = pendingStartDate;
+            endDate = pendingEndDate;
+
             selectedDonations = SelectData(donations, startDate, endDate);
+            BuildPivot();
+
+            if (currentView == ViewMode.GivingGrid && givingGridRef is not null)
+            {
+                await givingGridRef.Reload();
+            }
+            else
+            {
+                await InvokeAsync(StateHasChanged);
+            }
         }
         catch (Exception ex)
         {
             errorMessage = $"Error applying date filter: {ex.Message}";
             Console.WriteLine($"Error in selectDateRange: {ex.Message}");
+        }
+    }
+
+    private void BuildPivot()
+    {
+        monthColumns.Clear();
+        pivotRows.Clear();
+        monthTotals.Clear();
+        grandTotal = 0m;
+
+        var start = new DateTime(startDate.Year, startDate.Month, 1);
+        var end = new DateTime(endDate.Year, endDate.Month, 1);
+
+        for (var cursor = start; cursor <= end; cursor = cursor.AddMonths(1))
+        {
+            monthColumns.Add(cursor);
+        }
+
+        if (!selectedDonations.Any()) return;
+
+        var byDonor = selectedDonations.GroupBy(d => d.Donor).OrderBy(g => g.Key ?? string.Empty);
+
+        foreach (var g in byDonor)
+        {
+            var row = new DonationPivotRow { Donor = g.Key ?? Localizer["Unknown"] };
+
+            foreach (var donation in g)
+            {
+                var monthKey = new DateTime(donation.Date.Year, donation.Date.Month, 1);
+                if (!row.Monthly.ContainsKey(monthKey))
+                {
+                    row.Monthly[monthKey] = 0m;
+                }
+                row.Monthly[monthKey] += Convert.ToDecimal(donation.Amount);
+            }
+
+            pivotRows.Add(row);
+        }
+
+        foreach (var month in monthColumns)
+        {
+            decimal total = 0m;
+            foreach (var row in pivotRows)
+            {
+                if (row.Monthly.TryGetValue(month, out var amt))
+                {
+                    total += amt;
+                }
+            }
+            monthTotals[month] = total;
+        }
+
+        grandTotal = monthTotals.Values.Sum();
+    }
+
+    private sealed class DonationPivotRow
+    {
+        public string Donor { get; set; } = string.Empty;
+        public Dictionary<DateTime, decimal> Monthly { get; } = new();
+        public decimal Total => Monthly.Values.Sum();
+    }
+
+    private void OnGivingGridCellRender(DataGridCellRenderEventArgs<DonationPivotRow> args)
+    {
+        if (args.Column?.OrderIndex is int idx && idx >= 1)
+        {
+            var style = "text-align: right !important;";
+            if (args.Attributes.TryGetValue("style", out var existing) && existing is string s && !string.IsNullOrWhiteSpace(s))
+            {
+                args.Attributes["style"] = s.EndsWith(";") ? s + style : s + ";" + style;
+            }
+            else
+            {
+                args.Attributes["style"] = style;
+            }
         }
     }
 }
