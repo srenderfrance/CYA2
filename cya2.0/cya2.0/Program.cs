@@ -115,8 +115,8 @@ builder.Services.AddAuthentication(opts =>
 })
 .AddGoogle(options =>
 {
-    options.ClientId = builder.Configuration["Authentication:Google:ClientId"];
-    options.ClientSecret = builder.Configuration["Authentication:Google:ClientSecret"];
+    options.ClientId = builder.Configuration["Authentication:Google:ClientId"] ?? string.Empty;
+    options.ClientSecret = builder.Configuration["Authentication:Google:ClientSecret"] ?? string.Empty;
     options.CallbackPath = "/signin-google";
     options.Events = new OAuthEvents
     {
@@ -330,7 +330,8 @@ app.MapHealthChecks("/health");
 
 // Initialize monitor service
 dbMonitorService = app.Services.GetRequiredService<DatabaseMonitorService>();
-dbMonitorService.Suspend();
+dbMonitorService?.Suspend();
+
 app.Lifetime.ApplicationStarted.Register(() =>
 {
     Task.Delay(5000).ContinueWith(_ =>
@@ -340,7 +341,7 @@ app.Lifetime.ApplicationStarted.Register(() =>
             if (initialDbConnected)
             {
                 GlobalSettings.AllowMySqlLoading = true;
-                dbMonitorService.Resume();
+                dbMonitorService?.Resume();
             }
             else
             {

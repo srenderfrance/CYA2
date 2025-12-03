@@ -8,14 +8,14 @@
         <AuthorizeView Roles="Admin">
             <Authorized>
                 <div class="nav-item px-4">
-                    <NavLink class="nav-link" href="/admin" Match="NavLinkMatch.All">
+                    <NavLink class="nav-link" href="/admin" Match="NavLinkMatch.All" style="margin:0 3px;">
                         <span class="bi bi-shield-lock-nav-menu"></span> @Localizer["AdminPanel"]
                     </NavLink>
                 </div>
             </Authorized>
             <NotAuthorized>
                 <div class="nav-item px-4">
-                    <NavLink class="nav-link" href="/" Match="NavLinkMatch.All">
+                    <NavLink class="nav-link" href="/" Match="NavLinkMatch.All" style="margin:0 3px;">
                         <span class="bi bi-house-door-fill-nav-menu"></span> @Localizer["CYAHome"]
                     </NavLink>
                 </div>
@@ -26,17 +26,17 @@
     <!-- Center: Main navigation links -->
     <div class="nav-center d-flex navbar-group justify-content-center flex-grow-1">
         <div class="nav-item px-5 nav-link-block">
-            <NavLink class="nav-link" href="/donations">
+            <NavLink class="nav-link" href="/donations" style="margin:0 3px;">
                 <span class="bi bi-list-nested-nav-menu"></span> @Localizer["DonationsNav"]
             </NavLink>
         </div>
         <div class="nav-item px-5 nav-link-block">
-            <NavLink class="nav-link" href="/expenses">
+            <NavLink class="nav-link" href="/expenses" style="margin:0 3px;">
                 <span class="bi bi-list-nested-nav-menu"></span> @Localizer["ExpensesNav"]
             </NavLink>
         </div>
         <div class="nav-item px-5 nav-link-block">
-            <NavLink class="nav-link" href="/donors">
+            <NavLink class="nav-link" href="/donors" style="margin:0 3px;">
                 <span class="bi bi-list-nested-nav-menu"></span> @Localizer["DonorsNav"]
             </NavLink>
         </div>
@@ -45,12 +45,12 @@
     <!-- Right: User Settings + Logout -->
     <div class="nav-right d-flex align-items-center">
         <div class="nav-item px-5 nav-link-block">
-            <NavLink class="nav-link" href="/usersettings">
-                <span class="bi bi-gear-fill-nav-menu"></span> @Localizer["UserSettings"]
+            <NavLink class="nav-link" href="/settings" style="margin:0 3px;">
+                <span class="bi bi-gear-fill-nav-menu"></span> @Localizer["Settings"]
             </NavLink>
         </div>
         <div class="nav-item px-4">
-            <a href="/logout" class="nav-link">
+            <a href="/logout" class="nav-link" style="margin:0 3px;">
                 <span class="bi bi-box-arrow-right-nav-menu"></span> @Localizer["Logout"]
             </a>
         </div>

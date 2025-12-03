@@ -37,20 +37,24 @@
     }
     .view-mode-buttons .rz-button { padding: 4px 10px; font-size: 0.75rem; }
 
-    /* Vertically center dropdown text (selected value and items) */
-    .rz-dropdown .rz-inputtext {
-        display: flex;
-        align-items: center; /* center the label container vertically */
-    }
+    /* Vertically center dropdown text */
+    .rz-dropdown .rz-inputtext { display: flex; align-items: center; }
+    .rz-dropdown .rz-dropdown-label { display: flex; align-items: center; height: 100%; width: 100%; }
+
+    /* Prevent long text from going under the trigger (arrow) and use ellipsis */
     .rz-dropdown .rz-dropdown-label {
-        display: flex;
-        align-items: center; /* center the text within the label */
-        height: 100%;
-        width: 100%;
+        padding-right: 1.75rem; /* reserve space for the trigger button */
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        box-sizing: border-box;
     }
+    /* Also ensure items in the panel clip properly */
     .rz-dropdown-panel .rz-dropdown-item {
-        display: flex;
-        align-items: center;
+        display: flex; align-items: center;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
     }
 </style>
 
@@ -80,7 +84,18 @@
                                 ValueProperty="Value"
                                 @bind-Value="@selectedPreset"
                                 Change="@(args => ApplyPreset((DateRangePreset)args))"
-                                Style="width: 180px;" />
+                                Style="width: 180px;">
+                    <ValueTemplate>
+                        <span style="display:flex;align-items:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding-right:1.75rem;width:100%;">
+                            @presetOptions.FirstOrDefault(o => o.Value == selectedPreset)?.Text
+                        </span>
+                    </ValueTemplate>
+                    <Template Context="opt">
+                        <span style="display:flex;align-items:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;width:100%;">
+                            @opt.Text
+                        </span>
+                    </Template>
+                </RadzenDropDown>
 
                 <RadzenButton Text="@Localizer["ApplyFilter"]"
                               Icon="filter_alt"
@@ -97,9 +112,20 @@
                             TextProperty="Name"
                             ValueProperty="Name"
                             @bind-Value="selectedAccount"
-                            Change="@(args => accountSelection(args?.ToString()))"
+                            Change="@(args => accountSelection(args?.ToString() ?? string.Empty))"
                             Placeholder="@Localizer["ChooseAccount"]"
-                            Style="width: 240px;" />
+                            Style="width: 300px;">
+                <ValueTemplate>
+                    <span style="display:flex;align-items:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding-right:1.75rem;width:100%;">
+                        @selectedAccount
+                    </span>
+                </ValueTemplate>
+                <Template Context="acct">
+                    <span style="display:flex;align-items:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;width:100%;">
+                        @acct.Name
+                    </span>
+                </Template>
+            </RadzenDropDown>
         </RadzenStack>
     </RadzenStack>
 
@@ -256,7 +282,7 @@
     private string selectedAccount = string.Empty;
     private string errorMessage = string.Empty;
     private bool isLoading = true;
-    private Account currentAccount = null;
+    private Account? currentAccount = null;
 
     private enum ViewMode { GivingGrid, DonationList, Graphs }
     private ViewMode currentView = ViewMode.GivingGrid;
@@ -267,7 +293,7 @@
     private readonly Dictionary<DateTime, decimal> monthTotals = new();
     private decimal grandTotal = 0m;
 
-    private RadzenDataGrid<DonationPivotRow> givingGridRef;
+    private RadzenDataGrid<DonationPivotRow>? givingGridRef;
 
     private string MonthColumnWidth => monthColumns.Count <= 12 ? "70px" : "55px";
 

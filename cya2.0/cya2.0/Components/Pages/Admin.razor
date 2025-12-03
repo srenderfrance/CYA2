@@ -41,7 +41,7 @@
                                TextProperty="Name"
                                ValueProperty="Name"
                                @bind-Value="staffMember"
-                               Change="@(args => staffSelection(args?.ToString()))"
+                               Change="@(args => staffSelection(args?.ToString() ?? string.Empty))"
                                Placeholder="@Localizer["SelectStaffMember"]"
                                Style="width: 100%;" />
                 
@@ -166,7 +166,7 @@
             <RadzenButton 
                 Text="@Localizer["DeleteStaffMember"]" 
                 ButtonStyle="ButtonStyle.Danger" 
-                Click="@(() => { userToDelete = staffMember; showDeleteConfirmation = true; })"
+                Click="@(() => { userToDelete = staffMember ?? string.Empty; showDeleteConfirmation = true; })"
                 Disabled="@(string.IsNullOrEmpty(staffMember))"
                 Style="width: fit-content;" />
         </div>
@@ -220,7 +220,7 @@
     private string newAuthLevel = string.Empty;
     private List<string> authLevels = new List<string> { "User", "Viewer", "Admin" };
 
-    public string selectedStaff;
+    public string selectedStaff = string.Empty;
     public string newName = string.Empty;
     public string newEmail = string.Empty;
 
@@ -254,13 +254,11 @@
     {
         try
         {
-            // Get authentication state
             var authState = await AuthStateProvider.GetAuthenticationStateAsync();
             var user = authState.User;
 
             if (!user.IsInRole("Admin"))
             {
-                // If not admin, redirect to home
                 Navigation.NavigateTo("/", true);
                 return;
             }
@@ -277,22 +275,19 @@
         }
     }
 
-    // Staff selection and update methods
     public void staffSelection(string staffName)
     {
         if (string.IsNullOrEmpty(staffName)) return;
 
         selectedStaff = staffName;
 
-        // Find the selected staff member and update the displayed email and auth level
         var selectedUser = staff.FirstOrDefault(u => u.Name == staffName);
         if (selectedUser != null)
         {
             selectedStaffEmail = selectedUser.Email;
             selectedStaffAuthLevel = selectedUser.AuthLevel;
 
-            // Load the user's accounts
-            LoadUserAccounts(selectedUser.Id).ConfigureAwait(false);
+            _ = LoadUserAccounts(selectedUser.Id);
         }
     }
 
@@ -371,7 +366,7 @@
             int result = await _data.SaveData(
                 sql,
                 parameters,
-                _config.GetConnectionString("default")
+                _config.GetConnectionString("default") ?? string.Empty
             );
 
             Console.WriteLine($"Update result: {result}");
@@ -440,7 +435,7 @@
             await _data.SaveData(
                 deleteAccountsSql,
                 new { UserId = selectedUser.Id },
-                _config.GetConnectionString("default")
+                _config.GetConnectionString("default") ?? string.Empty
             );
 
             // Then delete the user
@@ -449,7 +444,7 @@
             int deleteResult = await _data.SaveData(
                 deleteUserSql,
                 new { Id = selectedUser.Id },
-                _config.GetConnectionString("default")
+                _config.GetConnectionString("default") ?? string.Empty
             );
 
             if (deleteResult > 0)
@@ -506,7 +501,7 @@
             await _data.SaveData(
                 deleteAccountsSql,
                 new { UserId = selectedUser.Id },
-                _config.GetConnectionString("default")
+                _config.GetConnectionString("default") ?? string.Empty
             );
 
             // Then delete the user
@@ -515,7 +510,7 @@
             int deleteResult = await _data.SaveData(
                 deleteUserSql,
                 new { Id = selectedUser.Id },
-                _config.GetConnectionString("default")
+                _config.GetConnectionString("default") ?? string.Empty
             );
 
             if (deleteResult > 0)
@@ -563,7 +558,7 @@
                 var users = await _data.LoadData<User, dynamic>(
                     sql,
                     new { },
-                    _config.GetConnectionString("default")
+                    _config.GetConnectionString("default") ?? string.Empty
                 );
 
                 if (users != null)
@@ -600,7 +595,7 @@
             allAccounts = await _data.LoadData<Account, dynamic>(
                 sql,
                 new { },
-                _config.GetConnectionString("default")
+                _config.GetConnectionString("default") ?? string.Empty
             );
 
             if (allAccounts == null)
@@ -672,7 +667,7 @@
             var existingAssociations = await _data.LoadData<int, dynamic>(
                 checkSql,
                 new { UserId = selectedUser.Id, AccountId = account.AccountId },
-                _config.GetConnectionString("default")
+                _config.GetConnectionString("default") ?? string.Empty
             );
 
             if (existingAssociations != null && existingAssociations.FirstOrDefault() > 0)
@@ -689,7 +684,7 @@
             int result = await _data.SaveData(
                 insertSql,
                 new { UserId = selectedUser.Id, AccountId = account.AccountId },
-                _config.GetConnectionString("default")
+                _config.GetConnectionString("default") ?? string.Empty
             );
 
             if (result > 0)
@@ -709,7 +704,7 @@
                     await _data.SaveData(
                         updateDefaultSql,
                         new { AccountId = account.AccountId, UserId = selectedUser.Id },
-                        _config.GetConnectionString("default")
+                        _config.GetConnectionString("default") ?? string.Empty
                     );
                     
                     // Update AppState if this is for the current user (would need additional logic to determine)
@@ -767,7 +762,7 @@
             int result = await _data.SaveData(
                 deleteSql,
                 new { UserId = selectedUser.Id, AccountId = selectedLinkedAccountId },
-                _config.GetConnectionString("default")
+                _config.GetConnectionString("default") ?? string.Empty
             );
 
             if (result > 0)
@@ -805,7 +800,7 @@
             var userAccountsResult = await _data.LoadData<Account, dynamic>(
                 sql,
                 new { UserId = userId },
-                _config.GetConnectionString("default")
+                _config.GetConnectionString("default") ?? string.Empty
             );
 
             // Clear existing list
@@ -832,7 +827,7 @@
             int result = await _data.SaveData(
                 sql,
                 new { AccountId = accountId, UserId = userId },
-                _config.GetConnectionString("default")
+                _config.GetConnectionString("default") ?? string.Empty
             );
             
             if (result > 0)
@@ -912,7 +907,7 @@
             errorMessage = null;
 
             string sql = "SELECT DISTINCT fund FROM etapestry ORDER BY fund";
-            funds = await _data.LoadData<string, dynamic>(sql, new { }, _config.GetConnectionString("default"));
+            funds = await _data.LoadData<string, dynamic>(sql, new { }, _config.GetConnectionString("default") ?? string.Empty);
 
             if (funds != null && funds.Any())
             {
@@ -970,7 +965,7 @@
                     var accountExists = await _data.LoadData<int, dynamic>(
                         checkSql,
                         new { AccountRef = accountRef },
-                        _config.GetConnectionString("default"));
+                        _config.GetConnectionString("default") ?? string.Empty);
 
                     if (accountExists != null && accountExists.FirstOrDefault() > 0)
                     {
@@ -992,7 +987,7 @@
                             AccountRef = accountRef,
                             DateCreated = DateTime.Now
                         },
-                        _config.GetConnectionString("default")
+                        _config.GetConnectionString("default") ?? string.Empty
                     );
 
                     if (result > 0)
