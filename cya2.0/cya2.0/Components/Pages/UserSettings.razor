@@ -1,4 +1,4 @@
-@page "/usersettings"
+@page "/settings"
 @using Microsoft.AspNetCore.Components.Authorization
 @using System.Security.Claims
 @using static Microsoft.AspNetCore.Components.Web.RenderMode
@@ -17,7 +17,7 @@
 
 <div class="container mt-4">
     <RadzenCard>
-        <RadzenText TextStyle="TextStyle.H3">@Localizer["UserSettings"]</RadzenText>
+        <RadzenText TextStyle="TextStyle.H3">@Localizer["SettingsAndPreferences"]</RadzenText>
 
         @if (!string.IsNullOrEmpty(errorMessage))
         {
@@ -94,32 +94,26 @@
     </RadzenCard>
 </div>
 
-@if (showLogoutButton)
-{
-    <a href="/logout" class="btn btn-outline-danger">Logout</a>
-}
-
 @code {
     private int userId;
     private int? currentDefaultAccountId;
-    private List<Account> userAccounts = new List<Account>();
-    private List<LanguageOption> languageOptions = new List<LanguageOption>
+    private List<Account> userAccounts = new();
+    private List<LanguageOption> languageOptions = new()
     {
         new LanguageOption { Value = "en-US", Text = "English" },
         new LanguageOption { Value = "es-US", Text = "Spanish" }
     };
-    private string errorMessage;
-    private string successMessage;
+    private string errorMessage = string.Empty;
+    private string successMessage = string.Empty;
     private bool isSavingAccount = false;
     private bool isSavingLanguage = false;
     private bool showLogoutButton = true;
     private string currentLanguage = "en-US";
-    private string selectedAccountRef;
+    private string selectedAccountRef = string.Empty;
     private string selectedLanguage = "en-US";
 
     protected override async Task OnInitializedAsync()
     {
-        // Language options already set above
         await LoadUserData();
     }
 
@@ -133,31 +127,32 @@
             var authState = await AuthStateProvider.GetAuthenticationStateAsync();
             var user = authState.User;
 
-            if (user.Identity.IsAuthenticated)
+            if (user.Identity?.IsAuthenticated == true)
             {
-                // Get user ID from claims
                 var userIdClaim = user.FindFirstValue("UserId");
                 if (!string.IsNullOrEmpty(userIdClaim) && int.TryParse(userIdClaim, out int id))
                 {
                     userId = id;
-                    Console.WriteLine($"[DEBUG] User ID from claims: {userId}");
                 }
                 else
                 {
-                    var email = user.FindFirstValue(ClaimTypes.Email);
-                    Console.WriteLine($"[DEBUG] User ID claim not found, using email: {email} for DB lookup");
+                    var email = user.FindFirstValue(ClaimTypes.Email) ?? string.Empty;
+                    if (string.IsNullOrEmpty(email))
+                    {
+                        errorMessage = "Unable to find user information.";
+                        return;
+                    }
 
                     string userSql = "SELECT Id FROM Users WHERE Email = @Email";
                     var userResults = await _data.LoadData<UserIdOnly, dynamic>(
                         userSql,
                         new { Email = email },
-                        _config.GetConnectionString("default")
+                        _config.GetConnectionString("default") ?? string.Empty
                     );
 
                     if (userResults != null && userResults.Any())
                     {
                         userId = userResults.First().Id;
-                        Console.WriteLine($"[DEBUG] User ID from database: {userId}");
                     }
                     else
                     {
@@ -166,27 +161,12 @@
                     }
                 }
 
-                // Get language from claims or use default
                 var lang = GetCurrentCultureFromCookie();
                 currentLanguage = lang;
                 selectedLanguage = currentLanguage;
 
-                Console.WriteLine($"[DEBUG] currentLanguage: {currentLanguage}");
-                Console.WriteLine($"[DEBUG] selectedLanguage: {selectedLanguage}");
-
-                // Log language options
-                foreach (var opt in languageOptions)
-                {
-                    Console.WriteLine($"[DEBUG] languageOptions: Value={opt.Value}, Text={opt.Text}");
-                }
-
-                // Log what GetLanguageDisplayName returns
-                Console.WriteLine($"[DEBUG] GetLanguageDisplayName(currentLanguage): {GetLanguageDisplayName(currentLanguage)}");
-
-                // Get default account ID from claims (stored as an integer)
                 var defaultAccountClaim = user.FindFirstValue("DefaultAccount");
                 currentDefaultAccountId = null;
-
                 if (!string.IsNullOrEmpty(defaultAccountClaim) && int.TryParse(defaultAccountClaim, out int parsedId))
                 {
                     currentDefaultAccountId = parsedId;
@@ -212,7 +192,6 @@
         catch (Exception ex)
         {
             errorMessage = $"Error loading user data: {ex.Message}";
-            Console.WriteLine($"[DEBUG] Exception in LoadUserData: {ex}");
         }
     }
 
@@ -220,7 +199,6 @@
     {
         try
         {
-            // Query for accounts the user has access to
             string sql = @"
                 SELECT a.AccountId, a.Name, a.AccountRef, a.CreatedAt
                 FROM Accounts a
@@ -231,20 +209,19 @@
             var accounts = await _data.LoadData<Account, dynamic>(
                 sql,
                 new { UserId = userId },
-                _config.GetConnectionString("default")
+                _config.GetConnectionString("default") ?? string.Empty
             );
 
             if (accounts != null && accounts.Any())
             {
                 userAccounts = accounts;
 
-                // Validate that current default account exists in user's accounts
                 if (currentDefaultAccountId.HasValue &&
                     !userAccounts.Any(a => a.AccountId == currentDefaultAccountId.Value))
                 {
                     errorMessage = "Your currently set default account is no longer accessible. Please select a new one.";
                     currentDefaultAccountId = null;
-                    selectedAccountRef = null;
+                    selectedAccountRef = string.Empty;
                 }
             }
             else
@@ -261,17 +238,13 @@
 
     private bool HasAccountChanges()
     {
-        // Compare AccountRef for current default and selection
         var currentAccountRef = userAccounts
-            .FirstOrDefault(a => a.AccountId == currentDefaultAccountId)?.AccountRef;
+            .FirstOrDefault(a => a.AccountId == currentDefaultAccountId)?.AccountRef ?? string.Empty;
 
         return selectedAccountRef != currentAccountRef;
     }
 
-    private bool HasLanguageChanges()
-    {
-        return selectedLanguage != currentLanguage;
-    }
+    private bool HasLanguageChanges() => selectedLanguage != currentLanguage;
 
     private async Task SaveAccountSetting()
     {
@@ -281,12 +254,9 @@
             errorMessage = string.Empty;
             successMessage = string.Empty;
 
-            Console.WriteLine($"Saving account setting for user ID: {userId}");
-            Console.WriteLine($"Current default account ID: {currentDefaultAccountId}, Selected account ref: {selectedAccountRef}");
-
-            // Find the AccountId that corresponds to the selected AccountRef
             int? newAccountId = null;
-            string newAccountName = null;
+            string? newAccountName = null;
+
             if (!string.IsNullOrEmpty(selectedAccountRef))
             {
                 var selectedAccountObj = userAccounts.FirstOrDefault(a => a.AccountRef == selectedAccountRef);
@@ -303,49 +273,31 @@
                 return;
             }
 
-            string sql = "UPDATE Users SET DefaultAccount = ";
-            var parameters = new Dictionary<string, object>();
-
-            // Add the ID for WHERE clause
-            parameters.Add("Id", userId);
+            string sql;
+            var parameters = new Dictionary<string, object>
+            {
+                { "Id", userId }
+            };
 
             if (newAccountId.HasValue)
             {
-                sql += "@DefaultAccount WHERE Id = @Id";
+                sql = "UPDATE Users SET DefaultAccount = @DefaultAccount WHERE Id = @Id";
                 parameters.Add("DefaultAccount", newAccountId.Value);
             }
             else
             {
-                sql += "NULL WHERE Id = @Id";
+                sql = "UPDATE Users SET DefaultAccount = NULL WHERE Id = @Id";
             }
 
-            Console.WriteLine($"SQL Query: {sql}");
-            foreach (var param in parameters)
-            {
-                Console.WriteLine($"Parameter: {param.Key} = {param.Value}");
-            }
-
-            // Execute update
             int result = await _data.SaveData(
                 sql,
                 parameters,
-                _config.GetConnectionString("default")
+                _config.GetConnectionString("default") ?? string.Empty
             );
-
-            Console.WriteLine($"Update result: {result}");
 
             if (result > 0)
             {
-                // Update AppState with the new default account
-                if (!string.IsNullOrEmpty(newAccountName))
-                {
-                    AppState.DefaultAccount = newAccountName;
-                }
-                else
-                {
-                    AppState.DefaultAccount = string.Empty;
-                }
-
+                AppState.DefaultAccount = newAccountName ?? string.Empty;
                 successMessage = "Default account updated successfully. Changes applied immediately.";
                 currentDefaultAccountId = newAccountId;
             }
@@ -357,7 +309,6 @@
         catch (Exception ex)
         {
             errorMessage = $"Error saving account setting: {ex.Message}";
-            Console.WriteLine($"Exception in SaveAccountSetting: {ex}");
         }
         finally
         {
@@ -373,7 +324,6 @@
             errorMessage = string.Empty;
             successMessage = string.Empty;
 
-            // Only allow "en-US" or "es-US"
             var langToSave = selectedLanguage == "es-US" ? "es-US" : "en-US";
 
             if (langToSave == currentLanguage)
@@ -392,21 +342,14 @@
             int result = await _data.SaveData(
                 sql,
                 parameters,
-                _config.GetConnectionString("default")
+                _config.GetConnectionString("default") ?? string.Empty
             );
 
             if (result > 0)
             {
-                // Update AppState (if you store language there)
-                // AppState.Language = langToSave; // Add this property if needed
-
-                // Set the culture cookie so the new language takes effect immediately
                 await JS.InvokeVoidAsync("blazorCulture.set", langToSave);
-
-                // Optionally, update currentLanguage and show a message
                 currentLanguage = langToSave;
                 successMessage = Localizer["LanguageUpdated"];
-                // Refresh the browser to apply the new culture
                 NavigationManager.NavigateTo(NavigationManager.Uri, forceLoad: true);
             }
             else
@@ -424,15 +367,9 @@
         }
     }
 
-    private void LogoutUser()
-    {
-        NavigationManager.NavigateTo("/logout", true);
-    }
-
     private string GetLanguageDisplayName(string code)
     {
         var language = languageOptions.FirstOrDefault(l => l.Value == code);
-        Console.WriteLine($"[DEBUG] GetLanguageDisplayName input: {code}, found: {language?.Text}");
         return language?.Text ?? code;
     }
 
@@ -447,11 +384,10 @@
 
     private class LanguageOption
     {
-        public string Value { get; set; }
-        public string Text { get; set; }
+        public string Value { get; set; } = string.Empty;
+        public string Text { get; set; } = string.Empty;
     }
 
-    // Simple class just for ID retrieval
     private class UserIdOnly
     {
         public int Id { get; set; }

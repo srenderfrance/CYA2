@@ -351,8 +351,8 @@
   <data name="UpdateStaffMember" xml:space="preserve">
     <value>Actualizar Miembro del Personal</value>
   </data>
-  <data name="UserSettings" xml:space="preserve">
-    <value>Configuración de Usuario</value>
+  <data name="SettingsAndPreferences" xml:space="preserve">
+    <value>Configuración y Preferencias</value>
   </data>
   <data name="ValidEmailRequired" xml:space="preserve">
     <value>Por favor, ingrese un correo electrónico válido</value>
@@ -392,5 +392,8 @@
   </data>
   <data name="LastYear" xml:space="preserve">
     <value>El Año Pasado</value>
+  </data>
+  <data name="Settings" xml:space="preserve">
+    <value>Ajustes</value>
   </data>
 </root>

@@ -10,15 +10,14 @@ namespace ModelsLibrary
     public class Account
     {
         public int AccountId { get; set; }
-        public string Name { get; set; }
-        public string AccountRef{ get; set; }
+        public string Name { get; set; } = string.Empty;
+        public string AccountRef { get; set; } = string.Empty;
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
         // Parameterless constructor
         public Account() { }
 
         // Constructor with required members
-
         [SetsRequiredMembers]
         public Account(string name, string accountRef)
         {

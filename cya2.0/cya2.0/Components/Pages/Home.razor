@@ -58,7 +58,7 @@ else
                             TextProperty="Name"
                             ValueProperty="Name"
                             Value="@selectedAccount"
-                            Change="@(args => accountSelection(args?.ToString()))"
+                            Change="@(args => accountSelection(args?.ToString() ?? string.Empty))"
                             Placeholder="@Localizer["ChooseAccount"]"
                             Style="width: 250px;" />
         </RadzenStack>
@@ -316,11 +316,11 @@ else
 }
 
 @code {
-    private string userName;
+    private string userName = string.Empty;
     private bool isLoading = true;
     private List<Account> userAccounts = new();
-    private string selectedAccount;
-    private Account userAccount;
+    private string selectedAccount = string.Empty;
+    private Account? userAccount = null;
     private List<DonationData> donations = new List<DonationData>();
     private List<AccountingDataModel> accountingData = new List<AccountingDataModel>();
     private FinancialSummary currentMonthSummary = new FinancialSummary();
@@ -335,22 +335,19 @@ else
             var authState = await AuthStateProvider.GetAuthenticationStateAsync();
             var user = authState.User;
 
-            if (user.Identity.IsAuthenticated)
+            if (user.Identity?.IsAuthenticated == true)
             {
                 userName = user.FindFirstValue("UserName") ??
                     user.FindFirstValue(ClaimTypes.GivenName) ?? 
                     user.FindFirstValue(ClaimTypes.Name) ?? 
-                    user.Identity.Name ?? 
+                    user.Identity?.Name ?? 
                     user.FindFirstValue(ClaimTypes.Email) ?? 
                     "User";
 
-                // Initialize user data and wait for it to complete
                 await DataLoader.InitializeUserDataAsync(user);
                 
-                // Get accounts from AppState after initialization
                 userAccounts = AppState.UserAccounts;
                 
-                // Set default account if available
                 if (!string.IsNullOrEmpty(AppState.DefaultAccount))
                 {
                     selectedAccount = AppState.DefaultAccount;
@@ -368,7 +365,6 @@ else
                             Fund = d.fund
                         }).ToList();
 
-                        // Calculate statistics once data is loaded
                         CalculateStatistics();
                     }
                 }
@@ -384,11 +380,12 @@ else
         }
     }
 
-    // Helper method to load account data from cache
     private void LoadAccountData()
     {
         try
         {
+            if (userAccount is null) return;
+
             var accountData = AppState.AccountDataCache[userAccount.Name];
             accountingData = accountData.AccountingData;
             donations = accountData.DonationData?.Select(d => new DonationData {
@@ -398,9 +395,6 @@ else
                 Fund = d.fund
             }).ToList() ?? new List<DonationData>();
             
-            Console.WriteLine($"HOME DEBUG: Loaded {accountingData.Count} accounting records and {donations.Count} donations");
-            
-            // Calculate statistics
             CalculateStatistics();
         }
         catch (Exception ex)
@@ -413,31 +407,22 @@ else
     {
         if (string.IsNullOrEmpty(accountName)) return;
 
-        // Set loading state
         isLoading = true;
         StateHasChanged();
 
-        Console.WriteLine($"HOME ACCOUNT SELECTION CHANGED: '{accountName}'");
-
-        // Update the current account
         selectedAccount = accountName;
 
-        // Get account object
         userAccount = userAccounts.FirstOrDefault(a => a.Name == accountName);
 
-        // Update AppState with the selected account
         AppState.DefaultAccount = accountName;
 
-        // Check if data is already loaded
         if (userAccount != null)
         {
             if (!AppState.IsAccountDataLoaded(accountName))
             {
-                // Load data for this account
                 await DataLoader.LoadAccountDataAsync(userAccount);
             }
 
-            // Get data from cache
             if (AppState.IsAccountDataLoaded(accountName))
             {
                 var accountData = AppState.AccountDataCache[accountName];
@@ -450,7 +435,6 @@ else
                     Fund = d.fund
                 }).ToList();
 
-                // Calculate statistics
                 CalculateStatistics();
             }
         }

@@ -8,20 +8,20 @@ namespace DataLibrary
 {
     public class DataAccess : IDataAccess
     {
-        private readonly ILogger<DataAccess> _logger;
+        private readonly ILogger<DataAccess>? _logger;
         
         // Properties to track connection status
         public bool IsConnected { get; private set; } = true;
         public string LastError { get; private set; } = string.Empty;
 
         // Constructor with logger dependency
-        public DataAccess(ILogger<DataAccess> logger = null)
+        public DataAccess(ILogger<DataAccess>? logger = null)
         {
             _logger = logger;
         }
         
         // Log helper method
-        private void LogError(string message, Exception ex = null)
+        private void LogError(string message, Exception? ex = null)
         {
             LastError = message;
             if (_logger != null)
