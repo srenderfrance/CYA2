@@ -19,10 +19,10 @@ using System.Globalization;
 using System.Security.Claims;
 using System.Threading;
 
-var _unhandledExceptionCount = 0;
+
 var _lastResetTime = DateTime.Now;
 var _lockObject = new object();
-DatabaseMonitorService dbMonitorService = null;
+DatabaseMonitorService? dbMonitorService = null;
 
 AppDomain.CurrentDomain.AssemblyResolve += (sender, args) =>
 {
@@ -144,7 +144,31 @@ builder.Services.AddAuthentication(opts =>
             monitor.Suspend();
             try
             {
-                var email = context.Principal.FindFirstValue(ClaimTypes.Email);
+                // Ensure principal exists
+                var principal = context.Principal;
+                if (principal is null)
+                {
+                    logger.LogWarning("OAuth ticket received without a principal.");
+                    context.Fail("Missing principal");
+                    await context.HttpContext.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
+                    context.Response.Redirect("/not-authorized");
+                    context.HandleResponse();
+                    monitor.Resume();
+                    return;
+                }
+
+                var email = principal.FindFirstValue(ClaimTypes.Email);
+                if (string.IsNullOrWhiteSpace(email))
+                {
+                    logger.LogWarning("OAuth principal missing email claim.");
+                    context.Fail("Missing email");
+                    await context.HttpContext.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
+                    context.Response.Redirect("/not-authorized");
+                    context.HandleResponse();
+                    monitor.Resume();
+                    return;
+                }
+
                 var user = await userRepo.GetUserByEmailAsync(email);
                 if (user == null)
                 {
@@ -157,7 +181,17 @@ builder.Services.AddAuthentication(opts =>
                     return;
                 }
 
-                var identity = (ClaimsIdentity)context.Principal.Identity!;
+                if (principal.Identity is not ClaimsIdentity identity)
+                {
+                    logger.LogWarning("Principal has no ClaimsIdentity.");
+                    context.Fail("Invalid identity");
+                    await context.HttpContext.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
+                    context.Response.Redirect("/not-authorized");
+                    context.HandleResponse();
+                    monitor.Resume();
+                    return;
+                }
+
                 identity.AddClaim(new Claim(ClaimTypes.Role, user.AuthLevel ?? "User"));
                 identity.AddClaim(new Claim("AuthLevel", user.AuthLevel ?? ""));
                 identity.AddClaim(new Claim("DefaultAccount", user.DefaultAccount?.ToString() ?? ""));
@@ -169,7 +203,7 @@ builder.Services.AddAuthentication(opts =>
 
                 monitor.Resume();
             }
-            catch (Exception ex)
+            catch (Exception)
             {
                 context.Response.Redirect("/error");
                 context.HandleResponse();
@@ -213,7 +247,7 @@ builder.Services.AddRadzenComponents();
 builder.Services.AddScoped<UserAuth.UserRepository>(sp =>
 {
     var da = sp.GetRequiredService<IDataAccess>();
-    var cs = builder.Configuration.GetConnectionString("default");
+    var cs = builder.Configuration.GetConnectionString("default") ?? string.Empty;
     return new UserAuth.UserRepository(da, cs);
 });
 
@@ -456,7 +490,7 @@ app.MapGet("/api/check-db", async (HttpContext ctx, IDataAccess da, IConfigurati
     monitor.Suspend();
     try
     {
-        var cs = cfg.GetConnectionString("default");
+        var cs = cfg.GetConnectionString("default") ?? string.Empty;
         var ok = await da.CheckConnection(cs);
         monitor.Resume();
         return Results.Ok(ok ? new { status = "connected" } :

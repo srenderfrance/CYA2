@@ -21,9 +21,6 @@ namespace cya2.Services
         // Use backing fields for these properties since we can't access scoped services directly
         private bool _isConnected = true;
         private string _lastError = string.Empty;
-        private int _consecutiveFailures = 0;
-        private readonly int _maxConsecutiveFailures = 3; // After this many failures, add a longer delay
-        private readonly int _backoffSeconds = 30; // Wait this long after multiple failures
 
         // Add this property and backing field
         private bool _bypassMonitoring = false;

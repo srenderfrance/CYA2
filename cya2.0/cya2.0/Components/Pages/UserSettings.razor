@@ -94,6 +94,11 @@
     </RadzenCard>
 </div>
 
+@if (showLogoutButton)
+{
+    <a href="/logout" class="btn btn-outline-danger">Logout</a>
+}
+
 @code {
     private int userId;
     private int? currentDefaultAccountId;
@@ -107,7 +112,7 @@
     private string successMessage;
     private bool isSavingAccount = false;
     private bool isSavingLanguage = false;
-    private bool showLogoutButton = false;
+    private bool showLogoutButton = true;
     private string currentLanguage = "en-US";
     private string selectedAccountRef;
     private string selectedLanguage = "en-US";
