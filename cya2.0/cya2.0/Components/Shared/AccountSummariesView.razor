@@ -31,13 +31,7 @@
                                 Placeholder="@Localizer["ChooseAccount"]"
                                 Style="width: 250px;" />
 
-                @if (_selectedAccount != null)
-                {
-                    <RadzenBadge BadgeStyle="BadgeStyle.Info" Class="rz-ml-2">
-                        acc: @_accounting.Count, don: @_donations.Count
-                    </RadzenBadge>
-                }
-            </RadzenStack>
+                           </RadzenStack>
         </RadzenCard>
 
         @if (_selectedAccount != null)

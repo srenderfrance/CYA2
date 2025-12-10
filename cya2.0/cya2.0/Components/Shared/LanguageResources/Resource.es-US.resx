@@ -195,13 +195,10 @@
   <data name="Donations" xml:space="preserve">
     <value>Donaciones</value>
   </data>
-  <data name="DonationsNav" xml:space="preserve">
-    <value>Donaciones</value>
-  </data>
   <data name="Donor" xml:space="preserve">
     <value>Donante</value>
   </data>
-  <data name="DonorsNav" xml:space="preserve">
+  <data name="Donors" xml:space="preserve">
     <value>Donantes</value>
   </data>
   <data name="DonorInfo" xml:space="preserve">
@@ -295,7 +292,7 @@
     <value>Ninguno</value>
   </data>
   <data name="Overhead" xml:space="preserve">
-    <value>Costos Indirectos</value>
+    <value>Comisión</value>
   </data>
   <data name="PriorMonth" xml:space="preserve">
     <value>Mes Anterior</value>
@@ -363,8 +360,8 @@
   <data name="WelcomeUser" xml:space="preserve">
     <value>¡Bienvenido, {0}!</value>
   </data>
-  <data name="AllBalances" xml:space="preserve">
-    <value>Todos los Saldos</value>
+  <data name="AccountsOverview" xml:space="preserve">
+    <value>Descripción de Cuentas</value>
   </data>
   <data name="AccountSummaries" xml:space="preserve">
     <value>Resúmenes de Cuentas</value>
@@ -395,5 +392,29 @@
   </data>
   <data name="Settings" xml:space="preserve">
     <value>Ajustes</value>
+  </data>
+  <data name="TotalDonationsLTM" xml:space="preserve">
+    <value>Total Donations (LTM)</value>
+  </data>
+  <data name="AccountBalances" xml:space="preserve">
+    <value>Saldos de Cuentas</value>
+  </data>
+  <data name="AddNewStaffmember" xml:space="preserve">
+    <value>Agregar Nuevo Miembro del Personal</value>
+  </data>
+  <data name="ManageUsers" xml:space="preserve">
+    <value>Administrar Usuarias</value>
+  </data>
+  <data name="ManageFunds" xml:space="preserve">
+    <value>Administrar Fondos</value>
+  </data>
+  <data name="FundNumber" xml:space="preserve">
+    <value>Número de Fondo</value>
+  </data>
+  <data name="Class" xml:space="preserve">
+    <value>Clase</value>
+  </data>
+  <data name="SoftCredit" xml:space="preserve">
+    <value>Crédito Blando</value>
   </data>
 </root>
