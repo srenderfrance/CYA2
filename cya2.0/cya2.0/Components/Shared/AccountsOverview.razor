@@ -1,0 +1,67 @@
+@using Radzen.Blazor
+@using ModelsLibrary
+@using UtilityClasses
+@inject IStringLocalizer<Resource> Localizer
+@inject IDataAccess _data
+@inject IConfiguration _config
+
+<RadzenStack Orientation="Orientation.Vertical" Gap="1rem" Class="rz-p-3" Style="height:100%; overflow:auto;">
+    <RadzenText TextStyle="TextStyle.H5">@Localizer["AllBalances"]</RadzenText>
+
+    @if (!string.IsNullOrEmpty(errorMessage))
+    {
+        <RadzenAlert AlertStyle="AlertStyle.Danger" ShowIcon="true" Variant="Variant.Filled">
+            @errorMessage
+        </RadzenAlert>
+    }
+
+    @if (isLoading)
+    {
+        <div class="mt-2">
+            <RadzenProgressBar Value="100" ShowValue="false" Mode="ProgressBarMode.Indeterminate" />
+            <p class="text-muted mt-1">@Localizer["Loading"]</p>
+        </div>
+    }
+    else
+    {
+        <RadzenCard>
+            <RadzenDataGrid TItem="Account"
+                            Data="@accounts"
+                            AllowSorting="true"
+                            AllowFiltering="true"
+                            AllowPaging="false"
+                            EmptyText="@Localizer["NoBalancesFound"]">
+                <Columns>
+                    <RadzenDataGridColumn TItem="Account" Property="Name" Title="@Localizer["Account"]" />
+                    <RadzenDataGridColumn TItem="Account" Property="Balance" Title="@Localizer["Amount"]" FormatString="{0:C2}" TextAlign="TextAlign.Right" />
+                </Columns>
+            </RadzenDataGrid>
+        </RadzenCard>
+        <div class="text-muted mt-2" style="font-size:.85rem">
+            @Localizer["LoadedAccounts"]: @accounts.Count
+        </div>
+    }
+</RadzenStack>
+
+@code {
+    private bool isLoading = true;
+    private string errorMessage = string.Empty;
+    private List<Account> accounts = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var updater = new AccountBalanceUpdater(_data, _config);
+            accounts = await updater.GetAllAccountBalancesAsync();
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error loading balances: {ex.Message}";
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+}

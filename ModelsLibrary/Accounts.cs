@@ -14,6 +14,9 @@ namespace ModelsLibrary
         public string AccountRef { get; set; } = string.Empty;
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
+        // New persisted balance column (currency stored as decimal)
+        public decimal Balance { get; set; }
+
         // Parameterless constructor
         public Account() { }
 

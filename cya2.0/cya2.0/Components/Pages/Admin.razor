@@ -16,33 +16,40 @@
 @inject ILogger<Admin> _logger
 @rendermode InteractiveServer
 @using Radzen.Blazor
+@using Radzen
+@using UtilityClasses
 @inject IStringLocalizer<Resource> Localizer
 
 <RadzenStack Orientation="Orientation.Vertical" Gap="1rem" Class="rz-p-4">
-    <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="1rem">
-        <RadzenText TextStyle="TextStyle.H3">@Localizer["AdminPanel"]</RadzenText>
-
-        <RadzenButton Text="@Localizer["AllBalances"]"
-                      ButtonStyle="ButtonStyle.Secondary"
-                      Click="@(async () => await OpenAllBalancesDialog())" />
+    <!-- Buttons section at the top, closer to navbar -->
+    <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="1rem" Class="rz-mb-3">
+        <RadzenButton Text="@Localizer["AccountsOverview"]"
+                      ButtonStyle="ButtonStyle.Primary"
+                      Style="background-color: #0a3b6b; border-color: #0a3b6b;"
+                      Click="@(async () => await OpenAccountsOverviewDialog())" />
 
         <RadzenButton Text="@Localizer["AccountSummaries"]"
-                      ButtonStyle="ButtonStyle.Secondary"
+                      ButtonStyle="ButtonStyle.Primary"
+                      Style="background-color: #0a3b6b; border-color: #0a3b6b;"
                       Click="@(async () => await OpenAccountSummariesDialog())" />
+    </RadzenStack>
+
+    <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" JustifyContent="JustifyContent.SpaceBetween" Gap="1rem">
+        <RadzenText TextStyle="TextStyle.H5">@Localizer["ManageUsers"]</RadzenText>
     </RadzenStack>
 
     <RadzenCard>
         <RadzenStack Orientation="Orientation.Horizontal" Gap="2rem" Class="rz-mb-2">
-            <!-- Staff -->
+            <!-- User -->
             <RadzenStack Orientation="Orientation.Vertical" Gap="1rem" Style="width: 30%;">
-                <RadzenText TextStyle="TextStyle.Subtitle2" Style="font-weight: bold;">@Localizer["StaffMember"]</RadzenText>
+                <RadzenText TextStyle="TextStyle.Subtitle2" Style="font-weight: bold;">@Localizer["User"]</RadzenText>
                 <RadzenDropDown TValue="string"
-                               Data="@staff"
+                               Data="@staffWithAddOption"
                                TextProperty="Name"
                                ValueProperty="Name"
                                @bind-Value="staffMember"
-                               Change="@(args => staffSelection(args?.ToString() ?? string.Empty))"
-                               Placeholder="@Localizer["SelectStaffMember"]"
+                               Change="@(async args => await staffSelection(args?.ToString() ?? string.Empty))"
+                               Placeholder="@Localizer["SelectUser"]"
                                Style="width: 100%;" />
                 
                 <RadzenFormField Text="@Localizer["NewName"]" Variant="Variant.Outlined">
@@ -88,37 +95,40 @@
                 
                 <RadzenStack Orientation="Orientation.Vertical" Gap="0.5rem">
                     <RadzenText TextStyle="TextStyle.Subtitle2">@Localizer["AddAccountAccess"]</RadzenText>
-                    <RadzenDropDown TValue="string"
-                                    Data="@allAccounts"
+
+                    <!-- Single, consistent dropdown for account selection -->
+                    <RadzenDropDown TValue="int"
+                                    Data="@accountsOptions"
                                     TextProperty="Name"
-                                    ValueProperty="Name"
-                                    @bind-Value="accountToAdd"
+                                    ValueProperty="AccountId"
+                                    @bind-Value="accountToAddId"
+                                    Change="@(args => accountToAddId = (args is int v) ? v : 0)"
                                     Placeholder="@Localizer["SelectAccount"]"
                                     Style="width: 100%;" />
                     
                     <RadzenButton 
-                        Text="@Localizer["LinkAccountToStaff"]" 
+                        Text="@Localizer["LinkAccountToUser"]" 
                         ButtonStyle="ButtonStyle.Primary" 
                         Click="LinkAccountToStaff" 
-                        Disabled="@(string.IsNullOrEmpty(staffMember) || string.IsNullOrEmpty(accountToAdd))"
+                        Disabled="@(string.IsNullOrEmpty(staffMember) || accountToAddId == 0)"
                         Style="width: fit-content;" />
                 </RadzenStack>
                 
                 <RadzenStack Orientation="Orientation.Vertical" Gap="0.5rem" Class="rz-mt-3">
                     <RadzenText TextStyle="TextStyle.Body2">@Localizer["RemoveAccountAccess"]</RadzenText>
                     <RadzenDropDown TValue="int"
-                                    Data="@userAccounts"
+                                    Data="@accountsOptions"
                                     TextProperty="Name"
                                     ValueProperty="AccountId"
                                     @bind-Value="selectedLinkedAccountId"
-                                    Placeholder="@Localizer["SelectAccountToRemove"]"
+                                    Change="@(args => selectedLinkedAccountId = (args is int v) ? v : 0)"
                                     Style="width: 100%;" />
                     
                     <RadzenButton 
                         Text="@Localizer["RemoveAccountLink"]" 
                         ButtonStyle="ButtonStyle.Danger" 
                         Click="RemoveAccountLink" 
-                        Disabled="@(selectedLinkedAccountId == 0 || string.IsNullOrEmpty(staffMember))"
+                        Disabled="@(selectedLinkedAccountId == 0 || string.IsNullOrEmpty(staffMember) || IsAddNewSelected)"
                         Style="width: fit-content;" />
                 </RadzenStack>
             </RadzenStack>
@@ -154,57 +164,151 @@
             </RadzenAlert>
         }
         
-        <!-- Update and Delete buttons -->
+        <!-- Update and Add buttons -->
         <div style="margin-top: 1rem;">
             <RadzenButton 
-                Text="@Localizer["UpdateStaffMember"]" 
+                Text="@Localizer["UpdateUser"]" 
                 ButtonStyle="ButtonStyle.Primary" 
                 Click="UpdateStaffMember" 
-                Disabled="@(string.IsNullOrEmpty(staffMember))"
+                Disabled="@(string.IsNullOrEmpty(staffMember) || IsAddNewSelected)"
                 Style="margin-right: 1rem;" />
                 
             <RadzenButton 
-                Text="@Localizer["DeleteStaffMember"]" 
+                Text="@Localizer["AddNewUser"]" 
+                ButtonStyle="ButtonStyle.Primary" 
+                Click="@(async () => await AddNewStaffMember())" 
+                Disabled="@(!IsAddNewSelected)"
+                Style="margin-right: 1rem;" />
+                
+            <RadzenButton 
+                Text="@Localizer["DeleteUser"]" 
                 ButtonStyle="ButtonStyle.Danger" 
                 Click="@(() => { userToDelete = staffMember ?? string.Empty; showDeleteConfirmation = true; })"
-                Disabled="@(string.IsNullOrEmpty(staffMember))"
+                Disabled="@(string.IsNullOrEmpty(staffMember) || IsAddNewSelected)"
                 Style="width: fit-content;" />
         </div>
     </RadzenCard>
     
-    <RadzenCard>
-        <RadzenText TextStyle="TextStyle.H5">@Localizer["CreateNewUser"]</RadzenText>
-        
-        <RadzenTemplateForm TItem="UserFormModel" Data="@formModel" Submit="@HandleValidSubmit">
+    <!-- Extra spacing added above Manage Funds -->
+    <div style="height: 2rem;"></div>
+    
+    <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" JustifyContent="JustifyContent.SpaceBetween" Gap="1rem" Class="rz-mt-4">
+        <RadzenText TextStyle="TextStyle.H5">@Localizer["ManageFunds"]</RadzenText>
+    </RadzenStack>
+    
+    <RadzenCard Style="overflow: visible;">
+        <!-- Single column layout with labels on left, inputs on right -->
+        <RadzenStack Orientation="Orientation.Vertical" Gap="1.5rem" Style="max-width: 600px;">
+            <!-- Fund Selection -->
             <RadzenStack Orientation="Orientation.Vertical" Gap="1rem">
-                <RadzenFormField Text="@Localizer["Email"]" Variant="Variant.Outlined">
-                    <RadzenTextBox @bind-Value="@formModel.Email" Name="Email" />
-                    <RadzenRequiredValidator Component="Email" Text="@Localizer["EmailRequired"]" />
-                    <RadzenEmailValidator Component="Email" Text="@Localizer["ValidEmailRequired"]" />
-                </RadzenFormField>
-                
-                <RadzenFormField Text="@Localizer["Name"]" Variant="Variant.Outlined">
-                    <RadzenTextBox @bind-Value="@formModel.Name" Name="Name" />
-                    <RadzenRequiredValidator Component="Name" Text="@Localizer["NameRequired"]" />
-                    <RadzenLengthValidator Component="Name" Min="2" Max="100" Text="@Localizer["NameLength"]" />
-                </RadzenFormField>
-                
-                <div class="d-flex">
-                    <RadzenButton Text="@Localizer["RegisterNewUser"]" 
-                                  ButtonType="ButtonType.Submit" 
-                                  ButtonStyle="ButtonStyle.Primary" />
-                </div>
+                <RadzenText TextStyle="TextStyle.Subtitle2" Style="font-weight: bold;">@Localizer["Fund"]</RadzenText>
+                <RadzenDropDown TValue="string"
+                               Data="@fundsWithAddOption"
+                               TextProperty="DisplayText"
+                               ValueProperty="DisplayText"
+                               @bind-Value="selectedFund"
+                               Change="@(async args => await fundSelection(args?.ToString() ?? string.Empty))"
+                               Placeholder="@Localizer["SelectFund"]"
+                               Style="width: 100%;"
+                               PopupStyle="max-height: 250px; overflow-y: auto; z-index: 9999;"
+                               PopupClass="fund-dropdown-popup" />
             </RadzenStack>
-        </RadzenTemplateForm>
+
+            <!-- Fund Number -->
+            <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="2rem">
+                <RadzenText TextStyle="TextStyle.Subtitle2" Style="font-weight: bold; width: 150px;">@Localizer["FundNumber"]</RadzenText>
+                <RadzenFormField Variant="Variant.Outlined" Style="flex: 1;">
+                    <RadzenTextBox @bind-Value="@fundNumber" Placeholder="@Localizer["FundNumber"]" />
+                </RadzenFormField>
+            </RadzenStack>
+
+            <!-- Fund -->
+            <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="2rem">
+                <RadzenText TextStyle="TextStyle.Subtitle2" Style="font-weight: bold; width: 150px;">@Localizer["Fund"]</RadzenText>
+                <RadzenFormField Variant="Variant.Outlined" Style="flex: 1;">
+                    <RadzenTextBox @bind-Value="@newFundName" Placeholder="@Localizer["Fund"]" />
+                </RadzenFormField>
+            </RadzenStack>
+
+            <!-- Overhead -->
+            <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="2rem">
+                <RadzenText TextStyle="TextStyle.Subtitle2" Style="font-weight: bold; width: 150px;">@Localizer["Overhead"]</RadzenText>
+                <RadzenFormField Variant="Variant.Outlined" Style="flex: 1;">
+                    <RadzenTextBox @bind-Value="@overhead" Placeholder="@Localizer["Overhead"]" />
+                </RadzenFormField>
+            </RadzenStack>
+
+            <!-- Class -->
+            <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="2rem">
+                <RadzenText TextStyle="TextStyle.Subtitle2" Style="font-weight: bold; width: 150px;">@Localizer["Class"]</RadzenText>
+                <RadzenFormField Variant="Variant.Outlined" Style="flex: 1;">
+                    <RadzenTextBox @bind-Value="@fundClass" Placeholder="@Localizer["Class"]" />
+                </RadzenFormField>
+            </RadzenStack>
+
+            <!-- Soft Credit -->
+            <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="2rem">
+                <RadzenText TextStyle="TextStyle.Subtitle2" Style="font-weight: bold; width: 150px;">@Localizer["SoftCredit"]</RadzenText>
+                <RadzenFormField Variant="Variant.Outlined" Style="flex: 1;">
+                    <RadzenTextBox @bind-Value="@softCredit" Placeholder="@Localizer["SoftCredit"]" />
+                </RadzenFormField>
+            </RadzenStack>
+
+            <!-- Balance -->
+            <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="2rem">
+                <RadzenText TextStyle="TextStyle.Subtitle2" Style="font-weight: bold; width: 150px;">@Localizer["Balance"]</RadzenText>
+                <RadzenFormField Variant="Variant.Outlined" Style="flex: 1;">
+                    <RadzenNumeric TValue="decimal?" @bind-Value="@balance" Placeholder="0.00" Format="C" ReadOnly="true" />
+                </RadzenFormField>
+            </RadzenStack>
+        </RadzenStack>
+        
+        <!-- Temporary Debugging Section - COMMENTED OUT -->
+        @* @if (selectedFundAccount != null && !IsAddNewFundSelected)
+        {
+            <RadzenCard Class="rz-mt-3" Style="background-color: #f8f9fa; border: 1px solid #dee2e6;">
+                <RadzenText TextStyle="TextStyle.Subtitle2" Style="font-weight: bold; color: #dc3545;">DEBUG INFO - Selected Fund Account</RadzenText>
+                <RadzenStack Orientation="Orientation.Vertical" Gap="0.5rem" Class="rz-mt-2">
+                    <div>
+                        <strong>AccountId:</strong> @selectedFundAccount.AccountId
+                    </div>
+                    <div>
+                        <strong>Name:</strong> @selectedFundAccount.Name
+                    </div>
+                    <div>
+                        <strong>AccountRef:</strong> @(selectedFundAccount.AccountRef ?? "null")
+                    </div>
+                    <div>
+                        <strong>Balance:</strong> @selectedFundAccount.Balance.ToString("C2")
+                    </div>
+                    <div>
+                        <strong>CreatedAt:</strong> @selectedFundAccount.CreatedAt.ToString("yyyy-MM-dd HH:mm:ss")
+                    </div>
+                    <div>
+                        <strong>IsAddNewFundSelected:</strong> @IsAddNewFundSelected
+                    </div>
+                    <div>
+                        <strong>selectedFund Value:</strong> "@(selectedFund ?? "null")"
+                    </div>
+                </RadzenStack>
+            </RadzenCard>
+        } *@
     </RadzenCard>
-</RadzenStack>
+  </RadzenStack>
 
 <ConfirmDialog 
     Show="@showDeleteConfirmation"
-    Title="@Localizer["DeleteStaffMember"]"
-    Message="@Localizer["ConfirmDeleteStaffMember", userToDelete]"
+    Title="@Localizer["DeleteUser"]"
+    Message="@Localizer["ConfirmDeleteUser", userToDelete]"
     OnConfirm="@ConfirmDelete"
     OnCancel="@(() => showDeleteConfirmation = false)" />
+
+<ConfirmDialog 
+    Show="@showDeleteFundConfirmation"
+    Title="@Localizer["DeleteFund"]"
+    Message="@Localizer["ConfirmDeleteFund", fundToDelete]"
+    OnConfirm="@ConfirmDeleteFund"
+    OnCancel="@(() => showDeleteFundConfirmation = false)" />
 
 <!-- Radzen hosts inside the Admin interactive island -->
 <RadzenDialog />
@@ -213,8 +317,16 @@
 <RadzenTooltip />
 
 @code {
+    private const string AddNewLabel = "Add new User";
+    private const string AddNewFundLabel = "Add new Fund";
+    private const string SelectAccountLabel = "Select Account";
+    private bool IsAddNewSelected => string.Equals(staffMember, AddNewLabel, StringComparison.Ordinal);
+    private bool IsAddNewFundSelected => string.Equals(selectedFund, AddNewFundLabel, StringComparison.Ordinal);
+
     private string? staffMember;
     private List<UserData> staff = new List<UserData>();
+    private IEnumerable<UserData> staffWithAddOption => staff.Concat(new[] { new UserData(0, string.Empty, AddNewLabel, string.Empty, string.Empty, string.Empty, new List<Account>(), string.Empty) });
+
     private string selectedStaffEmail = string.Empty;
     private string selectedStaffAuthLevel = string.Empty;
     private string newAuthLevel = string.Empty;
@@ -230,14 +342,19 @@
     // Account management properties
     private string accountLinkError = string.Empty;
     private string accountLinkSuccess = string.Empty;
-    private string? accountToAdd;
+    private string? accountToAdd; // legacy
+    private int accountToAddId = 0; // selected AccountId
     private List<Account> allAccounts = new List<Account>();
+    private List<Account> accountsOptions = new List<Account>(); // unified data source for all account dropdowns
     private List<Account> sharedAccounts = new List<Account>();
     private List<SharedAccountBool> sharedAccountsBool = new List<SharedAccountBool>();
     private List<Account> userAccounts = new List<Account>();
     private int selectedLinkedAccountId = 0;
 
-    // User form properties
+    // Accounts to assign when adding a new user
+    private IEnumerable<int> accountsToAssign = Array.Empty<int>();
+
+    // User form properties (no longer used in UI, kept for potential reuse)
     [SupplyParameterFromForm]
     private UserFormModel formModel { get; set; } = new UserFormModel();
 
@@ -249,6 +366,38 @@
 
     private bool showDeleteConfirmation = false;
     private string userToDelete = string.Empty;
+
+    private string updateStatus = string.Empty;
+
+    // Fund management properties
+    private string? selectedFund;
+    private List<Account> allFunds = new List<Account>();
+    private IEnumerable<object> fundsWithAddOption => 
+        new[] { new { 
+            Account = new Account { AccountId = 0, Name = AddNewFundLabel, AccountRef = string.Empty },
+            DisplayText = AddNewFundLabel 
+        } }
+        .Concat(allFunds
+            .Where(f => f.AccountId != 0)  // Exclude any zero IDs from allFunds
+            .Select(f => new { 
+                Account = f,
+                DisplayText = GetDisplayTextFromAccountRef(f.AccountRef)
+            }));
+    
+    private Account? selectedFundAccount; // The currently selected fund account for display
+    private string newFundName = string.Empty;
+    private string fundNumber = string.Empty;
+    private string overhead = string.Empty;
+    private string fundClass = string.Empty;
+    private string softCredit = string.Empty;
+    private string newAccountRef = string.Empty;
+    private decimal? balance;
+    private int? selectedAccountId;
+    
+    private string fundUpdateError = string.Empty;
+    private string fundUpdateSuccess = string.Empty;
+    private bool showDeleteFundConfirmation = false;
+    private string fundToDelete = string.Empty;
 
     protected override async Task OnInitializedAsync()
     {
@@ -268,6 +417,23 @@
                 LoadAllAccounts(),
                 LoadAllStaff()
             );
+
+            RefreshAccountsOptions();
+            
+            // Set allFunds to the same data as allAccounts since funds are stored in the Accounts table
+            allFunds = allAccounts;
+
+            // Default selection to Add New
+            staffMember = AddNewLabel;
+            await staffSelection(staffMember);
+            
+            // Default fund selection to Add New
+            selectedFund = AddNewFundLabel;
+            await fundSelection(selectedFund);
+
+            // Ensure dropdowns default to 'Select Account'
+            accountToAddId = 0;
+            selectedLinkedAccountId = 0;
         }
         catch (Exception ex)
         {
@@ -275,11 +441,105 @@
         }
     }
 
-    public void staffSelection(string staffName)
+    private async Task<List<int>> GetUserOwnedAccountIdsAsync(int userId)
+    {
+        try
+        {
+            const string sql = "SELECT AccountId FROM AccountsUsers WHERE UserId = @UserId";
+            var ids = await _data.LoadData<int, dynamic>(sql, new { UserId = userId }, _config.GetConnectionString("default") ?? string.Empty);
+            return ids?.ToList() ?? new List<int>();
+        }
+        catch
+        {
+            return new List<int>();
+        }
+    }
+
+    private async Task RefreshAccountsOptionsAsync()
+    {
+        // Build a consistent list with the default first item and no empty names
+        var baseList = (allAccounts ?? new List<Account>())
+                        .Where(a => !string.IsNullOrWhiteSpace(a.Name))
+                        .OrderBy(a => a.Name)
+                        .ToList();
+
+        // If an existing user is selected, exclude accounts they already have access to
+        if (!IsAddNewSelected)
+        {
+            // Try to get owned ids from the in-memory list first
+            List<int> ownedIds = userAccounts?.Where(a => a.AccountId != 0).Select(a => a.AccountId).ToList() ?? new List<int>();
+
+            // If we don't have them loaded yet, query AccountsUsers directly
+            var selectedUser = staff.FirstOrDefault(u => u.Name == staffMember);
+            if ((ownedIds == null || ownedIds.Count == 0) && selectedUser != null)
+            {
+                ownedIds = await GetUserOwnedAccountIdsAsync(selectedUser.Id);
+            }
+
+            if (ownedIds != null && ownedIds.Count > 0)
+            {
+                var ownedSet = ownedIds.ToHashSet();
+                baseList = baseList.Where(a => !ownedSet.Contains(a.AccountId)).ToList();
+            }
+        }
+
+        accountsOptions = new List<Account> { new Account { AccountId = 0, Name = SelectAccountLabel } };
+        accountsOptions.AddRange(baseList);
+
+        if (accountToAddId != 0 && accountsOptions.All(a => a.AccountId != accountToAddId))
+        {
+            accountToAddId = 0;
+        }
+
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private void RefreshAccountsOptions()
+    {
+        // Build a consistent list with the default first item and no empty names
+        var baseList = (allAccounts ?? new List<Account>())
+                        .Where(a => !string.IsNullOrWhiteSpace(a.Name))
+                        // Order by name only if not adding a new user (to keep default option at the top)
+                        .OrderBy(a => !IsAddNewSelected && a.AccountId == 0 ? 1 : 0)
+                        .ThenBy(a => a.Name)
+                        .ToList();
+
+        // If an existing user is selected, exclude accounts they already have access to
+        if (!IsAddNewSelected && userAccounts != null && userAccounts.Count > 0)
+        {
+            var ownedIds = userAccounts.Select(a => a.AccountId).ToHashSet();
+            baseList = baseList.Where(a => !ownedIds.Contains(a.AccountId)).ToList();
+        }
+
+        accountsOptions = new List<Account> { new Account { AccountId = 0, Name = SelectAccountLabel } };
+        accountsOptions.AddRange(baseList);
+
+        // Reset selection if current value is no longer available
+        if (accountToAddId != 0 && accountsOptions.All(a => a.AccountId != accountToAddId))
+        {
+            accountToAddId = 0;
+        }
+    }
+
+    public async Task staffSelection(string staffName)
     {
         if (string.IsNullOrEmpty(staffName)) return;
 
         selectedStaff = staffName;
+
+        if (IsAddNewSelected)
+        {
+            // Prepare UI for adding a new user
+            selectedStaffEmail = string.Empty;
+            selectedStaffAuthLevel = string.Empty;
+            userAccounts.Clear();
+            accountsToAssign = Array.Empty<int>();
+            accountToAddId = 0;
+            selectedLinkedAccountId = 0;
+
+            RefreshAccountsOptions();
+            return;
+        }
 
         var selectedUser = staff.FirstOrDefault(u => u.Name == staffName);
         if (selectedUser != null)
@@ -287,7 +547,327 @@
             selectedStaffEmail = selectedUser.Email;
             selectedStaffAuthLevel = selectedUser.AuthLevel;
 
-            _ = LoadUserAccounts(selectedUser.Id);
+            // Properly await LoadUserAccounts to ensure filtering works correctly
+            await LoadUserAccounts(selectedUser.Id);
+            // Reset add/remove defaults for existing user
+            accountToAddId = 0;
+            selectedLinkedAccountId = 0;
+        }
+    }
+
+    private async Task LoadUserAccounts(int userId)
+    {
+        try
+        {
+            string sql = @"
+                SELECT a.AccountId, a.Name, a.AccountRef, a.CreatedAt
+                FROM Accounts a
+                INNER JOIN AccountsUsers au ON a.AccountId = au.AccountId
+                WHERE au.UserId = @UserId
+                ORDER BY a.Name";
+
+            var userAccountsResult = await _data.LoadData<Account, dynamic>(
+                sql,
+                new { UserId = userId },
+                _config.GetConnectionString("default") ?? string.Empty
+            );
+
+            userAccounts.Clear();
+
+            if (userAccountsResult != null && userAccountsResult.Any())
+            {
+                userAccounts.AddRange(userAccountsResult);
+                if (!userAccounts.Any(a => a.AccountId == 0))
+                {
+                    userAccounts.Insert(0, new Account { AccountId = 0, Name = SelectAccountLabel });
+                }
+            }
+            else
+            {
+                userAccounts.Clear();
+                userAccounts.Add(new Account { AccountId = 0, Name = SelectAccountLabel });
+            }
+
+            RefreshAccountsOptions();
+        }
+        catch (Exception ex)
+        {
+            accountLinkError = $"Error loading user accounts: {ex.Message}";
+        }
+    }
+
+    // Account management methods
+    public void accountSeletion(string account)
+    {
+        if (string.IsNullOrEmpty(account)) return;
+        Console.WriteLine($"Selected account: {accountToAdd}");
+    }
+
+    public void sharedAccountSeletion(string account)
+    {
+        Console.WriteLine($"Shared account selected: {account}");
+    }
+
+    private async Task LinkAccountToStaff()
+    {
+        // Clear previous messages
+        accountLinkError = string.Empty;
+        accountLinkSuccess = string.Empty;
+
+        if (string.IsNullOrEmpty(staffMember) || IsAddNewSelected)
+        {
+            accountLinkError = "Please select a user";
+            return;
+        }
+
+        if (accountToAddId == 0)
+        {
+            accountLinkError = "Please select an account to add";
+            return;
+        }
+
+        try
+        {
+            var selectedUser = staff.FirstOrDefault(u => u.Name == staffMember);
+            if (selectedUser == null)
+            {
+                accountLinkError = "Selected user not found";
+                return;
+            }
+
+            // Find account by id
+            var account = allAccounts.FirstOrDefault(a => a.AccountId == accountToAddId);
+            if (account == null)
+            {
+                accountLinkError = "Selected account not found";
+                return;
+            }
+
+            string checkSql = @"\n                SELECT COUNT(*) FROM AccountsUsers\n                WHERE UserId = @UserId AND AccountId = @AccountId";
+
+            var existingAssociations = await _data.LoadData<int, dynamic>(
+                checkSql,
+                new { UserId = selectedUser.Id, AccountId = account.AccountId },
+                _config.GetConnectionString("default") ?? string.Empty
+            );
+
+            if (existingAssociations != null && existingAssociations.FirstOrDefault() > 0)
+            {
+                accountLinkError = $"Account '{account.Name}' is already linked to this user";
+                return;
+            }
+
+            string insertSql = @"\n                INSERT INTO AccountsUsers (UserId, AccountId)\n                VALUES (@UserId, @AccountId)";
+
+            int result = await _data.SaveData(
+                insertSql,
+                new { UserId = selectedUser.Id, AccountId = account.AccountId },
+                _config.GetConnectionString("default") ?? string.Empty
+            );
+
+            if (result > 0)
+            {
+                accountLinkSuccess = $"Successfully linked account '{account.Name}' to {staffMember}";
+
+                // Reset selection
+                accountToAddId = 0;
+
+                await LoadUserAccounts(selectedUser.Id);
+
+                if (userAccounts.Count == 1)
+                {
+                    string updateDefaultSql = "UPDATE Users SET DefaultAccount = @AccountId WHERE Id = @UserId";
+                    await _data.SaveData(
+                        updateDefaultSql,
+                        new { AccountId = account.AccountId, UserId = selectedUser.Id },
+                        _config.GetConnectionString("default") ?? string.Empty
+                    );
+                }
+            }
+            else
+            {
+                accountLinkError = "Failed to link account";
+            }
+        }
+        catch (Exception ex)
+        {
+            accountLinkError = $"Error linking account: {ex.Message}";
+        }
+    }
+
+    private async Task RemoveAccountLink()
+    {
+        // Clear previous messages
+        accountLinkError = string.Empty;
+        accountLinkSuccess = string.Empty;
+
+        if (string.IsNullOrEmpty(staffMember))
+        {
+            accountLinkError = "Please select a user";
+            return;
+        }
+
+        if (selectedLinkedAccountId == 0)
+        {
+            accountLinkError = "Please select an account to remove";
+            return;
+        }
+
+        try
+        {
+            // Get the user ID from the selected user
+            var selectedUser = staff.FirstOrDefault(u => u.Name == staffMember);
+            if (selectedUser == null)
+            {
+                accountLinkError = "Selected user not found";
+                return;
+            }
+
+            // Get the account name for the success message
+            var selectedAccount = userAccounts.FirstOrDefault(a => a.AccountId == selectedLinkedAccountId);
+            string accountName = selectedAccount?.Name ?? "Unknown";
+
+            // Delete the association
+            string deleteSql = @"
+                DELETE FROM AccountsUsers
+                WHERE UserId = @UserId AND AccountId = @AccountId";
+
+            int result = await _data.SaveData(
+                deleteSql,
+                new { UserId = selectedUser.Id, AccountId = selectedLinkedAccountId },
+                _config.GetConnectionString("default") ?? string.Empty
+            );
+
+            if (result > 0)
+            {
+                accountLinkSuccess = $"Successfully removed account '{accountName}' from {staffMember}";
+
+                // Reset the selected account
+                selectedLinkedAccountId = 0;
+
+                // Refresh the user's accounts list
+                await LoadUserAccounts(selectedUser.Id);
+            }
+            else
+            {
+                accountLinkError = "Failed to remove account link";
+            }
+        }
+        catch (Exception ex)
+        {
+            accountLinkError = $"Error removing account link: {ex.Message}";
+        }
+    }
+
+    private async Task AddNewStaffMember()
+    {
+        // Clear previous messages
+        staffUpdateError = string.Empty;
+        staffUpdateSuccess = string.Empty;
+
+        if (!IsAddNewSelected)
+        {
+            staffUpdateError = "Please select 'Add new User' to add a user";
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(newName))
+        {
+            staffUpdateError = "Name is required";
+            return;
+        }
+        if (newName.Length < 2 || newName.Length > 100)
+        {
+            staffUpdateError = "Name must be between 2 and 100 characters";
+            return;
+        }
+        if (string.IsNullOrWhiteSpace(newEmail))
+        {
+            staffUpdateError = "Email is required";
+            return;
+        }
+        try
+        {
+            // Basic email format check
+            var addr = new System.Net.Mail.MailAddress(newEmail);
+            if (addr.Address != newEmail)
+            {
+                staffUpdateError = "Please enter a valid email address";
+                return;
+            }
+        }
+        catch
+        {
+            staffUpdateError = "Please enter a valid email address";
+            return;
+        }
+
+        try
+        {
+            await UserRepository.CreateUserAsync(newEmail, newName);
+
+            // Fetch the new user's Id
+            var userId = await _data.LoadData<int, dynamic>(
+                "SELECT Id FROM Users WHERE Email = @Email",
+                new { Email = newEmail },
+                _config.GetConnectionString("default") ?? string.Empty
+            );
+            int newUserId = (userId != null) ? userId.FirstOrDefault() : 0;
+            
+            // Set AuthLevel (default to User if none chosen)
+            var levelToSet = string.IsNullOrWhiteSpace(newAuthLevel) ? "User" : newAuthLevel;
+            if (newUserId > 0)
+            {
+                await _data.SaveData(
+                    "UPDATE Users SET AuthLevel = @AuthLevel WHERE Id = @UserId",
+                    new { AuthLevel = levelToSet, UserId = newUserId },
+                    _config.GetConnectionString("default") ?? string.Empty
+                );
+            }
+
+            // Assign selected accounts
+            if (accountsToAssign != null && accountsToAssign.Any() && newUserId > 0)
+            {
+                foreach (var accId in accountsToAssign)
+                {
+                    if (accId == 0) continue; // skip default option
+                    await _data.SaveData(
+                        "INSERT INTO AccountsUsers (UserId, AccountId) VALUES (@UserId, @AccountId)",
+                        new { UserId = newUserId, AccountId = accId },
+                        _config.GetConnectionString("default") ?? string.Empty
+                    );
+                }
+
+                // If only one account assigned (excluding default), set as default
+                var assignedRealAccounts = accountsToAssign.Where(id => id != 0).ToList();
+                if (assignedRealAccounts.Count == 1)
+                {
+                    await _data.SaveData(
+                        "UPDATE Users SET DefaultAccount = @AccountId WHERE Id = @UserId",
+                        new { AccountId = assignedRealAccounts.First(), UserId = newUserId },
+                        _config.GetConnectionString("default") ?? string.Empty
+                    );
+                }
+            }
+
+            staffUpdateSuccess = $"New user {newName} registered successfully with email {newEmail}";
+
+            // Clear inputs
+            newName = string.Empty;
+            newEmail = string.Empty;
+            newAuthLevel = string.Empty;
+            accountsToAssign = Array.Empty<int>();
+
+            // Refresh staff list and reset selection
+            await LoadAllStaff();
+            staffMember = AddNewLabel;
+            selectedStaff = string.Empty;
+            selectedStaffEmail = string.Empty;
+            selectedStaffAuthLevel = string.Empty;
+        }
+        catch (Exception ex)
+        {
+            staffUpdateError = $"Error: {ex.Message}";
         }
     }
 
@@ -299,9 +879,15 @@
 
         Console.WriteLine("UpdateStaffMember called");
 
+        if (IsAddNewSelected)
+        {
+            staffUpdateError = "Please use 'Add New User' to add a user";
+            return;
+        }
+
         if (string.IsNullOrEmpty(staffMember))
         {
-            staffUpdateError = "Please select a staff member to update";
+            staffUpdateError = "Please select a user to update";
             return;
         }
 
@@ -310,7 +896,7 @@
             var selectedUser = staff.FirstOrDefault(u => u.Name == staffMember);
             if (selectedUser == null)
             {
-                staffUpdateError = "Selected staff member not found";
+                staffUpdateError = "Selected user not found";
                 return;
             }
 
@@ -373,7 +959,7 @@
 
             if (result > 0)
             {
-                staffUpdateSuccess = "Staff member updated successfully";
+                staffUpdateSuccess = "User updated successfully";
 
                 // Clear input fields
                 newName = string.Empty;
@@ -388,12 +974,12 @@
             }
             else
             {
-                staffUpdateError = "Failed to update staff member";
+                staffUpdateError = "Failed to update user";
             }
         }
         catch (Exception ex)
         {
-            staffUpdateError = $"Error updating staff member: {ex.Message}";
+            staffUpdateError = $"Error updating user: {ex.Message}";
         }
     }
 
@@ -401,18 +987,18 @@
     {
         try
         {
-            _logger.LogInformation("DeleteStaffMember called for staff member: {StaffMember}", staffMember);
+            _logger.LogInformation("DeleteStaffMember called for user: {User}", staffMember);
             
-            if (string.IsNullOrEmpty(staffMember))
+            if (string.IsNullOrEmpty(staffMember) || IsAddNewSelected)
             {
-                staffUpdateError = "Please select a staff member to delete";
+                staffUpdateError = "Please select a user to delete";
                 StateHasChanged();
                 return;
             }
 
             // Use the basic Confirm method without custom options
             var result = await DialogService.Confirm(
-                "Are you sure you want to delete this Staff Member?", 
+                "Are you sure you want to delete this User?", 
                 "Delete Confirmation");
 
             if (result != true)
@@ -424,7 +1010,7 @@
             var selectedUser = staff.FirstOrDefault(u => u.Name == staffMember);
             if (selectedUser == null)
             {
-                staffUpdateError = "Selected staff member not found";
+                staffUpdateError = "Selected user not found";
                 StateHasChanged();
                 return;
             }
@@ -449,8 +1035,8 @@
 
             if (deleteResult > 0)
             {
-                _logger.LogInformation("Successfully deleted staff member");
-                staffUpdateSuccess = "Staff member deleted successfully";
+                _logger.LogInformation("Successfully deleted user");
+                staffUpdateSuccess = "User deleted successfully";
 
                 // Clear selections
                 staffMember = string.Empty;
@@ -467,8 +1053,8 @@
             }
             else
             {
-                _logger.LogWarning("Failed to delete staff member");
-                staffUpdateError = "Failed to delete staff member";
+                _logger.LogWarning("Failed to delete user");
+                staffUpdateError = "Failed to delete user";
             }
 
             StateHasChanged();
@@ -486,12 +1072,12 @@
         try
         {
             showDeleteConfirmation = false;
-            _logger.LogInformation("Confirming deletion of staff member: {StaffMember}", userToDelete);
+            _logger.LogInformation("Confirming deletion of user: {User}", userToDelete);
             
             var selectedUser = staff.FirstOrDefault(u => u.Name == userToDelete);
             if (selectedUser == null)
             {
-                staffUpdateError = "Selected staff member not found";
+                staffUpdateError = "Selected user not found";
                 return;
             }
 
@@ -515,8 +1101,8 @@
 
             if (deleteResult > 0)
             {
-                _logger.LogInformation("Successfully deleted staff member");
-                staffUpdateSuccess = "Staff member deleted successfully";
+                _logger.LogInformation("Successfully deleted user");
+                staffUpdateSuccess = "User deleted successfully";
 
                 // Clear selections
                 staffMember = string.Empty;
@@ -533,8 +1119,8 @@
             }
             else
             {
-                _logger.LogWarning("Failed to delete staff member");
-                staffUpdateError = "Failed to delete staff member";
+                _logger.LogWarning("Failed to delete user");
+                staffUpdateError = "Failed to delete user";
             }
 
             StateHasChanged();
@@ -547,7 +1133,348 @@
         }
     }
 
-    // Loading methods
+    private async Task UpdateFund()
+    {
+        // Clear previous messages
+        fundUpdateError = string.Empty;
+        fundUpdateSuccess = string.Empty;
+
+        Console.WriteLine("UpdateFund called");
+
+        if (IsAddNewFundSelected)
+        {
+            fundUpdateError = "Please use 'Add New Fund' to add a fund";
+            return;
+        }
+
+        if (string.IsNullOrEmpty(selectedFund))
+        {
+            fundUpdateError = "Please select a fund to update";
+            return;
+        }
+
+        try
+        {
+            var accountToUpdate = allFunds.FirstOrDefault(a => a.AccountId == selectedAccountId);
+            if (accountToUpdate == null)
+            {
+                fundUpdateError = "Selected fund not found";
+                return;
+            }
+
+            // Build update parts based on what the user entered
+            bool hasChanges = false;
+            string sql = "UPDATE Accounts SET ";
+            var parameters = new Dictionary<string, object>();
+
+            // Add the ID for WHERE clause
+            parameters.Add("AccountId", accountToUpdate.AccountId);
+
+            // Check if name should be updated
+            if (!string.IsNullOrWhiteSpace(newFundName) && newFundName != accountToUpdate.Name)
+            {
+                sql += "Name = @Name, ";
+                parameters.Add("Name", newFundName);
+                hasChanges = true;
+            }
+
+            // Check if account ref should be updated
+            if (!string.IsNullOrWhiteSpace(newAccountRef) && newAccountRef != accountToUpdate.AccountRef)
+            {
+                sql += "AccountRef = @AccountRef, ";
+                parameters.Add("AccountRef", newAccountRef);
+                hasChanges = true;
+            }
+
+            // Check if balance should be updated
+            if (balance.HasValue && balance != accountToUpdate.Balance)
+            {
+                sql += "Balance = @Balance, ";
+                parameters.Add("Balance", balance.Value);
+                hasChanges = true;
+            }
+
+            // If nothing to update, show message
+            if (!hasChanges)
+            {
+                fundUpdateError = "No changes provided for update";
+                return;
+            }
+
+            // Remove trailing comma and space
+            sql = sql.TrimEnd(',', ' ');
+
+            // Add WHERE clause
+            sql += " WHERE AccountId = @AccountId";
+
+            // Execute update
+            Console.WriteLine($"Executing SQL: {sql}");
+            Console.WriteLine($"Parameters: {string.Join(", ", parameters.Select(p => $"{p.Key}={p.Value}"))}");
+
+            int result = await _data.SaveData(
+                sql,
+                parameters,
+                _config.GetConnectionString("default") ?? string.Empty
+            );
+
+            Console.WriteLine($"Update result: {result}");
+
+            if (result > 0)
+            {
+                fundUpdateSuccess = "Fund updated successfully";
+
+                // Clear input fields
+                newFundName = string.Empty;
+                fundNumber = string.Empty;
+                overhead = string.Empty;
+                fundClass = string.Empty;
+                softCredit = string.Empty;
+                newAccountRef = string.Empty;
+                balance = null;
+
+                // Refresh fund list
+                await LoadAllAccounts();
+                selectedFund = /*"Add new Fund"*/null; // Set to null to trigger re-evaluation of available funds
+
+                // Update the current selection to show updated info
+                // fundSelection(selectedFund);
+                StateHasChanged(); // Force re-render to update fund dropdown options
+            }
+            else
+            {
+                fundUpdateError = "Failed to update fund";
+            }
+        }
+        catch (Exception ex)
+        {
+            fundUpdateError = $"Error updating fund: {ex.Message}";
+        }
+    }
+
+    private async Task AddNewFund()
+    {
+        // Clear previous messages
+        fundUpdateError = string.Empty;
+        fundUpdateSuccess = string.Empty;
+
+        if (!IsAddNewFundSelected)
+        {
+            fundUpdateError = "Please select 'Add New Fund' to add a fund";
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(newFundName))
+        {
+            fundUpdateError = "Fund name is required";
+            return;
+        }
+        if (newFundName.Length < 2 || newFundName.Length > 100)
+        {
+            fundUpdateError = "Fund name must be between 2 and 100 characters";
+            return;
+        }
+        if (string.IsNullOrWhiteSpace(newAccountRef))
+        {
+            fundUpdateError = "Account reference is required";
+            return;
+        }
+        if (balance == null)
+        {
+            fundUpdateError = "Balance is required";
+            return;
+        }
+
+        try
+        {
+            // Trim and sanitize inputs
+            newFundName = newFundName.Trim();
+            newAccountRef = newAccountRef.Trim();
+            decimal parsedBalance;
+            if (!decimal.TryParse(balance.Value.ToString(), NumberStyles.Any, CultureInfo.InvariantCulture, out parsedBalance))
+            {
+                fundUpdateError = "Invalid balance format";
+                return;
+            }
+
+            balance = parsedBalance;
+
+            // Insert new fund record
+            string sql = @"
+                INSERT INTO Accounts (Name, AccountRef, Balance, CreatedAt)
+                VALUES (@Name, @AccountRef, @Balance, @CreatedAt)";
+
+            int result = await _data.SaveData(
+                sql,
+                new { Name = newFundName, AccountRef = newAccountRef, Balance = balance, CreatedAt = DateTime.UtcNow },
+                _config.GetConnectionString("default") ?? string.Empty
+            );
+
+            if (result > 0)
+            {
+                fundUpdateSuccess = "New fund added successfully";
+
+                // Clear inputs
+                newFundName = string.Empty;
+                fundNumber = string.Empty;
+                overhead = string.Empty;
+                fundClass = string.Empty;
+                softCredit = string.Empty;
+                newAccountRef = string.Empty;
+                balance = null;
+
+                // Refresh fund list
+                await LoadAllAccounts();
+                selectedFund = /*"Add new Fund"*/null; // Set to null to trigger re-evaluation of available funds
+
+                // Optionally, automatically select the new fund for immediate editing
+                // var newAccount = await _data.LoadData<Account, dynamic>("SELECT * FROM Accounts WHERE AccountId = LAST_INSERT_ID()", null, _config.GetConnectionString("default") ?? string.Empty);
+                // if (newAccount != null && newAccount.Any())
+                // {
+                //     selectedFund = newAccount.First().Name;
+                //     await fundSelection(selectedFund);
+                // }
+            }
+            else
+            {
+                fundUpdateError = "Failed to add new fund";
+            }
+        }
+        catch (Exception ex)
+        {
+            fundUpdateError = $"Error adding new fund: {ex.Message}";
+        }
+    }
+
+    private async Task DeleteFund()
+    {
+        try
+        {
+            _logger.LogInformation("DeleteFund called for fund: {Fund}", selectedFund);
+            
+            if (string.IsNullOrEmpty(selectedFund) || IsAddNewFundSelected)
+            {
+                fundUpdateError = "Please select a fund to delete";
+                StateHasChanged();
+                return;
+            }
+
+            // Use the basic Confirm method without custom options
+            var result = await DialogService.Confirm(
+                "Are you sure you want to delete this Fund?", 
+                "Delete Confirmation");
+
+            if (result != true)
+            {
+                _logger.LogInformation("User cancelled deletion");
+                return;
+            }
+
+            var fundToDelete = allFunds.FirstOrDefault(f => f.Name == selectedFund);
+            if (fundToDelete == null)
+            {
+                fundUpdateError = "Selected fund not found";
+                StateHasChanged();
+                return;
+            }
+
+            // Delete the fund
+            string deleteFundSql = "DELETE FROM Accounts WHERE AccountId = @AccountId";
+            int deleteResult = await _data.SaveData(
+                deleteFundSql,
+                new { AccountId = fundToDelete.AccountId },
+                _config.GetConnectionString("default") ?? string.Empty
+            );
+
+            if (deleteResult > 0)
+            {
+                _logger.LogInformation("Successfully deleted fund");
+                fundUpdateSuccess = "Fund deleted successfully";
+
+                // Clear selections
+                selectedFund = string.Empty;
+                selectedFundAccount = null;
+                selectedAccountId = null;
+                newFundName = string.Empty;
+                fundNumber = string.Empty;
+                overhead = string.Empty;
+                fundClass = string.Empty;
+                softCredit = string.Empty;
+                newAccountRef = string.Empty;
+                balance = null;
+
+                // Refresh funds list
+                await LoadAllAccounts();
+                allFunds = allAccounts;
+            }
+            else
+            {
+                fundUpdateError = "Failed to delete fund";
+            }
+        }
+        catch (Exception ex)
+        {
+            fundUpdateError = $"Error deleting fund: {ex.Message}";
+        }
+    }
+
+    private async Task ConfirmDeleteFund()
+    {
+        try
+        {
+            showDeleteFundConfirmation = false;
+            _logger.LogInformation("Confirming deletion of fund: {Fund}", fundToDelete);
+            
+            var selectedFundToDelete = allFunds.FirstOrDefault(f => f.Name == this.fundToDelete);
+            if (selectedFundToDelete == null)
+            {
+                fundUpdateError = "Selected fund not found";
+                return;
+            }
+
+            // Delete the fund
+            string deleteFundSql = "DELETE FROM Accounts WHERE AccountId = @AccountId";
+            int deleteResult = await _data.SaveData(
+                deleteFundSql,
+                new { AccountId = selectedFundToDelete.AccountId },
+                _config.GetConnectionString("default") ?? string.Empty
+            );
+
+            if (deleteResult > 0)
+            {
+                _logger.LogInformation("Successfully deleted fund");
+                fundUpdateSuccess = "Fund deleted successfully";
+
+                // Clear selections
+                selectedFund = string.Empty;
+                selectedFundAccount = null;
+                selectedAccountId = null;
+                newFundName = string.Empty;
+                fundNumber = string.Empty;
+                overhead = string.Empty;
+                fundClass = string.Empty;
+                softCredit = string.Empty;
+                newAccountRef = string.Empty;
+                balance = null;
+
+                // Refresh funds list
+                await LoadAllAccounts();
+                allFunds = allAccounts;
+            }
+            else
+            {
+                fundUpdateError = "Failed to delete fund";
+            }
+
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error in ConfirmDeleteFund");
+            fundUpdateError = $"Error: {ex.Message}";
+            StateHasChanged();
+        }
+    }
+
     private async Task LoadAllStaff()
     {
         try
@@ -564,7 +1491,7 @@
                 if (users != null)
                 {
                     staff = users.Select(u => new UserData(
-                        u.Id,                       
+                        u.Id,                      
                         u.Email ?? string.Empty,
                         u.Name ?? string.Empty,
                         u.Language ?? string.Empty,
@@ -582,7 +1509,7 @@
         }
         catch (Exception ex)
         {
-            errorMessage = $"Error loading staff members: {ex.Message}";
+            errorMessage = $"Error loading users: {ex.Message}";
             staff = new List<UserData>();
         }
     }
@@ -591,7 +1518,7 @@
     {
         try
         {
-            string sql = "SELECT AccountId, Name, AccountRef, CreatedAt FROM Accounts ORDER BY Name";
+            string sql = "SELECT AccountId, Name, AccountRef, CreatedAt, Balance FROM Accounts ORDER BY Name";
             allAccounts = await _data.LoadData<Account, dynamic>(
                 sql,
                 new { },
@@ -611,247 +1538,85 @@
         }
     }
 
-    // Account management methods
-    public void accountSeletion(string account)
+    private string GetDisplayTextFromAccountRef(string accountRef)
     {
-        if (string.IsNullOrEmpty(account)) return;
-        Console.WriteLine($"Selected account: {accountToAdd}");
-    }
-
-    public void sharedAccountSeletion(string account)
-    {
-        Console.WriteLine($"Shared account selected: {account}");
-    }
-
-    private async Task LinkAccountToStaff()
-    {
-        // Clear previous messages
-        accountLinkError = string.Empty;
-        accountLinkSuccess = string.Empty;
-
-        if (string.IsNullOrEmpty(staffMember))
-        {
-            accountLinkError = "Please select a staff member";
-            return;
-        }
-
-        if (string.IsNullOrEmpty(accountToAdd))
-        {
-            accountLinkError = "Please select an account to add";
-            return;
-        }
-
-        try
-        {
-            // Get the user ID from the selected staff
-            var selectedUser = staff.FirstOrDefault(u => u.Name == staffMember);
-            if (selectedUser == null)
-            {
-                accountLinkError = "Selected staff member not found";
-                return;
-            }
-
-            // Get the account ID from the selected account
-            var account = allAccounts.FirstOrDefault(a => a.Name == accountToAdd);
-            if (account == null)
-            {
-                accountLinkError = "Selected account not found";
-                return;
-            }
-
-            // Check if the association already exists
-            string checkSql = @"
-                SELECT COUNT(*) FROM AccountsUsers
-                WHERE UserId = @UserId AND AccountId = @AccountId";
-
-            var existingAssociations = await _data.LoadData<int, dynamic>(
-                checkSql,
-                new { UserId = selectedUser.Id, AccountId = account.AccountId },
-                _config.GetConnectionString("default") ?? string.Empty
-            );
-
-            if (existingAssociations != null && existingAssociations.FirstOrDefault() > 0)
-            {
-                accountLinkError = $"Account '{accountToAdd}' is already linked to this staff member";
-                return;
-            }
-
-            // Insert the new association
-            string insertSql = @"
-                INSERT INTO AccountsUsers (UserId, AccountId)
-                VALUES (@UserId, @AccountId)";
-
-            int result = await _data.SaveData(
-                insertSql,
-                new { UserId = selectedUser.Id, AccountId = account.AccountId },
-                _config.GetConnectionString("default") ?? string.Empty
-            );
-
-            if (result > 0)
-            {
-                accountLinkSuccess = $"Successfully linked account '{accountToAdd}' to {staffMember}";
-
-                // Reset the selected account
-                accountToAdd = string.Empty;
-
-                // Refresh the user's accounts list
-                await LoadUserAccounts(selectedUser.Id);
-                
-                // If this is the only account for the user, set it as default and update AppState
-                if (userAccounts.Count == 1)
-                {
-                    string updateDefaultSql = "UPDATE Users SET DefaultAccount = @AccountId WHERE Id = @UserId";
-                    await _data.SaveData(
-                        updateDefaultSql,
-                        new { AccountId = account.AccountId, UserId = selectedUser.Id },
-                        _config.GetConnectionString("default") ?? string.Empty
-                    );
-                    
-                    // Update AppState if this is for the current user (would need additional logic to determine)
-                    // This would require knowing who the current user is, which might not be available in admin context
-                }
-            }
-            else
-            {
-                accountLinkError = "Failed to link account";
-            }
-        }
-        catch (Exception ex)
-        {
-            accountLinkError = $"Error linking account: {ex.Message}";
-        }
-    }
-
-    private async Task RemoveAccountLink()
-    {
-        // Clear previous messages
-        accountLinkError = string.Empty;
-        accountLinkSuccess = string.Empty;
-
-        if (string.IsNullOrEmpty(staffMember))
-        {
-            accountLinkError = "Please select a staff member";
-            return;
-        }
-
-        if (selectedLinkedAccountId == 0)
-        {
-            accountLinkError = "Please select an account to remove";
-            return;
-        }
-
-        try
-        {
-            // Get the user ID from the selected staff
-            var selectedUser = staff.FirstOrDefault(u => u.Name == staffMember);
-            if (selectedUser == null)
-            {
-                accountLinkError = "Selected staff member not found";
-                return;
-            }
-
-            // Get the account name for the success message
-            var selectedAccount = userAccounts.FirstOrDefault(a => a.AccountId == selectedLinkedAccountId);
-            string accountName = selectedAccount?.Name ?? "Unknown";
-
-            // Delete the association
-            string deleteSql = @"
-                DELETE FROM AccountsUsers
-                WHERE UserId = @UserId AND AccountId = @AccountId";
-
-            int result = await _data.SaveData(
-                deleteSql,
-                new { UserId = selectedUser.Id, AccountId = selectedLinkedAccountId },
-                _config.GetConnectionString("default") ?? string.Empty
-            );
-
-            if (result > 0)
-            {
-                accountLinkSuccess = $"Successfully removed account '{accountName}' from {staffMember}";
-
-                // Reset the selected account
-                selectedLinkedAccountId = 0;
-
-                // Refresh the user's accounts list
-                await LoadUserAccounts(selectedUser.Id);
-            }
-            else
-            {
-                accountLinkError = "Failed to remove account link";
-            }
-        }
-        catch (Exception ex)
-        {
-            accountLinkError = $"Error removing account link: {ex.Message}";
-        }
-    }
-
-    private async Task LoadUserAccounts(int userId)
-    {
-        try
-        {
-            string sql = @"
-                SELECT a.AccountId, a.Name, a.AccountRef, a.CreatedAt
-                FROM Accounts a
-                INNER JOIN AccountsUsers au ON a.AccountId = au.AccountId
-                WHERE au.UserId = @UserId
-                ORDER BY a.Name";
-
-            var userAccountsResult = await _data.LoadData<Account, dynamic>(
-                sql,
-                new { UserId = userId },
-                _config.GetConnectionString("default") ?? string.Empty
-            );
-
-            // Clear existing list
-            userAccounts.Clear();
-
-            // Populate with user's accounts
-            if (userAccountsResult != null && userAccountsResult.Any())
-            {
-                userAccounts.AddRange(userAccountsResult);
-            }
-        }
-        catch (Exception ex)
-        {
-            accountLinkError = $"Error loading user accounts: {ex.Message}";
-        }
-    }
-
-    private async Task SetAccountAsDefault(int userId, int accountId)
-    {
-        try
-        {
-            string sql = "UPDATE Users SET DefaultAccount = @AccountId WHERE Id = @UserId";
+        if (string.IsNullOrEmpty(accountRef))
+            return string.Empty;
             
-            int result = await _data.SaveData(
-                sql,
-                new { AccountId = accountId, UserId = userId },
-                _config.GetConnectionString("default") ?? string.Empty
-            );
-            
-            if (result > 0)
-            {
-                // Find the account name
-                var account = allAccounts.FirstOrDefault(a => a.AccountId == accountId);
-                if (account != null)
-                {
-                    // If we're updating the default for the current user session, update AppState
-                    // We would need a way to determine if this is the current user
-                    // AppState.DefaultAccount = account.Name;
-                    
-                    accountLinkSuccess = $"Set '{account.Name}' as default account for {staffMember}";
-                }
-            }
-            else
-            {
-                accountLinkError = "Failed to set default account";
-            }
-        }
-        catch (Exception ex)
+        var colonIndex = accountRef.IndexOf(':');
+        if (colonIndex >= 0 && colonIndex < accountRef.Length - 1)
         {
-            accountLinkError = $"Error setting default account: {ex.Message}";
+            return accountRef.Substring(colonIndex + 1).Trim();
         }
+        
+        return accountRef; // Return the whole string if no colon found
+    }
+
+    public async Task fundSelection(string displayText)
+    {
+        if (string.IsNullOrEmpty(displayText)) return;
+
+        selectedFund = displayText;
+
+        // Clear previous messages
+        fundUpdateError = string.Empty;
+        fundUpdateSuccess = string.Empty;
+
+        if (string.Equals(displayText, AddNewFundLabel, StringComparison.Ordinal))
+        {
+            // Clear the selected account when adding new
+            selectedFundAccount = null;
+            selectedAccountId = null;
+            // DO NOT clear the input fields - leave them as user inputs
+            return;
+        }
+
+        // Find the account by matching the display text (text after colon in AccountRef)
+        selectedFundAccount = allFunds.FirstOrDefault(f => 
+            GetDisplayTextFromAccountRef(f.AccountRef) == displayText);
+            
+        if (selectedFundAccount != null)
+        {
+            selectedAccountId = selectedFundAccount.AccountId;
+            // DO NOT populate balance or other input fields - only use for display/debugging
+        }
+        else
+        {
+            selectedFundAccount = null;
+            selectedAccountId = null;
+        }
+    }
+
+    private async Task OpenAccountsOverviewDialog()
+    {
+        await DialogService.OpenAsync<AccountsOverviewView>(
+            title: Localizer["AccountsOverview"],
+            options: new DialogOptions
+            {
+                Width = "90vw",
+                Height = "85vh",
+                Resizable = true,
+                Draggable = false,
+                Style = "position:fixed; top:50%; left:50%; transform:translate(-50%,-50%); max-width:none;"
+            });
+    }
+
+    private async Task OpenAccountSummariesDialog()
+    {
+        await DialogService.OpenAsync<AccountSummariesView>(
+            title: Localizer["AccountSummaries"],
+            parameters: new Dictionary<string, object>
+            {
+                { "DefaultAccountName", AppState.DefaultAccount }
+            },
+            options: new DialogOptions
+            {
+                Width = "90vw",
+                Height = "90vh",
+                Resizable = true,
+                Draggable = false,
+                Style = "position:fixed; top:50%; left:50%; transform:translate(-50%,-50%); max-width:none;"
+            });
     }
 
     // Helper classes
@@ -876,186 +1641,5 @@
         [Required(ErrorMessage = "Name is required")]
         [StringLength(100, MinimumLength = 2, ErrorMessage = "Name must be between 2 and 100 characters")]
         public string Name { get; set; } = string.Empty;
-    }
-
-    // Form submission handling
-    private async Task HandleValidSubmit()
-    {
-        try
-        {
-            await UserRepository.CreateUserAsync(formModel.Email, formModel.Name);
-            successMessage = $"New user {formModel.Name} registered successfully with email {formModel.Email}";
-            errorMessage = null;
-            formModel = new UserFormModel();
-
-            // Refresh the staff list after creating a new user
-            await LoadAllStaff();
-        }
-        catch (Exception ex)
-        {
-            successMessage = null;
-            errorMessage = $"Error: {ex.Message}";
-        }
-    }
-
-    // Fund-related methods
-    public async Task GetDistinctFunds()
-    {
-        try
-        {
-            successMessage = null;
-            errorMessage = null;
-
-            string sql = "SELECT DISTINCT fund FROM etapestry ORDER BY fund";
-            funds = await _data.LoadData<string, dynamic>(sql, new { }, _config.GetConnectionString("default") ?? string.Empty);
-
-            if (funds != null && funds.Any())
-            {
-                successMessage = $"Found {funds.Count} distinct funds.";
-            }
-            else
-            {
-                errorMessage = "No funds found in the database.";
-                funds = new List<string>();
-            }
-        }
-        catch (Exception ex)
-        {
-            errorMessage = $"Error retrieving funds: {ex.Message}";
-            funds = new List<string>();
-        }
-    }
-
-    public async Task CreateAccountsFromFunds()
-    {
-        try
-        {
-            if (funds == null || !funds.Any())
-            {
-                errorMessage = "No funds available to create accounts from.";
-                return;
-            }
-
-            successMessage = null;
-            errorMessage = null;
-            createdAccounts.Clear();
-            int successCount = 0;
-            int failCount = 0;
-
-            foreach (var fund in funds)
-            {
-                string name;
-                string accountRef = fund;
-
-                // Process the fund string
-                if (fund.Contains(':'))
-                {
-                    int colonIndex = fund.IndexOf(':');
-                    name = fund.Substring(0, colonIndex);
-                }
-                else
-                {
-                    name = fund;
-                }
-
-                try
-                {
-                    // Check if the account already exists
-                    string checkSql = "SELECT COUNT(*) FROM Accounts WHERE AccountRef = @AccountRef";
-                    var accountExists = await _data.LoadData<int, dynamic>(
-                        checkSql,
-                        new { AccountRef = accountRef },
-                        _config.GetConnectionString("default") ?? string.Empty);
-
-                    if (accountExists != null && accountExists.FirstOrDefault() > 0)
-                    {
-                        createdAccounts.Add((name, accountRef, false, "Account already exists"));
-                        failCount++;
-                        continue;
-                    }
-
-                    // Insert the account
-                    string insertSql = @"
-                        INSERT INTO Accounts (Name, AccountRef, CreatedAt)
-                        VALUES (@Name, @AccountRef, @DateCreated)";
-
-                    int result = await _data.SaveData(
-                        insertSql,
-                        new
-                        {
-                            Name = name,
-                            AccountRef = accountRef,
-                            DateCreated = DateTime.Now
-                        },
-                        _config.GetConnectionString("default") ?? string.Empty
-                    );
-
-                    if (result > 0)
-                    {
-                        createdAccounts.Add((name, accountRef, true, string.Empty));
-                        successCount++;
-                    }
-                    else
-                    {
-                        createdAccounts.Add((name, accountRef, false, "Insert failed"));
-                        failCount++;
-                    }
-                }
-                catch (Exception ex)
-                {
-                    createdAccounts.Add((name, accountRef, false, ex.Message));
-                    failCount++;
-                }
-            }
-
-            if (successCount > 0)
-            {
-                successMessage = $"Successfully created {successCount} account(s).";
-                if (failCount > 0)
-                {
-                    successMessage += $" Failed to create {failCount} account(s).";
-                }
-            }
-            else if (failCount > 0)
-            {
-                errorMessage = $"Failed to create {failCount} account(s). No accounts were created.";
-            }
-        }
-        catch (Exception ex)
-        {
-            errorMessage = $"Error creating accounts: {ex.Message}";
-        }
-    }
-
-    private async Task OpenAllBalancesDialog()
-    {
-        await DialogService.OpenAsync<AllBalancesView>(
-            title: Localizer["AllBalances"],
-            options: new DialogOptions
-            {
-                Width = "90vw",              // large but not full width
-                Height = "85vh",
-                Resizable = true,
-                Draggable = false,
-                Style = "position:fixed; top:50%; left:50%; transform:translate(-50%,-50%); max-width:none;"
-            });
-    }
-
-    private async Task OpenAccountSummariesDialog()
-    {
-        await DialogService.OpenAsync<AccountSummariesView>(
-            title: Localizer["AccountSummaries"],
-            parameters: new Dictionary<string, object>
-            {
-                { "DefaultAccountName", AppState.DefaultAccount }
-            },
-            options: new DialogOptions
-            {
-                Width = "90vw",
-                Height = "90vh",
-                Resizable = true,
-                Draggable = false,
-                Style = "position:fixed; top:50%; left:50%; transform:translate(-50%,-50%); max-width:none;"
-            });
     }
 }
