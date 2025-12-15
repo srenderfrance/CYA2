@@ -4,6 +4,9 @@ html, body {
     padding: 0;
     /* Allow normal scrolling */
     overflow: visible;
+    /* Add these for better positioning calculations */
+    height: 100%;
+    width: 100%;
 }
 
 /* Layout root for MainLayout */
@@ -11,6 +14,7 @@ html, body {
     display: flex;
     flex-direction: column;
     min-height: 100vh;
+    position: relative; /* Add this to establish positioning context */
 }
 
 /* Header should NOT be sticky - let it scroll with content */
@@ -21,34 +25,150 @@ html, body {
 /* Main content area */
 .main-content {
     flex: 1;
+    position: relative; /* Add this to help with dropdown positioning */
     /* Normal flow - will scroll naturally */
 }
 
-/* Fund dropdown popup positioning */
-.fund-dropdown-popup {
-    position: absolute !important;
-    z-index: 9999 !important;
-    max-width: 400px !important; /* Allow dropdown to be wider than container */
-    white-space: nowrap !important;
+/* Bootstrap classes - but our custom overrides for dropdowns come after Bootstrap */
+.px-4 { 
+    padding-left: 1.5rem; 
+    padding-right: 1.5rem; 
+}
+
+.container { 
+    width: 100%; 
+    padding-left: 15px; 
+    padding-right: 15px; 
+    margin-left: auto; 
+    margin-right: auto; 
+}
+
+.mt-4 { 
+    margin-top: 1.5rem; 
+}
+
+.mt-3 { 
+    margin-top: 1rem; 
+}
+
+.mb-3 { 
+    margin-bottom: 1rem; 
+}
+
+.text-muted { 
+    color: #6c757d; 
+}
+
+.alert { 
+    padding: 0.75rem 1.25rem; 
+    border: 1px solid transparent; 
+    border-radius: 0.25rem; 
+}
+
+.alert-info { 
+    color: #0c5460; 
+    background-color: #d1ecf1; 
+    border-color: #bee5eb; 
+}
+
+.alert-danger { 
+    color: #721c24; 
+    background-color: #f8d7da; 
+    border-color: #f5c6cb; 
+}
+
+/* 
+ * Radzen Dropdown Positioning Fixes 
+ * These work with the JavaScript dynamic positioning
+ */
+.rz-dropdown-panel {
+    /* Don't set position here - let JavaScript handle it dynamically */
+    z-index: 9999 !important; /* Ensure it's above Bootstrap components */
+    max-height: 500px !important;
+    /* Let Radzen handle its own scrolling - no override */
     box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15) !important;
     border: 1px solid #ddd !important;
     background: white !important;
-}
-
-/* Ensure dropdown options don't get cut off */
-.fund-dropdown-popup .rz-dropdown-item {
-    padding: 8px 12px !important;
-    white-space: nowrap !important;
-    overflow: hidden !important;
-    text-overflow: ellipsis !important;
-}
-
-/* Allow dropdown to break out of container if needed */
-.rz-dropdown {
-    position: relative;
+    /* Smooth transitions when repositioning */
+    transition: top 0.1s ease, left 0.1s ease;
+    /* Ensure dropdown panels don't get clipped */
     overflow: visible !important;
 }
 
+/* Force proper stacking context for dropdown containers */
+.rz-dropdown {
+    position: relative !important;
+    z-index: 1 !important;
+}
+
+/* When dropdown is open, ensure proper layering */
+.rz-dropdown.rz-state-focused,
+.rz-dropdown:focus-within {
+    z-index: 9998 !important;
+}
+
+/* Prevent Bootstrap from interfering with Radzen dropdown positioning */
+.rz-dropdown * {
+    box-sizing: border-box !important;
+}
+
+.rz-dropdown-items-wrapper {
+    max-height: 500px !important;
+    overflow-y: auto !important;
+}
+
+/* 
+ * Radzen Tooltip Positioning Fixes 
+ * These work with the JavaScript dynamic positioning
+ */
+.rz-tooltip {
+    /* Let Radzen handle the positioning wrapper - only add our scroll fix */
+    position: fixed !important;
+    z-index: 10000 !important; /* Higher than dropdown panels */
+    /* CRITICAL: Prevent tooltip from interfering with mouse events */
+    pointer-events: none !important;
+    /* Ensure tooltips are never clipped */
+    overflow: visible !important;
+}
+
+/* Override any hiding that might be applied */
+.rz-tooltip[style*="visibility: visible"] {
+    visibility: visible !important;
+    opacity: 1 !important;
+}
+
+/* Tooltip arrow styling */
+.rz-tooltip-arrow {
+    border-color: #dc3545 !important;
+}
+
+/* Style the actual content container - this is where Radzen expects styling */
+.rz-tooltip-content {
+    /* Override Radzen's default styling with red theme to match delete button */
+    background: #dc3545 !important; /* Bootstrap danger red - matches delete button */
+    color: white !important;
+    box-shadow: 0 2px 8px rgba(220, 53, 69, 0.3) !important; /* Red tinted shadow */
+    border: 1px solid #b02a37 !important; /* Darker red border */
+    padding: 8px 12px !important; /* Reduced from 12px 16px for tighter spacing */
+    border-radius: 4px !important;
+    font-size: 0.875rem !important;
+    /* Fix text display */
+    white-space: normal !important; /* Allow text wrapping - override Radzen's nowrap */
+    min-width: 150px !important;
+    max-width: 90vw !important;
+    word-wrap: break-word !important;
+    /* Perfect vertical centering */
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    text-align: center !important;
+    line-height: 1.2 !important; /* Slightly more than 1 for better readability */
+    min-height: 28px !important; /* Reduced from 32px for more compact tooltip */
+    /* Also prevent content from interfering with mouse events */
+    pointer-events: none !important;
+}
+
+/* Links and buttons */
 a, .btn-link {
     color: #006bb7;
 }
@@ -59,18 +179,26 @@ a, .btn-link {
     border-color: #1861ac;
 }
 
-.btn:focus, .btn:active:focus, .btn-link.nav-link:focus, .form-control:focus, .form-check-input:focus {
-  box-shadow: 0 0 0 0.1rem white, 0 0 0 0.25rem #258cfb;
+.btn:focus, 
+.btn:active:focus, 
+.btn-link.nav-link:focus, 
+.form-control:focus, 
+.form-check-input:focus {
+    box-shadow: 0 0 0 0.1rem white, 0 0 0 0.25rem #258cfb;
 }
 
+/* CSS Custom Properties */
 :root {
     --rz-primary: rgb(96 188 181);
     --rz-primary-light: rgba(96 188 181, 0.2);
     --rz-primary-lighter: rgba(96 188 181, 0.1);
     --rz-success: #0a3b6b;
     --rz-danger: #910813;
+    --rz-dropdown-item-padding: 4px 12px;
+    --rz-dropdown-item-min-height: 24px;
 }
 
+/* Content styling */
 .content {
     padding-top: 1.1rem;
 }
@@ -79,6 +207,7 @@ h1:focus {
     outline: none;
 }
 
+/* Form validation styles */
 .valid.modified:not([type=checkbox]) {
     outline: 1px solid #26b050;
 }
@@ -91,19 +220,23 @@ h1:focus {
     color: #e50000;
 }
 
+/* Blazor error boundary */
 .blazor-error-boundary {
-    background: url(data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNTYiIGhlaWdodD0iNDkiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyIgeG1sbnM6eGxpbms9Imh0dHA6Ly93d3cudzMub3JnLzE5OTkveGxpbmsiIG92ZXJmbG93PSJoaWRkZW4iPjxkZWZzPjxjbGlwUGF0aCBpZD0iY2xpcDAiPjxyZWN0IHg9IjIzNSIgeT0iNTEiIHdpZHRoPSI1NiIgaGVpZ2h0PSI0OSIvPjwvY2xpcFBhdGg+PC9kZWZzPjxnIGNsaXAtcGF0aD0idXJsKCNjbGlwMCkiIHRyYW5zZm9ybT0idHJhbnNsYXRlKC0yMzUgLTUxKSI+PHBhdGggZD0iTTI2My41MDYgNTFDMjY0LjcxNyA1MSAyNjUuODEzIDUxLjQ4MzcgMjY2LjYwNiA1Mi4yNjU4TDI2Ny4wNTIgNTIuNzk4NyAyNjcuNTM5IDUzLjYyODMgMjkwLjE4NSA5Mi4xODMxIDI5MC41NDUgOTIuNzk1IDI5MC42NTYgOTIuOTk2QzI5MC44NzcgOTMuNTEzIDI5MSA5NC4wODE1IDI5MSA5NC42NzgyIDI5MSA5Ny4wNjUxIDI4OS4wMzggOTkgMjg2LjYxNyA5OUwyNDAuMzgzIDk5QzIzNy45NjMgOTkgMjM2IDk3LjA2NTEgMjM2IDk0LjY3ODIgMjM2IDk0LjM3OTkgMjM2LjAzMSA5NC4wODg2IDIzNi4wODkgOTEuNjAxMTAgIEY2LjU5PjwvY2xpcD48L2RlZnM+PHBhdGggaWQ9IkdyYWRpZW50IiBmaWxsPSIjZmZmZmZmIiBzdHJva2Utd2lkdGg9IjEiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIvPjwvZz48L3N2Zz4=) no-repeat 1rem/1.8rem, #b32121;
+    background: url(data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNTYiIGhlaWdodD0iNDkiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyIgeG1sbnM6eGxpbms9Imh0dHA6Ly93d3cudzMub3JnLzE5OTkveGxpbmsiIG92ZXJmbG93PSJoaWRkZW4iPjxkZWZzPjxjbGlwUGF0aCBpZD0iY2xpcDAiPjxyZWN0IHg9IjIzNSIgeT0iNTEiIHdpZHRoPSI1NiIgaGVpZ2h0PSI0OSIvPjwvY2xpcFBhdGg+PC9kZWZzPjxnIGNsaXAtcGF0aD0idXJsKCNjbGlwMCkiIHRyYW5zZm9ybT0idHJhbnNsYXRlKC0yMzUgLTUxKSI+PHBhdGggZD0iTTI26My41MDYgNTFDMjY0LjcxNyA1MSAyNjUuODEzIDUxLjQ4MzcgMjY2LjYwNiA1Mi4yNjU4TDI2Ny4wNTIgNTIuNzk4NyAyNjcuNTM5IDUzLjYyODMgMjkwLjE4NSA5Mi4xODMxIDI5MC41NDUgOTIuNzk1IDI5MC42NTYgOTIuOTk2QzI5MC44NzcgOTMuNTEzIDI5MSA9NC42NzgyIDI5MSA9Ny4wNjUxIDI4OS4wMzggOTkgMjg2LjYxNyA5OUwyNDAuMzgzIDk5QzIzNy45NjMgOTkgMjM2IDk3LjA2NTEgMjM2IDk0LjY3ODIgMjM2IDk0LjM3OTkgMjM2LjAzMSA5NC4wODg2IDIzNi4wODkgOTEuNjAxMTAgIEY2LjU5PjwvY2xpcD48L3N2Zz4=) no-repeat 1rem/1.8rem, #b32121;
     padding: 1rem 1rem 1rem 3.7rem;
     color: white;
 }
 
-    .blazor-error-boundary::after {
-        content: "An error has occurred."
-    }
+.blazor-error-boundary::after {
+    content: "An error has occurred.";
+}
 
+/* Form styling */
 .darker-border-checkbox.form-check-input {
     border-color: #929292;
 }
+
+/* Navigation container */
 .nav-container {
     display: flex;
     justify-content: space-between;
@@ -143,7 +276,7 @@ h1:focus {
     white-space: nowrap;
 }
 
-/* Responsive nav right: shrink text and icons on small screens */
+/* Responsive navigation */
 @media (max-width: 900px) {
     .nav-right .nav-link,
     .nav-right a.nav-link {
@@ -152,6 +285,21 @@ h1:focus {
     }
     .nav-right .bi {
         font-size: 1.1rem;
+    }
+    
+    .nav-container {
+        flex-direction: column;
+        align-items: stretch;
+    }
+    .nav-left,
+    .nav-center,
+    .nav-right {
+        justify-content: flex-start;
+        min-width: 0;
+    }
+    .nav-center {
+        justify-content: flex-start;
+        flex-wrap: wrap;
     }
 }
 
@@ -177,29 +325,21 @@ h1:focus {
     }
 }
 
-@media (max-width: 900px) {
-    .nav-container {
-        flex-direction: column;
-        align-items: stretch;
-    }
-    .nav-left,
-    .nav-center,
-    .nav-right {
-        justify-content: flex-start;
-        min-width: 0;
-    }
-    .nav-center {
-        justify-content: flex-start;
-        flex-wrap: wrap;
-    }
+/* Dropdown hover states */
+.rz-dropdown-panel .rz-dropdown-item:hover,
+.rz-dropdown-panel .rz-dropdown-item.rz-state-highlight,
+.rz-dropdown-item.rz-state-focused {
+    padding: 4px 12px; 
+    min-height: 24px;
 }
 
+/* Text selection */
 ::selection {
-    background: rgba(96,188,181,0.35);
+    background: rgba(96, 188, 181, 0.35);
     color: inherit;
 }
 
 ::-moz-selection {
-    background: rgba(96,188,181,0.35);
+    background: rgba(96, 188, 181, 0.35);
     color: inherit;
 }

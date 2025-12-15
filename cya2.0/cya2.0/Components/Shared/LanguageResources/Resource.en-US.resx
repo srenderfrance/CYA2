@@ -417,4 +417,7 @@
   <data name="SoftCredit" xml:space="preserve">
     <value>Soft Credit</value>
   </data>
+  <data name="BalanceAdjustment" xml:space="preserve">
+    <value>Balance Adjustment</value>
+  </data>
 </root>
