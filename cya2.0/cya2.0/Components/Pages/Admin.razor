@@ -19,6 +19,7 @@
 @using Radzen
 @using UtilityClasses
 @inject IStringLocalizer<Resource> Localizer
+@inject TooltipService tooltipService
 
 <RadzenStack Orientation="Orientation.Vertical" Gap="1rem" Class="rz-p-4">
     <!-- Buttons section at the top, closer to navbar -->
@@ -51,8 +52,8 @@
                                Change="@(async args => await staffSelection(args?.ToString() ?? string.Empty))"
                                Placeholder="@Localizer["SelectUser"]"
                                Style="width: 100%;" />
-                
-                <RadzenFormField Text="@Localizer["NewName"]" Variant="Variant.Outlined">
+                              
+                               <RadzenFormField Text="@Localizer["NewName"]" Variant="Variant.Outlined">
                     <RadzenTextBox @bind-Value="@newName" Placeholder="@Localizer["EnterUpdatedName"]" />
                 </RadzenFormField>
             </RadzenStack>
@@ -209,14 +210,17 @@
                                @bind-Value="selectedFund"
                                Change="@(async args => await fundSelection(args?.ToString() ?? string.Empty))"
                                Placeholder="@Localizer["SelectFund"]"
-                               Style="width: 100%;"
-                               PopupStyle="max-height: 250px; overflow-y: auto; z-index: 9999;"
-                               PopupClass="fund-dropdown-popup" />
+                               Style="width: 100%;"/>
             </RadzenStack>
 
             <!-- Fund Number -->
             <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="2rem">
-                <RadzenText TextStyle="TextStyle.Subtitle2" Style="font-weight: bold; width: 150px;">@Localizer["FundNumber"]</RadzenText>
+                <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="0.5rem" Style="font-weight: bold; width: 150px;">
+                    <RadzenText TextStyle="TextStyle.Subtitle2">@Localizer["FundNumber"]</RadzenText>
+                    <i @ref="fundNumberIcon" class="bi bi-exclamation-circle" style="cursor: help; color: #dc3545;" 
+                       @onmouseenter="@(() => ShowFundNumberTooltip(fundNumberIcon))"
+                       @onmouseleave="@(() => tooltipService.Close())"></i>
+                </RadzenStack>
                 <RadzenFormField Variant="Variant.Outlined" Style="flex: 1;">
                     <RadzenTextBox @bind-Value="@fundNumber" Placeholder="@Localizer["FundNumber"]" />
                 </RadzenFormField>
@@ -224,7 +228,12 @@
 
             <!-- Fund -->
             <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="2rem">
-                <RadzenText TextStyle="TextStyle.Subtitle2" Style="font-weight: bold; width: 150px;">@Localizer["Fund"]</RadzenText>
+                <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="0.5rem" Style="font-weight: bold; width: 150px;">
+                    <RadzenText TextStyle="TextStyle.Subtitle2">@Localizer["Fund"]</RadzenText>
+                    <i @ref="fundIcon" class="bi bi-exclamation-circle" style="cursor: help; color: #dc3545;" 
+                       @onmouseenter="@(() => ShowFundTooltip(fundIcon))"
+                       @onmouseleave="@(() => tooltipService.Close())"></i>
+                </RadzenStack>
                 <RadzenFormField Variant="Variant.Outlined" Style="flex: 1;">
                     <RadzenTextBox @bind-Value="@newFundName" Placeholder="@Localizer["Fund"]" />
                 </RadzenFormField>
@@ -240,7 +249,12 @@
 
             <!-- Class -->
             <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="2rem">
-                <RadzenText TextStyle="TextStyle.Subtitle2" Style="font-weight: bold; width: 150px;">@Localizer["Class"]</RadzenText>
+                <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="0.5rem" Style="font-weight: bold; width: 150px;">
+                    <RadzenText TextStyle="TextStyle.Subtitle2">@Localizer["Class"]</RadzenText>
+                    <i @ref="classIcon" class="bi bi-exclamation-circle" style="cursor: help; color: #dc3545;" 
+                       @onmouseenter="@(() => ShowClassTooltip(classIcon))"
+                       @onmouseleave="@(() => tooltipService.Close())"></i>
+                </RadzenStack>
                 <RadzenFormField Variant="Variant.Outlined" Style="flex: 1;">
                     <RadzenTextBox @bind-Value="@fundClass" Placeholder="@Localizer["Class"]" />
                 </RadzenFormField>
@@ -254,11 +268,10 @@
                 </RadzenFormField>
             </RadzenStack>
 
-            <!-- Balance -->
-            <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="2rem">
-                <RadzenText TextStyle="TextStyle.Subtitle2" Style="font-weight: bold; width: 150px;">@Localizer["Balance"]</RadzenText>
+                       <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="2rem">
+                <RadzenText TextStyle="TextStyle.Subtitle2" Style="font-weight: bold; width: 150px;">@Localizer["BalanceAdjustment"]</RadzenText>
                 <RadzenFormField Variant="Variant.Outlined" Style="flex: 1;">
-                    <RadzenNumeric TValue="decimal?" @bind-Value="@balance" Placeholder="0.00" Format="C" ReadOnly="true" />
+                    <RadzenNumeric TValue="decimal?" @bind-Value="@adjustment" Placeholder="0.00" Format="C" ReadOnly="true" />
                 </RadzenFormField>
             </RadzenStack>
         </RadzenStack>
@@ -323,6 +336,11 @@
     private bool IsAddNewSelected => string.Equals(staffMember, AddNewLabel, StringComparison.Ordinal);
     private bool IsAddNewFundSelected => string.Equals(selectedFund, AddNewFundLabel, StringComparison.Ordinal);
 
+    // ElementReference for tooltip icons
+    private ElementReference fundNumberIcon;
+    private ElementReference fundIcon;
+    private ElementReference classIcon;
+
     private string? staffMember;
     private List<UserData> staff = new List<UserData>();
     private IEnumerable<UserData> staffWithAddOption => staff.Concat(new[] { new UserData(0, string.Empty, AddNewLabel, string.Empty, string.Empty, string.Empty, new List<Account>(), string.Empty) });
@@ -332,7 +350,7 @@
     private string newAuthLevel = string.Empty;
     private List<string> authLevels = new List<string> { "User", "Viewer", "Admin" };
 
-    public string selectedStaff = string.Empty;
+    private string selectedStaff = string.Empty;
     public string newName = string.Empty;
     public string newEmail = string.Empty;
 
@@ -342,11 +360,9 @@
     // Account management properties
     private string accountLinkError = string.Empty;
     private string accountLinkSuccess = string.Empty;
-    private string? accountToAdd; // legacy
     private int accountToAddId = 0; // selected AccountId
     private List<Account> allAccounts = new List<Account>();
     private List<Account> accountsOptions = new List<Account>(); // unified data source for all account dropdowns
-    private List<Account> sharedAccounts = new List<Account>();
     private List<SharedAccountBool> sharedAccountsBool = new List<SharedAccountBool>();
     private List<Account> userAccounts = new List<Account>();
     private int selectedLinkedAccountId = 0;
@@ -359,15 +375,11 @@
     private UserFormModel formModel { get; set; } = new UserFormModel();
 
     // Fund properties
-    private string? successMessage;
     private string? errorMessage;
-    private List<string>? funds;
     private List<(string name, string accountRef, bool success, string errorMessage)> createdAccounts = new();
 
     private bool showDeleteConfirmation = false;
     private string userToDelete = string.Empty;
-
-    private string updateStatus = string.Empty;
 
     // Fund management properties
     private string? selectedFund;
@@ -391,7 +403,7 @@
     private string fundClass = string.Empty;
     private string softCredit = string.Empty;
     private string newAccountRef = string.Empty;
-    private decimal? balance;
+    private decimal? adjustment;
     private int? selectedAccountId;
     
     private string fundUpdateError = string.Empty;
@@ -596,18 +608,6 @@
         }
     }
 
-    // Account management methods
-    public void accountSeletion(string account)
-    {
-        if (string.IsNullOrEmpty(account)) return;
-        Console.WriteLine($"Selected account: {accountToAdd}");
-    }
-
-    public void sharedAccountSeletion(string account)
-    {
-        Console.WriteLine($"Shared account selected: {account}");
-    }
-
     private async Task LinkAccountToStaff()
     {
         // Clear previous messages
@@ -643,7 +643,9 @@
                 return;
             }
 
-            string checkSql = @"\n                SELECT COUNT(*) FROM AccountsUsers\n                WHERE UserId = @UserId AND AccountId = @AccountId";
+            string checkSql = @"
+                SELECT COUNT(*) FROM AccountsUsers
+                WHERE UserId = @UserId AND AccountId = @AccountId";
 
             var existingAssociations = await _data.LoadData<int, dynamic>(
                 checkSql,
@@ -657,7 +659,9 @@
                 return;
             }
 
-            string insertSql = @"\n                INSERT INTO AccountsUsers (UserId, AccountId)\n                VALUES (@UserId, @AccountId)";
+            string insertSql = @"
+                INSERT INTO AccountsUsers (UserId, AccountId)
+                VALUES (@UserId, @AccountId)";
 
             int result = await _data.SaveData(
                 insertSql,
@@ -970,7 +974,7 @@
                 await LoadAllStaff();
 
                 // Update the current selection to show updated info
-                staffSelection(staffMember);
+                await staffSelection(staffMember);
             }
             else
             {
@@ -1187,10 +1191,10 @@
             }
 
             // Check if balance should be updated
-            if (balance.HasValue && balance != accountToUpdate.Balance)
+            if (adjustment.HasValue && adjustment != accountToUpdate.Balance)
             {
                 sql += "Balance = @Balance, ";
-                parameters.Add("Balance", balance.Value);
+                parameters.Add("Balance", adjustment.Value);
                 hasChanges = true;
             }
 
@@ -1230,11 +1234,11 @@
                 fundClass = string.Empty;
                 softCredit = string.Empty;
                 newAccountRef = string.Empty;
-                balance = null;
+                adjustment = null;
 
                 // Refresh fund list
                 await LoadAllAccounts();
-                selectedFund = /*"Add new Fund"*/null; // Set to null to trigger re-evaluation of available funds
+                selectedFund = string.Empty; // Set to empty string to trigger re-evaluation of available funds
 
                 // Update the current selection to show updated info
                 // fundSelection(selectedFund);
@@ -1278,7 +1282,7 @@
             fundUpdateError = "Account reference is required";
             return;
         }
-        if (balance == null)
+        if (adjustment == null)
         {
             fundUpdateError = "Balance is required";
             return;
@@ -1290,13 +1294,13 @@
             newFundName = newFundName.Trim();
             newAccountRef = newAccountRef.Trim();
             decimal parsedBalance;
-            if (!decimal.TryParse(balance.Value.ToString(), NumberStyles.Any, CultureInfo.InvariantCulture, out parsedBalance))
+            if (!decimal.TryParse(adjustment.Value.ToString(), NumberStyles.Any, CultureInfo.InvariantCulture, out parsedBalance))
             {
                 fundUpdateError = "Invalid balance format";
                 return;
             }
 
-            balance = parsedBalance;
+           adjustment = parsedBalance;
 
             // Insert new fund record
             string sql = @"
@@ -1305,7 +1309,7 @@
 
             int result = await _data.SaveData(
                 sql,
-                new { Name = newFundName, AccountRef = newAccountRef, Balance = balance, CreatedAt = DateTime.UtcNow },
+                new { Name = newFundName, AccountRef = newAccountRef, Balance = adjustment, CreatedAt = DateTime.UtcNow },
                 _config.GetConnectionString("default") ?? string.Empty
             );
 
@@ -1320,11 +1324,11 @@
                 fundClass = string.Empty;
                 softCredit = string.Empty;
                 newAccountRef = string.Empty;
-                balance = null;
+                adjustment = null;
 
                 // Refresh fund list
                 await LoadAllAccounts();
-                selectedFund = /*"Add new Fund"*/null; // Set to null to trigger re-evaluation of available funds
+                selectedFund = string.Empty; // Set to empty string to trigger re-evaluation of available funds
 
                 // Optionally, automatically select the new fund for immediate editing
                 // var newAccount = await _data.LoadData<Account, dynamic>("SELECT * FROM Accounts WHERE AccountId = LAST_INSERT_ID()", null, _config.GetConnectionString("default") ?? string.Empty);
@@ -1387,7 +1391,6 @@
 
             if (deleteResult > 0)
             {
-                _logger.LogInformation("Successfully deleted fund");
                 fundUpdateSuccess = "Fund deleted successfully";
 
                 // Clear selections
@@ -1400,7 +1403,7 @@
                 fundClass = string.Empty;
                 softCredit = string.Empty;
                 newAccountRef = string.Empty;
-                balance = null;
+                adjustment = null;
 
                 // Refresh funds list
                 await LoadAllAccounts();
@@ -1454,7 +1457,7 @@
                 fundClass = string.Empty;
                 softCredit = string.Empty;
                 newAccountRef = string.Empty;
-                balance = null;
+                adjustment = null;
 
                 // Refresh funds list
                 await LoadAllAccounts();
@@ -1552,9 +1555,9 @@
         return accountRef; // Return the whole string if no colon found
     }
 
-    public async Task fundSelection(string displayText)
+    public Task fundSelection(string displayText)
     {
-        if (string.IsNullOrEmpty(displayText)) return;
+        if (string.IsNullOrEmpty(displayText)) return Task.CompletedTask;
 
         selectedFund = displayText;
 
@@ -1568,7 +1571,7 @@
             selectedFundAccount = null;
             selectedAccountId = null;
             // DO NOT clear the input fields - leave them as user inputs
-            return;
+            return Task.CompletedTask;
         }
 
         // Find the account by matching the display text (text after colon in AccountRef)
@@ -1585,8 +1588,11 @@
             selectedFundAccount = null;
             selectedAccountId = null;
         }
-    }
 
+        return Task.CompletedTask;
+    }
+    
+    // Account management methods
     private async Task OpenAccountsOverviewDialog()
     {
         await DialogService.OpenAsync<AccountsOverviewView>(
@@ -1617,6 +1623,34 @@
                 Draggable = false,
                 Style = "position:fixed; top:50%; left:50%; transform:translate(-50%,-50%); max-width:none;"
             });
+    }
+
+    // Tooltip methods
+    void ShowFundNumberTooltip(ElementReference elementReference, TooltipOptions options = null) 
+    {
+        var tooltipOptions = options ?? new TooltipOptions() { 
+            Position = TooltipPosition.Bottom,
+            Duration = 10000 // Keep tooltip visible for 10 seconds instead of default ~3 seconds
+        };
+        tooltipService.Open(elementReference, "Must match the accounting data account \"Num\" EXACTLY", tooltipOptions);
+    }
+
+    void ShowFundTooltip(ElementReference elementReference, TooltipOptions options = null) 
+    {
+        var tooltipOptions = options ?? new TooltipOptions() { 
+            Position = TooltipPosition.Bottom,
+            Duration = 10000 // Keep tooltip visible for 10 seconds
+        };
+        tooltipService.Open(elementReference, "Must match donation data \"Fund Notes\" EXACTLY", tooltipOptions);
+    }
+
+    void ShowClassTooltip(ElementReference elementReference, TooltipOptions options = null) 
+    {
+        var tooltipOptions = options ?? new TooltipOptions() { 
+            Position = TooltipPosition.Bottom,
+            Duration = 10000 // Keep tooltip visible for 10 seconds
+        };
+        tooltipService.Open(elementReference, "Must match the accounting data \"Class\" EXACTLY", tooltipOptions);
     }
 
     // Helper classes
