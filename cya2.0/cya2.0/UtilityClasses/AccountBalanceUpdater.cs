@@ -23,7 +23,7 @@ namespace UtilityClasses
         {
             var conn = _config.GetConnectionString("default");
 
-            const string accountsSql = "SELECT AccountId, Name, AccountRef, CreatedAt, Balance FROM Accounts ORDER BY Name";
+            const string accountsSql = "SELECT AccountId, Fund, AccountingClass, FundNumber, CreatedAt, Balance FROM Accounts ORDER BY Fund";
             var accounts = await _data.LoadData<Account, dynamic>(accountsSql, new { }, conn) ?? new List<Account>();
             if (accounts.Count == 0)
             {
@@ -37,48 +37,29 @@ namespace UtilityClasses
             {
                 try
                 {
-                    var designation = ExtractDesignation(account.AccountRef);
-                    if (string.IsNullOrWhiteSpace(designation))
+                    if (string.IsNullOrWhiteSpace(account.AccountingClass))
                     {
-                        Console.WriteLine($"BalanceUpdater: empty designation for '{account.Name}' (ref='{account.AccountRef}'), setting balance=0.");
+                        Console.WriteLine($"BalanceUpdater: empty class for '{account.Fund}', setting balance=0.");
                         await PersistBalanceAsync(account.AccountId, 0m, conn);
                         updated++;
                         continue;
                     }
 
-                    // Aggregate signed amounts in SQL (fast) and guard against NULL amounts.
-                    // Also exclude obvious fundraising rows (type contains 'fundraising' case-insensitive).
-                    const string sumLikeSql = @"
-                        SELECT COALESCE(SUM(amount), 0) AS Net
-                        FROM quickbooks
-                        WHERE designation LIKE @Designation
-                          AND (type IS NULL OR LOWER(type) NOT LIKE '%fundraising%')";
-
+                    // Aggregate signed amounts from AccountingData for the exact AccountingClass
                     const string sumExactSql = @"
-                        SELECT COALESCE(SUM(amount), 0) AS Net
-                        FROM quickbooks
-                        WHERE designation = @Designation
-                          AND (type IS NULL OR LOWER(type) NOT LIKE '%fundraising%')";
+                        SELECT COALESCE(SUM(Amount), 0) AS Net
+                        FROM AccountingData
+                        WHERE AccountingClass = @Class
+                          AND (Type IS NULL OR LOWER(Type) NOT LIKE '%fundraising%')";
 
-                    var likeRes = await _data.LoadData<NetResult, dynamic>(
-                        sumLikeSql,
-                        new { Designation = $"%{designation}%" },
+                    var exactRes = await _data.LoadData<NetResult, dynamic>(
+                        sumExactSql,
+                        new { Class = account.AccountingClass },
                         conn);
 
-                    decimal net = likeRes?.FirstOrDefault()?.Net ?? 0m;
+                    decimal net = exactRes?.FirstOrDefault()?.Net ?? 0m;
 
-                    // Fallback: try exact AccountRef if LIKE matched nothing
-                    if (net == 0m)
-                    {
-                        var exactRes = await _data.LoadData<NetResult, dynamic>(
-                            sumExactSql,
-                            new { Designation = account.AccountRef },
-                            conn);
-
-                        net = exactRes?.FirstOrDefault()?.Net ?? 0m;
-                    }
-
-                    Console.WriteLine($"BalanceUpdater: '{account.Name}' designation='{designation}' Net={net}");
+                    Console.WriteLine($"BalanceUpdater: '{account.Fund}' class='{account.AccountingClass}' Net={net}");
 
                     var affected = await PersistBalanceAsync(account.AccountId, net, conn);
                     if (affected <= 0)
@@ -88,7 +69,6 @@ namespace UtilityClasses
 
                     updated++;
 
-                    // Yield periodically to reduce pressure on the DB and monitoring thread.
                     if (updated % 10 == 0)
                     {
                         await Task.Delay(100);
@@ -96,8 +76,7 @@ namespace UtilityClasses
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine($"BalanceUpdater: ERROR updating '{account.Name}' - {ex.Message}");
-                    // Continue with next account rather than failing the whole batch
+                    Console.WriteLine($"BalanceUpdater: ERROR updating '{account.Fund}' - {ex.Message}");
                 }
             }
 
@@ -107,16 +86,9 @@ namespace UtilityClasses
         public async Task<List<Account>> GetAllAccountBalancesAsync()
         {
             var conn = _config.GetConnectionString("default");
-            const string sql = "SELECT AccountId, Name, AccountRef, CreatedAt, Balance FROM Accounts ORDER BY Name";
+            const string sql = "SELECT AccountId, Fund, AccountingClass, FundNumber, CreatedAt, Balance FROM Accounts ORDER BY Fund";
             var accounts = await _data.LoadData<Account, dynamic>(sql, new { }, conn);
             return accounts?.ToList() ?? new List<Account>();
-        }
-
-        private static string ExtractDesignation(string accountRef)
-        {
-            if (string.IsNullOrWhiteSpace(accountRef)) return string.Empty;
-            var idx = accountRef.IndexOf(':');
-            return idx >= 0 ? accountRef[(idx + 1)..].Trim() : accountRef.Trim();
         }
 
         private async Task<int> PersistBalanceAsync(int accountId, decimal balance, string conn)
@@ -125,7 +97,6 @@ namespace UtilityClasses
             return await _data.SaveData(updateSql, new { Balance = balance, AccountId = accountId }, conn);
         }
 
-        // Maps the aggregated SQL result
         private sealed class NetResult
         {
             public decimal Net { get; set; }

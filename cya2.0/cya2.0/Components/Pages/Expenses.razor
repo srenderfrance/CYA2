@@ -52,8 +52,8 @@
             <RadzenText TextStyle="TextStyle.Subtitle2">@Localizer["Account"]</RadzenText>
             <RadzenDropDown TValue="string"
                             Data="@userAccounts"
-                            TextProperty="Name"
-                            ValueProperty="Name"
+                            TextProperty="Fund"
+                            ValueProperty="Fund"
                             @bind-Value="selectedAccount"
                             Change="@(args => accountSelection(args?.ToString()))"
                             Placeholder="@Localizer["ChooseAccount"]"
@@ -123,11 +123,11 @@
             if (!string.IsNullOrEmpty(AppState.DefaultAccount))
             {
                 selectedAccount = AppState.DefaultAccount;
-                currentAccount = userAccounts.FirstOrDefault(a => a.Name == selectedAccount);
+                currentAccount = userAccounts.FirstOrDefault(a => a.Fund == selectedAccount);
 
-                if (currentAccount != null && AppState.IsAccountDataLoaded(currentAccount.Name))
+                if (currentAccount != null && AppState.IsAccountDataLoaded(currentAccount.Fund))
                 {
-                    var accountingData = AppState.AccountDataCache[currentAccount.Name].AccountingData;
+                    var accountingData = AppState.AccountDataCache[currentAccount.Fund].AccountingData;
                     await ProcessExpenses(accountingData);
                 }
             }
@@ -143,7 +143,7 @@
         if (string.IsNullOrEmpty(accountName)) return;
 
         selectedAccount = accountName;
-        currentAccount = userAccounts.FirstOrDefault(a => a.Name == accountName);
+        currentAccount = userAccounts.FirstOrDefault(a => a.Fund == accountName);
         
         Console.WriteLine($"Selected Account: {selectedAccount}");
         errorMessage = string.Empty;
@@ -187,7 +187,7 @@
 
             // Filter for expense records
             var expenseRecords = accountingData
-                .Where(a => IsExpense(a.type))
+                .Where(a => IsExpense(a.Type))
                 .ToList();
 
             Console.WriteLine($"Found {expenseRecords.Count} expense records for account '{selectedAccount}'");
@@ -200,15 +200,15 @@
 
             // Convert to UserDataExpenses format
             expenses = expenseRecords
-                .Where(a => a.date > new DateTime(1900, 1, 1)) // Filter out invalid dates
+                .Where(a => a.Date > new DateTime(1900, 1, 1)) // Filter out invalid dates
                 .Select(a => new UserDataExpenses(
-                    staffAccount: !string.IsNullOrEmpty(a.designation) ? a.designation : selectedAccount,
-                    amount: a.amount,
-                    date: a.date,
-                    description: !string.IsNullOrEmpty(a.account) ? a.account : "Unknown",
-                    account: !string.IsNullOrEmpty(a.account) ? a.account : "Unknown",
-                    num: !string.IsNullOrEmpty(a.num) ? a.num : string.Empty,
-                    accountNumber: !string.IsNullOrEmpty(a.accountnum) ? a.accountnum : string.Empty
+                    staffAccount: !string.IsNullOrEmpty(a.AccountingClass) ? a.AccountingClass : selectedAccount,
+                    amount: a.Amount,
+                    date: a.Date,
+                    description: !string.IsNullOrEmpty(a.Account) ? a.Account : "Unknown",
+                    account: !string.IsNullOrEmpty(a.Account) ? a.Account : "Unknown",
+                    num: !string.IsNullOrEmpty(a.Num) ? a.Num : string.Empty,
+                    accountNumber: !string.IsNullOrEmpty(a.AccountNumber) ? a.AccountNumber : string.Empty
                 ))
                 .ToList();
 

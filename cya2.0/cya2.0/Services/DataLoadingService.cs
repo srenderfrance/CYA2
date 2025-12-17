@@ -86,7 +86,7 @@ namespace cya2.Services
                         var defaultAccount = _appState.UserAccounts.FirstOrDefault(a => a.AccountId == accountId);
                         if (defaultAccount != null)
                         {
-                            _appState.DefaultAccount = defaultAccount.Name;
+                            _appState.DefaultAccount = defaultAccount.Fund;
                             Console.WriteLine($"Admin default account set to: {_appState.DefaultAccount}");
                             // Load data only for the default account
                             await LoadAccountDataAsync(defaultAccount);
@@ -105,14 +105,14 @@ namespace cya2.Services
                         var defaultAccount = _appState.UserAccounts.FirstOrDefault(a => a.AccountId == accountId);
                         if (defaultAccount != null)
                         {
-                            _appState.DefaultAccount = defaultAccount.Name;
+                            _appState.DefaultAccount = defaultAccount.Fund;
                             Console.WriteLine($"Default account set to: {_appState.DefaultAccount}");
                             await LoadAccountDataAsync(defaultAccount);
                         }
                     }
                     else if (_appState.UserAccounts.Any())
                     {
-                        _appState.DefaultAccount = _appState.UserAccounts.First().Name;
+                        _appState.DefaultAccount = _appState.UserAccounts.First().Fund;
                         Console.WriteLine($"No default account found, using first account: {_appState.DefaultAccount}");
                         await LoadAccountDataAsync(_appState.UserAccounts.First());
                     }
@@ -145,7 +145,7 @@ namespace cya2.Services
                 if (_appState.IsAdmin)
                 {
                     // Admin can see all accounts
-                    sql = "SELECT AccountId, Name, AccountRef, CreatedAt FROM Accounts ORDER BY Name";
+                    sql = "SELECT AccountId, Fund, AccountingClass, CreatedAt, Balance, FundNumber, SoftCredit, BalanceAdjustment, OtherFunds FROM Accounts ORDER BY Fund";
                     parameters = new { };
 
                     Console.WriteLine($"Loading all accounts for admin user");
@@ -154,11 +154,11 @@ namespace cya2.Services
                 {
                     // Regular users only see their linked accounts from AccountsUsers table
                     sql = @"
-                        SELECT a.AccountId, a.Name, a.AccountRef, a.CreatedAt
+                        SELECT a.AccountId, a.Fund, a.AccountingClass, a.CreatedAt, a.Balance, a.FundNumber, a.SoftCredit, a.BalanceAdjustment, a.OtherFunds
                         FROM Accounts a
                         INNER JOIN AccountsUsers au ON a.AccountId = au.AccountId
                         WHERE au.UserId = @UserId
-                        ORDER BY a.Name";
+                        ORDER BY a.Fund";
                     parameters = new { UserId = _appState.CurrentUserId };
 
                     Console.WriteLine($"Loading accounts for user ID: {_appState.CurrentUserId}");
@@ -189,53 +189,54 @@ namespace cya2.Services
             }
         }
 
-        // Load data for a specific account
+        // Load data for a specific account from new tables
         public async Task LoadAccountDataAsync(Account account)
         {
             try
             {
                 // Skip if already loaded
-                if (_appState.IsAccountDataLoaded(account.Name)) return;
+                if (_appState.IsAccountDataLoaded(account.Fund)) return;
 
                 _appState.IsLoadingData = true;
 
-                // Extract designation from account reference
-                string designation;
-                if (account.AccountRef.Contains(':'))
-                {
-                    int colonIndex = account.AccountRef.IndexOf(':');
-                    designation = account.AccountRef.Substring(colonIndex + 1).Trim();
-                }
-                else
-                {
-                    designation = account.AccountRef.Trim();
-                }
+                // Load accounting data by exact AccountingClass
+                string accountingSql = @"
+                    SELECT 
+                        Id,
+                        AccountingClass,
+                        Date,
+                        Num,
+                        Amount,
+                        AccountNumber,
+                        Account,
+                        Type,
+                        DateCreated
+                    FROM AccountingData
+                    WHERE AccountingClass = @AccountClass";
 
-                // Load accounting data
-                string accountingSql = "SELECT * FROM quickbooks WHERE designation LIKE @Designation";
                 var accountingData = await _dataAccess.LoadData<AccountingDataModel, dynamic>(
                     accountingSql,
-                    new { Designation = $"%{designation}%" },
+                    new { AccountClass = account.AccountingClass },
                     _config.GetConnectionString("default")
                 );
 
-                // Load donation data
-                string donationSql = "SELECT * FROM etapestry WHERE fund = @Fund";
+                // Load donation data by Fund (Fund Notes)
+                string donationSql = "SELECT * FROM DonationData WHERE Fund = @Fund";
                 var donationData = await _dataAccess.LoadData<DonationsDataModel, dynamic>(
                     donationSql,
-                    new { Fund = account.AccountRef },
+                    new { Fund = account.Fund },
                     _config.GetConnectionString("default")
                 );
 
                 // Store in AppState
                 _appState.SetAccountData(
-                    account.Name,
+                    account.Fund,
                     accountingData?.ToList() ?? new List<AccountingDataModel>(),
                     donationData?.ToList() ?? new List<DonationsDataModel>()
                 );
 
                 // For backward compatibility with existing code
-                if (account.Name == _appState.DefaultAccount)
+                if (account.Fund == _appState.DefaultAccount)
                 {
                     _appState.AccountingData = accountingData?.ToList() ?? new List<AccountingDataModel>();
                 }
@@ -259,10 +260,10 @@ namespace cya2.Services
                 foreach (var account in _appState.UserAccounts)
                 {
                     // Skip the default account as it's already loaded
-                    if (account.Name == _appState.DefaultAccount) continue;
+                    if (account.Fund == _appState.DefaultAccount) continue;
 
                     // Check if data is already loaded
-                    if (!_appState.IsAccountDataLoaded(account.Name))
+                    if (!_appState.IsAccountDataLoaded(account.Fund))
                     {
                         await LoadAccountDataAsync(account);
                     }

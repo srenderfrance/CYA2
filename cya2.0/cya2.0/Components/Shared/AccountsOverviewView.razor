@@ -75,7 +75,7 @@
     {
         try
         {
-            const string accountsSql = "SELECT AccountId, Name, AccountRef, CreatedAt, Balance FROM Accounts ORDER BY Name";
+            const string accountsSql = "SELECT AccountId, Fund, AccountingClass, CreatedAt, Balance FROM Accounts ORDER BY Fund";
             var accounts = await _data.LoadData<Account, dynamic>(
                 accountsSql,
                 new { },
@@ -86,7 +86,7 @@
             {
                 rows.Add(new FundBalanceRow
                 {
-                    Fund = account.Name,
+                    Fund = account.Fund,
                     CurrentBalance = account.Balance,
                     Last12MonthsDonations = 0m
                 });
@@ -110,7 +110,7 @@
             var last12Start = new DateTime(now.Year, now.Month, 1).AddMonths(-12);
             var last12End = now;
 
-            var map = accounts.ToDictionary(a => a.Name, a => a.AccountRef);
+            var map = accounts.ToDictionary(a => a.Fund, a => a.AccountingClass);
 
             foreach (var row in fundBalances)
             {
@@ -119,13 +119,13 @@
                     continue;
                 }
 
-                const string donationsSql = "SELECT * FROM etapestry WHERE fund = @Fund AND date >= @Start AND date <= @End";
+                const string donationsSql = "SELECT * FROM DonationData WHERE Fund = @Fund AND Date >= @Start AND Date <= @End";
                 var donations = await _data.LoadData<DonationsDataModel, dynamic>(
                     donationsSql,
                     new { Fund = fundRef, Start = last12Start, End = last12End },
                     _config.GetConnectionString("default"));
 
-                row.Last12MonthsDonations = donations?.Sum(d => Convert.ToDecimal(d.amount)) ?? 0m;
+                row.Last12MonthsDonations = donations?.Sum(d => Convert.ToDecimal(d.Amount)) ?? 0m;
 
                 await InvokeAsync(StateHasChanged);
             }

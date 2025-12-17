@@ -55,8 +55,8 @@ else
             
             <RadzenDropDown TValue="string"
                             Data="@userAccounts"
-                            TextProperty="Name"
-                            ValueProperty="Name"
+                            TextProperty="Fund"
+                            ValueProperty="Fund"
                             Value="@selectedAccount"
                             Change="@(args => accountSelection(args?.ToString() ?? string.Empty))"
                             Placeholder="@Localizer["ChooseAccount"]"
@@ -351,18 +351,18 @@ else
                 if (!string.IsNullOrEmpty(AppState.DefaultAccount))
                 {
                     selectedAccount = AppState.DefaultAccount;
-                    userAccount = userAccounts.FirstOrDefault(a => a.Name == selectedAccount);
+                    userAccount = userAccounts.FirstOrDefault(a => a.Fund == selectedAccount);
                     
-                    if (userAccount != null && AppState.IsAccountDataLoaded(userAccount.Name))
+                    if (userAccount != null && AppState.IsAccountDataLoaded(userAccount.Fund))
                     {
-                        var accountData = AppState.AccountDataCache[userAccount.Name];
+                        var accountData = AppState.AccountDataCache[userAccount.Fund];
                         accountingData = accountData.AccountingData;
                         donations = accountData.DonationData.Select(d => new DonationData
                         {
-                            Id = d.id,
-                            Date = d.date,
-                            Amount = (decimal)d.amount,
-                            Fund = d.fund
+                            Id = d.Id,
+                            Date = d.Date,
+                            Amount = (decimal)d.Amount,
+                            Fund = d.Fund
                         }).ToList();
 
                         CalculateStatistics();
@@ -386,13 +386,13 @@ else
         {
             if (userAccount is null) return;
 
-            var accountData = AppState.AccountDataCache[userAccount.Name];
+            var accountData = AppState.AccountDataCache[userAccount.Fund];
             accountingData = accountData.AccountingData;
             donations = accountData.DonationData?.Select(d => new DonationData {
-                Id = d.id,
-                Date = d.date,
-                Amount = (decimal)d.amount,
-                Fund = d.fund
+                Id = d.Id,
+                Date = d.Date,
+                Amount = (decimal)d.Amount,
+                Fund = d.Fund
             }).ToList() ?? new List<DonationData>();
             
             CalculateStatistics();
@@ -412,7 +412,7 @@ else
 
         selectedAccount = accountName;
 
-        userAccount = userAccounts.FirstOrDefault(a => a.Name == accountName);
+        userAccount = userAccounts.FirstOrDefault(a => a.Fund == accountName);
 
         AppState.DefaultAccount = accountName;
 
@@ -429,10 +429,10 @@ else
                 accountingData = accountData.AccountingData;
                 donations = accountData.DonationData.Select(d => new DonationData
                 {
-                    Id = d.id,
-                    Date = d.date,
-                    Amount = (decimal)d.amount,
-                    Fund = d.fund
+                    Id = d.Id,
+                    Date = d.Date,
+                    Amount = (decimal)d.Amount,
+                    Fund = d.Fund
                 }).ToList();
 
                 CalculateStatistics();
@@ -450,14 +450,12 @@ else
             DateTime now = DateTime.Now;
             decimal startingBalance = 7812.65m;
             
-            // Use a single method to calculate balances as of specific dates
             decimal currentBalance = CalculateBalanceAsOfDate(now, startingBalance);
             DateTime priorMonthEnd = new DateTime(now.Year, now.Month, 1).AddDays(-1);
             decimal priorMonthBalance = CalculateBalanceAsOfDate(priorMonthEnd, startingBalance);
             DateTime priorYearEnd = new DateTime(now.Year - 1, 12, 31);
             decimal priorYearBalance = CalculateBalanceAsOfDate(priorYearEnd, startingBalance);
 
-            // Calculate summaries for each time period
             CalculateCurrentMonthSummary(now, currentBalance);
             CalculatePriorMonthSummary(now, priorMonthBalance);
             CalculateCurrentYearSummary(now, currentBalance);
@@ -471,55 +469,43 @@ else
 
     private decimal CalculateBalanceAsOfDate(DateTime asOfDate, decimal originalStartingBalance)
     {
-        // Hard-coded adjustments for the specific account
         decimal startingBalance = 7812.65m;
         decimal missingDonations = 9000.00m;
         decimal actualOverhead = -24065.88m;
         
-        // If date is before 2020, just return the starting balance
         var cutoffDate = new DateTime(2020, 1, 1);
         if (asOfDate < cutoffDate)
         {
             return startingBalance;
         }
         
-        // Calculate all donations up to the given date (2020 onwards)
         decimal totalDonations = donations
             .Where(d => d.Date <= asOfDate && d.Date >= cutoffDate)
             .Sum(d => d.Amount);
         
-        // Add missing donations
         totalDonations += missingDonations;
         
-        // Calculate all regular expenses from 2020 forward (excluding fundraising)
         decimal totalExpenses = accountingData
-            .Where(a => a.date <= asOfDate && 
-                       a.date >= cutoffDate && 
+            .Where(a => a.Date <= asOfDate && 
+                       a.Date >= cutoffDate && 
                        TransactionCategorizer.IsExpense(a) && 
                        !TransactionCategorizer.IsFundraising(a))
-            .Sum(a => Math.Abs((decimal)a.amount));
+            .Sum(a => Math.Abs((decimal)a.Amount));
         
-        // Calculate all other expenses from 2020 forward
         decimal totalOtherExpenses = accountingData
-            .Where(a => a.date <= asOfDate && 
-                       a.date >= cutoffDate && 
+            .Where(a => a.Date <= asOfDate && 
+                       a.Date >= cutoffDate && 
                        TransactionCategorizer.IsOtherExpense(a) && 
                        !TransactionCategorizer.IsFundraising(a))
-            .Sum(a => Math.Abs((decimal)a.amount));
+            .Sum(a => Math.Abs((decimal)a.Amount));
         
-        // Calculate all internal transfers from 2020 forward
         decimal totalInternalTransfers = accountingData
-            .Where(a => a.date <= asOfDate && 
-                       a.date >= cutoffDate && 
+            .Where(a => a.Date <= asOfDate && 
+                       a.Date >= cutoffDate && 
                        TransactionCategorizer.IsInternalTransfer(a) &&
-                       !TransactionCategorizer.IsOtherExpense(a)) // Avoid double counting
-            .Sum(a => Math.Abs((decimal)a.amount));
+                       !TransactionCategorizer.IsOtherExpense(a))
+            .Sum(a => Math.Abs((decimal)a.Amount));
         
-        // For debugging purposes
-        Console.WriteLine($"DEBUG: Starting={startingBalance}, Donations={totalDonations}, Expenses={totalExpenses}, " +
-                         $"OtherExp={totalOtherExpenses}, Transfers={totalInternalTransfers}, Overhead={actualOverhead}");
-        
-        // Calculate balance with the overhead adjustment
         decimal calculatedBalance = startingBalance + totalDonations - totalExpenses + 
                                    totalOtherExpenses + totalInternalTransfers + actualOverhead;
         
@@ -528,29 +514,26 @@ else
 
     private void CalculateCurrentMonthSummary(DateTime now, decimal currentBalance)
     {
-        // Calculate metrics for current month only (for display)
         decimal monthlyDonations = donations
             .Where(d => d.Date.Year == now.Year && d.Date.Month == now.Month)
             .Sum(d => d.Amount);
 
         decimal monthlyFundraising = accountingData
-            .Where(a => a.date.Year == now.Year && a.date.Month == now.Month && 
+            .Where(a => a.Date.Year == now.Year && a.Date.Month == now.Month && 
                        TransactionCategorizer.IsFundraising(a))
-            .Sum(a => Math.Abs((decimal)a.amount));
+            .Sum(a => Math.Abs((decimal)a.Amount));
 
         decimal monthlyExpenses = accountingData
-            .Where(a => a.date.Year == now.Year && a.date.Month == now.Month && 
+            .Where(a => a.Date.Year == now.Year && a.Date.Month == now.Month && 
                        TransactionCategorizer.IsExpense(a) && 
                        !TransactionCategorizer.IsFundraising(a))
-            .Sum(a => Math.Abs((decimal)a.amount));
+            .Sum(a => Math.Abs((decimal)a.Amount));
         
-        // Calculate internal transfers for current month
         decimal monthlyInternalTransfers = accountingData
-            .Where(a => a.date.Year == now.Year && a.date.Month == now.Month && 
+            .Where(a => a.Date.Year == now.Year && a.Date.Month == now.Month && 
                        TransactionCategorizer.IsInternalTransfer(a))
-            .Sum(a => Math.Abs((decimal)a.amount));
+            .Sum(a => Math.Abs((decimal)a.Amount));
 
-        // Calculate overhead as donations minus fundraising expenses
         decimal overhead = monthlyDonations - monthlyFundraising;
 
         currentMonthSummary = new FinancialSummary
@@ -568,38 +551,32 @@ else
     {
         DateTime priorMonth = now.AddMonths(-1);
 
-        // Calculate total donations for prior month
         decimal monthlyDonations = donations
             .Where(d => d.Date.Year == priorMonth.Year && d.Date.Month == priorMonth.Month)
             .Sum(d => d.Amount);
 
-        // Calculate fundraising expenses
         decimal monthlyFundraising = accountingData
-            .Where(a => a.date.Year == priorMonth.Year && a.date.Month == priorMonth.Month && 
+            .Where(a => a.Date.Year == priorMonth.Year && a.Date.Month == priorMonth.Month && 
                        TransactionCategorizer.IsFundraising(a))
-            .Sum(a => Math.Abs((decimal)a.amount));
+            .Sum(a => Math.Abs((decimal)a.Amount));
 
-        // Calculate regular expenses - EXCLUDING fundraising transactions
         decimal monthlyExpenses = accountingData
-            .Where(a => a.date.Year == priorMonth.Year && a.date.Month == priorMonth.Month && 
+            .Where(a => a.Date.Year == priorMonth.Year && a.Date.Month == priorMonth.Month && 
                        TransactionCategorizer.IsExpense(a) && 
                        !TransactionCategorizer.IsFundraising(a))
-            .Sum(a => Math.Abs((decimal)a.amount));
+            .Sum(a => Math.Abs((decimal)a.Amount));
 
-        // Calculate "other expenses" - EXCLUDING fundraising transactions
         decimal otherExpenses = accountingData
-            .Where(a => a.date.Year == priorMonth.Year && a.date.Month == priorMonth.Month && 
+            .Where(a => a.Date.Year == priorMonth.Year && a.Date.Month == priorMonth.Month && 
                        TransactionCategorizer.IsOtherExpense(a) && 
                        !TransactionCategorizer.IsFundraising(a))
-            .Sum(a => Math.Abs((decimal)a.amount));
+            .Sum(a => Math.Abs((decimal)a.Amount));
         
-        // Calculate internal transfers for prior month
         decimal monthlyInternalTransfers = accountingData
-            .Where(a => a.date.Year == priorMonth.Year && a.date.Month == priorMonth.Month && 
+            .Where(a => a.Date.Year == priorMonth.Year && a.Date.Month == priorMonth.Month && 
                        TransactionCategorizer.IsInternalTransfer(a))
-            .Sum(a => Math.Abs((decimal)a.amount));
+            .Sum(a => Math.Abs((decimal)a.Amount));
 
-        // Calculate overhead as donations minus fundraising expenses
         decimal overhead = monthlyDonations - monthlyFundraising;
 
         priorMonthSummary = new FinancialSummary
@@ -608,8 +585,8 @@ else
             TotalExpenses = monthlyExpenses,
             TotalOverhead = overhead,
             InternalTransfers = monthlyInternalTransfers,
-            AvgMonthlyDonations = monthlyDonations, // For consistency
-            AvgMonthlyExpenses = monthlyExpenses,   // For consistency
+            AvgMonthlyDonations = monthlyDonations,
+            AvgMonthlyExpenses = monthlyExpenses,
             Period = priorMonth.ToString("MMMM yyyy"),
             Balance = priorMonthBalance
         };
@@ -617,34 +594,28 @@ else
 
     private void CalculateCurrentYearSummary(DateTime now, decimal currentBalance)
     {
-        // Calculate donations for current year only (for display)
         decimal yearlyDonations = donations
             .Where(d => d.Date.Year == now.Year)
             .Sum(d => d.Amount);
 
-        // Calculate fundraising expenses for current year
         decimal yearlyFundraising = accountingData
-            .Where(a => a.date.Year == now.Year && 
+            .Where(a => a.Date.Year == now.Year && 
                        TransactionCategorizer.IsFundraising(a))
-            .Sum(a => Math.Abs((decimal)a.amount));
+            .Sum(a => Math.Abs((decimal)a.Amount));
 
-        // Calculate regular expenses for current year (excluding fundraising)
         decimal yearlyExpenses = accountingData
-            .Where(a => a.date.Year == now.Year && 
+            .Where(a => a.Date.Year == now.Year && 
                        TransactionCategorizer.IsExpense(a) && 
                        !TransactionCategorizer.IsFundraising(a))
-            .Sum(a => Math.Abs((decimal)a.amount));
+            .Sum(a => Math.Abs((decimal)a.Amount));
         
-        // Calculate internal transfers for current year
         decimal yearlyInternalTransfers = accountingData
-            .Where(a => a.date.Year == now.Year && 
+            .Where(a => a.Date.Year == now.Year && 
                        TransactionCategorizer.IsInternalTransfer(a))
-            .Sum(a => Math.Abs((decimal)a.amount));
+            .Sum(a => Math.Abs((decimal)a.Amount));
 
-        // Calculate overhead as donations minus fundraising expenses
         decimal overhead = yearlyDonations - yearlyFundraising;
 
-        // Calculate monthly averages
         int monthsInYear = Math.Min(now.Month, 12);
         decimal avgMonthlyDonations = monthsInYear > 0 ? yearlyDonations / monthsInYear : 0;
         decimal avgMonthlyExpenses = monthsInYear > 0 ? yearlyExpenses / monthsInYear : 0;
@@ -666,41 +637,34 @@ else
     {
         int priorYear = now.Year - 1;
 
-        // Calculate total donations for prior year
         decimal yearlyDonations = donations
             .Where(d => d.Date.Year == priorYear)
             .Sum(d => d.Amount);
 
-        // Calculate fundraising expenses
         decimal yearlyFundraising = accountingData
-            .Where(a => a.date.Year == priorYear && 
+            .Where(a => a.Date.Year == priorYear && 
                        TransactionCategorizer.IsFundraising(a))
-            .Sum(a => Math.Abs((decimal)a.amount));
+            .Sum(a => Math.Abs((decimal)a.Amount));
 
-        // Calculate regular expenses - EXCLUDING fundraising transactions
         decimal yearlyExpenses = accountingData
-            .Where(a => a.date.Year == priorYear && 
+            .Where(a => a.Date.Year == priorYear && 
                        TransactionCategorizer.IsExpense(a) && 
                        !TransactionCategorizer.IsFundraising(a))
-            .Sum(a => Math.Abs((decimal)a.amount));
+            .Sum(a => Math.Abs((decimal)a.Amount));
 
-        // Calculate "other expenses" - EXCLUDING fundraising transactions
         decimal otherExpenses = accountingData
-            .Where(a => a.date.Year == priorYear && 
+            .Where(a => a.Date.Year == priorYear && 
                        TransactionCategorizer.IsOtherExpense(a) && 
                        !TransactionCategorizer.IsFundraising(a))
-            .Sum(a => Math.Abs((decimal)a.amount));
+            .Sum(a => Math.Abs((decimal)a.Amount));
         
-        // Calculate internal transfers for prior year
         decimal yearlyInternalTransfers = accountingData
-            .Where(a => a.date.Year == priorYear && 
+            .Where(a => a.Date.Year == priorYear && 
                        TransactionCategorizer.IsInternalTransfer(a))
-            .Sum(a => Math.Abs((decimal)a.amount));
+            .Sum(a => Math.Abs((decimal)a.Amount));
 
-        // Calculate overhead as donations minus fundraising expenses
         decimal overhead = yearlyDonations - yearlyFundraising;
 
-        // Calculate monthly averages
         decimal avgMonthlyDonations = yearlyDonations / 12;
         decimal avgMonthlyExpenses = yearlyExpenses / 12;
 
@@ -741,7 +705,7 @@ else
     {
         // Get unique transaction types for debugging
         var uniqueTypes = accountingData
-            .Select(a => a.type)
+            .Select(a => a.Type)
             .Distinct()
             .OrderBy(t => t)
             .ToList();
@@ -760,30 +724,30 @@ else
         
         // Current month fundraising
         var currentMonthFundraising = accountingData
-            .Where(a => a.date.Year == now.Year && a.date.Month == now.Month && 
+            .Where(a => a.Date.Year == now.Year && a.Date.Month == now.Month && 
                        TransactionCategorizer.IsFundraising(a))
             .ToList();
         
         Console.WriteLine($"Current month fundraising transactions: {currentMonthFundraising.Count}");
-        Console.WriteLine($"Current month fundraising total: ${currentMonthFundraising.Sum(a => Math.Abs((decimal)a.amount)):N2}");
+        Console.WriteLine($"Current month fundraising total: ${currentMonthFundraising.Sum(a => Math.Abs((decimal)a.Amount)):N2}");
         
         foreach (var item in currentMonthFundraising.Take(5))
         {
-            Console.WriteLine($"  - {item.date:MM/dd/yyyy}: {item.type} ${Math.Abs((decimal)item.amount):N2}");
+            Console.WriteLine($"  - {item.Date:MM/dd/yyyy}: {item.Type} ${Math.Abs((decimal)item.Amount):N2}");
         }
         
         // Prior month fundraising
         var priorMonthFundraising = accountingData
-            .Where(a => a.date.Year == priorMonth.Year && a.date.Month == priorMonth.Month && 
+            .Where(a => a.Date.Year == priorMonth.Year && a.Date.Month == priorMonth.Month && 
                        TransactionCategorizer.IsFundraising(a))
             .ToList();
         
         Console.WriteLine($"Prior month fundraising transactions: {priorMonthFundraising.Count}");
-        Console.WriteLine($"Prior month fundraising total: ${priorMonthFundraising.Sum(a => Math.Abs((decimal)a.amount)):N2}");
+        Console.WriteLine($"Prior month fundraising total: ${priorMonthFundraising.Sum(a => Math.Abs((decimal)a.Amount)):N2}");
         
         foreach (var item in priorMonthFundraising.Take(5))
         {
-            Console.WriteLine($"  - {item.date:MM/dd/yyyy}: {item.type} ${Math.Abs((decimal)item.amount):N2}");
+            Console.WriteLine($"  - {item.Date:MM/dd/yyyy}: {item.Type} ${Math.Abs((decimal)item.Amount):N2}");
         }
     }
 
@@ -793,16 +757,16 @@ else
         
         // Get date range information
         DateTime earliestTransaction = accountingData.Any() ? 
-            accountingData.Min(a => a.date) : DateTime.MinValue;
+            accountingData.Min(a => a.Date) : DateTime.MinValue;
         DateTime latestTransaction = accountingData.Any() ? 
-            accountingData.Max(a => a.date) : DateTime.MaxValue;
+            accountingData.Max(a => a.Date) : DateTime.MaxValue;
         DateTime earliestDonation = donations.Any() ? 
             donations.Min(d => d.Date) : DateTime.MinValue;
         DateTime latestDonation = donations.Any() ? 
             donations.Max(d => d.Date) : DateTime.MaxValue;
         
         // Calculate total of all transactions
-        decimal totalAllTransactions = accountingData.Sum(a => Math.Abs((decimal)a.amount));
+        decimal totalAllTransactions = accountingData.Sum(a => Math.Abs((decimal)a.Amount));
         
         // Calculate total of categorized transactions (included in balance calculations)
         decimal totalCategorizedTransactions = accountingData
@@ -810,7 +774,7 @@ else
                        TransactionCategorizer.IsFundraising(a) || 
                        TransactionCategorizer.IsOtherExpense(a) ||
                        TransactionCategorizer.IsInternalTransfer(a))
-            .Sum(a => Math.Abs((decimal)a.amount));
+            .Sum(a => Math.Abs((decimal)a.Amount));
         
         // Get all transactions that are not categorized by our current rules
         var uncategorizedTransactions = accountingData
@@ -830,20 +794,20 @@ else
         Console.WriteLine($"Categorized transactions: {accountingData.Count - uncategorizedTransactions.Count} ({((accountingData.Count - uncategorizedTransactions.Count) / (double)accountingData.Count) * 100:N2}%)");
         Console.WriteLine($"Categorized value: ${totalCategorizedTransactions:N2} ({(totalCategorizedTransactions / totalAllTransactions) * 100:N2}%)");
         Console.WriteLine($"Uncategorized transactions: {uncategorizedTransactions.Count} ({(uncategorizedTransactions.Count / (double)accountingData.Count) * 100:N2}%)");
-        Console.WriteLine($"Uncategorized value: ${uncategorizedTransactions.Sum(a => Math.Abs((decimal)a.amount)):N2} ({(uncategorizedTransactions.Sum(a => Math.Abs((decimal)a.amount)) / totalAllTransactions) * 100:N2}%)");
+        Console.WriteLine($"Uncategorized value: ${uncategorizedTransactions.Sum(a => Math.Abs((decimal)a.Amount)):N2} ({(uncategorizedTransactions.Sum(a => Math.Abs((decimal)a.Amount)) / totalAllTransactions) * 100:N2}%)");
         
         // Break down by category
         var expenseCount = accountingData.Count(a => TransactionCategorizer.IsExpense(a));
-        var expenseAmount = accountingData.Where(a => TransactionCategorizer.IsExpense(a)).Sum(a => Math.Abs((decimal)a.amount));
+        var expenseAmount = accountingData.Where(a => TransactionCategorizer.IsExpense(a)).Sum(a => Math.Abs((decimal)a.Amount));
         
         var fundraisingCount = accountingData.Count(a => TransactionCategorizer.IsFundraising(a));
-        var fundraisingAmount = accountingData.Where(a => TransactionCategorizer.IsFundraising(a)).Sum(a => Math.Abs((decimal)a.amount));
+        var fundraisingAmount = accountingData.Where(a => TransactionCategorizer.IsFundraising(a)).Sum(a => Math.Abs((decimal)a.Amount));
         
         var otherExpenseCount = accountingData.Count(a => TransactionCategorizer.IsOtherExpense(a));
-        var otherExpenseAmount = accountingData.Where(a => TransactionCategorizer.IsOtherExpense(a)).Sum(a => Math.Abs((decimal)a.amount));
+        var otherExpenseAmount = accountingData.Where(a => TransactionCategorizer.IsOtherExpense(a)).Sum(a => Math.Abs((decimal)a.Amount));
         
         var internalTransferCount = accountingData.Count(a => TransactionCategorizer.IsInternalTransfer(a));
-        var internalTransferAmount = accountingData.Where(a => TransactionCategorizer.IsInternalTransfer(a)).Sum(a => Math.Abs((decimal)a.amount));
+        var internalTransferAmount = accountingData.Where(a => TransactionCategorizer.IsInternalTransfer(a)).Sum(a => Math.Abs((decimal)a.Amount));
         
         Console.WriteLine("\n==== BREAKDOWN BY CATEGORY ====");
         Console.WriteLine($"Expenses: {expenseCount} transactions, ${expenseAmount:N2}");
@@ -862,9 +826,9 @@ else
             .Where(d => d.Date.Year == now.Year && d.Date.Month == now.Month)
             .Sum(d => d.Amount);
         decimal currentMonthFundraising = accountingData
-            .Where(a => a.date.Year == now.Year && a.date.Month == now.Month && 
+            .Where(a => a.Date.Year == now.Year && a.Date.Month == now.Month && 
                        TransactionCategorizer.IsFundraising(a))
-            .Sum(a => Math.Abs((decimal)a.amount));
+            .Sum(a => Math.Abs((decimal)a.Amount));
         decimal currentMonthOverhead = currentMonthDonations - currentMonthFundraising;
         
         // Prior month donations and overhead
@@ -872,9 +836,9 @@ else
             .Where(d => d.Date.Year == priorMonth.Year && d.Date.Month == priorMonth.Month)
             .Sum(d => d.Amount);
         decimal priorMonthFundraising = accountingData
-            .Where(a => a.date.Year == priorMonth.Year && a.date.Month == priorMonth.Month && 
+            .Where(a => a.Date.Year == priorMonth.Year && a.Date.Month == priorMonth.Month && 
                        TransactionCategorizer.IsFundraising(a))
-            .Sum(a => Math.Abs((decimal)a.amount));
+            .Sum(a => Math.Abs((decimal)a.Amount));
         decimal priorMonthOverhead = priorMonthDonations - priorMonthFundraising;
         
         // Current year donations and overhead
@@ -882,9 +846,9 @@ else
             .Where(d => d.Date.Year == currentYear)
             .Sum(d => d.Amount);
         decimal currentYearFundraising = accountingData
-            .Where(a => a.date.Year == currentYear && 
+            .Where(a => a.Date.Year == currentYear && 
                        TransactionCategorizer.IsFundraising(a))
-            .Sum(a => Math.Abs((decimal)a.amount));
+            .Sum(a => Math.Abs((decimal)a.Amount));
         decimal currentYearOverhead = currentYearDonations - currentYearFundraising;
         
         // Prior year donations and overhead
@@ -892,15 +856,15 @@ else
             .Where(d => d.Date.Year == priorYear)
             .Sum(d => d.Amount);
         decimal priorYearFundraising = accountingData
-            .Where(a => a.date.Year == priorYear && 
+            .Where(a => a.Date.Year == priorYear && 
                        TransactionCategorizer.IsFundraising(a))
-            .Sum(a => Math.Abs((decimal)a.amount));
+            .Sum(a => Math.Abs((decimal)a.Amount));
         decimal priorYearOverhead = priorYearDonations - priorYearFundraising;
         
         // All-time overhead
         decimal totalFundraising = accountingData
             .Where(a => TransactionCategorizer.IsFundraising(a))
-            .Sum(a => Math.Abs((decimal)a.amount));
+            .Sum(a => Math.Abs((decimal)a.Amount));
         decimal totalOverhead = totalDonations - totalFundraising;
         
         Console.WriteLine("\n==== DONATION SUMMARY ====");
@@ -938,10 +902,10 @@ else
         
         // Show most common account types that are uncategorized
         var accountTypes = uncategorizedTransactions
-            .GroupBy(a => a.account)
+            .GroupBy(a => a.Account)
             .OrderByDescending(g => g.Count())
             .Take(10)
-            .Select(g => new { Account = g.Key, Count = g.Count(), Amount = g.Sum(a => Math.Abs((decimal)a.amount)) });
+            .Select(g => new { Account = g.Key, Count = g.Count(), Amount = g.Sum(a => Math.Abs((decimal)a.Amount)) });
         
         Console.WriteLine("\n==== UNCATEGORIZED ACCOUNTS ====");
         foreach (var type in accountTypes)
@@ -953,7 +917,7 @@ else
         Console.WriteLine("\n==== SAMPLE UNCATEGORIZED TRANSACTIONS ====");
         foreach (var item in uncategorizedTransactions.Take(10))
         {
-            Console.WriteLine($"  - {item.date:MM/dd/yyyy}: Type: '{item.type}', Account: '{item.account}', Amount: ${Math.Abs((decimal)item.amount):N2}");
+            Console.WriteLine($"  - {item.Date:MM/dd/yyyy}: Type: '{item.Type}', Account: '{item.Account}', Amount: ${Math.Abs((decimal)item.Amount):N2}");
         }
     }
 
@@ -981,30 +945,30 @@ else
         
         var yearlyExpenses = accountingData
             .Where(a => TransactionCategorizer.IsExpense(a) && !TransactionCategorizer.IsFundraising(a))
-            .GroupBy(a => a.date.Year)
+            .GroupBy(a => a.Date.Year)
             .OrderBy(g => g.Key)
-            .Select(g => new { Year = g.Key, Amount = g.Sum(a => Math.Abs((decimal)a.amount)), Count = g.Count() })
+            .Select(g => new { Year = g.Key, Amount = g.Sum(a => Math.Abs((decimal)a.Amount)), Count = g.Count() })
             .ToList();
         
         var yearlyOtherExpenses = accountingData
             .Where(a => TransactionCategorizer.IsOtherExpense(a) && !TransactionCategorizer.IsFundraising(a))
-            .GroupBy(a => a.date.Year)
+            .GroupBy(a => a.Date.Year)
             .OrderBy(g => g.Key)
-            .Select(g => new { Year = g.Key, Amount = g.Sum(a => Math.Abs((decimal)a.amount)), Count = g.Count() })
+            .Select(g => new { Year = g.Key, Amount = g.Sum(a => Math.Abs((decimal)a.Amount)), Count = g.Count() })
             .ToList();
         
         var yearlyInternalTransfers = accountingData
             .Where(a => TransactionCategorizer.IsInternalTransfer(a))
-            .GroupBy(a => a.date.Year)
+            .GroupBy(a => a.Date.Year)
             .OrderBy(g => g.Key)
-            .Select(g => new { Year = g.Key, Amount = g.Sum(a => Math.Abs((decimal)a.amount)), Count = g.Count() })
+            .Select(g => new { Year = g.Key, Amount = g.Sum(a => Math.Abs((decimal)a.Amount)), Count = g.Count() })
             .ToList();
         
         var yearlyFundraising = accountingData
             .Where(a => TransactionCategorizer.IsFundraising(a))
-            .GroupBy(a => a.date.Year)
+            .GroupBy(a => a.Date.Year)
             .OrderBy(g => g.Key)
-            .Select(g => new { Year = g.Key, Amount = g.Sum(a => Math.Abs((decimal)a.amount)), Count = g.Count() })
+            .Select(g => new { Year = g.Key, Amount = g.Sum(a => Math.Abs((decimal)a.Amount)), Count = g.Count() })
             .ToList();
         
         // Generate report
@@ -1024,24 +988,24 @@ else
         
         // Total expenses up to target date
         decimal totalExpenses = accountingData
-            .Where(a => a.date <= targetDate && 
+            .Where(a => a.Date <= targetDate && 
                       TransactionCategorizer.IsExpense(a) && 
                       !TransactionCategorizer.IsFundraising(a))
-            .Sum(a => Math.Abs((decimal)a.amount));
+            .Sum(a => Math.Abs((decimal)a.Amount));
         Console.WriteLine($"- Expenses (2020 onwards only): ${totalExpenses:N2}");
         
         // Total other expenses up to target date
         decimal totalOtherExpenses = accountingData
-            .Where(a => a.date <= targetDate && 
+            .Where(a => a.Date <= targetDate && 
                       TransactionCategorizer.IsOtherExpense(a) && 
                       !TransactionCategorizer.IsFundraising(a))
-            .Sum(a => Math.Abs((decimal)a.amount));
+            .Sum(a => Math.Abs((decimal)a.Amount));
         Console.WriteLine($"+ Other Expenses (fees, 2020 onwards): ${totalOtherExpenses:N2}");
         
         // Total internal transfers up to target date
         decimal totalInternalTransfers = accountingData
-            .Where(a => a.date <= targetDate && TransactionCategorizer.IsInternalTransfer(a))
-            .Sum(a => Math.Abs((decimal)a.amount));
+            .Where(a => a.Date <= targetDate && TransactionCategorizer.IsInternalTransfer(a))
+            .Sum(a => Math.Abs((decimal)a.Amount));
         Console.WriteLine($"+ Internal Transfers (2020 onwards): ${totalInternalTransfers:N2}");
         
         Console.WriteLine($"+ Overhead Adjustment: ${actualOverhead:N2}");
@@ -1091,19 +1055,19 @@ else
         Console.WriteLine("\nLARGEST EXPENSES (TOP 5):");
         foreach (var expense in accountingData
             .Where(a => TransactionCategorizer.IsExpense(a))
-            .OrderByDescending(a => Math.Abs((decimal)a.amount))
+            .OrderByDescending(a => Math.Abs((decimal)a.Amount))
             .Take(5))
         {
-            Console.WriteLine($"  {expense.date:MM/dd/yyyy}: ${Math.Abs((decimal)expense.amount):N2} - Account: {expense.account}");
+            Console.WriteLine($"  {expense.Date:MM/dd/yyyy}: ${Math.Abs((decimal)expense.Amount):N2} - Account: {expense.Account}");
         }
         
         Console.WriteLine("\nLARGEST INTERNAL TRANSFERS (TOP 5):");
         foreach (var transfer in accountingData
             .Where(a => TransactionCategorizer.IsInternalTransfer(a))
-            .OrderByDescending(a => Math.Abs((decimal)a.amount))
+            .OrderByDescending(a => Math.Abs((decimal)a.Amount))
             .Take(5))
         {
-            Console.WriteLine($"  {transfer.date:MM/dd/yyyy}: ${Math.Abs((decimal)transfer.amount):N2} - Account: {transfer.account}");
+            Console.WriteLine($"  {transfer.Date:MM/dd/yyyy}: ${Math.Abs((decimal)transfer.Amount):N2} - Account: {transfer.Account}");
         }
         
         // Calculate running balance at various points to see where discrepancy occurs

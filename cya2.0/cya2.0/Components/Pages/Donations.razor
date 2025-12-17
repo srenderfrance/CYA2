@@ -109,8 +109,8 @@
             <RadzenText TextStyle="TextStyle.Subtitle1">@Localizer["Account"]</RadzenText>
             <RadzenDropDown TValue="string"
                             Data="@AppState.UserAccounts"
-                            TextProperty="Name"
-                            ValueProperty="Name"
+                            TextProperty="Fund"
+                            ValueProperty="Fund"
                             @bind-Value="selectedAccount"
                             Change="@(args => accountSelection(args?.ToString() ?? string.Empty))"
                             Placeholder="@Localizer["ChooseAccount"]"
@@ -122,7 +122,7 @@
                 </ValueTemplate>
                 <Template Context="acct">
                     <span style="display:flex;align-items:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;width:100%;">
-                        @acct.Name
+                        @acct.Fund
                     </span>
                 </Template>
             </RadzenDropDown>
@@ -336,11 +336,11 @@
                 if (!string.IsNullOrEmpty(AppState.DefaultAccount))
                 {
                     selectedAccount = AppState.DefaultAccount;
-                    currentAccount = AppState.UserAccounts.FirstOrDefault(a => a.Name == selectedAccount);
+                    currentAccount = AppState.UserAccounts.FirstOrDefault(a => a.Fund == selectedAccount);
                 }
                 else
                 {
-                    selectedAccount = AppState.UserAccounts.First().Name;
+                    selectedAccount = AppState.UserAccounts.First().Fund;
                     currentAccount = AppState.UserAccounts.First();
                 }
 
@@ -401,7 +401,7 @@
             selectedAccount = accountName;
             AppState.DefaultAccount = accountName;
 
-            currentAccount = AppState.UserAccounts.FirstOrDefault(a => a.Name == selectedAccount);
+            currentAccount = AppState.UserAccounts.FirstOrDefault(a => a.Fund == selectedAccount);
 
             if (currentAccount != null)
             {
@@ -429,26 +429,26 @@
                 return;
             }
 
-            if (AppState.IsAccountDataLoaded(account.Name))
+            if (AppState.IsAccountDataLoaded(account.Fund))
             {
-                var accountData = AppState.AccountDataCache[account.Name];
+                var accountData = AppState.AccountDataCache[account.Fund];
                 ProcessDonationData(accountData.DonationData);
             }
             else
             {
                 await DataLoader.LoadAccountDataAsync(account);
 
-                if (AppState.IsAccountDataLoaded(account.Name))
+                if (AppState.IsAccountDataLoaded(account.Fund))
                 {
-                    var accountData = AppState.AccountDataCache[account.Name];
+                    var accountData = AppState.AccountDataCache[account.Fund];
                     ProcessDonationData(accountData.DonationData);
                 }
                 else
                 {
-                    string sql = "SELECT * FROM etapestry WHERE fund = @Fund";
+                    string sql = "SELECT * FROM DonationData WHERE Fund = @Fund";
                     var donationData = await _data.LoadData<DonationsDataModel, dynamic>(
                         sql,
-                        new { Fund = account.AccountRef },
+                        new { Fund = account.Fund },
                         _config.GetConnectionString("default")
                     );
 
@@ -480,18 +480,18 @@
 
             foreach (var donation in donationData)
             {
-                int separatorIndex = donation.fund.IndexOf(":");
+                int separatorIndex = donation.Fund.IndexOf(":");
                 var fundName = separatorIndex > 0
-                    ? donation.fund.Remove(separatorIndex, donation.fund.Length - separatorIndex)
-                    : donation.fund;
+                    ? donation.Fund.Remove(separatorIndex, donation.Fund.Length - separatorIndex)
+                    : donation.Fund;
 
                 var newDonation = new UserDataDonations(
                     fundName,
-                    donation.accountname,
-                    donation.date,
-                    donation.amount,
-                    donation.recurring,
-                    donation.gifttype);
+                    donation.AccountName,
+                    donation.Date,
+                    donation.Amount,
+                    donation.PaymentMethod,
+                    donation.GiftType);
 
                 donations.Add(newDonation);
             }

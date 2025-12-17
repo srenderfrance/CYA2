@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.ComponentModel.DataAnnotations;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Text;
@@ -10,22 +11,36 @@ namespace ModelsLibrary
     public class Account
     {
         public int AccountId { get; set; }
-        public string Name { get; set; } = string.Empty;
-        public string AccountRef { get; set; } = string.Empty;
+        
+        [Required]
+        public string Fund { get; set; } = string.Empty; // Corresponds to "Fund Notes" from Donation DataTable
+        
+        [Required]
+        public string AccountingClass { get; set; } = string.Empty; // Corresponds to "Class" from the Accounting DataTable
+        
+        [Required]
+        public string FundNumber { get; set; } = string.Empty; //Corresponds to AccountS Number from the Accounting DataTable
+        
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
         // New persisted balance column (currency stored as decimal)
         public decimal Balance { get; set; }
+        
+        // Additional properties
+        public string SoftCredit { get; set; } = string.Empty;
+        public decimal BalanceAdjustment { get; set; }
+        public bool OtherFunds { get; set; } = false;
 
         // Parameterless constructor
         public Account() { }
 
         // Constructor with required members
         [SetsRequiredMembers]
-        public Account(string name, string accountRef)
+        public Account(string fund, string accountingClass, string fundNumber)
         {
-            Name = name;
-            AccountRef = accountRef;
+            Fund = fund;
+            AccountingClass = accountingClass;
+            FundNumber = fundNumber;
             CreatedAt = DateTime.Now;
         }
     }

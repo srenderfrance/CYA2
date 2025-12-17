@@ -45,24 +45,24 @@ namespace UtilityClasses
 
             // Regular expenses (excluding fundraising) as absolute sums.
             decimal totalExpenses = accountingData?
-                .Where(a => a.date >= cutoff && a.date <= asOfDate
+                .Where(a => a.Date >= cutoff && a.Date <= asOfDate
                             && TransactionCategorizer.IsExpense(a)
                             && !TransactionCategorizer.IsFundraising(a))
-                .Sum(a => Math.Abs((decimal)a.amount)) ?? 0m;
+                .Sum(a => Math.Abs((decimal)a.Amount)) ?? 0m;
 
             // Other expenses (fees, etc.), excluding fundraising.
             decimal totalOtherExpenses = accountingData?
-                .Where(a => a.date >= cutoff && a.date <= asOfDate
+                .Where(a => a.Date >= cutoff && a.Date <= asOfDate
                             && TransactionCategorizer.IsOtherExpense(a)
                             && !TransactionCategorizer.IsFundraising(a))
-                .Sum(a => Math.Abs((decimal)a.amount)) ?? 0m;
+                .Sum(a => Math.Abs((decimal)a.Amount)) ?? 0m;
 
             // Internal transfers; exclude those marked as OtherExpense to avoid double counting.
             decimal totalInternalTransfers = accountingData?
-                .Where(a => a.date >= cutoff && a.date <= asOfDate
+                .Where(a => a.Date >= cutoff && a.Date <= asOfDate
                             && TransactionCategorizer.IsInternalTransfer(a)
                             && !TransactionCategorizer.IsOtherExpense(a))
-                .Sum(a => Math.Abs((decimal)a.amount)) ?? 0m;
+                .Sum(a => Math.Abs((decimal)a.Amount)) ?? 0m;
 
             // Final balance = starting + donations - expenses + other-expenses + internal-transfers + overhead-adjustment
             decimal calculatedBalance = startingBalance
@@ -96,9 +96,9 @@ namespace UtilityClasses
             // Sum signed amounts for all non-fundraising transactions in range.
             // QuickBooks amounts should carry their sign; fundraising excluded by categorizer.
             var net = accountingData
-                .Where(a => a.date >= cutoff && a.date <= end
+                .Where(a => a.Date >= cutoff && a.Date <= end
                             && !TransactionCategorizer.IsFundraising(a))
-                .Sum(a => Convert.ToDecimal(a.amount));
+                .Sum(a => Convert.ToDecimal(a.Amount));
 
             return net;
         }

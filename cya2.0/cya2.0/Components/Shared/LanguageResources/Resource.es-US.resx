@@ -186,8 +186,8 @@
   <data name="Deficit" xml:space="preserve">
     <value>Déficit</value>
   </data>
-  <data name="DeleteStaffMember" xml:space="preserve">
-    <value>Eliminar Miembro del Personal</value>
+  <data name="DeleteUser" xml:space="preserve">
+    <value>Eliminar Usuario</value>
   </data>
   <data name="Description" xml:space="preserve">
     <value>Descripción</value>
@@ -240,8 +240,8 @@
   <data name="LanguagePreference" xml:space="preserve">
     <value>Preferencia de Idioma</value>
   </data>
-  <data name="LinkAccountToStaff" xml:space="preserve">
-    <value>Vincular Cuenta al Personal</value>
+  <data name="LinkAccountToUser" xml:space="preserve">
+    <value>Vincular Cuenta al Usuario</value>
   </data>
   <data name="Loading" xml:space="preserve">
     <value>Cargando los datos de su cuenta...</value>
@@ -345,8 +345,8 @@
   <data name="UpdateLanguage" xml:space="preserve">
     <value>Actualizar Idioma</value>
   </data>
-  <data name="UpdateStaffMember" xml:space="preserve">
-    <value>Actualizar Miembro del Personal</value>
+  <data name="UpdateUser" xml:space="preserve">
+    <value>Actualizar Usuario</value>
   </data>
   <data name="SettingsAndPreferences" xml:space="preserve">
     <value>Configuración y Preferencias</value>
@@ -399,8 +399,8 @@
   <data name="AccountBalances" xml:space="preserve">
     <value>Saldos de Cuentas</value>
   </data>
-  <data name="AddNewStaffmember" xml:space="preserve">
-    <value>Agregar Nuevo Miembro del Personal</value>
+  <data name="AddNewUser" xml:space="preserve">
+    <value>Agregar Nuevo Usuario</value>
   </data>
   <data name="ManageUsers" xml:space="preserve">
     <value>Administrar Usuarias</value>
@@ -419,5 +419,23 @@
   </data>
   <data name="BalanceAdjustment" xml:space="preserve">
     <value>Ajuste de Saldo</value>
+  </data>
+  <data name="AccountName" xml:space="preserve">
+    <value>Nombre de la Cuenta</value>
+  </data>
+  <data name="AddNewFund" xml:space="preserve">
+    <value>Agregar Nuevo Fondo</value>
+  </data>
+  <data name="DeleteFund" xml:space="preserve">
+    <value>Eliminar Fondo</value>
+  </data>
+  <data name="UpdateFund" xml:space="preserve">
+    <value>Actualizar Fondo</value>
+  </data>
+  <data name="UploadDonationData" xml:space="preserve">
+    <value>Subir Datos de Donaciones</value>
+  </data>
+  <data name="UploadAccountingData" xml:space="preserve">
+    <value>Subir Datos Contables</value>
   </data>
 </root>
