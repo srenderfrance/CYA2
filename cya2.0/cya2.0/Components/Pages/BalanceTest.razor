@@ -1,0 +1,107 @@
+@page "/balance-test"
+@using DataLibrary
+@using ModelsLibrary
+@inject IDataAccess _data
+@inject IConfiguration _config
+@inject ILogger<BalanceTest> _logger
+@using Radzen
+@using Radzen.Blazor
+
+<RadzenCard Class="rz-p-4">
+    <RadzenStack Orientation="Orientation.Vertical" Gap="1rem">
+        <RadzenText TextStyle="TextStyle.H5">Balance Test</RadzenText>
+        <RadzenText TextStyle="TextStyle.Body2">Select an account and compute its balance from `AccountingData` with `Accounts.BalanceAdjustment`.</RadzenText>
+
+        <RadzenDropDown TValue="int" Data="@accounts" TextProperty="Fund" ValueProperty="AccountId" 
+                        @bind-Value="selectedAccountId" Style="width: 300px;" 
+                        Change="@(async _ => await ComputeBalanceAsync())" />
+
+        <RadzenStack Orientation="Orientation.Vertical" Gap="0.5rem">
+            <RadzenText TextStyle="TextStyle.Subtitle2">Selected Fund</RadzenText>
+            <RadzenText>@(selectedAccount?.Fund ?? "-")</RadzenText>
+        </RadzenStack>
+
+        <RadzenStack Orientation="Orientation.Vertical" Gap="0.5rem">
+            <RadzenText TextStyle="TextStyle.Subtitle2">Accounting Class</RadzenText>
+            <RadzenText>@(selectedAccount?.AccountingClass ?? "-")</RadzenText>
+        </RadzenStack>
+
+        <RadzenStack Orientation="Orientation.Vertical" Gap="0.5rem">
+            <RadzenText TextStyle="TextStyle.Subtitle2">Fund Number</RadzenText>
+            <RadzenText>@(selectedAccount?.FundNumber ?? "-")</RadzenText>
+        </RadzenStack>
+
+        <RadzenStack Orientation="Orientation.Vertical" Gap="0.5rem">
+            <RadzenText TextStyle="TextStyle.Subtitle2">Balance Adjustment</RadzenText>
+            <RadzenText>@(selectedAccount?.BalanceAdjustment.ToString("F2") ?? "0.00")</RadzenText>
+        </RadzenStack>
+
+        <RadzenStack Orientation="Orientation.Vertical" Gap="0.5rem" Class="rz-mt-3">
+            <RadzenText TextStyle="TextStyle.Subtitle2">Calculated Balance</RadzenText>
+            <RadzenText Style="font-weight: bold;">@calculatedBalance.ToString("F2")</RadzenText>
+        </RadzenStack>
+
+        @if (!string.IsNullOrEmpty(error))
+        {
+            <RadzenAlert AlertStyle="AlertStyle.Danger" ShowIcon="true" Variant="Variant.Filled">@error</RadzenAlert>
+        }
+    </RadzenStack>
+</RadzenCard>
+
+@code {
+    private List<Account> accounts = new();
+    private int selectedAccountId;
+    private Account? selectedAccount;
+    private decimal calculatedBalance = 0.00m;
+    private string? error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAccountsAsync();
+    }
+
+    private async Task LoadAccountsAsync()
+    {
+        try
+        {
+            const string sql = @"SELECT AccountId, Fund, AccountingClass, FundNumber, BalanceAdjustment FROM Accounts ORDER BY Fund";
+            accounts = await _data.LoadData<Account, dynamic>(sql, new { }, _config.GetConnectionString("default") ?? string.Empty) ?? new List<Account>();
+            if (accounts.Count > 0)
+            {
+                selectedAccountId = accounts[0].AccountId;
+                await ComputeBalanceAsync();
+            }
+        }
+        catch (Exception ex)
+        {
+            error = $"Error loading accounts: {ex.Message}";
+        }
+    }
+
+    private async Task ComputeBalanceAsync()
+    {
+        error = null;
+        calculatedBalance = 0.00m;
+        selectedAccount = accounts.FirstOrDefault(a => a.AccountId == selectedAccountId);
+        if (selectedAccount is null) return;
+
+        try
+        {
+            // Extract components from AccountingClass: expected format "FundNumber:Class"
+            string? acctClass = selectedAccount.AccountingClass;
+            string fundNumber = selectedAccount.FundNumber ?? string.Empty;
+
+            // Sum all matching amounts by AccountingClass OR AccountNumber
+            const string sumSql = @"SELECT COALESCE(SUM(Amount), 0) FROM AccountingData WHERE AccountingClass = @AccountingClass OR AccountNumber = @AccountNumber";
+            var sumVal = await _data.LoadData<decimal, dynamic>(sumSql, new { AccountingClass = acctClass ?? string.Empty, AccountNumber = fundNumber }, _config.GetConnectionString("default") ?? string.Empty);
+            decimal baseSum = sumVal?.FirstOrDefault() ?? 0.00m;
+
+            var adj = selectedAccount.BalanceAdjustment;
+            calculatedBalance = baseSum + adj;
+        }
+        catch (Exception ex)
+        {
+            error = $"Error computing balance: {ex.Message}";
+        }
+    }
+}

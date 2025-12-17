@@ -3,6 +3,7 @@ using cya2.Components;
 using cya2.Components.Shared;
 using cya2.Middleware;
 using cya2.Services;
+using cya2.Services.Imports;
 using Dapper;
 using DataLibrary;
 using Microsoft.AspNetCore.Authentication;
@@ -18,6 +19,7 @@ using Radzen;
 using System.Globalization;
 using System.Security.Claims;
 using System.Threading;
+using OfficeOpenXml;
 
 
 var _lastResetTime = DateTime.Now;
@@ -36,6 +38,9 @@ AppDomain.CurrentDomain.AssemblyResolve += (sender, args) =>
 };
 
 var builder = WebApplication.CreateBuilder(args);
+
+// EPPlus license (noncommercial organization)
+ExcelPackage.License.SetNonCommercialOrganization("Servant Partners");
 
 // Environment connection string fallback
 var mysqlConnStr = Environment.GetEnvironmentVariable("MYSQLCONNSTR_default");
@@ -63,6 +68,11 @@ builder.Services.AddSingleton<AppState>();
 builder.Services.AddScoped<DataLoadingService>();
 builder.Services.AddSingleton<DatabaseMonitorService>();
 builder.Services.AddSingleton<IHostedService>(sp => sp.GetRequiredService<DatabaseMonitorService>());
+
+// Import services
+builder.Services.AddScoped<IDonationImportService, DonationImportService>();
+builder.Services.AddScoped<IAccountingImportService, AccountingImportService>();
+
 builder.Services.AddScoped<IDataAccess>(sp =>
 {
     var logger = sp.GetRequiredService<ILogger<SafeDataAccess>>();
@@ -524,6 +534,43 @@ app.MapGet("/api/auth-status", (HttpContext ctx) =>
         }
     });
 }).WithMetadata(new AllowAnonymousAttribute());
+
+// API endpoints for file uploads
+app.MapPost("/api/upload/donations", async (HttpRequest req, IDonationImportService import, ILogger<Program> logger) =>
+{
+    try
+    {
+        var form = await req.ReadFormAsync();
+        var file = form.Files.Count > 0 ? form.Files[0] : null;
+        if (file is null || file.Length == 0) return Results.BadRequest("No file");
+        await using var stream = file.OpenReadStream(); // TODO: add size limit
+        var res = await import.ImportAsync(stream, CancellationToken.None);
+        return Results.Json(res);
+    }
+    catch (Exception ex)
+    {
+        logger.LogError(ex, "Donation upload endpoint failed");
+        return Results.Problem(ex.Message);
+    }
+});
+
+app.MapPost("/api/upload/accounting", async (HttpRequest req, IAccountingImportService import, ILogger<Program> logger) =>
+{
+    try
+    {
+        var form = await req.ReadFormAsync();
+        var file = form.Files.Count > 0 ? form.Files[0] : null;
+        if (file is null || file.Length == 0) return Results.BadRequest("No file");
+        await using var stream = file.OpenReadStream(); // TODO: add size limit
+        var res = await import.ImportAsync(stream, CancellationToken.None);
+        return Results.Json(res);
+    }
+    catch (Exception ex)
+    {
+        logger.LogError(ex, "Accounting upload endpoint failed");
+        return Results.Problem(ex.Message);
+    }
+});
 
 app.Run();
 

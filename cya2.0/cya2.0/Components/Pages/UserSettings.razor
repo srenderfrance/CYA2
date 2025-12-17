@@ -47,9 +47,9 @@
                         
                         <RadzenDropDown TValue="string"
                                         Data="@userAccounts"
-                                        TextProperty="Name"
-                                        ValueProperty="AccountRef"
-                                        @bind-Value="selectedAccountRef"
+                                        TextProperty="Fund"
+                                        ValueProperty="AccountingClass"
+                                        @bind-Value="selectedAccountingClass"
                                         Placeholder="@Localizer["SelectDefaultAccount"]"
                                         Style="width: 100%;"
                                         Disabled="@(userAccounts == null || userAccounts.Count == 0)" />
@@ -107,9 +107,8 @@
     private string successMessage = string.Empty;
     private bool isSavingAccount = false;
     private bool isSavingLanguage = false;
-    private bool showLogoutButton = true;
     private string currentLanguage = "en-US";
-    private string selectedAccountRef = string.Empty;
+    private string selectedAccountingClass = string.Empty;
     private string selectedLanguage = "en-US";
 
     protected override async Task OnInitializedAsync()
@@ -179,8 +178,8 @@
                     var defaultAccount = userAccounts.FirstOrDefault(a => a.AccountId == currentDefaultAccountId.Value);
                     if (defaultAccount != null)
                     {
-                        selectedAccountRef = defaultAccount.AccountRef;
-                        AppState.DefaultAccount = defaultAccount.Name;
+                        selectedAccountingClass = defaultAccount.AccountingClass;
+                        AppState.DefaultAccount = defaultAccount.Fund;
                     }
                 }
             }
@@ -200,11 +199,11 @@
         try
         {
             string sql = @"
-                SELECT a.AccountId, a.Name, a.AccountRef, a.CreatedAt
+                SELECT a.AccountId, a.Fund, a.AccountingClass, a.CreatedAt
                 FROM Accounts a
                 INNER JOIN AccountsUsers au ON a.AccountId = au.AccountId
                 WHERE au.UserId = @UserId
-                ORDER BY a.Name";
+                ORDER BY a.Fund";
 
             var accounts = await _data.LoadData<Account, dynamic>(
                 sql,
@@ -221,7 +220,7 @@
                 {
                     errorMessage = "Your currently set default account is no longer accessible. Please select a new one.";
                     currentDefaultAccountId = null;
-                    selectedAccountRef = string.Empty;
+                    selectedAccountingClass = string.Empty;
                 }
             }
             else
@@ -238,10 +237,10 @@
 
     private bool HasAccountChanges()
     {
-        var currentAccountRef = userAccounts
-            .FirstOrDefault(a => a.AccountId == currentDefaultAccountId)?.AccountRef ?? string.Empty;
+        var currentAccountingClass = userAccounts
+            .FirstOrDefault(a => a.AccountId == currentDefaultAccountId)?.AccountingClass ?? string.Empty;
 
-        return selectedAccountRef != currentAccountRef;
+        return selectedAccountingClass != currentAccountingClass;
     }
 
     private bool HasLanguageChanges() => selectedLanguage != currentLanguage;
@@ -257,13 +256,13 @@
             int? newAccountId = null;
             string? newAccountName = null;
 
-            if (!string.IsNullOrEmpty(selectedAccountRef))
+            if (!string.IsNullOrEmpty(selectedAccountingClass))
             {
-                var selectedAccountObj = userAccounts.FirstOrDefault(a => a.AccountRef == selectedAccountRef);
+                var selectedAccountObj = userAccounts.FirstOrDefault(a => a.AccountingClass == selectedAccountingClass);
                 if (selectedAccountObj != null)
                 {
                     newAccountId = selectedAccountObj.AccountId;
-                    newAccountName = selectedAccountObj.Name;
+                    newAccountName = selectedAccountObj.Fund;
                 }
             }
 
@@ -379,7 +378,7 @@
             return "None";
 
         var account = userAccounts.FirstOrDefault(a => a.AccountId == accountId.Value);
-        return account?.Name ?? "Unknown Account";
+        return account?.Fund ?? "Unknown Account";
     }
 
     private class LanguageOption

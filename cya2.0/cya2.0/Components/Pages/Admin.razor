@@ -20,19 +20,37 @@
 @using UtilityClasses
 @inject IStringLocalizer<Resource> Localizer
 @inject TooltipService tooltipService
+@using System.Text.Json
 
 <RadzenStack Orientation="Orientation.Vertical" Gap="1rem" Class="rz-p-4">
-    <!-- Buttons section at the top, closer to navbar -->
-    <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="1rem" Class="rz-mb-3">
-        <RadzenButton Text="@Localizer["AccountsOverview"]"
-                      ButtonStyle="ButtonStyle.Primary"
-                      Style="background-color: #0a3b6b; border-color: #0a3b6b;"
-                      Click="@(async () => await OpenAccountsOverviewDialog())" />
+    <!-- Top row: accounts buttons on the left, upload buttons on the right -->
+    <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" JustifyContent="JustifyContent.SpaceBetween" Gap="1rem" Class="rz-mb-3">
+        <!-- Left group: existing account dialogs -->
+        <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="1rem">
+            <RadzenButton Text="@Localizer["AccountsOverview"]"
+                          ButtonStyle="ButtonStyle.Primary"
+                          Style="background-color: #0a3b6b; border-color: #0a3b6b;"
+                          Click="@(async () => await OpenAccountsOverviewDialog())" />
 
-        <RadzenButton Text="@Localizer["AccountSummaries"]"
-                      ButtonStyle="ButtonStyle.Primary"
-                      Style="background-color: #0a3b6b; border-color: #0a3b6b;"
-                      Click="@(async () => await OpenAccountSummariesDialog())" />
+            <RadzenButton Text="@Localizer["AccountSummaries"]"
+                          ButtonStyle="ButtonStyle.Primary"
+                          Style="background-color: #0a3b6b; border-color: #0a3b6b;"
+                          Click="@(async () => await OpenAccountSummariesDialog())" />
+        </RadzenStack>
+
+        <!-- Right group: upload controls -->
+        <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="0.75rem">
+            <!-- NOTE: No size limit for now. TODO: enforce a sensible max file size. -->
+            <RadzenUpload Url="/api/upload/donations"
+                          Accept=".xlsx"
+                          ChooseText="@Localizer["UploadDonationData"]"
+                          Complete="OnDonationUploadComplete" />
+
+            <RadzenUpload Url="/api/upload/accounting"
+                          Accept=".xlsx"
+                          ChooseText="@Localizer["UploadAccountingData"]"
+                          Complete="OnAccountingUploadComplete" />
+        </RadzenStack>
     </RadzenStack>
 
     <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" JustifyContent="JustifyContent.SpaceBetween" Gap="1rem">
@@ -100,7 +118,7 @@
                     <!-- Single, consistent dropdown for account selection -->
                     <RadzenDropDown TValue="int"
                                     Data="@accountsOptions"
-                                    TextProperty="Name"
+                                    TextProperty="Fund"
                                     ValueProperty="AccountId"
                                     @bind-Value="accountToAddId"
                                     Change="@(args => accountToAddId = (args is int v) ? v : 0)"
@@ -119,7 +137,7 @@
                     <RadzenText TextStyle="TextStyle.Body2">@Localizer["RemoveAccountAccess"]</RadzenText>
                     <RadzenDropDown TValue="int"
                                     Data="@accountsOptions"
-                                    TextProperty="Name"
+                                    TextProperty="Fund"
                                     ValueProperty="AccountId"
                                     @bind-Value="selectedLinkedAccountId"
                                     Change="@(args => selectedLinkedAccountId = (args is int v) ? v : 0)"
@@ -222,11 +240,11 @@
                        @onmouseleave="@(() => tooltipService.Close())"></i>
                 </RadzenStack>
                 <RadzenFormField Variant="Variant.Outlined" Style="flex: 1;">
-                    <RadzenTextBox @bind-Value="@fundNumber" Placeholder="@Localizer["FundNumber"]" />
+                    <RadzenTextBox @bind-Value="@fundNumber" Placeholder="@Localizer["AccountNumber"]" />
                 </RadzenFormField>
             </RadzenStack>
 
-            <!-- Fund -->
+            <!-- Fund Name -->
             <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="2rem">
                 <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="0.5rem" Style="font-weight: bold; width: 150px;">
                     <RadzenText TextStyle="TextStyle.Subtitle2">@Localizer["Fund"]</RadzenText>
@@ -239,15 +257,7 @@
                 </RadzenFormField>
             </RadzenStack>
 
-            <!-- Overhead -->
-            <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="2rem">
-                <RadzenText TextStyle="TextStyle.Subtitle2" Style="font-weight: bold; width: 150px;">@Localizer["Overhead"]</RadzenText>
-                <RadzenFormField Variant="Variant.Outlined" Style="flex: 1;">
-                    <RadzenTextBox @bind-Value="@overhead" Placeholder="@Localizer["Overhead"]" />
-                </RadzenFormField>
-            </RadzenStack>
-
-            <!-- Class -->
+            <!-- Account Reference -->
             <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="2rem">
                 <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="0.5rem" Style="font-weight: bold; width: 150px;">
                     <RadzenText TextStyle="TextStyle.Subtitle2">@Localizer["Class"]</RadzenText>
@@ -268,13 +278,61 @@
                 </RadzenFormField>
             </RadzenStack>
 
-                       <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="2rem">
+            <!-- Balance Adjustment -->
+            <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="2rem">
                 <RadzenText TextStyle="TextStyle.Subtitle2" Style="font-weight: bold; width: 150px;">@Localizer["BalanceAdjustment"]</RadzenText>
                 <RadzenFormField Variant="Variant.Outlined" Style="flex: 1;">
-                    <RadzenNumeric TValue="decimal?" @bind-Value="@adjustment" Placeholder="0.00" Format="C" ReadOnly="true" />
+                    <RadzenNumeric TValue="decimal?" @bind-Value="@balanceAdjustment" Placeholder="0.00" Format="C" />
+                </RadzenFormField>
+            </RadzenStack>
+
+            <!-- Other Funds -->
+            <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="2rem">
+                <RadzenText TextStyle="TextStyle.Subtitle2" Style="font-weight: bold; width: 150px;">@Localizer["OtherFunds"]</RadzenText>
+                <RadzenFormField Variant="Variant.Outlined" Style="flex: 1;">
+                    <RadzenCheckBox @bind-Value="@otherFunds" />
                 </RadzenFormField>
             </RadzenStack>
         </RadzenStack>
+        
+        <!-- Fund update/create error/success messages -->
+        @if (!string.IsNullOrEmpty(fundUpdateError))
+        {
+            <RadzenAlert AlertStyle="AlertStyle.Danger" ShowIcon="true" Variant="Variant.Filled" Class="rz-mt-3">
+                @fundUpdateError
+            </RadzenAlert>
+        }
+        
+        @if (!string.IsNullOrEmpty(fundUpdateSuccess))
+        {
+            <RadzenAlert AlertStyle="AlertStyle.Success" ShowIcon="true" Variant="Variant.Filled" Class="rz-mt-3">
+                @fundUpdateSuccess
+            </RadzenAlert>
+        }
+
+        <!-- Fund Management Buttons -->
+        <div style="margin-top: 1rem;">
+            <RadzenButton 
+                Text="@Localizer["UpdateFund"]" 
+                ButtonStyle="ButtonStyle.Primary" 
+                Click="UpdateFund" 
+                Disabled="@(string.IsNullOrEmpty(selectedFund) || IsAddNewFundSelected)"
+                Style="margin-right: 1rem;" />
+                
+            <RadzenButton 
+                Text="@Localizer["AddNewFund"]" 
+                ButtonStyle="ButtonStyle.Primary" 
+                Click="@(async () => await AddNewFund())" 
+                Disabled="@(!IsAddNewFundSelected)"
+                Style="margin-right: 1rem;" />
+                
+            <RadzenButton 
+                Text="@Localizer["DeleteFund"]" 
+                ButtonStyle="ButtonStyle.Danger" 
+                Click="@(() => { fundToDelete = selectedFund ?? string.Empty; showDeleteFundConfirmation = true; })"
+                Disabled="@(string.IsNullOrEmpty(selectedFund) || IsAddNewFundSelected)"
+                Style="width: fit-content;" />
+        </div>
         
         <!-- Temporary Debugging Section - COMMENTED OUT -->
         @* @if (selectedFundAccount != null && !IsAddNewFundSelected)
@@ -286,10 +344,10 @@
                         <strong>AccountId:</strong> @selectedFundAccount.AccountId
                     </div>
                     <div>
-                        <strong>Name:</strong> @selectedFundAccount.Name
+                        <strong>Fund:</strong> @selectedFundAccount.Fund
                     </div>
                     <div>
-                        <strong>AccountRef:</strong> @(selectedFundAccount.AccountRef ?? "null")
+                        <strong>AccountingClass:</strong> @(selectedFundAccount.AccountingClass ?? "null")
                     </div>
                     <div>
                         <strong>Balance:</strong> @selectedFundAccount.Balance.ToString("C2")
@@ -330,6 +388,59 @@
 <RadzenTooltip />
 
 @code {
+    // Upload complete handlers
+    private async Task OnDonationUploadComplete(UploadCompleteEventArgs args)
+    {
+        try
+        {
+            if (args?.RawResponse is string raw && !string.IsNullOrWhiteSpace(raw))
+            {
+                var res = JsonSerializer.Deserialize<ImportResultTemp>(raw, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                if (res is not null)
+                {
+                    await DialogService.Alert($"Donations import complete. Read: {res.TotalRows}, Inserted: {res.InsertedRows}, Failed: {res.FailedRows}");
+                    return;
+                }
+            }
+            await DialogService.Alert("Donations upload finished");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "OnDonationUploadComplete parse failed");
+            await DialogService.Alert($"Donation upload failed: {ex.Message}", "Error");
+        }
+    }
+
+    private async Task OnAccountingUploadComplete(UploadCompleteEventArgs args)
+    {
+        try
+        {
+            if (args?.RawResponse is string raw && !string.IsNullOrWhiteSpace(raw))
+            {
+                var res = JsonSerializer.Deserialize<ImportResultTemp>(raw, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                if (res is not null)
+                {
+                    await DialogService.Alert($"Accounting import complete. Read: {res.TotalRows}, Inserted: {res.InsertedRows}, Failed: {res.FailedRows}");
+                    return;
+                }
+            }
+            await DialogService.Alert("Accounting upload finished");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "OnAccountingUploadComplete parse failed");
+            await DialogService.Alert($"Accounting upload failed: {ex.Message}", "Error");
+        }
+    }
+
+    // temp type for deserialization to avoid internal visibility issues
+    private class ImportResultTemp
+    {
+        public int TotalRows { get; set; }
+        public int InsertedRows { get; set; }
+        public int FailedRows { get; set; }
+    }
+
     private const string AddNewLabel = "Add new User";
     private const string AddNewFundLabel = "Add new Fund";
     private const string SelectAccountLabel = "Select Account";
@@ -376,7 +487,7 @@
 
     // Fund properties
     private string? errorMessage;
-    private List<(string name, string accountRef, bool success, string errorMessage)> createdAccounts = new();
+    private List<(string name, string accountingClass, bool success, string errorMessage)> createdAccounts = new();
 
     private bool showDeleteConfirmation = false;
     private string userToDelete = string.Empty;
@@ -386,14 +497,14 @@
     private List<Account> allFunds = new List<Account>();
     private IEnumerable<object> fundsWithAddOption => 
         new[] { new { 
-            Account = new Account { AccountId = 0, Name = AddNewFundLabel, AccountRef = string.Empty },
+            Account = new Account { AccountId = 0, Fund = AddNewFundLabel, AccountingClass = string.Empty },
             DisplayText = AddNewFundLabel 
         } }
         .Concat(allFunds
             .Where(f => f.AccountId != 0)  // Exclude any zero IDs from allFunds
             .Select(f => new { 
                 Account = f,
-                DisplayText = GetDisplayTextFromAccountRef(f.AccountRef)
+                DisplayText = GetDisplayTextFromAccountingClass(f.AccountingClass)
             }));
     
     private Account? selectedFundAccount; // The currently selected fund account for display
@@ -402,8 +513,9 @@
     private string overhead = string.Empty;
     private string fundClass = string.Empty;
     private string softCredit = string.Empty;
-    private string newAccountRef = string.Empty;
-    private decimal? adjustment;
+    private string newAccountingClass = string.Empty;
+    private decimal? balanceAdjustment = 0.00m;
+    private bool otherFunds = false;
     private int? selectedAccountId;
     
     private string fundUpdateError = string.Empty;
@@ -471,8 +583,8 @@
     {
         // Build a consistent list with the default first item and no empty names
         var baseList = (allAccounts ?? new List<Account>())
-                        .Where(a => !string.IsNullOrWhiteSpace(a.Name))
-                        .OrderBy(a => a.Name)
+                        .Where(a => !string.IsNullOrWhiteSpace(a.Fund))
+                        .OrderBy(a => a.Fund)
                         .ToList();
 
         // If an existing user is selected, exclude accounts they already have access to
@@ -495,7 +607,7 @@
             }
         }
 
-        accountsOptions = new List<Account> { new Account { AccountId = 0, Name = SelectAccountLabel } };
+        accountsOptions = new List<Account> { new Account { AccountId = 0, Fund = SelectAccountLabel } };
         accountsOptions.AddRange(baseList);
 
         if (accountToAddId != 0 && accountsOptions.All(a => a.AccountId != accountToAddId))
@@ -510,10 +622,10 @@
     {
         // Build a consistent list with the default first item and no empty names
         var baseList = (allAccounts ?? new List<Account>())
-                        .Where(a => !string.IsNullOrWhiteSpace(a.Name))
+                        .Where(a => !string.IsNullOrWhiteSpace(a.Fund))
                         // Order by name only if not adding a new user (to keep default option at the top)
                         .OrderBy(a => !IsAddNewSelected && a.AccountId == 0 ? 1 : 0)
-                        .ThenBy(a => a.Name)
+                        .ThenBy(a => a.Fund)
                         .ToList();
 
         // If an existing user is selected, exclude accounts they already have access to
@@ -523,7 +635,7 @@
             baseList = baseList.Where(a => !ownedIds.Contains(a.AccountId)).ToList();
         }
 
-        accountsOptions = new List<Account> { new Account { AccountId = 0, Name = SelectAccountLabel } };
+        accountsOptions = new List<Account> { new Account { AccountId = 0, Fund = SelectAccountLabel } };
         accountsOptions.AddRange(baseList);
 
         // Reset selection if current value is no longer available
@@ -572,11 +684,11 @@
         try
         {
             string sql = @"
-                SELECT a.AccountId, a.Name, a.AccountRef, a.CreatedAt
+                SELECT a.AccountId, a.Fund, a.AccountingClass, a.CreatedAt
                 FROM Accounts a
                 INNER JOIN AccountsUsers au ON a.AccountId = au.AccountId
                 WHERE au.UserId = @UserId
-                ORDER BY a.Name";
+                ORDER BY a.Fund";
 
             var userAccountsResult = await _data.LoadData<Account, dynamic>(
                 sql,
@@ -591,13 +703,13 @@
                 userAccounts.AddRange(userAccountsResult);
                 if (!userAccounts.Any(a => a.AccountId == 0))
                 {
-                    userAccounts.Insert(0, new Account { AccountId = 0, Name = SelectAccountLabel });
+                    userAccounts.Insert(0, new Account { AccountId = 0, Fund = SelectAccountLabel });
                 }
             }
             else
             {
                 userAccounts.Clear();
-                userAccounts.Add(new Account { AccountId = 0, Name = SelectAccountLabel });
+                userAccounts.Add(new Account { AccountId = 0, Fund = SelectAccountLabel });
             }
 
             RefreshAccountsOptions();
@@ -655,7 +767,7 @@
 
             if (existingAssociations != null && existingAssociations.FirstOrDefault() > 0)
             {
-                accountLinkError = $"Account '{account.Name}' is already linked to this user";
+                accountLinkError = $"Account '{account.Fund}' is already linked to this user";
                 return;
             }
 
@@ -671,7 +783,7 @@
 
             if (result > 0)
             {
-                accountLinkSuccess = $"Successfully linked account '{account.Name}' to {staffMember}";
+                accountLinkSuccess = $"Successfully linked account '{account.Fund}' to {staffMember}";
 
                 // Reset selection
                 accountToAddId = 0;
@@ -729,7 +841,7 @@
 
             // Get the account name for the success message
             var selectedAccount = userAccounts.FirstOrDefault(a => a.AccountId == selectedLinkedAccountId);
-            string accountName = selectedAccount?.Name ?? "Unknown";
+            string accountName = selectedAccount?.Fund ?? "Unknown";
 
             // Delete the association
             string deleteSql = @"
@@ -959,8 +1071,9 @@
                 _config.GetConnectionString("default") ?? string.Empty
             );
 
-            Console.WriteLine($"Update result: {result}");
+            Console.WriteLine($"Update result: {result}")
 
+;
             if (result > 0)
             {
                 staffUpdateSuccess = "User updated successfully";
@@ -1143,8 +1256,6 @@
         fundUpdateError = string.Empty;
         fundUpdateSuccess = string.Empty;
 
-        Console.WriteLine("UpdateFund called");
-
         if (IsAddNewFundSelected)
         {
             fundUpdateError = "Please use 'Add New Fund' to add a fund";
@@ -1174,27 +1285,48 @@
             // Add the ID for WHERE clause
             parameters.Add("AccountId", accountToUpdate.AccountId);
 
-            // Check if name should be updated
-            if (!string.IsNullOrWhiteSpace(newFundName) && newFundName != accountToUpdate.Name)
+            // Check if fund name should be updated
+            if (!string.IsNullOrWhiteSpace(newFundName) && newFundName.Trim() != accountToUpdate.Fund)
             {
-                sql += "Name = @Name, ";
-                parameters.Add("Name", newFundName);
+                sql += "Fund = @Fund, ";
+                parameters.Add("Fund", newFundName.Trim());
                 hasChanges = true;
             }
 
-            // Check if account ref should be updated
-            if (!string.IsNullOrWhiteSpace(newAccountRef) && newAccountRef != accountToUpdate.AccountRef)
+            // Check if fund number should be updated
+            if (!string.IsNullOrWhiteSpace(fundNumber) && fundNumber.Trim() != accountToUpdate.FundNumber)
             {
-                sql += "AccountRef = @AccountRef, ";
-                parameters.Add("AccountRef", newAccountRef);
+                sql += "FundNumber = @FundNumber, ";
+                parameters.Add("FundNumber", fundNumber.Trim());
                 hasChanges = true;
             }
 
-            // Check if balance should be updated
-            if (adjustment.HasValue && adjustment != accountToUpdate.Balance)
+            // Check if class should be updated (this updates AccountingClass)
+            if (!string.IsNullOrWhiteSpace(fundClass))
             {
-                sql += "Balance = @Balance, ";
-                parameters.Add("Balance", adjustment.Value);
+                var fundNum = !string.IsNullOrWhiteSpace(fundNumber) ? fundNumber.Trim() : accountToUpdate.FundNumber;
+                var newAccountingClass = $"{fundNum}:{fundClass.Trim()}";
+                if (newAccountingClass != accountToUpdate.AccountingClass)
+                {
+                    sql += "AccountingClass = @AccountingClass, ";
+                    parameters.Add("AccountingClass", newAccountingClass);
+                    hasChanges = true;
+                }
+            }
+
+            // Check if soft credit should be updated
+            if (!string.IsNullOrWhiteSpace(softCredit) && softCredit.Trim() != accountToUpdate.SoftCredit)
+            {
+                sql += "SoftCredit = @SoftCredit, ";
+                parameters.Add("SoftCredit", softCredit.Trim());
+                hasChanges = true;
+            }
+
+            // Check if balance adjustment should be updated
+            if (balanceAdjustment.HasValue && balanceAdjustment != accountToUpdate.BalanceAdjustment)
+            {
+                sql += "BalanceAdjustment = @BalanceAdjustment, ";
+                parameters.Add("BalanceAdjustment", balanceAdjustment.Value);
                 hasChanges = true;
             }
 
@@ -1212,36 +1344,28 @@
             sql += " WHERE AccountId = @AccountId";
 
             // Execute update
-            Console.WriteLine($"Executing SQL: {sql}");
-            Console.WriteLine($"Parameters: {string.Join(", ", parameters.Select(p => $"{p.Key}={p.Value}"))}");
-
             int result = await _data.SaveData(
                 sql,
                 parameters,
                 _config.GetConnectionString("default") ?? string.Empty
             );
 
-            Console.WriteLine($"Update result: {result}");
-
             if (result > 0)
             {
                 fundUpdateSuccess = "Fund updated successfully";
 
                 // Clear input fields
-                newFundName = string.Empty;
-                fundNumber = string.Empty;
-                overhead = string.Empty;
-                fundClass = string.Empty;
-                softCredit = string.Empty;
-                newAccountRef = string.Empty;
-                adjustment = null;
+                ClearFundInputFields();
 
                 // Refresh fund list
                 await LoadAllAccounts();
-                selectedFund = string.Empty; // Set to empty string to trigger re-evaluation of available funds
+                allFunds = allAccounts;
 
-                // Update the current selection to show updated info
-                // fundSelection(selectedFund);
+                // Reset selection
+                selectedFund = string.Empty;
+                selectedFundAccount = null;
+                selectedAccountId = null;
+
                 StateHasChanged(); // Force re-render to update fund dropdown options
             }
             else
@@ -1252,6 +1376,7 @@
         catch (Exception ex)
         {
             fundUpdateError = $"Error updating fund: {ex.Message}";
+            _logger.LogError(ex, "Error updating fund: {SelectedFund}", selectedFund);
         }
     }
 
@@ -1267,6 +1392,7 @@
             return;
         }
 
+        // Validation
         if (string.IsNullOrWhiteSpace(newFundName))
         {
             fundUpdateError = "Fund name is required";
@@ -1277,66 +1403,82 @@
             fundUpdateError = "Fund name must be between 2 and 100 characters";
             return;
         }
-        if (string.IsNullOrWhiteSpace(newAccountRef))
+        if (string.IsNullOrWhiteSpace(fundNumber))
         {
-            fundUpdateError = "Account reference is required";
+            fundUpdateError = "Fund number is required";
             return;
         }
-        if (adjustment == null)
+        if (string.IsNullOrWhiteSpace(fundClass))
         {
-            fundUpdateError = "Balance is required";
+            fundUpdateError = "Account reference (Class) is required";
             return;
         }
 
         try
         {
             // Trim and sanitize inputs
-            newFundName = newFundName.Trim();
-            newAccountRef = newAccountRef.Trim();
-            decimal parsedBalance;
-            if (!decimal.TryParse(adjustment.Value.ToString(), NumberStyles.Any, CultureInfo.InvariantCulture, out parsedBalance))
+            var trimmedFundName = newFundName.Trim();
+            var trimmedFundNumber = fundNumber.Trim();
+            var trimmedFundClass = fundClass.Trim();
+            var trimmedSoftCredit = softCredit?.Trim() ?? string.Empty;
+            
+            // Build AccountingClass from fundNumber and fundClass (format: "fundNumber:fundClass")
+            var accountingClass = $"{trimmedFundNumber}:{trimmedFundClass}";
+
+            // Set default values (Balance will be 0 by default)
+            var adjustment = balanceAdjustment ?? 0.00m;
+
+            // Check if fund with same name already exists
+            var existingFund = allFunds.FirstOrDefault(f => 
+                string.Equals(f.Fund, trimmedFundName, StringComparison.OrdinalIgnoreCase));
+            if (existingFund != null)
             {
-                fundUpdateError = "Invalid balance format";
+                fundUpdateError = $"A fund with the name '{trimmedFundName}' already exists";
                 return;
             }
 
-           adjustment = parsedBalance;
+            // Check if fund number already exists
+            var existingFundNumber = allFunds.FirstOrDefault(f => 
+                string.Equals(f.FundNumber, trimmedFundNumber, StringComparison.OrdinalIgnoreCase));
+            if (existingFundNumber != null)
+            {
+                fundUpdateError = $"A fund with the number '{trimmedFundNumber}' already exists";
+                return;
+            }
 
-            // Insert new fund record
+            // Insert new account record with required fields (Balance will default to 0)
             string sql = @"
-                INSERT INTO Accounts (Name, AccountRef, Balance, CreatedAt)
-                VALUES (@Name, @AccountRef, @Balance, @CreatedAt)";
+                INSERT INTO Accounts (Fund, AccountingClass, FundNumber, SoftCredit, BalanceAdjustment, OtherFunds, CreatedAt)
+                VALUES (@Fund, @AccountingClass, @FundNumber, @SoftCredit, @BalanceAdjustment, @OtherFunds, @CreatedAt)";
 
             int result = await _data.SaveData(
                 sql,
-                new { Name = newFundName, AccountRef = newAccountRef, Balance = adjustment, CreatedAt = DateTime.UtcNow },
+                new { 
+                    Fund = trimmedFundName,
+                    AccountingClass = accountingClass,
+                    FundNumber = trimmedFundNumber,
+                    SoftCredit = trimmedSoftCredit,
+                    BalanceAdjustment = adjustment,
+                    OtherFunds = otherFunds,
+                    CreatedAt = DateTime.UtcNow
+                },
                 _config.GetConnectionString("default") ?? string.Empty
             );
 
             if (result > 0)
             {
-                fundUpdateSuccess = "New fund added successfully";
+                fundUpdateSuccess = $"New fund '{trimmedFundName}' added successfully";
 
                 // Clear inputs
-                newFundName = string.Empty;
-                fundNumber = string.Empty;
-                overhead = string.Empty;
-                fundClass = string.Empty;
-                softCredit = string.Empty;
-                newAccountRef = string.Empty;
-                adjustment = null;
+                ClearFundInputFields();
 
                 // Refresh fund list
                 await LoadAllAccounts();
-                selectedFund = string.Empty; // Set to empty string to trigger re-evaluation of available funds
+                allFunds = allAccounts;
 
-                // Optionally, automatically select the new fund for immediate editing
-                // var newAccount = await _data.LoadData<Account, dynamic>("SELECT * FROM Accounts WHERE AccountId = LAST_INSERT_ID()", null, _config.GetConnectionString("default") ?? string.Empty);
-                // if (newAccount != null && newAccount.Any())
-                // {
-                //     selectedFund = newAccount.First().Name;
-                //     await fundSelection(selectedFund);
-                // }
+                // Reset selection to "Add New Fund"
+                selectedFund = AddNewFundLabel;
+                await fundSelection(selectedFund);
             }
             else
             {
@@ -1346,135 +1488,109 @@
         catch (Exception ex)
         {
             fundUpdateError = $"Error adding new fund: {ex.Message}";
+            _logger.LogError(ex, "Error adding new fund: {FundName}", newFundName);
         }
     }
 
-    private async Task DeleteFund()
+    private void ClearFundInputFields()
     {
-        try
-        {
-            _logger.LogInformation("DeleteFund called for fund: {Fund}", selectedFund);
-            
-            if (string.IsNullOrEmpty(selectedFund) || IsAddNewFundSelected)
-            {
-                fundUpdateError = "Please select a fund to delete";
-                StateHasChanged();
-                return;
-            }
-
-            // Use the basic Confirm method without custom options
-            var result = await DialogService.Confirm(
-                "Are you sure you want to delete this Fund?", 
-                "Delete Confirmation");
-
-            if (result != true)
-            {
-                _logger.LogInformation("User cancelled deletion");
-                return;
-            }
-
-            var fundToDelete = allFunds.FirstOrDefault(f => f.Name == selectedFund);
-            if (fundToDelete == null)
-            {
-                fundUpdateError = "Selected fund not found";
-                StateHasChanged();
-                return;
-            }
-
-            // Delete the fund
-            string deleteFundSql = "DELETE FROM Accounts WHERE AccountId = @AccountId";
-            int deleteResult = await _data.SaveData(
-                deleteFundSql,
-                new { AccountId = fundToDelete.AccountId },
-                _config.GetConnectionString("default") ?? string.Empty
-            );
-
-            if (deleteResult > 0)
-            {
-                fundUpdateSuccess = "Fund deleted successfully";
-
-                // Clear selections
-                selectedFund = string.Empty;
-                selectedFundAccount = null;
-                selectedAccountId = null;
-                newFundName = string.Empty;
-                fundNumber = string.Empty;
-                overhead = string.Empty;
-                fundClass = string.Empty;
-                softCredit = string.Empty;
-                newAccountRef = string.Empty;
-                adjustment = null;
-
-                // Refresh funds list
-                await LoadAllAccounts();
-                allFunds = allAccounts;
-            }
-            else
-            {
-                fundUpdateError = "Failed to delete fund";
-            }
-        }
-        catch (Exception ex)
-        {
-            fundUpdateError = $"Error deleting fund: {ex.Message}";
-        }
+        newFundName = string.Empty;
+        fundNumber = string.Empty;
+        overhead = string.Empty;
+        fundClass = string.Empty;
+        softCredit = string.Empty;
+        newAccountingClass = string.Empty;
+        balanceAdjustment = 0.00m;
+        otherFunds = false;
     }
 
-    private async Task ConfirmDeleteFund()
+    public Task fundSelection(string displayText)
     {
-        try
+        if (string.IsNullOrEmpty(displayText)) return Task.CompletedTask;
+
+        selectedFund = displayText;
+
+        // Clear previous messages
+        fundUpdateError = string.Empty;
+        fundUpdateSuccess = string.Empty;
+
+        if (string.Equals(displayText, AddNewFundLabel, StringComparison.Ordinal))
         {
-            showDeleteFundConfirmation = false;
-            _logger.LogInformation("Confirming deletion of fund: {Fund}", fundToDelete);
+            // Clear the selected account when adding new
+            selectedFundAccount = null;
+            selectedAccountId = null;
+            // Clear input fields for new fund entry
+            ClearFundInputFields();
+            return Task.CompletedTask;
+        }
+
+        // Find the account by matching the display text (text after colon in Account)
+        selectedFundAccount = allFunds.FirstOrDefault(f => 
+            GetDisplayTextFromAccountingClass(f.AccountingClass) == displayText);
             
-            var selectedFundToDelete = allFunds.FirstOrDefault(f => f.Name == this.fundToDelete);
-            if (selectedFundToDelete == null)
+        if (selectedFundAccount != null)
+        {
+            selectedAccountId = selectedFundAccount.AccountId;
+            
+            // Populate form fields with existing account data
+            newFundName = selectedFundAccount.Fund;
+            fundNumber = selectedFundAccount.FundNumber;
+            softCredit = selectedFundAccount.SoftCredit;
+            balanceAdjustment = selectedFundAccount.BalanceAdjustment;
+            otherFunds = selectedFundAccount.OtherFunds;
+            
+            // Extract class from AccountingClass (format: "fundNumber:class")
+            if (!string.IsNullOrEmpty(selectedFundAccount.AccountingClass))
             {
-                fundUpdateError = "Selected fund not found";
-                return;
-            }
-
-            // Delete the fund
-            string deleteFundSql = "DELETE FROM Accounts WHERE AccountId = @AccountId";
-            int deleteResult = await _data.SaveData(
-                deleteFundSql,
-                new { AccountId = selectedFundToDelete.AccountId },
-                _config.GetConnectionString("default") ?? string.Empty
-            );
-
-            if (deleteResult > 0)
-            {
-                _logger.LogInformation("Successfully deleted fund");
-                fundUpdateSuccess = "Fund deleted successfully";
-
-                // Clear selections
-                selectedFund = string.Empty;
-                selectedFundAccount = null;
-                selectedAccountId = null;
-                newFundName = string.Empty;
-                fundNumber = string.Empty;
-                overhead = string.Empty;
-                fundClass = string.Empty;
-                softCredit = string.Empty;
-                newAccountRef = string.Empty;
-                adjustment = null;
-
-                // Refresh funds list
-                await LoadAllAccounts();
-                allFunds = allAccounts;
+                var colonIndex = selectedFundAccount.AccountingClass.IndexOf(':');
+                if (colonIndex >= 0 && colonIndex < selectedFundAccount.AccountingClass.Length - 1)
+                {
+                    fundClass = selectedFundAccount.AccountingClass.Substring(colonIndex + 1).Trim();
+                }
+                else
+                {
+                    fundClass = selectedFundAccount.AccountingClass;
+                }
             }
             else
             {
-                fundUpdateError = "Failed to delete fund";
+                fundClass = string.Empty;
             }
+        }
+        else
+        {
+            selectedFundAccount = null;
+            selectedAccountId = null;
+            ClearFundInputFields();
+        }
 
-            StateHasChanged();
+        return Task.CompletedTask;
+    }
+
+    private async Task LoadAllAccounts()
+    {
+        try
+        {
+            string sql = @"SELECT AccountId, Fund, AccountingClass, FundNumber, CreatedAt, Balance, 
+                          SoftCredit, BalanceAdjustment, OtherFunds 
+                          FROM Accounts ORDER BY Fund";
+            allAccounts = await _data.LoadData<Account, dynamic>(
+                sql,
+                new { },
+                _config.GetConnectionString("default") ?? string.Empty
+            );
+
+            if (allAccounts == null)
+                allAccounts = new List<Account>();
+
+            // Initialize empty list for shared accounts selection
+            sharedAccountsBool = new List<SharedAccountBool>();
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error in ConfirmDeleteFund");
-            fundUpdateError = $"Error: {ex.Message}";
-            StateHasChanged();
+            errorMessage = $"Error loading accounts: {ex.Message}";
+            allAccounts = new List<Account>();
+            _logger.LogError(ex, "Error loading accounts from database");
         }
     }
 
@@ -1517,81 +1633,137 @@
         }
     }
 
-    private async Task LoadAllAccounts()
+    private string GetDisplayTextFromAccountingClass(string AccountingClass)
+    {
+        if (string.IsNullOrEmpty(AccountingClass))
+            return string.Empty;
+            
+        var colonIndex = AccountingClass.IndexOf(':');
+        if (colonIndex >= 0 && colonIndex < AccountingClass.Length - 1)
+        {
+            return AccountingClass.Substring(colonIndex + 1).Trim();
+        }
+
+        return AccountingClass; // Return the whole string if no colon found
+    }
+
+    private async Task DeleteFund()
     {
         try
         {
-            string sql = "SELECT AccountId, Name, AccountRef, CreatedAt, Balance FROM Accounts ORDER BY Name";
-            allAccounts = await _data.LoadData<Account, dynamic>(
-                sql,
-                new { },
+            _logger.LogInformation("DeleteFund called for fund: {Fund}", selectedFund);
+            
+            if (string.IsNullOrEmpty(selectedFund) || IsAddNewFundSelected)
+            {
+                fundUpdateError = "Please select a fund to delete";
+                StateHasChanged();
+                return;
+            }
+
+            // Use the basic Confirm method without custom options
+            var result = await DialogService.Confirm(
+                "Are you sure you want to delete this Fund?", 
+                "Delete Confirmation");
+
+            if (result != true)
+            {
+                _logger.LogInformation("User cancelled deletion");
+                return;
+            }
+
+            var fundToDeleteObj = allFunds.FirstOrDefault(f => f.Fund == selectedFund);
+            if (fundToDeleteObj == null)
+            {
+                fundUpdateError = "Selected fund not found";
+                StateHasChanged();
+                return;
+            }
+
+            // Delete the fund
+            string deleteFundSql = "DELETE FROM Accounts WHERE AccountId = @AccountId";
+            int deleteResult = await _data.SaveData(
+                deleteFundSql,
+                new { AccountId = fundToDeleteObj.AccountId },
                 _config.GetConnectionString("default") ?? string.Empty
             );
 
-            if (allAccounts == null)
-                allAccounts = new List<Account>();
+            if (deleteResult > 0)
+            {
+                fundUpdateSuccess = "Fund deleted successfully";
 
-            // Initialize empty list for shared accounts selection
-            sharedAccountsBool = new List<SharedAccountBool>();
+                // Clear selections
+                selectedFund = string.Empty;
+                selectedFundAccount = null;
+                selectedAccountId = null;
+                ClearFundInputFields();
+
+                // Refresh funds list
+                await LoadAllAccounts();
+                allFunds = allAccounts;
+            }
+            else
+            {
+                fundUpdateError = "Failed to delete fund";
+            }
         }
         catch (Exception ex)
         {
-            errorMessage = $"Error loading accounts: {ex.Message}";
-            allAccounts = new List<Account>();
+            fundUpdateError = $"Error deleting fund: {ex.Message}";
         }
     }
 
-    private string GetDisplayTextFromAccountRef(string accountRef)
+    private async Task ConfirmDeleteFund()
     {
-        if (string.IsNullOrEmpty(accountRef))
-            return string.Empty;
-            
-        var colonIndex = accountRef.IndexOf(':');
-        if (colonIndex >= 0 && colonIndex < accountRef.Length - 1)
+        try
         {
-            return accountRef.Substring(colonIndex + 1).Trim();
+            showDeleteFundConfirmation = false;
+            _logger.LogInformation("Confirming deletion of fund: {Fund}", fundToDelete);
+            
+            var selectedFundToDelete = allFunds.FirstOrDefault(f => f.Fund == this.fundToDelete);
+            if (selectedFundToDelete == null)
+            {
+                fundUpdateError = "Selected fund not found";
+                return;
+            }
+
+            // Delete the fund
+            string deleteFundSql = "DELETE FROM Accounts WHERE AccountId = @AccountId";
+            int deleteResult = await _data.SaveData(
+                deleteFundSql,
+                new { AccountId = selectedFundToDelete.AccountId },
+                _config.GetConnectionString("default") ?? string.Empty
+            );
+
+            if (deleteResult > 0)
+            {
+                _logger.LogInformation("Successfully deleted fund");
+                fundUpdateSuccess = "Fund deleted successfully";
+
+                // Clear selections
+                selectedFund = string.Empty;
+                selectedFundAccount = null;
+                selectedAccountId = null;
+                ClearFundInputFields();
+
+                // Refresh funds list
+                await LoadAllAccounts();
+                allFunds = allAccounts;
+            }
+            else
+            {
+                fundUpdateError = "Failed to delete fund";
+            }
+
+            StateHasChanged();
         }
-        
-        return accountRef; // Return the whole string if no colon found
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error in ConfirmDeleteFund");
+            fundUpdateError = $"Error: {ex.Message}";
+            StateHasChanged();
+        }
     }
 
-    public Task fundSelection(string displayText)
-    {
-        if (string.IsNullOrEmpty(displayText)) return Task.CompletedTask;
-
-        selectedFund = displayText;
-
-        // Clear previous messages
-        fundUpdateError = string.Empty;
-        fundUpdateSuccess = string.Empty;
-
-        if (string.Equals(displayText, AddNewFundLabel, StringComparison.Ordinal))
-        {
-            // Clear the selected account when adding new
-            selectedFundAccount = null;
-            selectedAccountId = null;
-            // DO NOT clear the input fields - leave them as user inputs
-            return Task.CompletedTask;
-        }
-
-        // Find the account by matching the display text (text after colon in AccountRef)
-        selectedFundAccount = allFunds.FirstOrDefault(f => 
-            GetDisplayTextFromAccountRef(f.AccountRef) == displayText);
-            
-        if (selectedFundAccount != null)
-        {
-            selectedAccountId = selectedFundAccount.AccountId;
-            // DO NOT populate balance or other input fields - only use for display/debugging
-        }
-        else
-        {
-            selectedFundAccount = null;
-            selectedAccountId = null;
-        }
-
-        return Task.CompletedTask;
-    }
-    
     // Account management methods
     private async Task OpenAccountsOverviewDialog()
     {
@@ -1626,7 +1798,7 @@
     }
 
     // Tooltip methods
-    void ShowFundNumberTooltip(ElementReference elementReference, TooltipOptions options = null) 
+    void ShowFundNumberTooltip(ElementReference elementReference, TooltipOptions? options = null) 
     {
         var tooltipOptions = options ?? new TooltipOptions() { 
             Position = TooltipPosition.Bottom,
@@ -1635,7 +1807,7 @@
         tooltipService.Open(elementReference, "Must match the accounting data account \"Num\" EXACTLY", tooltipOptions);
     }
 
-    void ShowFundTooltip(ElementReference elementReference, TooltipOptions options = null) 
+    void ShowFundTooltip(ElementReference elementReference, TooltipOptions? options = null) 
     {
         var tooltipOptions = options ?? new TooltipOptions() { 
             Position = TooltipPosition.Bottom,
@@ -1644,7 +1816,7 @@
         tooltipService.Open(elementReference, "Must match donation data \"Fund Notes\" EXACTLY", tooltipOptions);
     }
 
-    void ShowClassTooltip(ElementReference elementReference, TooltipOptions options = null) 
+    void ShowClassTooltip(ElementReference elementReference, TooltipOptions? options = null) 
     {
         var tooltipOptions = options ?? new TooltipOptions() { 
             Position = TooltipPosition.Bottom,
