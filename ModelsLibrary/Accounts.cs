@@ -19,7 +19,7 @@ namespace ModelsLibrary
         public string AccountingClass { get; set; } = string.Empty; // Corresponds to "Class" from the Accounting DataTable
         
         [Required]
-        public string FundNumber { get; set; } = string.Empty; //Corresponds to AccountS Number from the Accounting DataTable
+        public string AccountNumber { get; set; } = string.Empty; //Corresponds to Account Number from the Accounting DataTable
         
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
@@ -36,11 +36,11 @@ namespace ModelsLibrary
 
         // Constructor with required members
         [SetsRequiredMembers]
-        public Account(string fund, string accountingClass, string fundNumber)
+        public Account(string fund, string accountingClass, string accountNumber)
         {
             Fund = fund;
             AccountingClass = accountingClass;
-            FundNumber = fundNumber;
+            AccountNumber = accountNumber;
             CreatedAt = DateTime.Now;
         }
     }

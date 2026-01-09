@@ -6,15 +6,30 @@
 @inject ILogger<BalanceTest> _logger
 @using Radzen
 @using Radzen.Blazor
+@using static Microsoft.AspNetCore.Components.Web.RenderMode
+@rendermode InteractiveServer
 
 <RadzenCard Class="rz-p-4">
     <RadzenStack Orientation="Orientation.Vertical" Gap="1rem">
         <RadzenText TextStyle="TextStyle.H5">Balance Test</RadzenText>
-        <RadzenText TextStyle="TextStyle.Body2">Select an account and compute its balance from `AccountingData` with `Accounts.BalanceAdjustment`.</RadzenText>
+        <RadzenText TextStyle="TextStyle.Body2">Select an account and date range to analyze transactions from `AccountingData` with `Accounts.BalanceAdjustment`.</RadzenText>
 
         <RadzenDropDown TValue="int" Data="@accounts" TextProperty="Fund" ValueProperty="AccountId" 
-                        @bind-Value="selectedAccountId" Style="width: 300px;" 
+                        @bind-Value="selectedAccountId" Style="width: 320px;" Placeholder="Select account"
+                        Filter="true" Disabled="@(accounts.Count == 0)"
                         Change="@(async _ => await ComputeBalanceAsync())" />
+
+        <RadzenStack Orientation="Orientation.Horizontal" Gap="1rem" AlignItems="AlignItems.Center">
+            <RadzenText TextStyle="TextStyle.Subtitle2" Style="font-weight: bold;">Start Date:</RadzenText>
+            <RadzenDatePicker @bind-Value="selectedStartDate" DateFormat="yyyy-MM-dd" Style="width: 200px;" 
+                              Placeholder="Start Date"
+                              Change="@(async _ => await ComputeBalanceAsync())" />
+            
+            <RadzenText TextStyle="TextStyle.Subtitle2" Style="font-weight: bold;">End Date:</RadzenText>
+            <RadzenDatePicker @bind-Value="selectedEndDate" DateFormat="yyyy-MM-dd" Style="width: 200px;" 
+                              Placeholder="End Date"
+                              Change="@(async _ => await ComputeBalanceAsync())" />
+        </RadzenStack>
 
         <RadzenStack Orientation="Orientation.Vertical" Gap="0.5rem">
             <RadzenText TextStyle="TextStyle.Subtitle2">Selected Fund</RadzenText>
@@ -27,8 +42,8 @@
         </RadzenStack>
 
         <RadzenStack Orientation="Orientation.Vertical" Gap="0.5rem">
-            <RadzenText TextStyle="TextStyle.Subtitle2">Fund Number</RadzenText>
-            <RadzenText>@(selectedAccount?.FundNumber ?? "-")</RadzenText>
+            <RadzenText TextStyle="TextStyle.Subtitle2">Account Number</RadzenText>
+            <RadzenText>@(selectedAccount?.AccountNumber ?? "-")</RadzenText>
         </RadzenStack>
 
         <RadzenStack Orientation="Orientation.Vertical" Gap="0.5rem">
@@ -36,14 +51,141 @@
             <RadzenText>@(selectedAccount?.BalanceAdjustment.ToString("F2") ?? "0.00")</RadzenText>
         </RadzenStack>
 
+        <RadzenStack Orientation="Orientation.Vertical" Gap="0.5rem">
+            <RadzenText TextStyle="TextStyle.Subtitle2">Queried Accounting Class</RadzenText>
+            <RadzenText>@(selectedAccount?.AccountingClass ?? "-")</RadzenText>
+        </RadzenStack>
+
+        <RadzenStack Orientation="Orientation.Vertical" Gap="0.5rem">
+            <RadzenText TextStyle="TextStyle.Subtitle2">Queried Account Number</RadzenText>
+            <RadzenText>@(selectedAccount?.AccountNumber ?? "-")</RadzenText>
+        </RadzenStack>
+
         <RadzenStack Orientation="Orientation.Vertical" Gap="0.5rem" Class="rz-mt-3">
             <RadzenText TextStyle="TextStyle.Subtitle2">Calculated Balance</RadzenText>
             <RadzenText Style="font-weight: bold;">@calculatedBalance.ToString("F2")</RadzenText>
         </RadzenStack>
 
+        <RadzenStack Orientation="Orientation.Vertical" Gap="0.5rem" Class="rz-mt-3">
+            <RadzenText TextStyle="TextStyle.Subtitle2">Client Calculated Balance</RadzenText>
+            <RadzenText Style="font-weight: bold;">@clientCalculatedBalance.ToString("F2")</RadzenText>
+        </RadzenStack>
+
+        <RadzenStack Orientation="Orientation.Vertical" Gap="0.5rem" Class="rz-mt-3">
+            <RadzenText TextStyle="TextStyle.Subtitle2">Balance Match</RadzenText>
+            <RadzenText Style="@(Math.Abs(calculatedBalance - clientCalculatedBalance) < 0.01m ? "color: green;" : "color: red;")">@(Math.Abs(calculatedBalance - clientCalculatedBalance) < 0.01m ? "Match" : "Mismatch")</RadzenText>
+        </RadzenStack>
+
+        <RadzenStack Orientation="Orientation.Horizontal" Gap="2rem" Class="rz-mt-3">
+            <RadzenStack Orientation="Orientation.Vertical" Gap="0.5rem" Style="flex: 1;">
+                <RadzenText TextStyle="TextStyle.Subtitle2">Total Expenses</RadzenText>
+                <RadzenText Style="font-weight: bold; color: red;">@totalExpenses.ToString("F2")</RadzenText>
+                <RadzenText TextStyle="TextStyle.Caption">@expenseTransactions.Count transactions</RadzenText>
+            </RadzenStack>
+            
+            <RadzenStack Orientation="Orientation.Vertical" Gap="0.5rem" Style="flex: 1;">
+                <RadzenText TextStyle="TextStyle.Subtitle2">Total Transfers</RadzenText>
+                <RadzenText Style="font-weight: bold; color: blue;">@transferTotal.ToString("F2")</RadzenText>
+                <RadzenText TextStyle="TextStyle.Caption">@transferTransactions.Count transactions</RadzenText>
+            </RadzenStack>
+            
+            <RadzenStack Orientation="Orientation.Vertical" Gap="0.5rem" Style="flex: 1;">
+                <RadzenText TextStyle="TextStyle.Subtitle2">Total Other</RadzenText>
+                <RadzenText Style="font-weight: bold; color: green;">@otherTotal.ToString("F2")</RadzenText>
+                <RadzenText TextStyle="TextStyle.Caption">@otherTransactions.Count transactions</RadzenText>
+            </RadzenStack>
+            
+            <RadzenStack Orientation="Orientation.Vertical" Gap="0.5rem" Style="flex: 1;">
+                <RadzenText TextStyle="TextStyle.Subtitle2">Net Activity</RadzenText>
+                <RadzenText Style="@($"font-weight: bold; color: {(netActivity >= 0 ? "green" : "red")};")">@netActivity.ToString("F2")</RadzenText>
+                <RadzenText TextStyle="TextStyle.Caption">Income - Expenses</RadzenText>
+            </RadzenStack>
+        </RadzenStack>
+
+        @if (monthlyBalances.Any())
+        {
+            <RadzenText TextStyle="TextStyle.H6" Class="rz-mt-3">@($"Monthly Balances ({selectedStartDate:MMM yyyy} - {selectedEndDate:MMM yyyy})")</RadzenText>
+            <RadzenDataGrid Data="@monthlyBalances" TItem="MonthlyBalance" Dense="true" ShowPagingSummary="false">
+                <Columns>
+                    <RadzenDataGridColumn TItem="MonthlyBalance" Property="Month" Title="Month" />
+                    <RadzenDataGridColumn TItem="MonthlyBalance" Property="Balance" Title="Balance" FormatString="{0:F2}" />
+                </Columns>
+            </RadzenDataGrid>
+        }
+
+        <RadzenStack Orientation="Orientation.Vertical" Gap="0.5rem" Class="rz-mt-3">
+            <RadzenText TextStyle="TextStyle.Subtitle2">Outside Period Balance</RadzenText>
+            <RadzenText>@(outsideBalance == 0 ? "No data outside the period." : outsideBalance.ToString("F2"))</RadzenText>
+        </RadzenStack>
+
         @if (!string.IsNullOrEmpty(error))
         {
             <RadzenAlert AlertStyle="AlertStyle.Danger" ShowIcon="true" Variant="Variant.Filled">@error</RadzenAlert>
+        }
+
+        @if (expenseTransactions.Any() || transferTransactions.Any() || otherTransactions.Any())
+        {
+            <RadzenText TextStyle="TextStyle.H6" Class="rz-mt-3">Transaction Categories</RadzenText>
+            
+            <!-- Expense Transactions -->
+            <RadzenCard Class="rz-mt-2">
+                <RadzenStack Orientation="Orientation.Horizontal" JustifyContent="JustifyContent.SpaceBetween">
+                    <RadzenText TextStyle="TextStyle.Subtitle2" Style="font-weight:bold">Expense Related Transactions</RadzenText>
+                    <RadzenText>Count: @expenseTransactions.Count &nbsp;|&nbsp; Total: @expenseTotal.ToString("F2")</RadzenText>
+                </RadzenStack>
+
+                <RadzenDataGrid Data="@expenseTransactions" TItem="AccountingDataModel" Dense="true" ShowPagingSummary="false" AllowPaging="false">
+                    <Columns>
+                        <RadzenDataGridColumn TItem="AccountingDataModel" Property="Date" Title="Date" FormatString="{0:yyyy-MM-dd}" />
+                        <RadzenDataGridColumn TItem="AccountingDataModel" Property="Num" Title="Num" />
+                        <RadzenDataGridColumn TItem="AccountingDataModel" Property="AccountingClass" Title="Account Class" />
+                        <RadzenDataGridColumn TItem="AccountingDataModel" Property="AccountNumber" Title="Account #" />
+                        <RadzenDataGridColumn TItem="AccountingDataModel" Property="Account" Title="Account" />
+                        <RadzenDataGridColumn TItem="AccountingDataModel" Property="Type" Title="Type" />
+                        <RadzenDataGridColumn TItem="AccountingDataModel" Property="Amount" Title="Amount" FormatString="{0:F2}" />
+                    </Columns>
+                </RadzenDataGrid>
+            </RadzenCard>
+
+            <!-- Transfer Transactions -->
+            <RadzenCard Class="rz-mt-2">
+                <RadzenStack Orientation="Orientation.Horizontal" JustifyContent="JustifyContent.SpaceBetween">
+                    <RadzenText TextStyle="TextStyle.Subtitle2" Style="font-weight:bold">Transfer Transactions</RadzenText>
+                    <RadzenText>Count: @transferTransactions.Count &nbsp;|&nbsp; Total: @transferTotal.ToString("F2")</RadzenText>
+                </RadzenStack>
+
+                <RadzenDataGrid Data="@transferTransactions" TItem="AccountingDataModel" Dense="true" ShowPagingSummary="false" AllowPaging="false">
+                    <Columns>
+                        <RadzenDataGridColumn TItem="AccountingDataModel" Property="Date" Title="Date" FormatString="{0:yyyy-MM-dd}" />
+                        <RadzenDataGridColumn TItem="AccountingDataModel" Property="Num" Title="Num" />
+                        <RadzenDataGridColumn TItem="AccountingDataModel" Property="AccountingClass" Title="Account Class" />
+                        <RadzenDataGridColumn TItem="AccountingDataModel" Property="AccountNumber" Title="Account #" />
+                        <RadzenDataGridColumn TItem="AccountingDataModel" Property="Account" Title="Account" />
+                        <RadzenDataGridColumn TItem="AccountingDataModel" Property="Type" Title="Type" />
+                        <RadzenDataGridColumn TItem="AccountingDataModel" Property="Amount" Title="Amount" FormatString="{0:F2}" />
+                    </Columns>
+                </RadzenDataGrid>
+            </RadzenCard>
+
+            <!-- Other Transactions -->
+            <RadzenCard Class="rz-mt-2">
+                <RadzenStack Orientation="Orientation.Horizontal" JustifyContent="JustifyContent.SpaceBetween">
+                    <RadzenText TextStyle="TextStyle.Subtitle2" Style="font-weight:bold">Other Transactions</RadzenText>
+                    <RadzenText>Count: @otherTransactions.Count &nbsp;|&nbsp; Total: @otherTotal.ToString("F2")</RadzenText>
+                </RadzenStack>
+
+                <RadzenDataGrid Data="@otherTransactions" TItem="AccountingDataModel" Dense="true" ShowPagingSummary="false" AllowPaging="false">
+                    <Columns>
+                        <RadzenDataGridColumn TItem="AccountingDataModel" Property="Date" Title="Date" FormatString="{0:yyyy-MM-dd}" />
+                        <RadzenDataGridColumn TItem="AccountingDataModel" Property="Num" Title="Num" />
+                        <RadzenDataGridColumn TItem="AccountingDataModel" Property="AccountingClass" Title="Account Class" />
+                        <RadzenDataGridColumn TItem="AccountingDataModel" Property="AccountNumber" Title="Account #" />
+                        <RadzenDataGridColumn TItem="AccountingDataModel" Property="Account" Title="Account" />
+                        <RadzenDataGridColumn TItem="AccountingDataModel" Property="Type" Title="Type" />
+                        <RadzenDataGridColumn TItem="AccountingDataModel" Property="Amount" Title="Amount" FormatString="{0:F2}" />
+                    </Columns>
+                </RadzenDataGrid>
+            </RadzenCard>
         }
     </RadzenStack>
 </RadzenCard>
@@ -55,6 +197,33 @@
     private decimal calculatedBalance = 0.00m;
     private string? error;
 
+    private Dictionary<string, List<AccountingDataModel>> groupedEntries = new();
+    private Dictionary<string, decimal> groupTotals = new();
+
+    private DateTime selectedEndDate = new DateTime(2025, 12, 10);
+    private DateTime selectedStartDate = new DateTime(2025, 1, 1); // Default to January 1st of current year
+
+    private List<MonthlyBalance> monthlyBalances = new();
+    private decimal outsideBalance = 0;
+    private decimal totalExpenses = 0.00m;
+    private decimal totalIncome = 0.00m;
+    private decimal netActivity = 0.00m;
+
+    // New properties for categorized transactions
+    private List<AccountingDataModel> expenseTransactions = new();
+    private List<AccountingDataModel> transferTransactions = new();
+    private List<AccountingDataModel> otherTransactions = new();
+    private decimal expenseTotal = 0.00m;
+    private decimal transferTotal = 0.00m;
+    private decimal otherTotal = 0.00m;
+    private decimal clientCalculatedBalance = 0.00m;
+
+    private class MonthlyBalance
+    {
+        public string Month { get; set; } = string.Empty;
+        public decimal Balance { get; set; }
+    }
+
     protected override async Task OnInitializedAsync()
     {
         await LoadAccountsAsync();
@@ -64,7 +233,7 @@
     {
         try
         {
-            const string sql = @"SELECT AccountId, Fund, AccountingClass, FundNumber, BalanceAdjustment FROM Accounts ORDER BY Fund";
+            const string sql = @"SELECT AccountId, Fund, AccountingClass, AccountNumber, BalanceAdjustment FROM Accounts ORDER BY Fund";
             accounts = await _data.LoadData<Account, dynamic>(sql, new { }, _config.GetConnectionString("default") ?? string.Empty) ?? new List<Account>();
             if (accounts.Count > 0)
             {
@@ -82,22 +251,113 @@
     {
         error = null;
         calculatedBalance = 0.00m;
+        groupedEntries.Clear();
+        groupTotals.Clear();
+        monthlyBalances.Clear();
+        outsideBalance = 0;
+        totalExpenses = 0.00m;
+        totalIncome = 0.00m;
+        netActivity = 0.00m;
+        expenseTransactions.Clear();
+        transferTransactions.Clear();
+        otherTransactions.Clear();
+        expenseTotal = 0.00m;
+        transferTotal = 0.00m;
+        otherTotal = 0.00m;
         selectedAccount = accounts.FirstOrDefault(a => a.AccountId == selectedAccountId);
         if (selectedAccount is null) return;
 
         try
         {
-            // Extract components from AccountingClass: expected format "FundNumber:Class"
-            string? acctClass = selectedAccount.AccountingClass;
-            string fundNumber = selectedAccount.FundNumber ?? string.Empty;
-
-            // Sum all matching amounts by AccountingClass OR AccountNumber
-            const string sumSql = @"SELECT COALESCE(SUM(Amount), 0) FROM AccountingData WHERE AccountingClass = @AccountingClass OR AccountNumber = @AccountNumber";
-            var sumVal = await _data.LoadData<decimal, dynamic>(sumSql, new { AccountingClass = acctClass ?? string.Empty, AccountNumber = fundNumber }, _config.GetConnectionString("default") ?? string.Empty);
+            // Sum base and load entries matching AccountingClass OR AccountNumber, adjusting for type, excluding Prepaids
+            const string sumSql = @"SELECT COALESCE(SUM(
+                CASE 
+                    WHEN Type IN ('Payroll Check', 'Expense') OR Account LIKE '%Expenses:%' OR Account LIKE '%Payroll:%' OR Account LIKE '%Administration:%' THEN -Amount 
+                    ELSE Amount 
+                END
+            ), 0) FROM AccountingData WHERE (AccountingClass = @AccountingClass OR AccountNumber = @AccountNumber) AND Account != 'Prepaids' AND Date >= @StartDate AND Date <= @EndDate";
+            var sumVal = await _data.LoadData<decimal, dynamic>(sumSql, new { AccountingClass = selectedAccount.AccountingClass, AccountNumber = selectedAccount.AccountNumber, StartDate = selectedStartDate, EndDate = selectedEndDate }, _config.GetConnectionString("default") ?? string.Empty);
             decimal baseSum = sumVal?.FirstOrDefault() ?? 0.00m;
 
-            var adj = selectedAccount.BalanceAdjustment;
-            calculatedBalance = baseSum + adj;
+            calculatedBalance = baseSum + selectedAccount.BalanceAdjustment;
+
+            // Load all matching rows and group by Account, excluding Prepaids
+            const string entriesSql = @"SELECT Id, AccountingClass, Date, Num, Amount, AccountNumber, Account, Type, DateCreated
+                                       FROM AccountingData
+                                       WHERE (AccountingClass = @AccountingClass OR AccountNumber = @AccountNumber) AND Account != 'Prepaids' AND Date >= @StartDate AND Date <= @EndDate
+                                       ORDER BY Date DESC";
+            var entries = await _data.LoadData<AccountingDataModel, dynamic>(entriesSql, new { AccountingClass = selectedAccount.AccountingClass, AccountNumber = selectedAccount.AccountNumber, StartDate = selectedStartDate, EndDate = selectedEndDate }, _config.GetConnectionString("default") ?? string.Empty);
+
+            if (entries != null && entries.Any())
+            {
+                // Categorize transactions
+                expenseTransactions = entries.Where(e => 
+                    e.Type == "Payroll Check" || 
+                    e.Type == "Expense" || 
+                    (e.Account != null && (e.Account.Contains("Expenses:") || e.Account.Contains("Payroll:") || e.Account.Contains("Administration:")))
+                ).ToList();
+
+                transferTransactions = entries.Where(e => 
+                    e.Account != null && e.Account.Contains("Transfer")
+                ).ToList();
+
+                otherTransactions = entries.Where(e => 
+                    !expenseTransactions.Contains(e) && !transferTransactions.Contains(e)
+                ).ToList();
+
+                // Calculate totals for each category
+                expenseTotal = expenseTransactions.Sum(e => Convert.ToDecimal(e.Amount));
+                transferTotal = transferTransactions.Sum(e => Convert.ToDecimal(e.Amount));
+                otherTotal = otherTransactions.Sum(e => Convert.ToDecimal(e.Amount));
+
+                groupedEntries = entries.GroupBy(e => string.IsNullOrWhiteSpace(e.Account) ? "(No Account)" : e.Account)
+                                        .ToDictionary(g => g.Key, g => g.ToList());
+
+                foreach (var kv in groupedEntries)
+                {
+                    groupTotals[kv.Key] = kv.Value.Sum(v => (v.Type == "Payroll Check" || v.Type == "Expense" || v.Account.Contains("Expenses:") || v.Account.Contains("Payroll:") || v.Account.Contains("Administration:")) ? -Convert.ToDecimal(v.Amount) : Convert.ToDecimal(v.Amount));
+                }
+
+                // Client-side balance calculation
+                clientCalculatedBalance = selectedAccount.BalanceAdjustment + entries.Sum(e => (e.Type == "Payroll Check" || e.Type == "Expense" || e.Account.Contains("Expenses:") || e.Account.Contains("Payroll:") || e.Account.Contains("Administration:")) ? -Convert.ToDecimal(e.Amount) : Convert.ToDecimal(e.Amount));
+
+                // Calculate expense and income totals
+                totalExpenses = entries.Where(e => e.Type == "Payroll Check" || e.Type == "Expense" || e.Account.Contains("Expenses:") || e.Account.Contains("Payroll:") || e.Account.Contains("Administration:"))
+                                      .Sum(e => Convert.ToDecimal(e.Amount));
+                totalIncome = entries.Where(e => !(e.Type == "Payroll Check" || e.Type == "Expense" || e.Account.Contains("Expenses:") || e.Account.Contains("Payroll:") || e.Account.Contains("Administration:")))
+                                    .Sum(e => Convert.ToDecimal(e.Amount));
+                netActivity = totalIncome - totalExpenses;
+
+                // Calculate monthly balances and outside balance
+                var startDate = selectedStartDate;
+                var inPeriodEntries = entries.Where(e => e.Date >= startDate && e.Date <= selectedEndDate).OrderBy(e => e.Date).ToList();
+                var outsideEntries = entries.Where(e => e.Date < startDate || e.Date > selectedEndDate).ToList();
+
+                outsideBalance = outsideEntries.Sum(e => (e.Type == "Payroll Check" || e.Type == "Expense" || e.Account.Contains("Expenses:") || e.Account.Contains("Payroll:") || e.Account.Contains("Administration:")) ? -Convert.ToDecimal(e.Amount) : Convert.ToDecimal(e.Amount));
+
+                decimal runningBalance = selectedAccount.BalanceAdjustment;
+                int startMonth = startDate.Month;
+                int startYear = startDate.Year;
+                int endMonth = selectedEndDate.Month;
+                int endYear = selectedEndDate.Year;
+                
+                monthlyBalances.Clear();
+                for (int year = startYear; year <= endYear; year++)
+                {
+                    int monthStart = (year == startYear) ? startMonth : 1;
+                    int monthEnd = (year == endYear) ? endMonth : 12;
+                    
+                    for (int month = monthStart; month <= monthEnd; month++)
+                    {
+                        var monthEndDate = new DateTime(year, month, DateTime.DaysInMonth(year, month));
+                        if (year == endYear && month == endMonth) monthEndDate = selectedEndDate;
+                        
+                        var monthEntries = inPeriodEntries.Where(e => e.Date <= monthEndDate).ToList();
+                        runningBalance = selectedAccount.BalanceAdjustment + monthEntries.Sum(e => (e.Type == "Payroll Check" || e.Type == "Expense" || e.Account.Contains("Expenses:") || e.Account.Contains("Payroll:") || e.Account.Contains("Administration:")) ? -Convert.ToDecimal(e.Amount) : Convert.ToDecimal(e.Amount));
+                        monthlyBalances.Add(new MonthlyBalance { Month = new DateTime(year, month, 1).ToString("MMM yyyy"), Balance = runningBalance });
+                    }
+                }
+            }
         }
         catch (Exception ex)
         {

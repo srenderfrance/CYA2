@@ -23,6 +23,7 @@ namespace cya2.Services.Imports
         public int InsertedRows { get; set; }
         public int FailedRows { get; set; }
         public List<string> Errors { get; } = new();
+        public string? ProgressId { get; set; }
     }
 
     internal sealed class AccountingRowDto

@@ -303,12 +303,6 @@
   <data name="RegisterNewUser" xml:space="preserve">
     <value>Registrar Nuevo Usuario</value>
   </data>
-  <data name="RemoveAccountAccess" xml:space="preserve">
-    <value>Quitar Acceso a la Cuenta</value>
-  </data>
-  <data name="RemoveAccountLink" xml:space="preserve">
-    <value>Quitar Vinculación de Cuenta</value>
-  </data>
   <data name="SelectAccount" xml:space="preserve">
     <value>Seleccionar Cuenta</value>
   </data>
@@ -375,11 +369,8 @@
   <data name="MonthlyAverage" xml:space="preserve">
     <value>Promedio Mensual</value>
   </data>
-  <data name="AddAccountAccess" xml:space="preserve">
-    <value>Agregar una Cuenta</value>
-  </data>
-  <data name="AccountManagement" xml:space="preserve">
-    <value>Gestión de Cuentas</value>
+  <data name="FundManagement" xml:space="preserve">
+    <value>Gestión de Fundas</value>
   </data>
   <data name="ThisYear" xml:space="preserve">
     <value>Este  Año</value>
@@ -408,8 +399,8 @@
   <data name="ManageFunds" xml:space="preserve">
     <value>Administrar Fondos</value>
   </data>
-  <data name="FundNumber" xml:space="preserve">
-    <value>Número de Fondo</value>
+  <data name="AccountNumber" xml:space="preserve">
+    <value>Número de Cuenta</value>
   </data>
   <data name="Class" xml:space="preserve">
     <value>Clase</value>
@@ -437,5 +428,26 @@
   </data>
   <data name="UploadAccountingData" xml:space="preserve">
     <value>Subir Datos Contables</value>
+  </data>
+  <data name="GrantFundAccess" xml:space="preserve">
+    <value>Conceder Acceso al Fondo</value>
+  </data>
+  <data name="RemoveAccess" xml:space="preserve">
+    <value>Quitar Acceso</value>
+  </data>
+  <data name="GrantAccess" xml:space="preserve">
+    <value>Conceder Acceso</value>
+  </data>
+  <data name="RemoveFundAccess" xml:space="preserve">
+    <value>Quitar Acceso al Fondo</value>
+  </data>
+  <data name="SelectFund" xml:space="preserve">
+    <value>Seleccione Fondo</value>
+  </data>
+  <data name="FundAccess" xml:space="preserve">
+    <value>Access al Fondo</value>
+  </data>
+  <data name="CurrentFundAccess" xml:space="preserve">
+    <value>Accesso Presente de Fondos</value>
   </data>
 </root>

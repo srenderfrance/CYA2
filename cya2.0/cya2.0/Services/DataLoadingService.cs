@@ -145,7 +145,7 @@ namespace cya2.Services
                 if (_appState.IsAdmin)
                 {
                     // Admin can see all accounts
-                    sql = "SELECT AccountId, Fund, AccountingClass, CreatedAt, Balance, FundNumber, SoftCredit, BalanceAdjustment, OtherFunds FROM Accounts ORDER BY Fund";
+                    sql = "SELECT AccountId, Fund, AccountingClass, CreatedAt, Balance, AccountNumber, SoftCredit, BalanceAdjustment, OtherFunds FROM Accounts ORDER BY Fund";
                     parameters = new { };
 
                     Console.WriteLine($"Loading all accounts for admin user");
@@ -154,7 +154,7 @@ namespace cya2.Services
                 {
                     // Regular users only see their linked accounts from AccountsUsers table
                     sql = @"
-                        SELECT a.AccountId, a.Fund, a.AccountingClass, a.CreatedAt, a.Balance, a.FundNumber, a.SoftCredit, a.BalanceAdjustment, a.OtherFunds
+                        SELECT a.AccountId, a.Fund, a.AccountingClass, a.CreatedAt, a.Balance, a.AccountNumber, a.SoftCredit, a.BalanceAdjustment, a.OtherFunds
                         FROM Accounts a
                         INNER JOIN AccountsUsers au ON a.AccountId = au.AccountId
                         WHERE au.UserId = @UserId
