@@ -72,6 +72,8 @@ builder.Services.AddSingleton<IHostedService>(sp => sp.GetRequiredService<Databa
 // Import services
 builder.Services.AddScoped<IDonationImportService, DonationImportService>();
 builder.Services.AddScoped<IAccountingImportService, AccountingImportService>();
+// Import progress reporting
+builder.Services.AddSingleton<ImportProgressService>();
 
 builder.Services.AddScoped<IDataAccess>(sp =>
 {
@@ -254,6 +256,7 @@ builder.Services.AddLocalization();
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
 builder.Services.AddRadzenComponents();
+builder.Services.AddControllers();
 builder.Services.AddScoped<UserAuth.UserRepository>(sp =>
 {
     var da = sp.GetRequiredService<IDataAccess>();
@@ -459,6 +462,9 @@ app.Use(async (context, next) =>
 // Razor Components endpoint
 app.MapRazorComponents<App>()
    .AddInteractiveServerRenderMode();
+
+// Map controller endpoints
+app.MapControllers();
 
 // Endpoints
 app.MapGet("/api/login", (HttpContext ctx, DatabaseMonitorService monitor, ILogger<Program> logger) =>

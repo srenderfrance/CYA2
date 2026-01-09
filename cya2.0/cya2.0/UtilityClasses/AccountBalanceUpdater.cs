@@ -23,7 +23,7 @@ namespace UtilityClasses
         {
             var conn = _config.GetConnectionString("default");
 
-            const string accountsSql = "SELECT AccountId, Fund, AccountingClass, FundNumber, CreatedAt, Balance FROM Accounts ORDER BY Fund";
+            const string accountsSql = "SELECT AccountId, Fund, AccountingClass, AccountNumber, CreatedAt, Balance FROM Accounts ORDER BY Fund";
             var accounts = await _data.LoadData<Account, dynamic>(accountsSql, new { }, conn) ?? new List<Account>();
             if (accounts.Count == 0)
             {
@@ -86,7 +86,7 @@ namespace UtilityClasses
         public async Task<List<Account>> GetAllAccountBalancesAsync()
         {
             var conn = _config.GetConnectionString("default");
-            const string sql = "SELECT AccountId, Fund, AccountingClass, FundNumber, CreatedAt, Balance FROM Accounts ORDER BY Fund";
+            const string sql = "SELECT AccountId, Fund, AccountingClass, AccountNumber, CreatedAt, Balance FROM Accounts ORDER BY Fund";
             var accounts = await _data.LoadData<Account, dynamic>(sql, new { }, conn);
             return accounts?.ToList() ?? new List<Account>();
         }

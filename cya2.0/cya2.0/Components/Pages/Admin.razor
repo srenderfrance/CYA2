@@ -21,6 +21,7 @@
 @inject IStringLocalizer<Resource> Localizer
 @inject TooltipService tooltipService
 @using System.Text.Json
+@using cya2.Services.Imports
 
 <RadzenStack Orientation="Orientation.Vertical" Gap="1rem" Class="rz-p-4">
     <!-- Top row: accounts buttons on the left, upload buttons on the right -->
@@ -41,15 +42,25 @@
         <!-- Right group: upload controls -->
         <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="0.75rem">
             <!-- NOTE: No size limit for now. TODO: enforce a sensible max file size. -->
-            <RadzenUpload Url="/api/upload/donations"
-                          Accept=".xlsx"
-                          ChooseText="@Localizer["UploadDonationData"]"
-                          Complete="OnDonationUploadComplete" />
+            <div style="display:flex; align-items:center; gap:0.5rem;">
+                <RadzenUpload Url="/api/upload/donations"
+                              Accept=".xlsx"
+                              ChooseText="@Localizer["UploadDonationData"]"
+                              Complete="OnDonationUploadComplete"
+                              Progress="OnUploadProgress"
+                              Change="@(async args => await OnUploadStarted())" />
+                <RadzenButton Text="Show Donation Status" Click="() => showDonationStatus = !showDonationStatus" />
+            </div>
 
-            <RadzenUpload Url="/api/upload/accounting"
-                          Accept=".xlsx"
-                          ChooseText="@Localizer["UploadAccountingData"]"
-                          Complete="OnAccountingUploadComplete" />
+            <div style="display:flex; align-items:center; gap:0.5rem;">
+                <RadzenUpload Url="/api/upload/accounting"
+                              Accept=".xlsx"
+                              ChooseText="@Localizer["UploadAccountingData"]"
+                              Complete="OnAccountingUploadComplete"
+                              Progress="OnUploadProgress"
+                              Change="@(async args => await OnUploadStarted())" />
+                <RadzenButton Text="Show Accounting Status" Click="() => showAccountingStatus = !showAccountingStatus" />
+            </div>
         </RadzenStack>
     </RadzenStack>
 
@@ -59,39 +70,42 @@
 
     <RadzenCard>
         <RadzenStack Orientation="Orientation.Horizontal" Gap="2rem" Class="rz-mb-2">
-            <!-- User -->
-            <RadzenStack Orientation="Orientation.Vertical" Gap="1rem" Style="width: 30%;">
-                <RadzenText TextStyle="TextStyle.Subtitle2" Style="font-weight: bold;">@Localizer["User"]</RadzenText>
-                <RadzenDropDown TValue="string"
-                               Data="@staffWithAddOption"
-                               TextProperty="Name"
-                               ValueProperty="Name"
-                               @bind-Value="staffMember"
-                               Change="@(async args => await staffSelection(args?.ToString() ?? string.Empty))"
-                               Placeholder="@Localizer["SelectUser"]"
-                               Style="width: 100%;" />
+            <!-- User and Email stacked -->
+            <RadzenStack Orientation="Orientation.Vertical" Gap="1rem" Style="width: 22.5%;">
+                <!-- User -->
+                <RadzenStack Orientation="Orientation.Vertical" Gap="1rem">
+                    <RadzenText TextStyle="TextStyle.Subtitle2" Style="font-weight: bold;">@Localizer["User"]</RadzenText>
+                    <RadzenDropDown TValue="string"
+                                   Data="@staffWithAddOption"
+                                   TextProperty="Name"
+                                   ValueProperty="Name"
+                                   @bind-Value="staffMember"
+                                   Change="@(async args => await staffSelection(args?.ToString() ?? string.Empty))"
+                                   Placeholder="@Localizer["SelectUser"]"
+                                   Style="width: 100%;" />
                               
                                <RadzenFormField Text="@Localizer["NewName"]" Variant="Variant.Outlined">
-                    <RadzenTextBox @bind-Value="@newName" Placeholder="@Localizer["EnterUpdatedName"]" />
-                </RadzenFormField>
-            </RadzenStack>
-            
-            <!-- Email -->
-            <RadzenStack Orientation="Orientation.Vertical" Gap="1rem" Style="width: 30%;">
-                <RadzenText TextStyle="TextStyle.Subtitle2" Style="font-weight: bold;">@Localizer["CurrentEmail"]</RadzenText>
-                <div class="rz-p-2 rz-border-radius-1 rz-border-1" style="height: 38px; display: flex; align-items: center;">
-                    <RadzenText TextStyle="TextStyle.Subtitle2">
-                        @(string.IsNullOrEmpty(selectedStaffEmail) ? " " : selectedStaffEmail)
-                    </RadzenText>
-                </div>
+                        <RadzenTextBox @bind-Value="@newName" Placeholder="@Localizer["EnterUpdatedName"]" />
+                    </RadzenFormField>
+                </RadzenStack>
                 
-                <RadzenFormField Text="@Localizer["NewEmail"]" Variant="Variant.Outlined">
-                    <RadzenTextBox @bind-Value="@newEmail" Placeholder="@Localizer["EnterUpdatedEmail"]" />
-                </RadzenFormField>
+                <!-- Email -->
+                <RadzenStack Orientation="Orientation.Vertical" Gap="1rem">
+                    <RadzenText TextStyle="TextStyle.Subtitle2" Style="font-weight: bold;">@Localizer["CurrentEmail"]</RadzenText>
+                    <div class="rz-p-2 rz-border-radius-1 rz-border-1" style="height: 38px; display: flex; align-items: center;">
+                        <RadzenText TextStyle="TextStyle.Subtitle2">
+                            @(string.IsNullOrEmpty(selectedStaffEmail) ? " " : selectedStaffEmail)
+                        </RadzenText>
+                    </div>
+                    
+                    <RadzenFormField Text="@Localizer["NewEmail"]" Variant="Variant.Outlined">
+                        <RadzenTextBox @bind-Value="@newEmail" Placeholder="@Localizer["EnterUpdatedEmail"]" />
+                    </RadzenFormField>
+                </RadzenStack>
             </RadzenStack>
             
             <!-- Auth Level -->
-            <RadzenStack Orientation="Orientation.Vertical" Gap="1rem" Style="width: 30%;">
+            <RadzenStack Orientation="Orientation.Vertical" Gap="1rem" Style="width: 22.5%;">
                 <RadzenText TextStyle="TextStyle.Subtitle2" Style="font-weight: bold;">@Localizer["AuthLevel"]</RadzenText>
                 <div class="rz-p-2 rz-border-radius-1 rz-border-1" style="height: 38px; display: flex; align-items: center;">
                     <RadzenText TextStyle="TextStyle.Subtitle2">
@@ -109,24 +123,28 @@
             </RadzenStack>
             
             <!-- Account Management -->
-            <RadzenStack Orientation="Orientation.Vertical" Gap="1rem" Style="width: 30%;">
-                <RadzenText TextStyle="TextStyle.Subtitle2" Style="font-weight: bold;">@Localizer["AccountManagement"]</RadzenText>
+            <RadzenStack Orientation="Orientation.Vertical" Gap="1rem" Style="width: 22.5%;">
+                <RadzenText TextStyle="TextStyle.Subtitle2" Style="font-weight: bold;">@Localizer["FundAccess"]</RadzenText>
                 
                 <RadzenStack Orientation="Orientation.Vertical" Gap="0.5rem">
-                    <RadzenText TextStyle="TextStyle.Subtitle2">@Localizer["AddAccountAccess"]</RadzenText>
+                    <RadzenText TextStyle="TextStyle.Subtitle2">@Localizer["GrantFundAccess"]</RadzenText>
 
                     <!-- Single, consistent dropdown for account selection -->
                     <RadzenDropDown TValue="int"
                                     Data="@accountsOptions"
-                                    TextProperty="Fund"
-                                    ValueProperty="AccountId"
+                                    TextProperty="@nameof(Account.Fund)"
+                                    ValueProperty="@nameof(Account.AccountId)"
                                     @bind-Value="accountToAddId"
                                     Change="@(args => accountToAddId = (args is int v) ? v : 0)"
-                                    Placeholder="@Localizer["SelectAccount"]"
-                                    Style="width: 100%;" />
+                                    Placeholder="@Localizer["SelectFund"]"
+                                    Style="width: 100%;" >
+                        <Template Context="account">
+                            @GetDisplayTextFromAccountingClass(account.AccountingClass)
+                        </Template>
+                    </RadzenDropDown>
                     
                     <RadzenButton 
-                        Text="@Localizer["LinkAccountToUser"]" 
+                        Text="@Localizer["GrantAccess"]" 
                         ButtonStyle="ButtonStyle.Primary" 
                         Click="LinkAccountToStaff" 
                         Disabled="@(string.IsNullOrEmpty(staffMember) || accountToAddId == 0)"
@@ -134,22 +152,63 @@
                 </RadzenStack>
                 
                 <RadzenStack Orientation="Orientation.Vertical" Gap="0.5rem" Class="rz-mt-3">
-                    <RadzenText TextStyle="TextStyle.Body2">@Localizer["RemoveAccountAccess"]</RadzenText>
+                    <RadzenText TextStyle="TextStyle.Body2">@Localizer["RemoveFundAccess"]</RadzenText>
                     <RadzenDropDown TValue="int"
-                                    Data="@accountsOptions"
-                                    TextProperty="Fund"
-                                    ValueProperty="AccountId"
+                                    Data="@userAccounts"
+                                    TextProperty="@nameof(Account.Fund)"
+                                    ValueProperty="@nameof(Account.AccountId)"
                                     @bind-Value="selectedLinkedAccountId"
                                     Change="@(args => selectedLinkedAccountId = (args is int v) ? v : 0)"
-                                    Style="width: 100%;" />
+                                    Style="width: 100%;" >
+                        <Template Context="account">
+                            @if (account.AccountId == 0)
+                            {
+                                @account.Fund
+                            }
+                            else
+                            {
+                                @GetDisplayTextFromAccountingClass(account.AccountingClass)
+                            }
+                        </Template>
+                    </RadzenDropDown>
                     
                     <RadzenButton 
-                        Text="@Localizer["RemoveAccountLink"]" 
+                        Text="@Localizer["RemoveAccess"]" 
                         ButtonStyle="ButtonStyle.Danger" 
                         Click="RemoveAccountLink" 
                         Disabled="@(selectedLinkedAccountId == 0 || string.IsNullOrEmpty(staffMember) || IsAddNewSelected)"
                         Style="width: fit-content;" />
                 </RadzenStack>
+            </RadzenStack>
+            
+            <!-- User Funds Access -->
+            <RadzenStack Orientation="Orientation.Vertical" Gap="1rem" Style="width: 22.5%;">
+                <RadzenText TextStyle="TextStyle.Subtitle2" Style="font-weight: bold;">@Localizer["CurrentFundAccess"]</RadzenText>
+                <div style="border: 1px solid #ccc; border-radius: 4px; padding: 0.75rem; max-height: 200px; overflow-y: auto; background-color: #f9f9f9; min-height: 120px;">
+                    @if (IsAddNewSelected)
+                    {
+                        <RadzenText TextStyle="TextStyle.Body2" Style="color: #666;">Select a user to view fund access</RadzenText>
+                    }
+                    else if (selectedStaffAuthLevel == "Admin")
+                    {
+                        <RadzenText TextStyle="TextStyle.Body2" Style="color: #28a745; font-weight: 500;">User has admin privileges.</RadzenText>
+                    }
+                    else if (userAccounts.Any(a => a.AccountId != 0))
+                    {
+                        <ul style="list-style-type: none; padding: 0; margin: 0;">
+                            @foreach (var account in userAccounts.Where(a => a.AccountId != 0))
+                            {
+                                <li style="padding: 0.25rem 0; border-bottom: 1px solid #eee;">
+                                    <RadzenText TextStyle="TextStyle.Body2">@GetDisplayTextFromAccountingClass(account.AccountingClass)</RadzenText>
+                                </li>
+                            }
+                        </ul>
+                    }
+                    else
+                    {
+                        <RadzenText TextStyle="TextStyle.Body2" Style="color: #666;">None</RadzenText>
+                    }
+                </div>
             </RadzenStack>
         </RadzenStack>
         
@@ -181,6 +240,29 @@
             <RadzenAlert AlertStyle="AlertStyle.Success" ShowIcon="true" Variant="Variant.Filled" Class="rz-mt-3">
                 @accountLinkSuccess
             </RadzenAlert>
+        }
+        
+        <!-- Upload status panels -->
+        @if (showDonationStatus)
+        {
+            <RadzenCard Class="rz-mt-3">
+                <RadzenText TextStyle="TextStyle.Subtitle2">Donation Upload Status</RadzenText>
+                <div>Progress: @uploadProgressPercent% </div>
+                <div>Total rows read: @(donationImportResult?.TotalRows ?? 0)</div>
+                <div>Rows inserted: @(donationImportResult?.InsertedRows ?? 0)</div>
+                <div>Rows failed: @(donationImportResult?.FailedRows ?? 0)</div>
+            </RadzenCard>
+        }
+
+        @if (showAccountingStatus)
+        {
+            <RadzenCard Class="rz-mt-3">
+                <RadzenText TextStyle="TextStyle.Subtitle2">Accounting Upload Status</RadzenText>
+                <div>Progress: @uploadProgressPercent% </div>
+                <div>Total rows read: @(accountingImportResult?.TotalRows ?? 0)</div>
+                <div>Rows inserted: @(accountingImportResult?.InsertedRows ?? 0)</div>
+                <div>Rows failed: @(accountingImportResult?.FailedRows ?? 0)</div>
+            </RadzenCard>
         }
         
         <!-- Update and Add buttons -->
@@ -234,13 +316,13 @@
             <!-- Fund Number -->
             <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="2rem">
                 <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="0.5rem" Style="font-weight: bold; width: 150px;">
-                    <RadzenText TextStyle="TextStyle.Subtitle2">@Localizer["FundNumber"]</RadzenText>
-                    <i @ref="fundNumberIcon" class="bi bi-exclamation-circle" style="cursor: help; color: #dc3545;" 
-                       @onmouseenter="@(() => ShowFundNumberTooltip(fundNumberIcon))"
+                    <RadzenText TextStyle="TextStyle.Subtitle2">@Localizer["AccountNumber"]</RadzenText>
+                    <i @ref="accountNumberIcon" class="bi bi-exclamation-circle" style="cursor: help; color: #dc3545;" 
+                       @onmouseenter="@(() => ShowAccountNumberTooltip(accountNumberIcon))"
                        @onmouseleave="@(() => tooltipService.Close())"></i>
                 </RadzenStack>
                 <RadzenFormField Variant="Variant.Outlined" Style="flex: 1;">
-                    <RadzenTextBox @bind-Value="@fundNumber" Placeholder="@Localizer["AccountNumber"]" />
+                    <RadzenTextBox @bind-Value="@accountNumber" Placeholder="@Localizer["AccountNumber"]" />
                 </RadzenFormField>
             </RadzenStack>
 
@@ -333,38 +415,7 @@
                 Disabled="@(string.IsNullOrEmpty(selectedFund) || IsAddNewFundSelected)"
                 Style="width: fit-content;" />
         </div>
-        
-        <!-- Temporary Debugging Section - COMMENTED OUT -->
-        @* @if (selectedFundAccount != null && !IsAddNewFundSelected)
-        {
-            <RadzenCard Class="rz-mt-3" Style="background-color: #f8f9fa; border: 1px solid #dee2e6;">
-                <RadzenText TextStyle="TextStyle.Subtitle2" Style="font-weight: bold; color: #dc3545;">DEBUG INFO - Selected Fund Account</RadzenText>
-                <RadzenStack Orientation="Orientation.Vertical" Gap="0.5rem" Class="rz-mt-2">
-                    <div>
-                        <strong>AccountId:</strong> @selectedFundAccount.AccountId
-                    </div>
-                    <div>
-                        <strong>Fund:</strong> @selectedFundAccount.Fund
-                    </div>
-                    <div>
-                        <strong>AccountingClass:</strong> @(selectedFundAccount.AccountingClass ?? "null")
-                    </div>
-                    <div>
-                        <strong>Balance:</strong> @selectedFundAccount.Balance.ToString("C2")
-                    </div>
-                    <div>
-                        <strong>CreatedAt:</strong> @selectedFundAccount.CreatedAt.ToString("yyyy-MM-dd HH:mm:ss")
-                    </div>
-                    <div>
-                        <strong>IsAddNewFundSelected:</strong> @IsAddNewFundSelected
-                    </div>
-                    <div>
-                        <strong>selectedFund Value:</strong> "@(selectedFund ?? "null")"
-                    </div>
-                </RadzenStack>
-            </RadzenCard>
-        } *@
-    </RadzenCard>
+        </RadzenCard>
   </RadzenStack>
 
 <ConfirmDialog 
@@ -395,10 +446,15 @@
         {
             if (args?.RawResponse is string raw && !string.IsNullOrWhiteSpace(raw))
             {
-                var res = JsonSerializer.Deserialize<ImportResultTemp>(raw, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                var res = JsonSerializer.Deserialize<cya2.Services.Imports.ImportResult>(raw, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
                 if (res is not null)
                 {
+                    currentProgressId = res.ProgressId;
+                    donationImportResult = new ImportResultTemp { TotalRows = res.TotalRows, InsertedRows = res.InsertedRows, FailedRows = res.FailedRows };
+                    uploadProgressPercent = 100;
                     await DialogService.Alert($"Donations import complete. Read: {res.TotalRows}, Inserted: {res.InsertedRows}, Failed: {res.FailedRows}");
+                    progressPollTimer?.Dispose();
+                    isProgressDialogOpen = false;
                     return;
                 }
             }
@@ -417,10 +473,15 @@
         {
             if (args?.RawResponse is string raw && !string.IsNullOrWhiteSpace(raw))
             {
-                var res = JsonSerializer.Deserialize<ImportResultTemp>(raw, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                var res = JsonSerializer.Deserialize<cya2.Services.Imports.ImportResult>(raw, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
                 if (res is not null)
                 {
+                    currentProgressId = res.ProgressId;
+                    accountingImportResult = new ImportResultTemp { TotalRows = res.TotalRows, InsertedRows = res.InsertedRows, FailedRows = res.FailedRows };
+                    uploadProgressPercent = 100;
                     await DialogService.Alert($"Accounting import complete. Read: {res.TotalRows}, Inserted: {res.InsertedRows}, Failed: {res.FailedRows}");
+                    progressPollTimer?.Dispose();
+                    isProgressDialogOpen = false;
                     return;
                 }
             }
@@ -441,14 +502,97 @@
         public int FailedRows { get; set; }
     }
 
+    private ImportResultTemp? donationImportResult;
+    private ImportResultTemp? accountingImportResult;
+    private int uploadProgressPercent = 0;
+    private bool showDonationStatus = false;
+    private bool showAccountingStatus = false;
+    private string? currentProgressId;
+    private System.Threading.Timer? progressPollTimer;
+    private bool isProgressDialogOpen = false;
+
+    private void OnUploadProgress(UploadProgressArgs args)
+    {
+        if (args == null)
+        {
+            uploadProgressPercent = 0;
+            return;
+        }
+
+        try
+        {
+            var loaded = args.Loaded;
+            var total = args.Total;
+            if (total > 0)
+            {
+                uploadProgressPercent = (int)((loaded * 100L) / total);
+            }
+            else
+            {
+                uploadProgressPercent = 0;
+            }
+        }
+        catch
+        {
+            uploadProgressPercent = 0;
+        }
+        StateHasChanged();
+    }
+
+    private async Task OnUploadStarted()
+    {
+        // When upload starts, automatically open the progress dialog and poll
+        if (!isProgressDialogOpen)
+        {
+            showDonationStatus = true;
+            showAccountingStatus = true;
+            isProgressDialogOpen = true;
+            // start polling - UI will set currentProgressId when response returns
+            StartProgressPolling();
+        }
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private void StartProgressPolling()
+    {
+        // Poll every 2 seconds
+        progressPollTimer?.Dispose();
+        progressPollTimer = new System.Threading.Timer(async _ => await PollProgress(), null, 2000, 2000);
+    }
+
+    private async Task PollProgress()
+    {
+        try
+        {
+            if (string.IsNullOrEmpty(currentProgressId)) return;
+            // call endpoint to get progress
+            var http = new System.Net.Http.HttpClient();
+            var baseUrl = Navigation.BaseUri.TrimEnd('/');
+            var resp = await http.GetAsync($"{baseUrl}/api/import-progress/{currentProgressId}");
+            if (!resp.IsSuccessStatusCode) return;
+            var json = await resp.Content.ReadAsStringAsync();
+            var prog = JsonSerializer.Deserialize<ImportResultTemp>(json, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+            if (prog != null)
+            {
+                donationImportResult = prog;
+                accountingImportResult = prog;
+                await InvokeAsync(StateHasChanged);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "PollProgress failed");
+        }
+    }
+
     private const string AddNewLabel = "Add new User";
     private const string AddNewFundLabel = "Add new Fund";
-    private const string SelectAccountLabel = "Select Account";
+    private string SelectAccountLabel => Localizer["SelectAccount"];
     private bool IsAddNewSelected => string.Equals(staffMember, AddNewLabel, StringComparison.Ordinal);
     private bool IsAddNewFundSelected => string.Equals(selectedFund, AddNewFundLabel, StringComparison.Ordinal);
 
     // ElementReference for tooltip icons
-    private ElementReference fundNumberIcon;
+    private ElementReference accountNumberIcon;
     private ElementReference fundIcon;
     private ElementReference classIcon;
 
@@ -495,21 +639,21 @@
     // Fund management properties
     private string? selectedFund;
     private List<Account> allFunds = new List<Account>();
-    private IEnumerable<object> fundsWithAddOption => 
-        new[] { new { 
+    private IEnumerable<FundDisplayItem> fundsWithAddOption => 
+        new[] { new FundDisplayItem { 
             Account = new Account { AccountId = 0, Fund = AddNewFundLabel, AccountingClass = string.Empty },
             DisplayText = AddNewFundLabel 
         } }
         .Concat(allFunds
             .Where(f => f.AccountId != 0)  // Exclude any zero IDs from allFunds
-            .Select(f => new { 
+            .Select(f => new FundDisplayItem { 
                 Account = f,
                 DisplayText = GetDisplayTextFromAccountingClass(f.AccountingClass)
             }));
     
     private Account? selectedFundAccount; // The currently selected fund account for display
     private string newFundName = string.Empty;
-    private string fundNumber = string.Empty;
+    private string accountNumber = string.Empty;
     private string overhead = string.Empty;
     private string fundClass = string.Empty;
     private string softCredit = string.Empty;
@@ -1071,9 +1215,7 @@
                 _config.GetConnectionString("default") ?? string.Empty
             );
 
-            Console.WriteLine($"Update result: {result}")
-
-;
+            Console.WriteLine($"Update result: {result}");
             if (result > 0)
             {
                 staffUpdateSuccess = "User updated successfully";
@@ -1180,7 +1322,6 @@
         {
             _logger.LogError(ex, "Error in DeleteStaffMember");
             staffUpdateError = $"Error: {ex.Message}";
-            StateHasChanged();
         }
     }
 
@@ -1293,19 +1434,18 @@
                 hasChanges = true;
             }
 
-            // Check if fund number should be updated
-            if (!string.IsNullOrWhiteSpace(fundNumber) && fundNumber.Trim() != accountToUpdate.FundNumber)
+            // Check if account number should be updated
+            if (!string.IsNullOrWhiteSpace(accountNumber) && accountNumber.Trim() != accountToUpdate.AccountNumber)
             {
-                sql += "FundNumber = @FundNumber, ";
-                parameters.Add("FundNumber", fundNumber.Trim());
+                sql += "AccountNumber = @AccountNumber, ";
+                parameters.Add("AccountNumber", accountNumber.Trim());
                 hasChanges = true;
             }
 
             // Check if class should be updated (this updates AccountingClass)
             if (!string.IsNullOrWhiteSpace(fundClass))
             {
-                var fundNum = !string.IsNullOrWhiteSpace(fundNumber) ? fundNumber.Trim() : accountToUpdate.FundNumber;
-                var newAccountingClass = $"{fundNum}:{fundClass.Trim()}";
+                var newAccountingClass = fundClass.Trim();
                 if (newAccountingClass != accountToUpdate.AccountingClass)
                 {
                     sql += "AccountingClass = @AccountingClass, ";
@@ -1361,6 +1501,9 @@
                 await LoadAllAccounts();
                 allFunds = allAccounts;
 
+                // Refresh accounts options for fund access dropdowns
+                RefreshAccountsOptions();
+
                 // Reset selection
                 selectedFund = string.Empty;
                 selectedFundAccount = null;
@@ -1403,9 +1546,9 @@
             fundUpdateError = "Fund name must be between 2 and 100 characters";
             return;
         }
-        if (string.IsNullOrWhiteSpace(fundNumber))
+        if (string.IsNullOrWhiteSpace(accountNumber))
         {
-            fundUpdateError = "Fund number is required";
+            fundUpdateError = "Account number is required";
             return;
         }
         if (string.IsNullOrWhiteSpace(fundClass))
@@ -1418,12 +1561,11 @@
         {
             // Trim and sanitize inputs
             var trimmedFundName = newFundName.Trim();
-            var trimmedFundNumber = fundNumber.Trim();
+            var trimmedAccountNumber = accountNumber.Trim();
             var trimmedFundClass = fundClass.Trim();
             var trimmedSoftCredit = softCredit?.Trim() ?? string.Empty;
             
-            // Build AccountingClass from fundNumber and fundClass (format: "fundNumber:fundClass")
-            var accountingClass = $"{trimmedFundNumber}:{trimmedFundClass}";
+            var accountingClass = trimmedFundClass;
 
             // Set default values (Balance will be 0 by default)
             var adjustment = balanceAdjustment ?? 0.00m;
@@ -1437,26 +1579,26 @@
                 return;
             }
 
-            // Check if fund number already exists
-            var existingFundNumber = allFunds.FirstOrDefault(f => 
-                string.Equals(f.FundNumber, trimmedFundNumber, StringComparison.OrdinalIgnoreCase));
-            if (existingFundNumber != null)
+            // Check if account number already exists
+            var existingAccountNumber = allFunds.FirstOrDefault(f => 
+                string.Equals(f.AccountNumber, trimmedAccountNumber, StringComparison.OrdinalIgnoreCase));
+            if (existingAccountNumber != null)
             {
-                fundUpdateError = $"A fund with the number '{trimmedFundNumber}' already exists";
+                fundUpdateError = $"A fund with the number '{trimmedAccountNumber}' already exists";
                 return;
             }
 
             // Insert new account record with required fields (Balance will default to 0)
             string sql = @"
-                INSERT INTO Accounts (Fund, AccountingClass, FundNumber, SoftCredit, BalanceAdjustment, OtherFunds, CreatedAt)
-                VALUES (@Fund, @AccountingClass, @FundNumber, @SoftCredit, @BalanceAdjustment, @OtherFunds, @CreatedAt)";
+                INSERT INTO Accounts (Fund, AccountingClass, AccountNumber, SoftCredit, BalanceAdjustment, OtherFunds, CreatedAt)
+                VALUES (@Fund, @AccountingClass, @AccountNumber, @SoftCredit, @BalanceAdjustment, @OtherFunds, @CreatedAt)";
 
             int result = await _data.SaveData(
                 sql,
                 new { 
                     Fund = trimmedFundName,
                     AccountingClass = accountingClass,
-                    FundNumber = trimmedFundNumber,
+                    AccountNumber = trimmedAccountNumber,
                     SoftCredit = trimmedSoftCredit,
                     BalanceAdjustment = adjustment,
                     OtherFunds = otherFunds,
@@ -1475,6 +1617,9 @@
                 // Refresh fund list
                 await LoadAllAccounts();
                 allFunds = allAccounts;
+
+                // Refresh accounts options for fund access dropdowns
+                RefreshAccountsOptions();
 
                 // Reset selection to "Add New Fund"
                 selectedFund = AddNewFundLabel;
@@ -1495,7 +1640,7 @@
     private void ClearFundInputFields()
     {
         newFundName = string.Empty;
-        fundNumber = string.Empty;
+        accountNumber = string.Empty;
         overhead = string.Empty;
         fundClass = string.Empty;
         softCredit = string.Empty;
@@ -1524,38 +1669,22 @@
             return Task.CompletedTask;
         }
 
-        // Find the account by matching the display text (text after colon in Account)
-        selectedFundAccount = allFunds.FirstOrDefault(f => 
-            GetDisplayTextFromAccountingClass(f.AccountingClass) == displayText);
-            
-        if (selectedFundAccount != null)
+        // Find the FundDisplayItem by matching the display text
+        var selectedItem = fundsWithAddOption.FirstOrDefault(f => f.DisplayText == displayText);
+        if (selectedItem != null)
         {
-            selectedAccountId = selectedFundAccount.AccountId;
+            selectedFundAccount = selectedItem.Account;
+            selectedAccountId = selectedItem.Account.AccountId;
             
             // Populate form fields with existing account data
-            newFundName = selectedFundAccount.Fund;
-            fundNumber = selectedFundAccount.FundNumber;
-            softCredit = selectedFundAccount.SoftCredit;
-            balanceAdjustment = selectedFundAccount.BalanceAdjustment;
-            otherFunds = selectedFundAccount.OtherFunds;
+            newFundName = selectedItem.Account.Fund;
+            accountNumber = selectedItem.Account.AccountNumber;
+            softCredit = selectedItem.Account.SoftCredit;
+            balanceAdjustment = selectedItem.Account.BalanceAdjustment;
+            otherFunds = selectedItem.Account.OtherFunds;
             
-            // Extract class from AccountingClass (format: "fundNumber:class")
-            if (!string.IsNullOrEmpty(selectedFundAccount.AccountingClass))
-            {
-                var colonIndex = selectedFundAccount.AccountingClass.IndexOf(':');
-                if (colonIndex >= 0 && colonIndex < selectedFundAccount.AccountingClass.Length - 1)
-                {
-                    fundClass = selectedFundAccount.AccountingClass.Substring(colonIndex + 1).Trim();
-                }
-                else
-                {
-                    fundClass = selectedFundAccount.AccountingClass;
-                }
-            }
-            else
-            {
-                fundClass = string.Empty;
-            }
+            // Populate fundClass from AccountingClass
+            fundClass = selectedItem.Account.AccountingClass ?? string.Empty;
         }
         else
         {
@@ -1564,6 +1693,7 @@
             ClearFundInputFields();
         }
 
+        StateHasChanged();
         return Task.CompletedTask;
     }
 
@@ -1571,7 +1701,7 @@
     {
         try
         {
-            string sql = @"SELECT AccountId, Fund, AccountingClass, FundNumber, CreatedAt, Balance, 
+            string sql = @"SELECT AccountId, Fund, AccountingClass, AccountNumber, CreatedAt, Balance, 
                           SoftCredit, BalanceAdjustment, OtherFunds 
                           FROM Accounts ORDER BY Fund";
             allAccounts = await _data.LoadData<Account, dynamic>(
@@ -1651,14 +1781,18 @@
     {
         try
         {
-            _logger.LogInformation("DeleteFund called for fund: {Fund}", selectedFund);
-            
-            if (string.IsNullOrEmpty(selectedFund) || IsAddNewFundSelected)
+            // Find the FundDisplayItem by matching the display text
+            var fundDisplayItem = fundsWithAddOption.FirstOrDefault(f => f.DisplayText == selectedFund);
+            if (fundDisplayItem == null || fundDisplayItem.Account.AccountId == 0)
             {
-                fundUpdateError = "Please select a fund to delete";
+                fundUpdateError = "Selected fund not found";
                 StateHasChanged();
                 return;
             }
+
+            var fundToDeleteObj = fundDisplayItem.Account;
+
+            _logger.LogInformation("DeleteFund called for fund: {Fund}", fundToDeleteObj.Fund);
 
             // Use the basic Confirm method without custom options
             var result = await DialogService.Confirm(
@@ -1671,15 +1805,16 @@
                 return;
             }
 
-            var fundToDeleteObj = allFunds.FirstOrDefault(f => f.Fund == selectedFund);
-            if (fundToDeleteObj == null)
-            {
-                fundUpdateError = "Selected fund not found";
-                StateHasChanged();
-                return;
-            }
+            // Delete account associations first
+            _logger.LogInformation("Deleting account associations for fund {AccountId}", fundToDeleteObj.AccountId);
+            string deleteAccountsSql = "DELETE FROM AccountsUsers WHERE AccountId = @AccountId";
+            await _data.SaveData(
+                deleteAccountsSql,
+                new { AccountId = fundToDeleteObj.AccountId },
+                _config.GetConnectionString("default") ?? string.Empty
+            );
 
-            // Delete the fund
+            // Then delete the fund
             string deleteFundSql = "DELETE FROM Accounts WHERE AccountId = @AccountId";
             int deleteResult = await _data.SaveData(
                 deleteFundSql,
@@ -1700,6 +1835,9 @@
                 // Refresh funds list
                 await LoadAllAccounts();
                 allFunds = allAccounts;
+
+                // Refresh accounts options for fund access dropdowns
+                RefreshAccountsOptions();
             }
             else
             {
@@ -1717,16 +1855,27 @@
         try
         {
             showDeleteFundConfirmation = false;
-            _logger.LogInformation("Confirming deletion of fund: {Fund}", fundToDelete);
             
-            var selectedFundToDelete = allFunds.FirstOrDefault(f => f.Fund == this.fundToDelete);
-            if (selectedFundToDelete == null)
+            // Find the FundDisplayItem by matching the display text
+            var fundDisplayItem = fundsWithAddOption.FirstOrDefault(f => f.DisplayText == this.fundToDelete);
+            if (fundDisplayItem == null || fundDisplayItem.Account.AccountId == 0)
             {
                 fundUpdateError = "Selected fund not found";
                 return;
             }
 
-            // Delete the fund
+            var selectedFundToDelete = fundDisplayItem.Account;
+
+            // Delete account associations first
+            _logger.LogInformation("Deleting account associations for fund {AccountId}", selectedFundToDelete.AccountId);
+            string deleteAccountsSql = "DELETE FROM AccountsUsers WHERE AccountId = @AccountId";
+            await _data.SaveData(
+                deleteAccountsSql,
+                new { AccountId = selectedFundToDelete.AccountId },
+                _config.GetConnectionString("default") ?? string.Empty
+            );
+
+            // Then delete the fund
             string deleteFundSql = "DELETE FROM Accounts WHERE AccountId = @AccountId";
             int deleteResult = await _data.SaveData(
                 deleteFundSql,
@@ -1748,6 +1897,9 @@
                 // Refresh funds list
                 await LoadAllAccounts();
                 allFunds = allAccounts;
+
+                // Refresh accounts options for fund access dropdowns
+                RefreshAccountsOptions();
             }
             else
             {
@@ -1798,7 +1950,7 @@
     }
 
     // Tooltip methods
-    void ShowFundNumberTooltip(ElementReference elementReference, TooltipOptions? options = null) 
+    void ShowAccountNumberTooltip(ElementReference elementReference, TooltipOptions? options = null) 
     {
         var tooltipOptions = options ?? new TooltipOptions() { 
             Position = TooltipPosition.Bottom,
@@ -1836,6 +1988,12 @@
             Account = account;
             IsSelected = isSelected;
         }
+    }
+
+    private class FundDisplayItem
+    {
+        public Account Account { get; set; } = new Account();
+        public string DisplayText { get; set; } = string.Empty;
     }
 
     public class UserFormModel

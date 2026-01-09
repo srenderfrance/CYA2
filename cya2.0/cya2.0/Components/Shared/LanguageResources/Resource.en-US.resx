@@ -303,12 +303,6 @@
   <data name="RegisterNewUser" xml:space="preserve">
     <value>Register New User</value>
   </data>
-  <data name="RemoveAccountAccess" xml:space="preserve">
-    <value>Remove Account Access</value>
-  </data>
-  <data name="RemoveAccountLink" xml:space="preserve">
-    <value>Remove Account Link</value>
-  </data>
   <data name="SelectAccount" xml:space="preserve">
     <value>Select Account</value>
   </data>
@@ -375,11 +369,8 @@
   <data name="MonthlyAverage" xml:space="preserve">
     <value>Monthly Average</value>
   </data>
-  <data name="AddAccountAccess" xml:space="preserve">
-    <value>Add Account Access</value>
-  </data>
-  <data name="AccountManagement" xml:space="preserve">
-    <value>Account Management</value>
+  <data name="FundManagement" xml:space="preserve">
+    <value>Fund Management</value>
   </data>
   <data name="ThisYear" xml:space="preserve">
     <value>This Year</value>
@@ -408,8 +399,8 @@
   <data name="ManageFunds" xml:space="preserve">
     <value>Manage Funds</value>
   </data>
-  <data name="FundNumber" xml:space="preserve">
-    <value>Fund Number</value>
+  <data name="AccountNumber" xml:space="preserve">
+    <value>Account Number</value>
   </data>
   <data name="Class" xml:space="preserve">
     <value>Class</value>
@@ -437,5 +428,26 @@
   </data>
   <data name="UploadAccountingData" xml:space="preserve">
     <value>Upload Accounting Data</value>
+  </data>
+  <data name="GrantFundAccess" xml:space="preserve">
+    <value>Grant Fund Access</value>
+  </data>
+  <data name="RemoveAccess" xml:space="preserve">
+    <value>Remove Access</value>
+  </data>
+  <data name="GrantAccess" xml:space="preserve">
+    <value>Grant Access</value>
+  </data>
+  <data name="RemoveFundAccess" xml:space="preserve">
+    <value>Remove Fund Access</value>
+  </data>
+  <data name="SelectFund" xml:space="preserve">
+    <value>Select Fund</value>
+  </data>
+  <data name="FundAccess" xml:space="preserve">
+    <value>Fund Access</value>
+  </data>
+  <data name="CurrentFundAccess" xml:space="preserve">
+    <value>Current Fund Access</value>
   </data>
 </root>
