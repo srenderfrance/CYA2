@@ -450,4 +450,10 @@
   <data name="CurrentFundAccess" xml:space="preserve">
     <value>Current Fund Access</value>
   </data>
+  <data name="CustomRange" xml:space="preserve">
+    <value>Custom Range</value>
+  </data>
+  <data name="RefNum" xml:space="preserve">
+    <value>Ref Num</value>
+  </data>
 </root>

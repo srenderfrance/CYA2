@@ -450,4 +450,10 @@
   <data name="CurrentFundAccess" xml:space="preserve">
     <value>Accesso Presente de Fondos</value>
   </data>
+  <data name="CustomRange" xml:space="preserve">
+    <value>Rango Personalizado</value>
+  </data>
+  <data name="RefNum" xml:space="preserve">
+    <value>Referencia</value>
+  </data>
 </root>

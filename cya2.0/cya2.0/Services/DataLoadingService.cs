@@ -74,54 +74,35 @@ namespace cya2.Services
                     }
                 }
 
-                if (_appState.IsAdmin)
-                {
-                    // For admin users, just load the account list for the dropdown
-                    await LoadUserAccountsAsync();
+                // Load user accounts first
+                await LoadUserAccountsAsync();
 
-                    // Only load default account data if one is specified
-                    var defaultAccountClaim = user.FindFirstValue("DefaultAccount");
-                    if (!string.IsNullOrEmpty(defaultAccountClaim) && int.TryParse(defaultAccountClaim, out int accountId))
+                // Get default account ID from claims
+                var defaultAccountClaim = user.FindFirstValue("DefaultAccount");
+                if (!string.IsNullOrEmpty(defaultAccountClaim) && int.TryParse(defaultAccountClaim, out int accountId))
+                {
+                    // Find the account by AccountId and set DefaultAccount to Fund name
+                    var defaultAccount = _appState.UserAccounts.FirstOrDefault(a => a.AccountId == accountId);
+                    if (defaultAccount != null)
                     {
-                        var defaultAccount = _appState.UserAccounts.FirstOrDefault(a => a.AccountId == accountId);
-                        if (defaultAccount != null)
-                        {
-                            _appState.DefaultAccount = defaultAccount.Fund;
-                            Console.WriteLine($"Admin default account set to: {_appState.DefaultAccount}");
-                            // Load data only for the default account
-                            await LoadAccountDataAsync(defaultAccount);
-                        }
+                        _appState.DefaultAccount = defaultAccount.Fund;
+                        _appState.SelectedAccount = defaultAccount.Fund; // Also set as selected
+                        Console.WriteLine($"Default account set to: {_appState.DefaultAccount}");
+                        
+                        // Load data for default account
+                        await LoadAccountDataAsync(defaultAccount);
                     }
-                    // Don't set a default account or load any data if no default specified
                 }
                 else
                 {
-                    // Regular user behavior remains unchanged
-                    await LoadUserAccountsAsync();
+                    Console.WriteLine("No default account set for user");
+                    // Don't load any account data if no default account
+                }
 
-                    var defaultAccountClaim = user.FindFirstValue("DefaultAccount");
-                    if (!string.IsNullOrEmpty(defaultAccountClaim) && int.TryParse(defaultAccountClaim, out int accountId))
-                    {
-                        var defaultAccount = _appState.UserAccounts.FirstOrDefault(a => a.AccountId == accountId);
-                        if (defaultAccount != null)
-                        {
-                            _appState.DefaultAccount = defaultAccount.Fund;
-                            Console.WriteLine($"Default account set to: {_appState.DefaultAccount}");
-                            await LoadAccountDataAsync(defaultAccount);
-                        }
-                    }
-                    else if (_appState.UserAccounts.Any())
-                    {
-                        _appState.DefaultAccount = _appState.UserAccounts.First().Fund;
-                        Console.WriteLine($"No default account found, using first account: {_appState.DefaultAccount}");
-                        await LoadAccountDataAsync(_appState.UserAccounts.First());
-                    }
-
-                    // Start background loading for non-admin users
-                    if (_appState.UserAccounts.Count > 1)
-                    {
-                        _ = Task.Run(async () => await LoadAllUserAccountDataAsync());
-                    }
+                // For non-admin users, start background loading of remaining accounts
+                if (!_appState.IsAdmin && _appState.UserAccounts.Count > 1 && !string.IsNullOrEmpty(_appState.DefaultAccount))
+                {
+                    _ = Task.Run(async () => await LoadAllUserAccountDataAsync());
                 }
             }
             catch (Exception ex)

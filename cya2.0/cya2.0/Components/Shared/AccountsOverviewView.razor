@@ -1,6 +1,7 @@
 @using Radzen.Blazor
 @using ModelsLibrary
 @using UtilityClasses
+@using DataLibrary
 @inject IStringLocalizer<Resource> Localizer
 @inject IDataAccess _data
 @inject IConfiguration _config
@@ -75,7 +76,7 @@
     {
         try
         {
-            const string accountsSql = "SELECT AccountId, Fund, AccountingClass, CreatedAt, Balance FROM Accounts ORDER BY Fund";
+            const string accountsSql = "SELECT AccountId, Fund, AccountingClass, AccountNumber, CreatedAt, Balance, BalanceAdjustment FROM Accounts ORDER BY Fund";
             var accounts = await _data.LoadData<Account, dynamic>(
                 accountsSql,
                 new { },
@@ -84,12 +85,35 @@
             var rows = new List<FundBalanceRow>();
             foreach (var account in accounts ?? Enumerable.Empty<Account>())
             {
-                rows.Add(new FundBalanceRow
+                try
                 {
-                    Fund = account.Fund,
-                    CurrentBalance = account.Balance,
-                    Last12MonthsDonations = 0m
-                });
+                    // Use the new BalanceCalculator to get the current balance
+                    var balanceResult = await BalanceCalculator.CalculateBalanceFromDatabaseAsync(
+                        account,
+                        _data,
+                        _config.GetConnectionString("default") ?? string.Empty,
+                        null, // no start date - use all data
+                        DateTime.Now // end date
+                    );
+
+                    rows.Add(new FundBalanceRow
+                    {
+                        Fund = account.Fund,
+                        CurrentBalance = balanceResult.TotalBalance,
+                        Last12MonthsDonations = 0m
+                    });
+                }
+                catch (Exception ex)
+                {
+                    // Fallback to the old balance if calculation fails
+                    Console.WriteLine($"Error calculating balance for {account.Fund}: {ex.Message}");
+                    rows.Add(new FundBalanceRow
+                    {
+                        Fund = account.Fund,
+                        CurrentBalance = account.Balance,
+                        Last12MonthsDonations = 0m
+                    });
+                }
             }
 
             fundBalances = rows.OrderBy(r => r.Fund).ToList();

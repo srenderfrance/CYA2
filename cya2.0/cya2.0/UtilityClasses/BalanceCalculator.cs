@@ -1,106 +1,158 @@
+using DataLibrary;
+using Microsoft.Extensions.Configuration;
+using ModelsLibrary;
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using ModelsLibrary;
+using System.Threading.Tasks;
 
 namespace UtilityClasses
 {
+    /// <summary>
+    /// Balance calculation utility using the logic from BalanceTest.razor
+    /// Replaces the old BalanceCalculator with the correct expense categorization logic
+    /// </summary>
     public static class BalanceCalculator
     {
         /// <summary>
-        /// Calculates the account balance as of a given date using donations and accounting transactions.
-        /// Mirrors the logic from Home.razor with parameterized adjustments.
+        /// Calculates balance using direct database queries
         /// </summary>
-        /// <param name="asOfDate">Date to compute balance through (inclusive).</param>
-        /// <param name="donations">Donation entries for the account (date, amount, fund).</param>
-        /// <param name="accountingData">QuickBooks/accounting entries for the account.</param>
-        /// <param name="startingBalance">Starting balance prior to the cutoff date.</param>
-        /// <param name="missingDonationsAdjustment">Optional positive adjustment added to donations.</param>
-        /// <param name="overheadAdjustment">Optional overhead adjustment (can be negative).</param>
-        /// <param name="cutoffDate">Only transactions on/after this date are included in calculations beyond startingBalance.</param>
-        /// <returns>Calculated balance as of the given date.</returns>
-        public static decimal CalculateBalanceAsOfDate(
-            DateTime asOfDate,
-            IEnumerable<DonationDataLite> donations,
-            IEnumerable<AccountingDataModel> accountingData,
-            decimal startingBalance,
-            decimal missingDonationsAdjustment = 0m,
-            decimal overheadAdjustment = 0m,
-            DateTime? cutoffDate = null)
+        /// <param name="selectedAccount">The account to calculate balance for</param>
+        /// <param name="dataAccess">Database access interface</param>
+        /// <param name="connectionString">Database connection string</param>
+        /// <param name="startDate">Start date for calculation (if null, uses all data)</param>
+        /// <param name="endDate">End date for calculation</param>
+        /// <returns>Balance calculation result</returns>
+        public static async Task<BalanceCalculationResult> CalculateBalanceFromDatabaseAsync(
+            Account selectedAccount,
+            IDataAccess dataAccess,
+            string connectionString,
+            DateTime? startDate = null,
+            DateTime? endDate = null)
         {
-            var cutoff = cutoffDate ?? new DateTime(2020, 1, 1);
+            if (selectedAccount == null)
+                throw new ArgumentNullException(nameof(selectedAccount));
 
-            // If the target date is before the cutoff, return starting balance as-is.
-            if (asOfDate < cutoff)
+            var actualStartDate = startDate ?? DateTime.MinValue;
+            var actualEndDate = endDate ?? DateTime.MaxValue;
+
+            try
             {
-                return startingBalance;
+                // Sum base calculation using the BalanceTest.razor logic
+                string sumSql = @"SELECT COALESCE(SUM(
+                    CASE 
+                        WHEN Type IN ('Payroll Check', 'Expense') OR Account LIKE '%Expenses:%' OR Account LIKE '%Payroll:%' OR Account LIKE '%Administration:%' THEN -Amount 
+                        ELSE Amount 
+                    END
+                ), 0) FROM AccountingData WHERE (AccountingClass = @AccountingClass OR AccountNumber = @AccountNumber) AND Account != 'Prepaids'";
+
+                if (startDate.HasValue)
+                    sumSql += " AND Date >= @StartDate";
+                if (endDate.HasValue)
+                    sumSql += " AND Date <= @EndDate";
+
+                var sumVal = await dataAccess.LoadData<decimal, dynamic>(sumSql, 
+                    new { 
+                        AccountingClass = selectedAccount.AccountingClass, 
+                        AccountNumber = selectedAccount.AccountNumber, 
+                        StartDate = actualStartDate, 
+                        EndDate = actualEndDate 
+                    }, connectionString);
+
+                decimal baseSum = sumVal?.FirstOrDefault() ?? 0.00m;
+                decimal calculatedBalance = baseSum + selectedAccount.BalanceAdjustment;
+
+                // Load all matching rows for detailed breakdown
+                string entriesSql = @"SELECT Id, AccountingClass, Date, Num, Amount, AccountNumber, Account, Type, DateCreated
+                                     FROM AccountingData
+                                     WHERE (AccountingClass = @AccountingClass OR AccountNumber = @AccountNumber) AND Account != 'Prepaids'";
+
+                if (startDate.HasValue)
+                    entriesSql += " AND Date >= @StartDate";
+                if (endDate.HasValue)
+                    entriesSql += " AND Date <= @EndDate";
+
+                entriesSql += " ORDER BY Date DESC";
+
+                var entries = await dataAccess.LoadData<AccountingDataModel, dynamic>(entriesSql, 
+                    new { 
+                        AccountingClass = selectedAccount.AccountingClass, 
+                        AccountNumber = selectedAccount.AccountNumber, 
+                        StartDate = actualStartDate, 
+                        EndDate = actualEndDate 
+                    }, connectionString);
+
+                return CalculateBalanceFromData(entries?.ToList() ?? new List<AccountingDataModel>(), selectedAccount.BalanceAdjustment);
             }
-
-            // Donations (as-of date, on/after cutoff) + optional missing donations adjustment.
-            decimal totalDonations = donations?
-                .Where(d => d.Date >= cutoff && d.Date <= asOfDate)
-                .Sum(d => d.Amount) ?? 0m;
-
-            totalDonations += missingDonationsAdjustment;
-
-            // Regular expenses (excluding fundraising) as absolute sums.
-            decimal totalExpenses = accountingData?
-                .Where(a => a.Date >= cutoff && a.Date <= asOfDate
-                            && TransactionCategorizer.IsExpense(a)
-                            && !TransactionCategorizer.IsFundraising(a))
-                .Sum(a => Math.Abs((decimal)a.Amount)) ?? 0m;
-
-            // Other expenses (fees, etc.), excluding fundraising.
-            decimal totalOtherExpenses = accountingData?
-                .Where(a => a.Date >= cutoff && a.Date <= asOfDate
-                            && TransactionCategorizer.IsOtherExpense(a)
-                            && !TransactionCategorizer.IsFundraising(a))
-                .Sum(a => Math.Abs((decimal)a.Amount)) ?? 0m;
-
-            // Internal transfers; exclude those marked as OtherExpense to avoid double counting.
-            decimal totalInternalTransfers = accountingData?
-                .Where(a => a.Date >= cutoff && a.Date <= asOfDate
-                            && TransactionCategorizer.IsInternalTransfer(a)
-                            && !TransactionCategorizer.IsOtherExpense(a))
-                .Sum(a => Math.Abs((decimal)a.Amount)) ?? 0m;
-
-            // Final balance = starting + donations - expenses + other-expenses + internal-transfers + overhead-adjustment
-            decimal calculatedBalance = startingBalance
-                                        + totalDonations
-                                        - totalExpenses
-                                        + totalOtherExpenses
-                                        + totalInternalTransfers
-                                        + overheadAdjustment;
-
-            return calculatedBalance;
+            catch (Exception ex)
+            {
+                throw new Exception($"Error calculating balance from database: {ex.Message}", ex);
+            }
         }
 
         /// <summary>
-        /// Calculates net balance from accounting entries only (no donations list),
-        /// summing signed amounts and excluding fundraising rows. Useful when QuickBooks data
-        /// already contains both income and expense entries.
+        /// Calculates balance using pre-loaded data
         /// </summary>
-        public static decimal CalculateNetBalanceFromAccounting(
-            IEnumerable<AccountingDataModel> accountingData,
-            DateTime? cutoffDate = null,
-            DateTime? asOfDate = null)
+        /// <param name="entries">Pre-loaded accounting data</param>
+        /// <param name="balanceAdjustment">Balance adjustment from account settings</param>
+        /// <param name="startDate">Start date for calculation (if null, uses all data)</param>
+        /// <param name="endDate">End date for calculation (if null, uses all data)</param>
+        /// <returns>Balance calculation result</returns>
+        public static BalanceCalculationResult CalculateBalanceFromData(
+            List<AccountingDataModel> entries,
+            decimal balanceAdjustment = 0.00m,
+            DateTime? startDate = null,
+            DateTime? endDate = null)
         {
-            var cutoff = cutoffDate ?? DateTime.MinValue;
-            var end = asOfDate ?? DateTime.MaxValue;
+            if (entries == null)
+                entries = new List<AccountingDataModel>();
 
-            if (accountingData == null)
+            // Filter by date range if provided
+            if (startDate.HasValue || endDate.HasValue)
             {
-                return 0m;
+                entries = entries.Where(e => 
+                    (!startDate.HasValue || e.Date >= startDate.Value) &&
+                    (!endDate.HasValue || e.Date <= endDate.Value)
+                ).ToList();
             }
 
-            // Sum signed amounts for all non-fundraising transactions in range.
-            // QuickBooks amounts should carry their sign; fundraising excluded by categorizer.
-            var net = accountingData
-                .Where(a => a.Date >= cutoff && a.Date <= end
-                            && !TransactionCategorizer.IsFundraising(a))
-                .Sum(a => Convert.ToDecimal(a.Amount));
+            // Categorize transactions using the BalanceTest.razor logic
+            var expenseTransactions = entries.Where(e => 
+                e.Type == "Payroll Check" || 
+                e.Type == "Expense" || 
+                (e.Account != null && (e.Account.Contains("Expenses:") || e.Account.Contains("Payroll:") || e.Account.Contains("Administration:")))
+            ).ToList();
 
-            return net;
+            var transferTransactions = entries.Where(e => 
+                e.Account != null && e.Account.Contains("Transfer")
+            ).ToList();
+
+            var otherTransactions = entries.Where(e => 
+                !expenseTransactions.Contains(e) && !transferTransactions.Contains(e)
+            ).ToList();
+
+            // Calculate totals for each category
+            var expenseTotal = expenseTransactions.Sum(e => Convert.ToDecimal(e.Amount));
+            var transferTotal = transferTransactions.Sum(e => Convert.ToDecimal(e.Amount));
+            var otherTotal = otherTransactions.Sum(e => Convert.ToDecimal(e.Amount));
+
+            // Calculate balance using the BalanceTest.razor logic
+            var calculatedBalance = balanceAdjustment + entries.Sum(e => 
+                (e.Type == "Payroll Check" || e.Type == "Expense" || 
+                 (e.Account != null && (e.Account.Contains("Expenses:") || e.Account.Contains("Payroll:") || e.Account.Contains("Administration:")))) 
+                ? -Convert.ToDecimal(e.Amount) : Convert.ToDecimal(e.Amount));
+
+            return new BalanceCalculationResult
+            {
+                TotalBalance = calculatedBalance,
+                ExpenseTotal = expenseTotal,
+                TransferTotal = transferTotal,
+                OtherTotal = otherTotal,
+                ExpenseTransactions = expenseTransactions,
+                TransferTransactions = transferTransactions,
+                OtherTransactions = otherTransactions,
+                AllTransactions = entries
+            };
         }
 
         /// <summary>
@@ -112,5 +164,20 @@ namespace UtilityClasses
             public decimal Amount { get; set; }
             public string Fund { get; set; } = string.Empty;
         }
+    }
+
+    /// <summary>
+    /// Result of balance calculation containing totals and categorized transactions
+    /// </summary>
+    public class BalanceCalculationResult
+    {
+        public decimal TotalBalance { get; set; }
+        public decimal ExpenseTotal { get; set; }
+        public decimal TransferTotal { get; set; }
+        public decimal OtherTotal { get; set; }
+        public List<AccountingDataModel> ExpenseTransactions { get; set; } = new();
+        public List<AccountingDataModel> TransferTransactions { get; set; } = new();
+        public List<AccountingDataModel> OtherTransactions { get; set; } = new();
+        public List<AccountingDataModel> AllTransactions { get; set; } = new();
     }
 }
