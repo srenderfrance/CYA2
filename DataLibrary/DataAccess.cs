@@ -90,6 +90,17 @@ namespace DataLibrary
                 // Return empty result instead of throwing
                 return new List<T>();
             }
+            catch (FormatException ex) when (ex.Message.Contains("was not in a correct format"))
+            {
+                // Handle DateTime parsing errors specifically
+                IsConnected = false;
+                LastError = $"Data format error: {ex.Message}";
+                LogError($"DateTime parsing error in query: {sql}", ex);
+                Console.WriteLine(LastError);
+                
+                // Return empty result instead of throwing
+                return new List<T>();
+            }
             catch (TimeoutException ex)
             {
                 IsConnected = false;
@@ -164,6 +175,17 @@ namespace DataLibrary
                 IsConnected = false;
                 LastError = $"Database connection error: {ex.Message}";
                 Console.WriteLine(LastError);
+                return 0;
+            }
+            catch (FormatException ex) when (ex.Message.Contains("was not in a correct format"))
+            {
+                // Handle DateTime parsing errors specifically
+                IsConnected = false;
+                LastError = $"Data format error: {ex.Message}";
+                LogError($"DateTime parsing error in save operation: {sql}", ex);
+                Console.WriteLine(LastError);
+                
+                // Return 0 to indicate failure
                 return 0;
             }
             catch (TimeoutException ex)

@@ -66,6 +66,7 @@ builder.Services.AddHttpContextAccessor();
 // Core application services
 builder.Services.AddSingleton<AppState>();
 builder.Services.AddScoped<DataLoadingService>();
+builder.Services.AddScoped<PageAccountCache>();
 builder.Services.AddSingleton<DatabaseMonitorService>();
 builder.Services.AddSingleton<IHostedService>(sp => sp.GetRequiredService<DatabaseMonitorService>());
 

@@ -4,6 +4,7 @@
 @using ModelsLibrary
 @using DataLibrary
 @using UtilityClassLibrary
+@using UtilityClasses
 @using Radzen
 @using Microsoft.AspNetCore.Components.Authorization
 @using System.Security.Claims
@@ -12,6 +13,7 @@
 @inject IConfiguration _config
 @inject AppState AppState
 @inject DataLoadingService DataLoader
+@inject PageAccountCache PageCache
 @rendermode InteractiveServer
 @inject IStringLocalizer<Resource> Localizer
 @attribute [StreamRendering]
@@ -73,21 +75,23 @@
                          AlignItems="AlignItems.Center"
                          Wrap="FlexWrap.Wrap">
                 <RadzenLabel Text="@Localizer["StartDate"]" />
-                <RadzenDatePicker @bind-Value="@pendingStartDate" DateFormat="MM/dd/yyyy" Style="max-width:130px" />
+                <RadzenDatePicker @bind-Value="@dateRangeState.PendingStartDate" DateFormat="MM/dd/yyyy" Style="max-width:130px"
+                                  Change="@OnDatePickerChanged" />
                 <RadzenLabel Text="@Localizer["EndDate"]" />
-                <RadzenDatePicker @bind-Value="@pendingEndDate" DateFormat="MM/dd/yyyy" Style="max-width:130px" />
+                <RadzenDatePicker @bind-Value="@dateRangeState.PendingEndDate" DateFormat="MM/dd/yyyy" Style="max-width:130px"
+                                  Change="@OnDatePickerChanged" />
 
                 <!-- Preset dropdown -->
-                <RadzenDropDown TValue="DateRangePreset"
+                <RadzenDropDown TValue="DateRangeManager.DateRangePreset"
                                 Data="@presetOptions"
                                 TextProperty="Text"
                                 ValueProperty="Value"
-                                @bind-Value="@selectedPreset"
-                                Change="@(args => ApplyPreset((DateRangePreset)args))"
+                                @bind-Value="@dateRangeState.SelectedPreset"
+                                Change="@OnPresetChanged"
                                 Style="width: 180px;">
                     <ValueTemplate>
                         <span style="display:flex;align-items:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding-right:1.75rem;width:100%;">
-                            @presetOptions.FirstOrDefault(o => o.Value == selectedPreset)?.Text
+                            @(presetOptions.FirstOrDefault(o => o.Value == dateRangeState.SelectedPreset)?.Text ?? "")
                         </span>
                     </ValueTemplate>
                     <Template Context="opt">
@@ -273,12 +277,6 @@
     private List<UserDataDonations> donations = new();
     private List<UserDataDonations> selectedDonations = new();
 
-    private DateTime startDate = new DateTime(DateTime.Now.Year, DateTime.Now.Month, 1, 0, 0, 0);
-    private DateTime endDate = DateTime.Now;
-
-    private DateTime pendingStartDate;
-    private DateTime pendingEndDate;
-
     private string selectedAccount = string.Empty;
     private string errorMessage = string.Empty;
     private bool isLoading = true;
@@ -299,20 +297,13 @@
 
     private string GetMonthHeader(DateTime m)
     {
-        var singleYear = startDate.Year == endDate.Year;
+        var singleYear = dateRangeState.StartDate.Year == dateRangeState.EndDate.Year;
         return singleYear ? m.ToString("MMM") : m.ToString("MMM yy");
     }
 
-    private enum DateRangePreset { ThisYear, Previous12Months, LastYear }
-    private DateRangePreset selectedPreset = DateRangePreset.ThisYear;
-
-    private sealed class PresetOption
-    {
-        public string Text { get; set; } = string.Empty;
-        public DateRangePreset Value { get; set; }
-    }
-
-    private List<PresetOption> presetOptions = new();
+    // Use DateRangeManager for centralized date management
+    private DateRangeManager.DateRangeState dateRangeState = new();
+    private List<DateRangeManager.PresetOption> presetOptions = new();
 
     protected override async Task OnInitializedAsync()
     {
@@ -321,27 +312,22 @@
             var authState = await AuthStateProvider.GetAuthenticationStateAsync();
             await DataLoader.InitializeUserDataAsync(authState.User);
 
-            presetOptions = new List<PresetOption>
-            {
-                new() { Text = Localizer["ThisYear"], Value = DateRangePreset.ThisYear },
-                new() { Text = Localizer["Previous12Months"], Value = DateRangePreset.Previous12Months },
-                new() { Text = Localizer["LastYear"], Value = DateRangePreset.LastYear }
-            };
+            // Initialize preset options using the centralized manager
+            presetOptions = DateRangeManager.GetPresetOptions(Localizer);
 
-            selectedPreset = DateRangePreset.ThisYear;
-            ApplyPreset(selectedPreset);
+            // Initialize date range state from AppState
+            dateRangeState = DateRangeManager.InitializeDateRange(AppState);
+
+            // Use SelectedAccount from AppState for cross-page navigation
+            selectedAccount = !string.IsNullOrEmpty(AppState.SelectedAccount) 
+                ? AppState.SelectedAccount 
+                : AppState.DefaultAccount;
 
             if (AppState.UserAccounts.Any())
             {
-                if (!string.IsNullOrEmpty(AppState.DefaultAccount))
+                if (!string.IsNullOrEmpty(selectedAccount))
                 {
-                    selectedAccount = AppState.DefaultAccount;
                     currentAccount = AppState.UserAccounts.FirstOrDefault(a => a.Fund == selectedAccount);
-                }
-                else
-                {
-                    selectedAccount = AppState.UserAccounts.First().Fund;
-                    currentAccount = AppState.UserAccounts.First();
                 }
 
                 if (currentAccount != null)
@@ -350,7 +336,19 @@
                 }
             }
 
-            await selectDateRange();
+            // Only apply date range if we're not loading from AppState
+            // If we loaded dates from AppState, they're already set and data is ready
+            if (!AppState.SelectedStartDate.HasValue || !AppState.SelectedEndDate.HasValue)
+            {
+                await selectDateRange(); // Only apply default dates
+            }
+            else
+            {
+                // We loaded from AppState, just apply the filtering without saving back to AppState
+                selectedDonations = SelectData(donations, dateRangeState.StartDate, dateRangeState.EndDate);
+                BuildPivot();
+            }
+
             isLoading = false;
         }
         catch (Exception ex)
@@ -361,27 +359,20 @@
         }
     }
 
-    private void ApplyPreset(DateRangePreset preset)
+    private void OnPresetChanged(object? args)
     {
-        var now = DateTime.Now;
-        switch (preset)
+        if (args is DateRangeManager.DateRangePreset preset)
         {
-            case DateRangePreset.ThisYear:
-                pendingStartDate = new DateTime(now.Year, 1, 1);
-                pendingEndDate = now;
-                break;
-            case DateRangePreset.Previous12Months:
-                var firstOfCurrentMonth = new DateTime(now.Year, now.Month, 1);
-                pendingStartDate = firstOfCurrentMonth.AddMonths(-12);
-                var lastDayPrevMonth = firstOfCurrentMonth.AddDays(-1);
-                pendingEndDate = new DateTime(lastDayPrevMonth.Year, lastDayPrevMonth.Month, lastDayPrevMonth.Day);
-                break;
-            case DateRangePreset.LastYear:
-                var lastYear = now.Year - 1;
-                pendingStartDate = new DateTime(lastYear, 1, 1);
-                pendingEndDate = new DateTime(lastYear, 12, 31);
-                break;
+            DateRangeManager.ApplyPreset(dateRangeState, preset);
+            StateHasChanged();
         }
+    }
+
+    private void OnDatePickerChanged()
+    {
+        // Check if user manually changed dates
+        DateRangeManager.ApplyPendingDates(dateRangeState);
+        StateHasChanged();
     }
 
     public async Task accountSelection(string accountName)
@@ -399,13 +390,14 @@
             StateHasChanged();
 
             selectedAccount = accountName;
-            AppState.DefaultAccount = accountName;
+            AppState.SelectedAccount = accountName; // Update AppState for cross-page navigation
 
             currentAccount = AppState.UserAccounts.FirstOrDefault(a => a.Fund == selectedAccount);
 
             if (currentAccount != null)
             {
                 await LoadDonationsForAccount(currentAccount);
+                await selectDateRange(); // Refresh the display with current date range
             }
 
             isLoading = false;
@@ -418,7 +410,6 @@
         }
     }
 
-    // KEEP ONLY THIS SINGLE METHOD
     private async Task LoadDonationsForAccount(Account account)
     {
         try
@@ -429,41 +420,16 @@
                 return;
             }
 
-            if (AppState.IsAccountDataLoaded(account.Fund))
+            var pageAccountData = await PageCache.GetAccountDataAsync(account.Fund);
+            
+            if (pageAccountData != null)
             {
-                var accountData = AppState.AccountDataCache[account.Fund];
-                ProcessDonationData(accountData.DonationData);
+                ProcessDonationData(pageAccountData.DonationData);
             }
             else
             {
-                await DataLoader.LoadAccountDataAsync(account);
-
-                if (AppState.IsAccountDataLoaded(account.Fund))
-                {
-                    var accountData = AppState.AccountDataCache[account.Fund];
-                    ProcessDonationData(accountData.DonationData);
-                }
-                else
-                {
-                    string sql = "SELECT * FROM DonationData WHERE Fund = @Fund";
-                    var donationData = await _data.LoadData<DonationsDataModel, dynamic>(
-                        sql,
-                        new { Fund = account.Fund },
-                        _config.GetConnectionString("default")
-                    );
-
-                    if (donationData != null)
-                    {
-                        ProcessDonationData(donationData);
-                    }
-                    else
-                    {
-                        errorMessage = "No donation data found for this account";
-                    }
-                }
+                errorMessage = "No donation data found for this account";
             }
-
-            // Do not call selectDateRange here; OnInitializedAsync or the Apply button will do it
         }
         catch (Exception ex)
         {
@@ -516,10 +482,11 @@
     {
         try
         {
-            startDate = pendingStartDate;
-            endDate = pendingEndDate;
+            // Apply pending dates and save to AppState using centralized manager
+            DateRangeManager.ApplyPendingDates(dateRangeState);
+            DateRangeManager.SaveDateRangeToAppState(AppState, dateRangeState);
 
-            selectedDonations = SelectData(donations, startDate, endDate);
+            selectedDonations = SelectData(donations, dateRangeState.StartDate, dateRangeState.EndDate);
             BuildPivot();
 
             if (currentView == ViewMode.GivingGrid && givingGridRef is not null)
@@ -545,8 +512,8 @@
         monthTotals.Clear();
         grandTotal = 0m;
 
-        var start = new DateTime(startDate.Year, startDate.Month, 1);
-        var end = new DateTime(endDate.Year, endDate.Month, 1);
+        var start = new DateTime(dateRangeState.StartDate.Year, dateRangeState.StartDate.Month, 1);
+        var end = new DateTime(dateRangeState.EndDate.Year, dateRangeState.EndDate.Month, 1);
 
         for (var cursor = start; cursor <= end; cursor = cursor.AddMonths(1))
         {
