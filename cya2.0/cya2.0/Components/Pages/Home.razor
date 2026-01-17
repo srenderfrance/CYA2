@@ -356,7 +356,11 @@ else
                     user.FindFirstValue(ClaimTypes.Email) ?? 
                     "User";
 
-                await DataLoader.InitializeUserDataAsync(user);
+                // Only initialize if not already loaded (first time login)
+                if (!AppState.UserAccountsLoaded)
+                {
+                    await DataLoader.InitializeUserDataAsync(user);
+                }
                 
                 userAccounts = AppState.UserAccounts;
                 
@@ -387,6 +391,26 @@ else
         try
         {
             hasAccountData = false;
+            
+            // Check if data is already in AppState cache first
+            if (AppState.IsAccountDataLoaded(accountFund))
+            {
+                var cachedData = AppState.AccountDataCache[accountFund];
+                accountingData = cachedData.AccountingData;
+                donations = cachedData.DonationData.Select(d => new DonationData
+                {
+                    Id = d.Id,
+                    Date = d.Date,
+                    Amount = (decimal)d.Amount,
+                    Fund = d.Fund
+                }).ToList();
+
+                hasAccountData = true;
+                CalculateStatisticsFromCache();
+                return;
+            }
+            
+            // Fallback to PageCache if not in AppState
             var pageAccountData = await PageCache.GetAccountDataAsync(accountFund);
             
             if (pageAccountData != null)
@@ -401,7 +425,7 @@ else
                 }).ToList();
 
                 hasAccountData = true;
-                await CalculateStatistics();
+                CalculateStatisticsFromCache();
             }
         }
         catch (Exception ex)
@@ -427,17 +451,22 @@ else
         StateHasChanged();
     }
 
-    private async Task CalculateStatistics()
+    private void CalculateStatisticsFromCache()
     {
         try
         {
             DateTime now = DateTime.Now;
             
-            decimal currentBalance = await CalculateBalanceAsOfDate(now, 0);
+            // Get current balance from Account model in AppState (persisted balance)
+            var account = userAccounts.FirstOrDefault(a => a.Fund == selectedAccount);
+            decimal currentBalance = account?.Balance ?? 0m;
+            
+            // Calculate other balances using cached data instead of database calls
             DateTime priorMonthEnd = new DateTime(now.Year, now.Month, 1).AddDays(-1);
-            decimal priorMonthBalance = await CalculateBalanceAsOfDate(priorMonthEnd, 0);
+            decimal priorMonthBalance = CalculateBalanceFromCachedData(priorMonthEnd);
+            
             DateTime priorYearEnd = new DateTime(now.Year - 1, 12, 31);
-            decimal priorYearBalance = await CalculateBalanceAsOfDate(priorYearEnd, 0);
+            decimal priorYearBalance = CalculateBalanceFromCachedData(priorYearEnd);
 
             CalculateCurrentMonthSummary(now, currentBalance);
             CalculatePriorMonthSummary(now, priorMonthBalance);
@@ -450,28 +479,32 @@ else
         }
     }
 
-    private async Task<decimal> CalculateBalanceAsOfDate(DateTime asOfDate, decimal originalStartingBalance)
+    private decimal CalculateBalanceFromCachedData(DateTime asOfDate)
     {
-        if (selectedAccount == null) return 0m;
-        
-        var account = userAccounts.FirstOrDefault(a => a.Fund == selectedAccount);
-        if (account == null) return 0m;
-
         try
         {
-            var result = await BalanceCalculator.CalculateBalanceFromDatabaseAsync(
-                account, 
-                _data, 
-                _config.GetConnectionString("default") ?? string.Empty, 
-                null, 
-                asOfDate
-            );
+            // Get the account's persisted balance
+            var account = userAccounts.FirstOrDefault(a => a.Fund == selectedAccount);
+            if (account == null) return 0m;
             
-            return result.TotalBalance;
+            // Calculate balance by taking all transactions up to the date
+            // This is a simplified calculation using cached data
+            var transactionsUpToDate = accountingData
+                .Where(t => t.Date <= asOfDate)
+                .OrderBy(t => t.Date)
+                .ToList();
+            
+            decimal calculatedBalance = 0m;
+            foreach (var transaction in transactionsUpToDate)
+            {
+                calculatedBalance += (decimal)transaction.Amount;
+            }
+            
+            return calculatedBalance;
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Error calculating balance from database: {ex.Message}");
+            Console.WriteLine($"Error calculating balance from cached data: {ex.Message}");
             return 0m;
         }
     }

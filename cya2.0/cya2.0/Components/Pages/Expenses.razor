@@ -122,7 +122,7 @@
         <!-- Right side toggle button -->
         <RadzenToggleButton Value="useMinimalView"
                             ValueChanged="OnViewModeChange"
-                            Text="@(useMinimalView ? "Show More Details" : "Show Less Details")"
+                            Text="@(useMinimalView ? Localizer["ShowMoreDetail"] : Localizer["ShowLessDetail"])"
                             ButtonStyle="ButtonStyle.Primary"
                             ToggleButtonStyle="ButtonStyle.Primary"
                             Style="background-color: #0a3b6b; border-color: #0a3b6b; color: white; max-width: 200px;" />
@@ -133,15 +133,15 @@
         <!-- Summary cards (left side) -->
         <RadzenCard Style="min-width: 250px; margin-top: 8px; background-color: #f8f9fa;">
             <RadzenStack Orientation="Orientation.Vertical" Gap="1rem">
-                <RadzenText TextStyle="TextStyle.Subtitle1" Style="font-weight: bold;">Summary of Transactions</RadzenText>
+                <RadzenText TextStyle="TextStyle.Subtitle1" Style="font-weight: bold;">@Localizer["SummaryOfTransactions"]</RadzenText>
                 <RadzenText TextStyle="TextStyle.Body2" Style="color: #666;">@GetDateRangeDisplay()</RadzenText>
                 <RadzenStack Orientation="Orientation.Vertical" Gap="0.25rem">
-                    <RadzenText TextStyle="TextStyle.Subtitle1" Style="font-weight: bold;">Total Transfers</RadzenText>
+                    <RadzenText TextStyle="TextStyle.Subtitle1" Style="font-weight: bold;">Total @Localizer["Transfers"]</RadzenText>
                     <RadzenText TextStyle="TextStyle.Subtitle1" Style="font-weight: bold; color: black;">@transferTotal.ToString("C2")</RadzenText>
                 </RadzenStack>
                 
                 <RadzenStack Orientation="Orientation.Vertical" Gap="0.25rem">
-                    <RadzenText TextStyle="TextStyle.Subtitle1" Style="font-weight: bold;">Total Expenses</RadzenText>
+                    <RadzenText TextStyle="TextStyle.Subtitle1" Style="font-weight: bold;">@Localizer["TotalExpenses"]</RadzenText>
                     <RadzenText TextStyle="TextStyle.Subtitle1" Style="font-weight: bold; color: black;">@expenseTotal.ToString("C2")</RadzenText>
                 </RadzenStack>
             </RadzenStack>

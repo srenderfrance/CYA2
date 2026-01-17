@@ -456,4 +456,34 @@
   <data name="RefNum" xml:space="preserve">
     <value>Ref Num</value>
   </data>
+  <data name="SummaryOfTransactions" xml:space="preserve">
+    <value>Summary of Transactions</value>
+  </data>
+  <data name="TotalTransfers" xml:space="preserve">
+    <value>Total Transfers</value>
+  </data>
+  <data name="TotalExpenses" xml:space="preserve">
+    <value>Total Expenses</value>
+  </data>
+  <data name="Fund" xml:space="preserve">
+    <value>Fund</value>
+  </data>
+  <data name="ShowMoreDetail" xml:space="preserve">
+    <value>Show More Detail</value>
+  </data>
+  <data name="Show Less Detail" xml:space="preserve">
+    <value>Sow Less Detail</value>
+  </data>
+  <data name="Logout" xml:space="preserve">
+    <value>Logout</value>
+  </data>
+  <data name="User" xml:space="preserve">
+    <value>User</value>
+  </data>
+  <data name="SelectUser" xml:space="preserve">
+    <value>Select User</value>
+  </data>
+  <data name="NoUserSelected" xml:space="preserve">
+    <value>No user has been selected.</value>
+  </data>
 </root>

@@ -84,9 +84,10 @@
                                    Placeholder="@Localizer["SelectUser"]"
                                    Style="width: 100%;" />
                               
-                               <RadzenFormField Text="@Localizer["NewName"]" Variant="Variant.Outlined">
-                        <RadzenTextBox @bind-Value="@newName" Placeholder="@Localizer["EnterUpdatedName"]" />
-                    </RadzenFormField>
+                               <RadzenStack Orientation="Orientation.Vertical" Gap="1rem">
+                    <RadzenText TextStyle="TextStyle.Subtitle2" Style="font-weight: bold;">@Localizer["NewName"]</RadzenText>
+                    <RadzenTextBox @bind-Value="@newName" Placeholder="@Localizer["EnterUpdatedName"]" />
+                </RadzenStack>
                 </RadzenStack>
                 
                 <!-- Email -->
@@ -98,9 +99,10 @@
                         </RadzenText>
                     </div>
                     
-                    <RadzenFormField Text="@Localizer["NewEmail"]" Variant="Variant.Outlined">
+                    <RadzenStack Orientation="Orientation.Vertical" Gap="1rem">
+                        <RadzenText TextStyle="TextStyle.Subtitle2" Style="font-weight: bold;">@Localizer["NewEmail"]</RadzenText>
                         <RadzenTextBox @bind-Value="@newEmail" Placeholder="@Localizer["EnterUpdatedEmail"]" />
-                    </RadzenFormField>
+                    </RadzenStack>
                 </RadzenStack>
             </RadzenStack>
             
@@ -113,13 +115,14 @@
                     </RadzenText>
                 </div>
                 
-                <RadzenFormField Text="@Localizer["NewAuthLevel"]" Variant="Variant.Outlined">
+                <RadzenStack Orientation="Orientation.Vertical" Gap="1rem">
+                    <RadzenText TextStyle="TextStyle.Subtitle2" Style="font-weight: bold;">@Localizer["NewAuthLevel"]</RadzenText>
                     <RadzenDropDown TValue="string"
                                    Data="@authLevels"
                                    @bind-Value="@newAuthLevel"
                                    Placeholder="@Localizer["SelectNewAuthLevel"]"
                                    Style="width: 100%;" />
-                </RadzenFormField>
+                </RadzenStack>
             </RadzenStack>
             
             <!-- Account Management -->
@@ -315,8 +318,8 @@
 
             <!-- Fund Number -->
             <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="2rem">
-                <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="0.5rem" Style="font-weight: bold; width: 150px;">
-                    <RadzenText TextStyle="TextStyle.Subtitle2">@Localizer["AccountNumber"]</RadzenText>
+                <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="0.5rem" Style="width: 150px;">
+                    <RadzenText TextStyle="TextStyle.Subtitle2" Style="font-weight: bold;">@Localizer["AccountNumber"]</RadzenText>
                     <i @ref="accountNumberIcon" class="bi bi-exclamation-circle" style="cursor: help; color: #dc3545;" 
                        @onmouseenter="@(() => ShowAccountNumberTooltip(accountNumberIcon))"
                        @onmouseleave="@(() => tooltipService.Close())"></i>
@@ -328,8 +331,8 @@
 
             <!-- Fund Name -->
             <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="2rem">
-                <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="0.5rem" Style="font-weight: bold; width: 150px;">
-                    <RadzenText TextStyle="TextStyle.Subtitle2">@Localizer["Fund"]</RadzenText>
+                <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="0.5rem" Style="width: 150px;">
+                    <RadzenText TextStyle="TextStyle.Subtitle2" Style="font-weight: bold;">@Localizer["Fund"]</RadzenText>
                     <i @ref="fundIcon" class="bi bi-exclamation-circle" style="cursor: help; color: #dc3545;" 
                        @onmouseenter="@(() => ShowFundTooltip(fundIcon))"
                        @onmouseleave="@(() => tooltipService.Close())"></i>
@@ -341,8 +344,8 @@
 
             <!-- Account Reference -->
             <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="2rem">
-                <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="0.5rem" Style="font-weight: bold; width: 150px;">
-                    <RadzenText TextStyle="TextStyle.Subtitle2">@Localizer["Class"]</RadzenText>
+                <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="0.5rem" Style="width: 150px;">
+                    <RadzenText TextStyle="TextStyle.Subtitle2" Style="font-weight: bold;">@Localizer["Class"]</RadzenText>
                     <i @ref="classIcon" class="bi bi-exclamation-circle" style="cursor: help; color: #dc3545;" 
                        @onmouseenter="@(() => ShowClassTooltip(classIcon))"
                        @onmouseleave="@(() => tooltipService.Close())"></i>
@@ -371,9 +374,9 @@
             <!-- Other Funds -->
             <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="2rem">
                 <RadzenText TextStyle="TextStyle.Subtitle2" Style="font-weight: bold; width: 150px;">@Localizer["OtherFunds"]</RadzenText>
-                <RadzenFormField Variant="Variant.Outlined" Style="flex: 1;">
+                <div style="width: 40px;">
                     <RadzenCheckBox @bind-Value="@otherFunds" />
-                </RadzenFormField>
+                </div>
             </RadzenStack>
         </RadzenStack>
         
@@ -585,8 +588,8 @@
         }
     }
 
-    private const string AddNewLabel = "Add new User";
-    private const string AddNewFundLabel = "Add new Fund";
+    private string AddNewLabel => Localizer["AddNewUser"];
+    private string AddNewFundLabel => Localizer["AddNewFund"];
     private string SelectAccountLabel => Localizer["SelectAccount"];
     private bool IsAddNewSelected => string.Equals(staffMember, AddNewLabel, StringComparison.Ordinal);
     private bool IsAddNewFundSelected => string.Equals(selectedFund, AddNewFundLabel, StringComparison.Ordinal);
