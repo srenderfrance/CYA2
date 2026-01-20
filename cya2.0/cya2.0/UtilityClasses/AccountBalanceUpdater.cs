@@ -23,7 +23,7 @@ namespace UtilityClasses
         {
             var conn = _config.GetConnectionString("default");
 
-            const string accountsSql = "SELECT AccountId, Fund, AccountingClass, AccountNumber, CreatedAt, Balance FROM Accounts ORDER BY Fund";
+            const string accountsSql = "SELECT AccountId, Fund, AccountingClass, AccountNumber, CreatedAt, Overhead FROM Accounts ORDER BY Fund";
             var accounts = await _data.LoadData<Account, dynamic>(accountsSql, new { }, conn) ?? new List<Account>();
             if (accounts.Count == 0)
             {
@@ -39,7 +39,7 @@ namespace UtilityClasses
                 {
                     if (string.IsNullOrWhiteSpace(account.AccountingClass))
                     {
-                        Console.WriteLine($"BalanceUpdater: empty class for '{account.Fund}', setting balance=0.");
+                        Console.WriteLine($"BalanceUpdater: empty class for '{account.Fund}', setting overhead=0.");
                         await PersistBalanceAsync(account.AccountId, 0m, conn);
                         updated++;
                         continue;
@@ -86,14 +86,14 @@ namespace UtilityClasses
         public async Task<List<Account>> GetAllAccountBalancesAsync()
         {
             var conn = _config.GetConnectionString("default");
-            const string sql = "SELECT AccountId, Fund, AccountingClass, AccountNumber, CreatedAt, Balance FROM Accounts ORDER BY Fund";
+            const string sql = "SELECT AccountId, Fund, AccountingClass, AccountNumber, CreatedAt, Overhead FROM Accounts ORDER BY Fund";
             var accounts = await _data.LoadData<Account, dynamic>(sql, new { }, conn);
             return accounts?.ToList() ?? new List<Account>();
         }
 
         private async Task<int> PersistBalanceAsync(int accountId, decimal balance, string conn)
         {
-            const string updateSql = "UPDATE Accounts SET Balance = @Balance WHERE AccountId = @AccountId";
+            const string updateSql = "UPDATE Accounts SET Overhead = @Balance WHERE AccountId = @AccountId";
             return await _data.SaveData(updateSql, new { Balance = balance, AccountId = accountId }, conn);
         }
 

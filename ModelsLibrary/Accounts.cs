@@ -24,7 +24,7 @@ namespace ModelsLibrary
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
         // New persisted balance column (currency stored as decimal)
-        public decimal Balance { get; set; }
+        public decimal Overhead { get; set; }
         
         // Additional properties
         public string SoftCredit { get; set; } = string.Empty;
@@ -36,12 +36,13 @@ namespace ModelsLibrary
 
         // Constructor with required members
         [SetsRequiredMembers]
-        public Account(string fund, string accountingClass, string accountNumber)
+        public Account(string fund, string accountingClass, string accountNumber, decimal overhead)
         {
             Fund = fund;
             AccountingClass = accountingClass;
             AccountNumber = accountNumber;
             CreatedAt = DateTime.Now;
+            Overhead = overhead;
         }
     }
 }

@@ -486,4 +486,19 @@
   <data name="NoUserSelected" xml:space="preserve">
     <value>No se ha seleccionado ningún usuario.</value>
   </data>
+  <data name="Grid" xml:space="preserve">
+    <value>Red</value>
+  </data>
+  <data name="List" xml:space="preserve">
+    <value>Lista</value>
+  </data>
+  <data name="Graph" xml:space="preserve">
+    <value>Gráfico</value>
+  </data>
+  <data name="Error" xml:space="preserve">
+    <value>Error</value>
+  </data>
+  <data name="PleaseSelectAnAccount" xml:space="preserve">
+    <value>Por favor seleccione una cuenta.</value>
+  </data>
 </root>

@@ -93,9 +93,9 @@
                 <!-- Email -->
                 <RadzenStack Orientation="Orientation.Vertical" Gap="1rem">
                     <RadzenText TextStyle="TextStyle.Subtitle2" Style="font-weight: bold;">@Localizer["CurrentEmail"]</RadzenText>
-                    <div class="rz-p-2 rz-border-radius-1 rz-border-1" style="height: 38px; display: flex; align-items: center;">
-                        <RadzenText TextStyle="TextStyle.Subtitle2">
-                            @(string.IsNullOrEmpty(selectedStaffEmail) ? " " : selectedStaffEmail)
+                    <div class="rz-border-radius-1 rz-border-1" style="height: 38px; display: grid; align-items: center; justify-items: start; background-color: #f0f0f0; padding: 0 0.5rem;">
+                        <RadzenText TextStyle="TextStyle.Body1" Style="margin:0;">
+                            @(string.IsNullOrEmpty(selectedStaffEmail) ? "No user has been selected." : selectedStaffEmail)
                         </RadzenText>
                     </div>
                     
@@ -109,9 +109,9 @@
             <!-- Auth Level -->
             <RadzenStack Orientation="Orientation.Vertical" Gap="1rem" Style="width: 22.5%;">
                 <RadzenText TextStyle="TextStyle.Subtitle2" Style="font-weight: bold;">@Localizer["AuthLevel"]</RadzenText>
-                <div class="rz-p-2 rz-border-radius-1 rz-border-1" style="height: 38px; display: flex; align-items: center;">
-                    <RadzenText TextStyle="TextStyle.Subtitle2">
-                        @(string.IsNullOrEmpty(selectedStaffAuthLevel) ? " " : selectedStaffAuthLevel)
+                <div class="rz-border-radius-1 rz-border-1" style="height: 38px; display: grid; align-items: center; justify-items: start; background-color: #f0f0f0; padding: 0 0.5rem;">
+                    <RadzenText TextStyle="TextStyle.Body1" Style="margin:0;">
+                        @(string.IsNullOrEmpty(selectedStaffAuthLevel) ? "No user has been selected." : selectedStaffAuthLevel)
                     </RadzenText>
                 </div>
                 
@@ -130,8 +130,6 @@
                 <RadzenText TextStyle="TextStyle.Subtitle2" Style="font-weight: bold;">@Localizer["FundAccess"]</RadzenText>
                 
                 <RadzenStack Orientation="Orientation.Vertical" Gap="0.5rem">
-                    <RadzenText TextStyle="TextStyle.Subtitle2">@Localizer["GrantFundAccess"]</RadzenText>
-
                     <!-- Single, consistent dropdown for account selection -->
                     <RadzenDropDown TValue="int"
                                     Data="@accountsOptions"
@@ -139,10 +137,17 @@
                                     ValueProperty="@nameof(Account.AccountId)"
                                     @bind-Value="accountToAddId"
                                     Change="@(args => accountToAddId = (args is int v) ? v : 0)"
-                                    Placeholder="@Localizer["SelectFund"]"
+                                    Placeholder="@Localizer["GrantFundAccess"]"
                                     Style="width: 100%;" >
                         <Template Context="account">
-                            @GetDisplayTextFromAccountingClass(account.AccountingClass)
+                            @if (account.AccountId == 0)
+                            {
+                                <RadzenText TextStyle="TextStyle.Body1">@Localizer["GrantFundAccess"]</RadzenText>
+                            }
+                            else
+                            {
+                                <RadzenText TextStyle="TextStyle.Body1">@FundDisplayHelper.GetDisplay(account.Fund)</RadzenText>
+                            }
                         </Template>
                     </RadzenDropDown>
                     
@@ -155,22 +160,23 @@
                 </RadzenStack>
                 
                 <RadzenStack Orientation="Orientation.Vertical" Gap="0.5rem" Class="rz-mt-3">
-                    <RadzenText TextStyle="TextStyle.Body2">@Localizer["RemoveFundAccess"]</RadzenText>
+                    <!-- Removed label; show as default text in dropdown -->
                     <RadzenDropDown TValue="int"
                                     Data="@userAccounts"
                                     TextProperty="@nameof(Account.Fund)"
                                     ValueProperty="@nameof(Account.AccountId)"
                                     @bind-Value="selectedLinkedAccountId"
                                     Change="@(args => selectedLinkedAccountId = (args is int v) ? v : 0)"
+                                    Placeholder="@Localizer["RemoveFundAccess"]"
                                     Style="width: 100%;" >
                         <Template Context="account">
                             @if (account.AccountId == 0)
                             {
-                                @account.Fund
+                                <RadzenText TextStyle="TextStyle.Body1">@Localizer["RemoveFundAccess"]</RadzenText>
                             }
                             else
                             {
-                                @GetDisplayTextFromAccountingClass(account.AccountingClass)
+                                <RadzenText TextStyle="TextStyle.Body1">@FundDisplayHelper.GetDisplay(account.Fund)</RadzenText>
                             }
                         </Template>
                     </RadzenDropDown>
@@ -187,14 +193,14 @@
             <!-- User Funds Access -->
             <RadzenStack Orientation="Orientation.Vertical" Gap="1rem" Style="width: 22.5%;">
                 <RadzenText TextStyle="TextStyle.Subtitle2" Style="font-weight: bold;">@Localizer["CurrentFundAccess"]</RadzenText>
-                <div style="border: 1px solid #ccc; border-radius: 4px; padding: 0.75rem; max-height: 200px; overflow-y: auto; background-color: #f9f9f9; min-height: 120px;">
+                <div style="border: 1px solid #ccc; border-radius: 4px; padding: 0.75rem; max-height: 200px; overflow-y: auto; background-color: #f0f0f0; min-height: 120px;">
                     @if (IsAddNewSelected)
                     {
-                        <RadzenText TextStyle="TextStyle.Body2" Style="color: #666;">Select a user to view fund access</RadzenText>
+                        <RadzenText TextStyle="TextStyle.Body1">No user has been selected.</RadzenText>
                     }
                     else if (selectedStaffAuthLevel == "Admin")
                     {
-                        <RadzenText TextStyle="TextStyle.Body2" Style="color: #28a745; font-weight: 500;">User has admin privileges.</RadzenText>
+                        <RadzenText TextStyle="TextStyle.Body1" Style="font-weight: 500;">User has admin privileges.</RadzenText>
                     }
                     else if (userAccounts.Any(a => a.AccountId != 0))
                     {
@@ -202,14 +208,14 @@
                             @foreach (var account in userAccounts.Where(a => a.AccountId != 0))
                             {
                                 <li style="padding: 0.25rem 0; border-bottom: 1px solid #eee;">
-                                    <RadzenText TextStyle="TextStyle.Body2">@GetDisplayTextFromAccountingClass(account.AccountingClass)</RadzenText>
+                                    <RadzenText TextStyle="TextStyle.Body1">@FundDisplayHelper.GetDisplay(account.Fund)</RadzenText>
                                 </li>
                             }
                         </ul>
                     }
                     else
                     {
-                        <RadzenText TextStyle="TextStyle.Body2" Style="color: #666;">None</RadzenText>
+                        <RadzenText TextStyle="TextStyle.Body1" Style="color: #666;">None</RadzenText>
                     }
                 </div>
             </RadzenStack>
@@ -293,7 +299,7 @@
         </div>
     </RadzenCard>
     
-    <!-- Extra spacing added above Manage Funds -->
+    <!-- Extra spacing above Manage Funds -->
     <div style="height: 2rem;"></div>
     
     <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" JustifyContent="JustifyContent.SpaceBetween" Gap="1rem" Class="rz-mt-4">
@@ -301,84 +307,143 @@
     </RadzenStack>
     
     <RadzenCard Style="overflow: visible;">
+        <!-- Toggle in upper right of Fund Management input area -->
+        <div style="display:flex; justify-content:flex-end;">
+            <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="0.5rem">
+                <RadzenText TextStyle="TextStyle.Subtitle2">@(createSubFund ? Localizer["CreateSubFund"] : Localizer["CreatePrincipleFund"])</RadzenText>
+                <RadzenSwitch @bind-Value="createSubFund" />
+            </RadzenStack>
+        </div>
+        
         <!-- Single column layout with labels on left, inputs on right -->
-        <RadzenStack Orientation="Orientation.Vertical" Gap="1.5rem" Style="max-width: 600px;">
-            <!-- Fund Selection -->
-            <RadzenStack Orientation="Orientation.Vertical" Gap="1rem">
-                <RadzenText TextStyle="TextStyle.Subtitle2" Style="font-weight: bold;">@Localizer["Fund"]</RadzenText>
-                <RadzenDropDown TValue="string"
-                               Data="@fundsWithAddOption"
-                               TextProperty="DisplayText"
-                               ValueProperty="DisplayText"
-                               @bind-Value="selectedFund"
-                               Change="@(async args => await fundSelection(args?.ToString() ?? string.Empty))"
-                               Placeholder="@Localizer["SelectFund"]"
-                               Style="width: 100%;"/>
-            </RadzenStack>
-
-            <!-- Fund Number -->
-            <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="2rem">
-                <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="0.5rem" Style="width: 150px;">
-                    <RadzenText TextStyle="TextStyle.Subtitle2" Style="font-weight: bold;">@Localizer["AccountNumber"]</RadzenText>
-                    <i @ref="accountNumberIcon" class="bi bi-exclamation-circle" style="cursor: help; color: #dc3545;" 
-                       @onmouseenter="@(() => ShowAccountNumberTooltip(accountNumberIcon))"
-                       @onmouseleave="@(() => tooltipService.Close())"></i>
-                </RadzenStack>
-                <RadzenFormField Variant="Variant.Outlined" Style="flex: 1;">
-                    <RadzenTextBox @bind-Value="@accountNumber" Placeholder="@Localizer["AccountNumber"]" />
-                </RadzenFormField>
-            </RadzenStack>
-
-            <!-- Fund Name -->
-            <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="2rem">
-                <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="0.5rem" Style="width: 150px;">
+        @if (!createSubFund)
+        {
+            <RadzenStack Orientation="Orientation.Vertical" Gap="1.5rem" Style="max-width: 600px;">
+                <!-- Fund Selection -->
+                <RadzenStack Orientation="Orientation.Vertical" Gap="1rem">
                     <RadzenText TextStyle="TextStyle.Subtitle2" Style="font-weight: bold;">@Localizer["Fund"]</RadzenText>
-                    <i @ref="fundIcon" class="bi bi-exclamation-circle" style="cursor: help; color: #dc3545;" 
-                       @onmouseenter="@(() => ShowFundTooltip(fundIcon))"
-                       @onmouseleave="@(() => tooltipService.Close())"></i>
+                    <RadzenDropDown TValue="string"
+                                   Data="@fundsWithAddOption"
+                                   TextProperty="DisplayText"
+                                   ValueProperty="DisplayText"
+                                   @bind-Value="selectedFund"
+                                   Change="@(async args => await fundSelection(args?.ToString() ?? string.Empty))"
+                                   Placeholder="@Localizer["SelectFund"]"
+                                   Style="width: 100%;"/>
                 </RadzenStack>
-                <RadzenFormField Variant="Variant.Outlined" Style="flex: 1;">
-                    <RadzenTextBox @bind-Value="@newFundName" Placeholder="@Localizer["Fund"]" />
-                </RadzenFormField>
-            </RadzenStack>
 
-            <!-- Account Reference -->
-            <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="2rem">
-                <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="0.5rem" Style="width: 150px;">
-                    <RadzenText TextStyle="TextStyle.Subtitle2" Style="font-weight: bold;">@Localizer["Class"]</RadzenText>
-                    <i @ref="classIcon" class="bi bi-exclamation-circle" style="cursor: help; color: #dc3545;" 
-                       @onmouseenter="@(() => ShowClassTooltip(classIcon))"
-                       @onmouseleave="@(() => tooltipService.Close())"></i>
+                <!-- Fund Number -->
+                <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="2rem">
+                    <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="0.5rem" Style="width: 150px;">
+                        <RadzenText TextStyle="TextStyle.Subtitle2" Style="font-weight: bold;">@Localizer["AccountNumber"]</RadzenText>
+                        <i @ref="accountNumberIcon" class="bi bi-exclamation-circle" style="cursor: help; color: #dc3545;" 
+                           @onmouseenter="@(() => ShowAccountNumberTooltip(accountNumberIcon))"
+                           @onmouseleave="@(() => tooltipService.Close())"></i>
+                    </RadzenStack>
+                    <RadzenFormField Variant="Variant.Outlined" Style="flex: 1;">
+                        <RadzenTextBox @bind-Value="@accountNumber" Placeholder="@Localizer["AccountNumber"]" />
+                    </RadzenFormField>
                 </RadzenStack>
-                <RadzenFormField Variant="Variant.Outlined" Style="flex: 1;">
-                    <RadzenTextBox @bind-Value="@fundClass" Placeholder="@Localizer["Class"]" />
-                </RadzenFormField>
-            </RadzenStack>
 
-            <!-- Soft Credit -->
-            <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="2rem">
-                <RadzenText TextStyle="TextStyle.Subtitle2" Style="font-weight: bold; width: 150px;">@Localizer["SoftCredit"]</RadzenText>
-                <RadzenFormField Variant="Variant.Outlined" Style="flex: 1;">
-                    <RadzenTextBox @bind-Value="@softCredit" Placeholder="@Localizer["SoftCredit"]" />
-                </RadzenFormField>
-            </RadzenStack>
+                <!-- Fund Name -->
+                <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="2rem">
+                    <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="0.5rem" Style="width: 150px;">
+                        <RadzenText TextStyle="TextStyle.Subtitle2" Style="font-weight: bold;">@Localizer["Fund"]</RadzenText>
+                        <i @ref="fundIcon" class="bi bi-exclamation-circle" style="cursor: help; color: #dc3545;" 
+                           @onmouseenter="@(() => ShowFundTooltip(fundIcon))"
+                           @onmouseleave="@(() => tooltipService.Close())"></i>
+                    </RadzenStack>
+                    <RadzenFormField Variant="Variant.Outlined" Style="flex: 1;">
+                        <RadzenTextBox @bind-Value="@newFundName" Placeholder="@Localizer["Fund"]" />
+                    </RadzenFormField>
+                </RadzenStack>
 
-            <!-- Balance Adjustment -->
-            <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="2rem">
-                <RadzenText TextStyle="TextStyle.Subtitle2" Style="font-weight: bold; width: 150px;">@Localizer["BalanceAdjustment"]</RadzenText>
-                <RadzenFormField Variant="Variant.Outlined" Style="flex: 1;">
-                    <RadzenNumeric TValue="decimal?" @bind-Value="@balanceAdjustment" Placeholder="0.00" Format="C" />
-                </RadzenFormField>
-            </RadzenStack>
+                <!-- Account Reference -->
+                <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="2rem">
+                    <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="0.5rem" Style="width: 150px;">
+                        <RadzenText TextStyle="TextStyle.Subtitle2" Style="font-weight: bold;">@Localizer["Class"]</RadzenText>
+                        <i @ref="classIcon" class="bi bi-exclamation-circle" style="cursor: help; color: #dc3545;" 
+                           @onmouseenter="@(() => ShowClassTooltip(classIcon))"
+                           @onmouseleave="@(() => tooltipService.Close())"></i>
+                    </RadzenStack>
+                    <RadzenFormField Variant="Variant.Outlined" Style="flex: 1;">
+                        <RadzenTextBox @bind-Value="@fundClass" Placeholder="@Localizer["Class"]" />
+                    </RadzenFormField>
+                </RadzenStack>
 
-            <!-- Other Funds -->
-            <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="2rem">
-                <RadzenText TextStyle="TextStyle.Subtitle2" Style="font-weight: bold; width: 150px;">@Localizer["OtherFunds"]</RadzenText>
-                <div style="width: 40px;">
-                    <RadzenCheckBox @bind-Value="@otherFunds" />
-                </div>
+                <!-- Overhead -->
+                <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="2rem">
+                    <RadzenText TextStyle="TextStyle.Subtitle2" Style="font-weight: bold; width: 150px;">@Localizer["Overhead"]</RadzenText>
+                    <RadzenFormField Variant="Variant.Outlined" Style="flex: 1;">
+                        <RadzenNumeric TValue="decimal?" @bind-Value="overheadValue" Placeholder="0%" Format="P2" />
+                    </RadzenFormField>
+                </RadzenStack>
+
+                <!-- Soft Credit -->
+                <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="2rem">
+                    <RadzenText TextStyle="TextStyle.Subtitle2" Style="font-weight: bold; width: 150px;">@Localizer["SoftCredit"]</RadzenText>
+                    <RadzenFormField Variant="Variant.Outlined" Style="flex: 1;">
+                        <RadzenTextBox @bind-Value="@softCredit" Placeholder="@Localizer["SoftCredit"]" />
+                    </RadzenFormField>
+                </RadzenStack>
+
+                <!-- Balance Adjustment -->
+                <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="2rem">
+                    <RadzenText TextStyle="TextStyle.Subtitle2" Style="font-weight: bold; width: 150px;">@Localizer["BalanceAdjustment"]</RadzenText>
+                    <RadzenFormField Variant="Variant.Outlined" Style="flex: 1;">
+                        <RadzenNumeric TValue="decimal?" @bind-Value="@balanceAdjustment" Placeholder="0.00" Format="C" />
+                    </RadzenFormField>
+                </RadzenStack>
+
+                <!-- Other Funds -->
+                <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="2rem">
+                    <RadzenText TextStyle="TextStyle.Subtitle2" Style="font-weight: bold; width: 150px;">@Localizer["OtherFunds"]</RadzenText>
+                    <div style="width: 40px;">
+                        <RadzenCheckBox @bind-Value="@otherFunds" />
+                    </div>
+                </RadzenStack>
             </RadzenStack>
-        </RadzenStack>
+        }
+        else
+        {
+            <!-- Sub Fund creation UI -->
+            <RadzenStack Orientation="Orientation.Vertical" Gap="1.5rem" Style="max-width: 600px;">
+                <!-- Principle Fund Selection -->
+                <RadzenStack Orientation="Orientation.Vertical" Gap="1rem">
+                    <RadzenText TextStyle="TextStyle.Subtitle2" Style="font-weight: bold;">@Localizer["PrincipleFund"]</RadzenText>
+                    <RadzenDropDown TValue="int"
+                                    Data="@accountsOptions"
+                                    TextProperty="@nameof(Account.Fund)"
+                                    ValueProperty="@nameof(Account.AccountId)"
+                                    @bind-Value="selectedPrincipleAccountId"
+                                    Placeholder="@Localizer["SelectFund"]"
+                                    Style="width: 100%;" />
+                </RadzenStack>
+
+                <RadzenStack Orientation="Orientation.Vertical" Gap="1rem">
+                    <RadzenText TextStyle="TextStyle.Subtitle2" Style="font-weight: bold;">@Localizer["SubFundDetails"]</RadzenText>
+                </RadzenStack>
+
+                <!-- Sub Fund Name -->
+                <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="2rem">
+                    <RadzenText TextStyle="TextStyle.Subtitle2" Style="font-weight: bold; width: 150px;">@Localizer["Fund"]</RadzenText>
+                    <RadzenFormField Variant="Variant.Outlined" Style="flex: 1;">
+                        <RadzenTextBox @bind-Value="subFundName" Placeholder="@Localizer["Fund"]" />
+                    </RadzenFormField>
+                </RadzenStack>
+
+                <!-- Type (Kind) -->
+                <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="2rem">
+                    <RadzenText TextStyle="TextStyle.Subtitle2" Style="font-weight: bold; width: 150px;">@Localizer["Type"]</RadzenText>
+                    <RadzenFormField Variant="Variant.Outlined" Style="flex: 1;">
+                        <RadzenDropDown TValue="string"
+                                       Data="@subFundKinds"
+                                       @bind-Value="subFundKind"
+                                       Style="width: 100%;" />
+                    </RadzenFormField>
+                </RadzenStack>
+            </RadzenStack>
+        }
         
         <!-- Fund update/create error/success messages -->
         @if (!string.IsNullOrEmpty(fundUpdateError))
@@ -651,7 +716,7 @@
             .Where(f => f.AccountId != 0)  // Exclude any zero IDs from allFunds
             .Select(f => new FundDisplayItem { 
                 Account = f,
-                DisplayText = GetDisplayTextFromAccountingClass(f.AccountingClass)
+                DisplayText = FundDisplayHelper.GetDisplay(f.AccountingClass)
             }));
     
     private Account? selectedFundAccount; // The currently selected fund account for display
@@ -669,6 +734,14 @@
     private string fundUpdateSuccess = string.Empty;
     private bool showDeleteFundConfirmation = false;
     private string fundToDelete = string.Empty;
+
+    // New UI-only state for fund creation toggle and subfund inputs
+    private bool createSubFund = false;
+    private decimal? overheadValue = 0.00m;
+    private int selectedPrincipleAccountId = 0;
+    private string subFundName = string.Empty;
+    private string subFundKind = "Merged";
+    private readonly List<string> subFundKinds = new() { "Merged", "Separate" };
 
     protected override async Task OnInitializedAsync()
     {
@@ -1394,6 +1467,36 @@
         }
     }
 
+    private async Task ConfirmDeleteFund()
+    {
+        try
+        {
+            showDeleteFundConfirmation = false;
+            if (string.IsNullOrWhiteSpace(fundToDelete)) return;
+
+            var account = allFunds.FirstOrDefault(a => a.Fund == fundToDelete);
+            if (account == null) return;
+
+            const string sql = "DELETE FROM Accounts WHERE AccountId = @AccountId";
+            await _data.SaveData(sql, new { AccountId = account.AccountId }, _config.GetConnectionString("default") ?? string.Empty);
+
+            fundUpdateSuccess = "Fund deleted successfully";
+
+            await LoadAllAccounts();
+            allFunds = allAccounts;
+            RefreshAccountsOptions();
+
+            selectedFund = string.Empty;
+            selectedFundAccount = null;
+            selectedAccountId = null;
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            fundUpdateError = $"Error deleting fund: {ex.Message}";
+        }
+    }
+
     private async Task UpdateFund()
     {
         // Clear previous messages
@@ -1473,6 +1576,14 @@
                 hasChanges = true;
             }
 
+            // Check if overhead should be updated
+            if (overheadValue.HasValue && overheadValue.Value != accountToUpdate.Overhead)
+            {
+                sql += "Overhead = @Overhead, ";
+                parameters.Add("Overhead", overheadValue.Value);
+                hasChanges = true;
+            }
+
             // If nothing to update, show message
             if (!hasChanges)
             {
@@ -1531,6 +1642,73 @@
         // Clear previous messages
         fundUpdateError = string.Empty;
         fundUpdateSuccess = string.Empty;
+
+        // Branch for SubFund creation
+        if (createSubFund)
+        {
+            // Validation for subfund
+            if (selectedPrincipleAccountId == 0)
+            {
+                fundUpdateError = "Please select a principle fund";
+                return;
+            }
+            if (string.IsNullOrWhiteSpace(subFundName))
+            {
+                fundUpdateError = "Sub Fund name is required";
+                return;
+            }
+            if (subFundName.Length < 2 || subFundName.Length > 255)
+            {
+                fundUpdateError = "Sub Fund name must be between 2 and 255 characters";
+                return;
+            }
+            if (string.IsNullOrWhiteSpace(subFundKind))
+            {
+                fundUpdateError = "Sub Fund type is required";
+                return;
+            }
+
+            try
+            {
+                // Prevent duplicates within the same AccountId
+                const string dupSql = @"SELECT COUNT(*) FROM SubAccounts WHERE AccountId = @AccountId AND SubFund = @SubFund";
+                var dupCountRes = await _data.LoadData<int, dynamic>(dupSql, new { AccountId = selectedPrincipleAccountId, SubFund = subFundName.Trim() }, _config.GetConnectionString("default") ?? string.Empty);
+                int dupCount = dupCountRes?.FirstOrDefault() ?? 0;
+                if (dupCount > 0)
+                {
+                    fundUpdateError = $"A sub fund named '{subFundName.Trim()}' already exists for the selected fund";
+                    return;
+                }
+
+                // Insert into SubAccounts
+                const string insertSql = @"INSERT INTO SubAccounts (AccountId, SubFund, Kind) VALUES (@AccountId, @SubFund, @Kind)";
+                int result = await _data.SaveData(insertSql, new { AccountId = selectedPrincipleAccountId, SubFund = subFundName.Trim(), Kind = subFundKind.Trim() }, _config.GetConnectionString("default") ?? string.Empty);
+
+                if (result > 0)
+                {
+                    fundUpdateSuccess = $"Sub fund '{subFundName.Trim()}' added to selected fund";
+
+                    // Reset subfund inputs
+                    selectedPrincipleAccountId = 0;
+                    subFundName = string.Empty;
+                    subFundKind = subFundKinds.FirstOrDefault() ?? "Merged";
+
+                    // Optionally refresh accounts options
+                    RefreshAccountsOptions();
+                }
+                else
+                {
+                    fundUpdateError = "Failed to add sub fund";
+                }
+            }
+            catch (Exception ex)
+            {
+                fundUpdateError = $"Error adding sub fund: {ex.Message}";
+                _logger.LogError(ex, "Error adding sub fund: {SubFundName}", subFundName);
+            }
+
+            return;
+        }
 
         if (!IsAddNewFundSelected)
         {
@@ -1591,10 +1769,11 @@
                 return;
             }
 
-            // Insert new account record with required fields (Balance will default to 0)
+            // Insert new account record with required fields (Overhead optional)
             string sql = @"
-                INSERT INTO Accounts (Fund, AccountingClass, AccountNumber, SoftCredit, BalanceAdjustment, OtherFunds, CreatedAt)
-                VALUES (@Fund, @AccountingClass, @AccountNumber, @SoftCredit, @BalanceAdjustment, @OtherFunds, @CreatedAt)";
+                INSERT INTO Accounts (Fund, AccountingClass, AccountNumber, SoftCredit, BalanceAdjustment, OtherFunds, CreatedAt, Overhead)
+                VALUES (@Fund, @AccountingClass, @AccountNumber, @SoftCredit, @BalanceAdjustment, @OtherFunds, @CreatedAt, @Overhead)";
+            _logger.LogInformation("Executing SQL: {Sql}", sql);
 
             int result = await _data.SaveData(
                 sql,
@@ -1605,7 +1784,8 @@
                     SoftCredit = trimmedSoftCredit,
                     BalanceAdjustment = adjustment,
                     OtherFunds = otherFunds,
-                    CreatedAt = DateTime.UtcNow
+                    CreatedAt = DateTime.UtcNow,
+                    Overhead = overheadValue ?? 0.00m
                 },
                 _config.GetConnectionString("default") ?? string.Empty
             );
@@ -1650,6 +1830,11 @@
         newAccountingClass = string.Empty;
         balanceAdjustment = 0.00m;
         otherFunds = false;
+        // Reset new UI fields as well
+        overheadValue = 0.00m;
+        selectedPrincipleAccountId = 0;
+        subFundName = string.Empty;
+        subFundKind = "Merged";
     }
 
     public Task fundSelection(string displayText)
@@ -1688,6 +1873,9 @@
             
             // Populate fundClass from AccountingClass
             fundClass = selectedItem.Account.AccountingClass ?? string.Empty;
+            
+            // Populate Overhead numeric input from selected account
+            overheadValue = selectedItem.Account.Overhead;
         }
         else
         {
@@ -1704,7 +1892,7 @@
     {
         try
         {
-            string sql = @"SELECT AccountId, Fund, AccountingClass, AccountNumber, CreatedAt, Balance, 
+            string sql = @"SELECT AccountId, Fund, AccountingClass, AccountNumber, CreatedAt, Overhead, 
                           SoftCredit, BalanceAdjustment, OtherFunds 
                           FROM Accounts ORDER BY Fund";
             allAccounts = await _data.LoadData<Account, dynamic>(
@@ -1743,7 +1931,7 @@
                 if (users != null)
                 {
                     staff = users.Select(u => new UserData(
-                        u.Id,                      
+                        u.Id,                     
                         u.Email ?? string.Empty,
                         u.Name ?? string.Empty,
                         u.Language ?? string.Empty,
@@ -1766,160 +1954,6 @@
         }
     }
 
-    private string GetDisplayTextFromAccountingClass(string AccountingClass)
-    {
-        if (string.IsNullOrEmpty(AccountingClass))
-            return string.Empty;
-            
-        var colonIndex = AccountingClass.IndexOf(':');
-        if (colonIndex >= 0 && colonIndex < AccountingClass.Length - 1)
-        {
-            return AccountingClass.Substring(colonIndex + 1).Trim();
-        }
-
-        return AccountingClass; // Return the whole string if no colon found
-    }
-
-    private async Task DeleteFund()
-    {
-        try
-        {
-            // Find the FundDisplayItem by matching the display text
-            var fundDisplayItem = fundsWithAddOption.FirstOrDefault(f => f.DisplayText == selectedFund);
-            if (fundDisplayItem == null || fundDisplayItem.Account.AccountId == 0)
-            {
-                fundUpdateError = "Selected fund not found";
-                StateHasChanged();
-                return;
-            }
-
-            var fundToDeleteObj = fundDisplayItem.Account;
-
-            _logger.LogInformation("DeleteFund called for fund: {Fund}", fundToDeleteObj.Fund);
-
-            // Use the basic Confirm method without custom options
-            var result = await DialogService.Confirm(
-                "Are you sure you want to delete this Fund?", 
-                "Delete Confirmation");
-
-            if (result != true)
-            {
-                _logger.LogInformation("User cancelled deletion");
-                return;
-            }
-
-            // Delete account associations first
-            _logger.LogInformation("Deleting account associations for fund {AccountId}", fundToDeleteObj.AccountId);
-            string deleteAccountsSql = "DELETE FROM AccountsUsers WHERE AccountId = @AccountId";
-            await _data.SaveData(
-                deleteAccountsSql,
-                new { AccountId = fundToDeleteObj.AccountId },
-                _config.GetConnectionString("default") ?? string.Empty
-            );
-
-            // Then delete the fund
-            string deleteFundSql = "DELETE FROM Accounts WHERE AccountId = @AccountId";
-            int deleteResult = await _data.SaveData(
-                deleteFundSql,
-                new { AccountId = fundToDeleteObj.AccountId },
-                _config.GetConnectionString("default") ?? string.Empty
-            );
-
-            if (deleteResult > 0)
-            {
-                fundUpdateSuccess = "Fund deleted successfully";
-
-                // Clear selections
-                selectedFund = string.Empty;
-                selectedFundAccount = null;
-                selectedAccountId = null;
-                ClearFundInputFields();
-
-                // Refresh funds list
-                await LoadAllAccounts();
-                allFunds = allAccounts;
-
-                // Refresh accounts options for fund access dropdowns
-                RefreshAccountsOptions();
-            }
-            else
-            {
-                fundUpdateError = "Failed to delete fund";
-            }
-        }
-        catch (Exception ex)
-        {
-            fundUpdateError = $"Error deleting fund: {ex.Message}";
-        }
-    }
-
-    private async Task ConfirmDeleteFund()
-    {
-        try
-        {
-            showDeleteFundConfirmation = false;
-            
-            // Find the FundDisplayItem by matching the display text
-            var fundDisplayItem = fundsWithAddOption.FirstOrDefault(f => f.DisplayText == this.fundToDelete);
-            if (fundDisplayItem == null || fundDisplayItem.Account.AccountId == 0)
-            {
-                fundUpdateError = "Selected fund not found";
-                return;
-            }
-
-            var selectedFundToDelete = fundDisplayItem.Account;
-
-            // Delete account associations first
-            _logger.LogInformation("Deleting account associations for fund {AccountId}", selectedFundToDelete.AccountId);
-            string deleteAccountsSql = "DELETE FROM AccountsUsers WHERE AccountId = @AccountId";
-            await _data.SaveData(
-                deleteAccountsSql,
-                new { AccountId = selectedFundToDelete.AccountId },
-                _config.GetConnectionString("default") ?? string.Empty
-            );
-
-            // Then delete the fund
-            string deleteFundSql = "DELETE FROM Accounts WHERE AccountId = @AccountId";
-            int deleteResult = await _data.SaveData(
-                deleteFundSql,
-                new { AccountId = selectedFundToDelete.AccountId },
-                _config.GetConnectionString("default") ?? string.Empty
-            );
-
-            if (deleteResult > 0)
-            {
-                _logger.LogInformation("Successfully deleted fund");
-                fundUpdateSuccess = "Fund deleted successfully";
-
-                // Clear selections
-                selectedFund = string.Empty;
-                selectedFundAccount = null;
-                selectedAccountId = null;
-                ClearFundInputFields();
-
-                // Refresh funds list
-                await LoadAllAccounts();
-                allFunds = allAccounts;
-
-                // Refresh accounts options for fund access dropdowns
-                RefreshAccountsOptions();
-            }
-            else
-            {
-                fundUpdateError = "Failed to delete fund";
-            }
-
-            StateHasChanged();
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error in ConfirmDeleteFund");
-            fundUpdateError = $"Error: {ex.Message}";
-            StateHasChanged();
-        }
-    }
-
-    // Account management methods
     private async Task OpenAccountsOverviewDialog()
     {
         await DialogService.OpenAsync<AccountsOverviewView>(

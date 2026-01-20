@@ -14,7 +14,7 @@
                  JustifyContent="JustifyContent.SpaceBetween">
         <!-- Left: current view label -->
         <RadzenText TextStyle="TextStyle.Subtitle1">
-            @(showDonations12m ? Localizer["TotalDonationsLTM"] : Localizer["AccountBalances"])
+            @(showDonations12m ? Localizer["TotalDonationsLTM"] : Localizer["AccountOverhead"])
         </RadzenText>
 
         <!-- Right: actions -->
@@ -24,7 +24,7 @@
                           ButtonStyle="ButtonStyle.Primary"
                           Style="background-color: #0a3b6b; border-color: #0a3b6b;"
                           Click="CopyTableAsync" />
-            <RadzenButton Text="@(showDonations12m ? Localizer["AccountBalances"] : Localizer["TotalDonationsLTM"])"
+            <RadzenButton Text="@(showDonations12m ? Localizer["AccountOverhead"] : Localizer["TotalDonationsLTM"])"
                           ButtonStyle="ButtonStyle.Primary"
                           Click="@(() => { showDonations12m = !showDonations12m; })" />
         </RadzenStack>
@@ -48,7 +48,7 @@
                 <RadzenDataGridColumn TItem="FundBalanceRow" Property="Fund" Title="@Localizer["Account"]" />
                 @if (!showDonations12m)
                 {
-                    <RadzenDataGridColumn TItem="FundBalanceRow" Property="CurrentBalance" Title="@Localizer["Balance"]" FormatString="{0:C2}" TextAlign="TextAlign.Right" />
+                    <RadzenDataGridColumn TItem="FundBalanceRow" Property="Overhead" Title="@Localizer["Overhead"]" FormatString="{0:C2}" TextAlign="TextAlign.Right" />
                 }
                 else
                 {
@@ -69,14 +69,14 @@
 @code {
     private string errorMessage = string.Empty;
     private List<FundBalanceRow> fundBalances = new();
-    private bool showDonations12m = false; // default to current balance view
+    private bool showDonations12m = false; // default to overhead view
     private bool donationsLoaded = false;
 
     protected override async Task OnInitializedAsync()
     {
         try
         {
-            const string accountsSql = "SELECT AccountId, Fund, AccountingClass, AccountNumber, CreatedAt, Balance, BalanceAdjustment FROM Accounts ORDER BY Fund";
+            const string accountsSql = "SELECT AccountId, Fund, AccountingClass, AccountNumber, CreatedAt, Overhead, BalanceAdjustment FROM Accounts ORDER BY Fund";
             var accounts = await _data.LoadData<Account, dynamic>(
                 accountsSql,
                 new { },
@@ -87,30 +87,20 @@
             {
                 try
                 {
-                    // Use the new BalanceCalculator to get the current balance
-                    var balanceResult = await BalanceCalculator.CalculateBalanceFromDatabaseAsync(
-                        account,
-                        _data,
-                        _config.GetConnectionString("default") ?? string.Empty,
-                        null, // no start date - use all data
-                        DateTime.Now // end date
-                    );
-
                     rows.Add(new FundBalanceRow
                     {
                         Fund = account.Fund,
-                        CurrentBalance = balanceResult.TotalBalance,
+                        Overhead = account.Overhead,
                         Last12MonthsDonations = 0m
                     });
                 }
                 catch (Exception ex)
                 {
-                    // Fallback to the old balance if calculation fails
-                    Console.WriteLine($"Error calculating balance for {account.Fund}: {ex.Message}");
+                    Console.WriteLine($"Error loading account overhead for {account.Fund}: {ex.Message}");
                     rows.Add(new FundBalanceRow
                     {
                         Fund = account.Fund,
-                        CurrentBalance = account.Balance,
+                        Overhead = 0m,
                         Last12MonthsDonations = 0m
                     });
                 }
@@ -168,12 +158,12 @@
     {
         try
         {
-            var header = showDonations12m ? Localizer["TotalDonationsLTM"] : Localizer["CurrentAccountBalances"];
+            var header = showDonations12m ? Localizer["TotalDonationsLTM"] : Localizer["AccountOverhead"];
             var sb = new System.Text.StringBuilder();
             sb.AppendLine($"{Localizer["Account"]}\t{header}");
             foreach (var row in fundBalances)
             {
-                var value = showDonations12m ? row.Last12MonthsDonations : row.CurrentBalance;
+                var value = showDonations12m ? row.Last12MonthsDonations : row.Overhead;
                 sb.AppendLine($"{row.Fund}\t{value}");
             }
             await JS.InvokeVoidAsync("navigator.clipboard.writeText", sb.ToString());
@@ -187,7 +177,7 @@
     private sealed class FundBalanceRow
     {
         public string Fund { get; set; } = string.Empty;
-        public decimal CurrentBalance { get; set; }
+        public decimal Overhead { get; set; }
         public decimal Last12MonthsDonations { get; set; }
     }
 }
