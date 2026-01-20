@@ -27,7 +27,7 @@
 
 <h1 class="h3">
     @Localizer["WelcomeUser", userName]
-    @if (AppState.IsAdmin)
+    @if (isAdminUser)
     {
         <span class="badge bg-danger ms-2">@Localizer["AdminMode"]</span>
     }
@@ -61,7 +61,14 @@ else
                             Value="@selectedAccount"
                             Change="@(args => accountSelection(args?.ToString() ?? string.Empty))"
                             Placeholder="@Localizer["ChooseAccount"]"
-                            Style="width: 250px;" />
+                            Style="width: 250px;">
+                <ValueTemplate>
+                    @FundDisplayHelper.GetDisplay(selectedAccount)
+                </ValueTemplate>
+                <Template Context="acct">
+                    @FundDisplayHelper.GetDisplay(acct.Fund)
+                </Template>
+            </RadzenDropDown>
         </RadzenStack>
     </RadzenCard>
 
@@ -191,7 +198,7 @@ else
                     <RadzenText TextStyle="TextStyle.H5">@Localizer["CurrentYear"]</RadzenText>
                     <RadzenText TextStyle="TextStyle.Subtitle2">@currentYearSummary.Period</RadzenText>
                     
-                    <RadzenStack Gap="0.75rem" Class="mt-3">
+                    <RadzenStack Gap="0.5rem" Class="mt-3">
                         <div>
                             <RadzenText TextStyle="TextStyle.Body1">@Localizer["Donations"]</RadzenText>
                             <div class="text-end">
@@ -257,7 +264,7 @@ else
                     <RadzenText TextStyle="TextStyle.H5">@Localizer["PriorYear"]</RadzenText>
                     <RadzenText TextStyle="TextStyle.Subtitle2">@priorYearSummary.Period</RadzenText>
                     
-                    <RadzenStack Gap="0.75rem" Class="mt-3">
+                    <RadzenStack Gap="0.5rem" Class="mt-3">
                         <div>
                             <RadzenText TextStyle="TextStyle.Body1">@Localizer["Donations"]</RadzenText>
                             <div class="text-end">
@@ -339,6 +346,7 @@ else
     private FinancialSummary priorMonthSummary = new FinancialSummary();
     private FinancialSummary currentYearSummary = new FinancialSummary();
     private FinancialSummary priorYearSummary = new FinancialSummary();
+    private bool isAdminUser = false;
 
     protected override async Task OnInitializedAsync()
     {
@@ -349,6 +357,9 @@ else
 
             if (user.Identity?.IsAuthenticated == true)
             {
+                // Determine admin from current claims/roles
+                var authLevel = user.FindFirstValue("AuthLevel") ?? string.Empty;
+                isAdminUser = user.IsInRole("Admin") || string.Equals(authLevel, "Admin", StringComparison.OrdinalIgnoreCase);
                 userName = user.FindFirstValue("UserName") ??
                     user.FindFirstValue(ClaimTypes.GivenName) ?? 
                     user.FindFirstValue(ClaimTypes.Name) ?? 
@@ -406,7 +417,7 @@ else
                 }).ToList();
 
                 hasAccountData = true;
-                CalculateStatisticsFromCache();
+                await CalculateStatisticsWithDonationsTotalsCalculator();
                 return;
             }
             
@@ -425,7 +436,7 @@ else
                 }).ToList();
 
                 hasAccountData = true;
-                CalculateStatisticsFromCache();
+                await CalculateStatisticsWithDonationsTotalsCalculator();
             }
         }
         catch (Exception ex)
@@ -451,27 +462,61 @@ else
         StateHasChanged();
     }
 
-    private void CalculateStatisticsFromCache()
+    private async Task CalculateStatisticsWithDonationsTotalsCalculator()
     {
         try
         {
-            DateTime now = DateTime.Now;
-            
-            // Get current balance from Account model in AppState (persisted balance)
-            var account = userAccounts.FirstOrDefault(a => a.Fund == selectedAccount);
-            decimal currentBalance = account?.Balance ?? 0m;
-            
-            // Calculate other balances using cached data instead of database calls
-            DateTime priorMonthEnd = new DateTime(now.Year, now.Month, 1).AddDays(-1);
+            var now = DateTime.Now;
+            var accountModel = userAccounts.FirstOrDefault(a => a.Fund == selectedAccount);
+            if (accountModel == null)
+            {
+                // Nothing to calculate without account metadata
+                return;
+            }
+
+            // Current month range
+            var currentMonthStart = new DateTime(now.Year, now.Month, 1);
+            var currentMonthEnd = currentMonthStart.AddMonths(1).AddDays(-1);
+
+            // Prior month range
+            var priorMonthStart = currentMonthStart.AddMonths(-1);
+            var priorMonthEnd = currentMonthStart.AddDays(-1);
+
+            // Current year range
+            var currentYearStart = new DateTime(now.Year, 1, 1);
+            var currentYearEnd = new DateTime(now.Year, now.Month, DateTime.DaysInMonth(now.Year, now.Month));
+
+            // Prior year range
+            var priorYearStart = new DateTime(now.Year - 1, 1, 1);
+            var priorYearEnd = new DateTime(now.Year - 1, 12, 31);
+
+            var calc = new DonationsTotalsCalculator(_data, _config);
+
+            // Calculate balances from accounting data (unchanged)
+            decimal currentBalance = CalculateBalanceFromCachedData(now);
             decimal priorMonthBalance = CalculateBalanceFromCachedData(priorMonthEnd);
-            
-            DateTime priorYearEnd = new DateTime(now.Year - 1, 12, 31);
             decimal priorYearBalance = CalculateBalanceFromCachedData(priorYearEnd);
 
-            CalculateCurrentMonthSummary(now, currentBalance);
-            CalculatePriorMonthSummary(now, priorMonthBalance);
-            CalculateCurrentYearSummary(now, currentBalance);
-            CalculatePriorYearSummary(now, priorYearBalance);
+            // Get categorized accounting data for expenses/transfers
+            var categorizedCurrent = TransactionCategorizer.CategorizeTransactions(
+                accountingData.Where(a => a.Date >= currentMonthStart && a.Date <= currentMonthEnd).ToList());
+            var categorizedPriorMonth = TransactionCategorizer.CategorizeTransactions(
+                accountingData.Where(a => a.Date >= priorMonthStart && a.Date <= priorMonthEnd).ToList());
+            var categorizedCurrentYear = TransactionCategorizer.CategorizeTransactions(
+                accountingData.Where(a => a.Date >= currentYearStart && a.Date <= currentYearEnd).ToList());
+            var categorizedPriorYear = TransactionCategorizer.CategorizeTransactions(
+                accountingData.Where(a => a.Date >= priorYearStart && a.Date <= priorYearEnd).ToList());
+
+            // Use DonationsTotalsCalculator for donations/overhead
+            var currentTotals = await calc.CalculateAsync(accountModel, currentMonthStart, currentMonthEnd);
+            var priorMonthTotals = await calc.CalculateAsync(accountModel, priorMonthStart, priorMonthEnd);
+            var currentYearTotals = await calc.CalculateAsync(accountModel, currentYearStart, currentYearEnd);
+            var priorYearTotals = await calc.CalculateAsync(accountModel, priorYearStart, priorYearEnd);
+
+            CalculateCurrentMonthSummary(now, currentBalance, currentTotals, categorizedCurrent);
+            CalculatePriorMonthSummary(now, priorMonthBalance, priorMonthTotals, categorizedPriorMonth);
+            CalculateCurrentYearSummary(now, currentBalance, currentYearTotals, categorizedCurrentYear);
+            CalculatePriorYearSummary(now, priorYearBalance, priorYearTotals, categorizedPriorYear);
         }
         catch (Exception ex)
         {
@@ -483,12 +528,6 @@ else
     {
         try
         {
-            // Get the account's persisted balance
-            var account = userAccounts.FirstOrDefault(a => a.Fund == selectedAccount);
-            if (account == null) return 0m;
-            
-            // Calculate balance by taking all transactions up to the date
-            // This is a simplified calculation using cached data
             var transactionsUpToDate = accountingData
                 .Where(t => t.Date <= asOfDate)
                 .OrderBy(t => t.Date)
@@ -509,79 +548,55 @@ else
         }
     }
 
-    private void CalculateCurrentMonthSummary(DateTime now, decimal currentBalance)
+    private void CalculateCurrentMonthSummary(DateTime now, decimal currentBalance, DonationsTotalsResult donationTotals, CategorizedTransactions categorized)
     {
-        var monthlyAccountingData = accountingData
-            .Where(a => a.Date.Year == now.Year && a.Date.Month == now.Month)
-            .ToList();
-
-        var categorized = TransactionCategorizer.CategorizeTransactions(monthlyAccountingData);
-        
         decimal monthlyExpenses = categorized.ExpenseTotal;
         decimal monthlyInternalTransfers = categorized.TransferTotal;
-        decimal monthlyOther = categorized.OtherTotal;
-
-        decimal monthlyIncome = monthlyOther;
 
         currentMonthSummary = new FinancialSummary
         {
-            TotalDonations = monthlyIncome,
+            TotalDonations = donationTotals.TotalDonations,
             TotalExpenses = monthlyExpenses,
-            TotalOverhead = monthlyIncome - monthlyExpenses,
+            TotalOverhead = donationTotals.OverheadTotal,
             InternalTransfers = monthlyInternalTransfers,
             Period = now.ToString("MMMM yyyy"),
             Balance = currentBalance
         };
     }
 
-    private void CalculatePriorMonthSummary(DateTime now, decimal priorMonthBalance)
+    private void CalculatePriorMonthSummary(DateTime now, decimal priorMonthBalance, DonationsTotalsResult donationTotals, CategorizedTransactions categorized)
     {
         DateTime priorMonth = now.AddMonths(-1);
-
-        var monthlyAccountingData = accountingData
-            .Where(a => a.Date.Year == priorMonth.Year && a.Date.Month == priorMonth.Month)
-            .ToList();
-
-        var categorized = TransactionCategorizer.CategorizeTransactions(monthlyAccountingData);
-        
         decimal monthlyExpenses = categorized.ExpenseTotal;
         decimal monthlyInternalTransfers = categorized.TransferTotal;
-        decimal monthlyIncome = categorized.OtherTotal;
 
         priorMonthSummary = new FinancialSummary
         {
-            TotalDonations = monthlyIncome,
+            TotalDonations = donationTotals.TotalDonations,
             TotalExpenses = monthlyExpenses,
-            TotalOverhead = monthlyIncome - monthlyExpenses,
+            TotalOverhead = donationTotals.OverheadTotal,
             InternalTransfers = monthlyInternalTransfers,
-            AvgMonthlyDonations = monthlyIncome,
+            AvgMonthlyDonations = donationTotals.TotalDonations,
             AvgMonthlyExpenses = monthlyExpenses,
             Period = priorMonth.ToString("MMMM yyyy"),
             Balance = priorMonthBalance
         };
     }
 
-    private void CalculateCurrentYearSummary(DateTime now, decimal currentBalance)
+    private void CalculateCurrentYearSummary(DateTime now, decimal currentBalance, DonationsTotalsResult donationTotals, CategorizedTransactions categorized)
     {
-        var yearlyAccountingData = accountingData
-            .Where(a => a.Date.Year == now.Year)
-            .ToList();
-
-        var categorized = TransactionCategorizer.CategorizeTransactions(yearlyAccountingData);
-        
         decimal yearlyExpenses = categorized.ExpenseTotal;
         decimal yearlyInternalTransfers = categorized.TransferTotal;
-        decimal yearlyIncome = categorized.OtherTotal;
 
         int monthsInYear = Math.Min(now.Month, 12);
-        decimal avgMonthlyDonations = monthsInYear > 0 ? yearlyIncome / monthsInYear : 0;
+        decimal avgMonthlyDonations = monthsInYear > 0 ? donationTotals.TotalDonations / monthsInYear : 0;
         decimal avgMonthlyExpenses = monthsInYear > 0 ? yearlyExpenses / monthsInYear : 0;
 
         currentYearSummary = new FinancialSummary
         {
-            TotalDonations = yearlyIncome,
+            TotalDonations = donationTotals.TotalDonations,
             TotalExpenses = yearlyExpenses,
-            TotalOverhead = yearlyIncome - yearlyExpenses,
+            TotalOverhead = donationTotals.OverheadTotal,
             InternalTransfers = yearlyInternalTransfers,
             AvgMonthlyDonations = avgMonthlyDonations,
             AvgMonthlyExpenses = avgMonthlyExpenses,
@@ -590,31 +605,20 @@ else
         };
     }
 
-    private void CalculatePriorYearSummary(DateTime now, decimal priorYearBalance)
+    private void CalculatePriorYearSummary(DateTime now, decimal priorYearBalance, DonationsTotalsResult donationTotals, CategorizedTransactions categorized)
     {
         int priorYear = now.Year - 1;
-
-        var yearlyAccountingData = accountingData
-            .Where(a => a.Date.Year == priorYear)
-            .ToList();
-
-        var categorized = TransactionCategorizer.CategorizeTransactions(yearlyAccountingData);
-        
         decimal yearlyExpenses = categorized.ExpenseTotal;
         decimal yearlyInternalTransfers = categorized.TransferTotal;
-        decimal yearlyIncome = categorized.OtherTotal;
-
-        decimal avgMonthlyDonations = yearlyIncome / 12;
-        decimal avgMonthlyExpenses = yearlyExpenses / 12;
 
         priorYearSummary = new FinancialSummary
         {
-            TotalDonations = yearlyIncome,
+            TotalDonations = donationTotals.TotalDonations,
             TotalExpenses = yearlyExpenses,
-            TotalOverhead = yearlyIncome - yearlyExpenses,
+            TotalOverhead = donationTotals.OverheadTotal,
             InternalTransfers = yearlyInternalTransfers,
-            AvgMonthlyDonations = avgMonthlyDonations,
-            AvgMonthlyExpenses = avgMonthlyExpenses,
+            AvgMonthlyDonations = donationTotals.TotalDonations / 12,
+            AvgMonthlyExpenses = yearlyExpenses / 12,
             Period = priorYear.ToString(),
             Balance = priorYearBalance
         };

@@ -22,57 +22,51 @@ namespace cya2.Services
             _appState = appState;
         }
 
-        // Initialize user data on first page load
+        // Initialize user data on first page load or when user identity changes
         public async Task InitializeUserDataAsync(ClaimsPrincipal user)
         {
             try
             {
-                // Skip if already initialized
-                if (_appState.UserAccountsLoaded) return;
-
-                // Check if user is Admin first
+                // Always set IsAdmin from current claims
                 _appState.IsAdmin = user.IsInRole("Admin") ||
                                     user.FindFirstValue("AuthLevel")?.Equals("Admin", StringComparison.OrdinalIgnoreCase) == true;
 
-                Console.WriteLine($"User is Admin: {_appState.IsAdmin}");
-
-                // Get user ID (needed for both admin and non-admin users)
+                // Determine current user id from claims or DB
+                int currentUserId = 0;
                 var userIdClaim = user.FindFirstValue("UserId");
-                if (!string.IsNullOrEmpty(userIdClaim) && int.TryParse(userIdClaim, out int id))
+                if (!string.IsNullOrEmpty(userIdClaim) && int.TryParse(userIdClaim, out int idFromClaim))
                 {
-                    _appState.CurrentUserId = id;
-                    Console.WriteLine($"User ID from claims: {_appState.CurrentUserId}");
+                    currentUserId = idFromClaim;
                 }
                 else
                 {
-                    // Fallback to database lookup
                     var email = user.FindFirstValue(ClaimTypes.Email);
-                    Console.WriteLine($"User ID claim not found, using email: {email} for DB lookup");
-
                     if (!string.IsNullOrEmpty(email))
                     {
                         string userSql = "SELECT Id FROM Users WHERE Email = @Email";
-                        var userResults = await _dataAccess.LoadData<UserIdOnly, dynamic>(
-                            userSql,
-                            new { Email = email },
-                            _config.GetConnectionString("default")
-                        );
-
-                        if (userResults != null && userResults.Any())
-                        {
-                            _appState.CurrentUserId = userResults.First().Id;
-                            Console.WriteLine($"User ID from database: {_appState.CurrentUserId}");
-                        }
-                        else
-                        {
-                            throw new Exception("Unable to identify the current user.");
-                        }
-                    }
-                    else
-                    {
-                        throw new Exception("No email found in user claims.");
+                        var userResults = await _dataAccess.LoadData<UserIdOnly, dynamic>(userSql, new { Email = email }, _config.GetConnectionString("default"));
+                        currentUserId = userResults?.FirstOrDefault()?.Id ?? 0;
                     }
                 }
+
+                // If user id changed between sessions, clear AppState so we don't keep previous user's data/flags
+                bool userChanged = _appState.CurrentUserId != 0 && _appState.CurrentUserId != currentUserId;
+                if (userChanged)
+                {
+                    _appState.ClearUserData();
+                    _appState.UserAccountsLoaded = false;
+                }
+
+                // If already initialized for this user, nothing else to do
+                if (_appState.UserAccountsLoaded && !userChanged)
+                {
+                    // Still update CurrentUserId to ensure consistency
+                    _appState.CurrentUserId = currentUserId;
+                    return;
+                }
+
+                // Store current user id
+                _appState.CurrentUserId = currentUserId;
 
                 // Load user accounts first
                 await LoadUserAccountsAsync();
@@ -81,22 +75,18 @@ namespace cya2.Services
                 var defaultAccountClaim = user.FindFirstValue("DefaultAccount");
                 if (!string.IsNullOrEmpty(defaultAccountClaim) && int.TryParse(defaultAccountClaim, out int accountId))
                 {
-                    // Find the account by AccountId and set DefaultAccount to Fund name
                     var defaultAccount = _appState.UserAccounts.FirstOrDefault(a => a.AccountId == accountId);
                     if (defaultAccount != null)
                     {
                         _appState.DefaultAccount = defaultAccount.Fund;
-                        _appState.SelectedAccount = defaultAccount.Fund; // Also set as selected
-                        Console.WriteLine($"Default account set to: {_appState.DefaultAccount}");
-                        
-                        // Load data for default account
+                        _appState.SelectedAccount = defaultAccount.Fund;
+
                         await LoadAccountDataAsync(defaultAccount);
                     }
                 }
                 else
                 {
-                    Console.WriteLine("No default account set for user");
-                    // Don't load any account data if no default account
+                    // No default account set; do not auto-load account data
                 }
 
                 // For non-admin users, start background loading of remaining accounts
@@ -108,16 +98,14 @@ namespace cya2.Services
             catch (Exception ex)
             {
                 Console.WriteLine($"Error initializing user data: {ex.Message}");
-                throw; // Rethrow to allow calling code to handle
+                throw;
             }
         }
 
-        // Load user accounts
         private async Task LoadUserAccountsAsync()
         {
             try
             {
-                // Clear existing accounts list
                 _appState.UserAccounts.Clear();
 
                 string sql;
@@ -125,40 +113,25 @@ namespace cya2.Services
 
                 if (_appState.IsAdmin)
                 {
-                    // Admin can see all accounts
-                    sql = "SELECT AccountId, Fund, AccountingClass, CreatedAt, Balance, AccountNumber, SoftCredit, BalanceAdjustment, OtherFunds FROM Accounts ORDER BY Fund";
+                    sql = "SELECT AccountId, Fund, AccountingClass, CreatedAt, Overhead, AccountNumber, SoftCredit, BalanceAdjustment, OtherFunds FROM Accounts ORDER BY Fund";
                     parameters = new { };
-
-                    Console.WriteLine($"Loading all accounts for admin user");
                 }
                 else
                 {
-                    // Regular users only see their linked accounts from AccountsUsers table
                     sql = @"
-                        SELECT a.AccountId, a.Fund, a.AccountingClass, a.CreatedAt, a.Balance, a.AccountNumber, a.SoftCredit, a.BalanceAdjustment, a.OtherFunds
+                        SELECT a.AccountId, a.Fund, a.AccountingClass, a.CreatedAt, a.Overhead, a.AccountNumber, a.SoftCredit, a.BalanceAdjustment, a.OtherFunds
                         FROM Accounts a
                         INNER JOIN AccountsUsers au ON a.AccountId = au.AccountId
                         WHERE au.UserId = @UserId
                         ORDER BY a.Fund";
                     parameters = new { UserId = _appState.CurrentUserId };
-
-                    Console.WriteLine($"Loading accounts for user ID: {_appState.CurrentUserId}");
                 }
 
-                var accounts = await _dataAccess.LoadData<Account, dynamic>(
-                    sql,
-                    parameters,
-                    _config.GetConnectionString("default")
-                );
+                var accounts = await _dataAccess.LoadData<Account, dynamic>(sql, parameters, _config.GetConnectionString("default"));
 
                 if (accounts?.Any() == true)
                 {
                     _appState.UserAccounts = accounts.ToList();
-                    Console.WriteLine($"Loaded {_appState.UserAccounts.Count} accounts for user");
-                }
-                else
-                {
-                    Console.WriteLine("No accounts found for user");
                 }
 
                 _appState.UserAccountsLoaded = true;
@@ -170,17 +143,14 @@ namespace cya2.Services
             }
         }
 
-        // Load data for a specific account from new tables
         public async Task LoadAccountDataAsync(Account account)
         {
             try
             {
-                // Skip if already loaded
                 if (_appState.IsAccountDataLoaded(account.Fund)) return;
 
                 _appState.IsLoadingData = true;
 
-                // Load accounting data by exact AccountingClass
                 string accountingSql = @"
                     SELECT 
                         Id,
@@ -201,22 +171,25 @@ namespace cya2.Services
                     _config.GetConnectionString("default")
                 );
 
-                // Load donation data by Fund (Fund Notes)
-                string donationSql = "SELECT * FROM DonationData WHERE Fund = @Fund";
+                string donationSql = @"SELECT * FROM DonationData WHERE 
+                                       Fund COLLATE utf8mb4_0900_ai_ci = @Fund COLLATE utf8mb4_0900_ai_ci
+                                       OR Fund COLLATE utf8mb4_0900_ai_ci IN (
+                                           SELECT SubFund COLLATE utf8mb4_0900_ai_ci 
+                                           FROM SubAccounts 
+                                           WHERE AccountId = @AccountId AND Kind = 'Merged'
+                                       )";
                 var donationData = await _dataAccess.LoadData<DonationsDataModel, dynamic>(
                     donationSql,
-                    new { Fund = account.Fund },
+                    new { Fund = account.Fund, AccountId = account.AccountId },
                     _config.GetConnectionString("default")
                 );
 
-                // Store in AppState
                 _appState.SetAccountData(
                     account.Fund,
                     accountingData?.ToList() ?? new List<AccountingDataModel>(),
                     donationData?.ToList() ?? new List<DonationsDataModel>()
                 );
 
-                // For backward compatibility with existing code
                 if (account.Fund == _appState.DefaultAccount)
                 {
                     _appState.AccountingData = accountingData?.ToList() ?? new List<AccountingDataModel>();
@@ -231,7 +204,6 @@ namespace cya2.Services
             }
         }
 
-        // Background load all user account data (for non-admin users)
         private async Task LoadAllUserAccountDataAsync()
         {
             try
@@ -240,10 +212,8 @@ namespace cya2.Services
 
                 foreach (var account in _appState.UserAccounts)
                 {
-                    // Skip the default account as it's already loaded
                     if (account.Fund == _appState.DefaultAccount) continue;
 
-                    // Check if data is already loaded
                     if (!_appState.IsAccountDataLoaded(account.Fund))
                     {
                         await LoadAccountDataAsync(account);
@@ -259,7 +229,6 @@ namespace cya2.Services
             }
         }
 
-        // Helper class for user ID lookup
         private class UserIdOnly
         {
             public int Id { get; set; }

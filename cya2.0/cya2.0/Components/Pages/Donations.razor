@@ -18,7 +18,7 @@
 @inject IStringLocalizer<Resource> Localizer
 @attribute [StreamRendering]
 
-<PageTitle>@Localizer["DonationsNav"]</PageTitle>
+<PageTitle>@Localizer["Donations"]</PageTitle>
 
 <style>
     .giving-grid .rz-data-grid { font-size: 0.75rem; }
@@ -121,12 +121,12 @@
                             Style="width: 300px;">
                 <ValueTemplate>
                     <span style="display:flex;align-items:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding-right:1.75rem;width:100%;">
-                        @selectedAccount
+                        @FundDisplayHelper.GetDisplay(selectedAccount)
                     </span>
                 </ValueTemplate>
                 <Template Context="acct">
                     <span style="display:flex;align-items:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;width:100%;">
-                        @acct.Fund
+                        @FundDisplayHelper.GetDisplay(acct.Fund)
                     </span>
                 </Template>
             </RadzenDropDown>
@@ -137,19 +137,40 @@
                  Gap="0.5rem"
                  AlignItems="AlignItems.Center"
                  Class="view-mode-buttons">
-        <RadzenButton Text="@Localizer["GivingGrid"]"
+        <RadzenButton Text="@Localizer["Grid"]"
                       ButtonStyle="@(currentView == ViewMode.GivingGrid ? ButtonStyle.Primary : ButtonStyle.Light)"
                       Size="ButtonSize.Small"
                       Click="@(() => SetView(ViewMode.GivingGrid))" />
-        <RadzenButton Text="@Localizer["DonationList"]"
+        <RadzenButton Text="@Localizer["List"]"
                       ButtonStyle="@(currentView == ViewMode.DonationList ? ButtonStyle.Primary : ButtonStyle.Light)"
                       Size="ButtonSize.Small"
                       Click="@(() => SetView(ViewMode.DonationList))" />
-        <RadzenButton Text="@Localizer["Graphs"]"
+        <RadzenButton Text="@Localizer["Graph"]"
                       ButtonStyle="@(currentView == ViewMode.Graphs ? ButtonStyle.Primary : ButtonStyle.Light)"
                       Size="ButtonSize.Small"
                       Click="@(() => SetView(ViewMode.Graphs))" />
+        <RadzenButton Text="Toggle Debug" Size="ButtonSize.Small" ButtonStyle="ButtonStyle.Light" Click="@(() => showDebug = !showDebug)" />
     </RadzenStack>
+
+    @if (showDebug)
+    {
+        <RadzenCard Class="rz-mt-2">
+            <RadzenText TextStyle="TextStyle.Subtitle2">Debug Info</RadzenText>
+            <div>
+                <div>SelectedAccount: @selectedAccount</div>
+                <div>CurrentAccount: @(currentAccount?.Fund) | Id: @(currentAccount?.AccountId) | Class: @(currentAccount?.AccountingClass)</div>
+                <div>SubFund map keys (@subFundToPrimaryAccountId.Count): @string.Join(", ", subFundToPrimaryAccountId.Keys)</div>
+                <div>Raw distinct funds loaded (@lastRawDonationFunds.Count): @string.Join(", ", lastRawDonationFunds)</div>
+            </div>
+            <hr />
+            <div style="max-height:200px; overflow:auto; font-family:monospace; font-size: 0.8rem;">
+                @foreach (var line in debugLogs)
+                {
+                    <div>@line</div>
+                }
+            </div>
+        </RadzenCard>
+    }
 
     @if (!string.IsNullOrEmpty(errorMessage))
     {
@@ -181,7 +202,7 @@
                                 AllowColumnReorder="false"
                                 @ref="givingGridRef"
                                 CellRender="@OnGivingGridCellRender"
-                                EmptyText="@Localizer["NoDonationsFound"]">
+                                EmptyText="@GetEmptyText()">
                     <Columns>
                         <!-- Donor: header/cell left -->
                         <RadzenDataGridColumn TItem="DonationPivotRow"
@@ -250,7 +271,7 @@
                                 AllowSorting="true"
                                 AllowPaging="false"
                                 FilterMode="FilterMode.Advanced"
-                                EmptyText="@Localizer["NoDonationsFound"]">
+                                EmptyText="@GetEmptyText()">
                     <Columns>
                         <RadzenDataGridColumn TItem="UserDataDonations" Property="Account" Title="@(Localizer["Account"])" />
                         <RadzenDataGridColumn TItem="UserDataDonations" Property="Donor" Title="@(Localizer["Donor"])" />
@@ -281,6 +302,16 @@
     private string errorMessage = string.Empty;
     private bool isLoading = true;
     private Account? currentAccount = null;
+    private Dictionary<string, int> subFundToPrimaryAccountId = new(StringComparer.OrdinalIgnoreCase);
+    private bool showDebug = false;
+    private List<string> debugLogs = new();
+    private List<string> lastRawDonationFunds = new();
+    private void Debug(string message)
+    {
+        var line = $"[{DateTime.Now:HH:mm:ss}] {message}";
+        debugLogs.Add(line);
+        Console.WriteLine($"DONATIONS DEBUG: {line}");
+    }
 
     private enum ViewMode { GivingGrid, DonationList, Graphs }
     private ViewMode currentView = ViewMode.GivingGrid;
@@ -350,6 +381,7 @@
             }
 
             isLoading = false;
+            Debug($"Initialized. SelectedAccount='{selectedAccount}', UserAccounts={AppState.UserAccounts.Count}");
         }
         catch (Exception ex)
         {
@@ -394,6 +426,7 @@
 
             currentAccount = AppState.UserAccounts.FirstOrDefault(a => a.Fund == selectedAccount);
 
+            Debug($"Account selected: '{selectedAccount}'. CurrentAccountId={(currentAccount?.AccountId.ToString() ?? "null")}");
             if (currentAccount != null)
             {
                 await LoadDonationsForAccount(currentAccount);
@@ -420,15 +453,26 @@
                 return;
             }
 
+            // Load subfund -> primary AccountId mapping for this primary account
+            subFundToPrimaryAccountId = await LoadSubFundAccountMapAsync(account);
+            Debug($"Loaded subfund map for AccountId={account.AccountId}, keys={subFundToPrimaryAccountId.Count}: {string.Join(", ", subFundToPrimaryAccountId.Keys)}");
+
             var pageAccountData = await PageCache.GetAccountDataAsync(account.Fund);
             
             if (pageAccountData != null)
             {
+                var totalRows = pageAccountData.DonationData?.Count ?? 0;
+                lastRawDonationFunds = pageAccountData.DonationData?.Select(d => d.Fund)
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .OrderBy(s => s)
+                    .ToList() ?? new List<string>();
+                Debug($"Page cache donations loaded: rows={totalRows}, distinctFunds={lastRawDonationFunds.Count}: {string.Join(", ", lastRawDonationFunds)}");
                 ProcessDonationData(pageAccountData.DonationData);
             }
             else
             {
                 errorMessage = "No donation data found for this account";
+                Debug("No donation data found in page cache for this account.");
             }
         }
         catch (Exception ex)
@@ -438,21 +482,76 @@
         }
     }
 
+    private async Task<Dictionary<string, int>> LoadSubFundAccountMapAsync(Account primary)
+    {
+        try
+        {
+            const string sql = "SELECT SubFund, Kind FROM SubAccounts WHERE AccountId = @AccountId";
+            var subRows = await _data.LoadData<(string SubFund, string Kind), dynamic>(sql, new { AccountId = primary.AccountId }, _config.GetConnectionString("default") ?? string.Empty) 
+                            ?? new List<(string SubFund, string Kind)>();
+            var map = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+            // Map each merged subfund name to the primary AccountId
+            foreach (var row in subRows)
+            {
+                if (string.Equals(row.Kind, "Merged", StringComparison.OrdinalIgnoreCase))
+                {
+                    var name = row.SubFund;
+                    if (!string.IsNullOrWhiteSpace(name) && !map.ContainsKey(name))
+                        map[name] = primary.AccountId;
+                }
+            }
+            // Also map the primary fund name to its own AccountId
+            if (!string.IsNullOrWhiteSpace(primary.Fund) && !map.ContainsKey(primary.Fund))
+            {
+                map[primary.Fund] = primary.AccountId;
+            }
+            return map;
+        }
+        catch
+        {
+            // Fallback to at least include the primary fund name
+            var map = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+            if (!string.IsNullOrWhiteSpace(primary.Fund)) map[primary.Fund] = primary.AccountId;
+            return map;
+        }
+    }
+
     private void ProcessDonationData(List<DonationsDataModel> donationData)
     {
         try
         {
             donations.Clear();
 
+            int included = 0, skipped = 0;
+            double includedTotal = 0, skippedTotal = 0;
+            var includedFunds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var skippedFunds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            
             foreach (var donation in donationData)
             {
-                int separatorIndex = donation.Fund.IndexOf(":");
-                var fundName = separatorIndex > 0
-                    ? donation.Fund.Remove(separatorIndex, donation.Fund.Length - separatorIndex)
-                    : donation.Fund;
+                if (currentAccount == null) continue;
 
+                // Determine the primary AccountId for this donation via fund->AccountId mapping
+                int mappedPrimaryId;
+                if (!subFundToPrimaryAccountId.TryGetValue(donation.Fund, out mappedPrimaryId))
+                {
+                    // Unknown fund name for this selection -> skip
+                    skipped++;
+                    skippedTotal += donation.Amount;
+                    skippedFunds.Add(donation.Fund);
+                    continue;
+                }
+                if (mappedPrimaryId != currentAccount.AccountId)
+                {
+                    skipped++;
+                    skippedTotal += donation.Amount;
+                    skippedFunds.Add(donation.Fund);
+                    continue;
+                }
+
+                // Display under the primary account name
                 var newDonation = new UserDataDonations(
-                    fundName,
+                    FundDisplayHelper.GetDisplay(currentAccount?.Fund ?? donation.Fund),
                     donation.AccountName,
                     donation.Date,
                     donation.Amount,
@@ -460,7 +559,13 @@
                     donation.GiftType);
 
                 donations.Add(newDonation);
+                included++;
+                includedTotal += donation.Amount;
+                includedFunds.Add(donation.Fund);
             }
+
+            Debug($"ProcessDonationData: included={included} (total={includedTotal:F2}) from funds: {string.Join(", ", includedFunds)}; " +
+                  $"skipped={skipped} (total={skippedTotal:F2}) from funds: {string.Join(", ", skippedFunds)}");
         }
         catch (Exception ex)
         {
@@ -487,6 +592,7 @@
             DateRangeManager.SaveDateRangeToAppState(AppState, dateRangeState);
 
             selectedDonations = SelectData(donations, dateRangeState.StartDate, dateRangeState.EndDate);
+            Debug($"Apply date filter: {dateRangeState.StartDate:yyyy-MM-dd} to {dateRangeState.EndDate:yyyy-MM-dd}; filteredCount={selectedDonations.Count}");
             BuildPivot();
 
             if (currentView == ViewMode.GivingGrid && givingGridRef is not null)
@@ -578,5 +684,12 @@
                 args.Attributes["style"] = style;
             }
         }
+    }
+
+    private string GetEmptyText()
+    {
+        return string.IsNullOrWhiteSpace(selectedAccount)
+            ? Localizer["PleaseSelectAnAccount"]
+            : Localizer["NoDonationsFound"]; 
     }
 }

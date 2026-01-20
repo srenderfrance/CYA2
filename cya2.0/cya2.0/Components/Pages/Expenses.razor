@@ -18,7 +18,7 @@
 @attribute [StreamRendering]
 @inject IStringLocalizer<Resource> Localizer
 
-<PageTitle>@Localizer["ExpensesNav"]</PageTitle>
+<PageTitle>@Localizer["Expenses"]</PageTitle>
 
 <style>
     /* Target the column and its header */
@@ -78,7 +78,14 @@
                                 @bind-Value="selectedAccount"
                                 Change="@(args => AccountSelection(args?.ToString()))"
                                 Placeholder="@Localizer["ChooseAccount"]"
-                                Style="width: 200px;" />
+                                Style="width: 200px;">
+                    <ValueTemplate>
+                        @FundDisplayHelper.GetDisplay(selectedAccount)
+                    </ValueTemplate>
+                    <Template Context="acct">
+                        @FundDisplayHelper.GetDisplay(acct.Fund)
+                    </Template>
+                </RadzenDropDown>
             </RadzenStack>
 
             <!-- Date Range section -->
@@ -136,7 +143,7 @@
                 <RadzenText TextStyle="TextStyle.Subtitle1" Style="font-weight: bold;">@Localizer["SummaryOfTransactions"]</RadzenText>
                 <RadzenText TextStyle="TextStyle.Body2" Style="color: #666;">@GetDateRangeDisplay()</RadzenText>
                 <RadzenStack Orientation="Orientation.Vertical" Gap="0.25rem">
-                    <RadzenText TextStyle="TextStyle.Subtitle1" Style="font-weight: bold;">Total @Localizer["Transfers"]</RadzenText>
+                    <RadzenText TextStyle="TextStyle.Subtitle1" Style="font-weight: bold;">@Localizer["TotalTransfers"]</RadzenText>
                     <RadzenText TextStyle="TextStyle.Subtitle1" Style="font-weight: bold; color: black;">@transferTotal.ToString("C2")</RadzenText>
                 </RadzenStack>
                 
@@ -212,6 +219,12 @@
             {
                 <RadzenAlert AlertStyle="AlertStyle.Info" ShowIcon="true" Variant="Variant.Filled">
                     @Localizer["NoExpensesFound"]
+                </RadzenAlert>
+            }
+            else if (string.IsNullOrWhiteSpace(selectedAccount))
+            {
+                <RadzenAlert AlertStyle="AlertStyle.Info" ShowIcon="true" Variant="Variant.Filled">
+                    @Localizer["PleaseSelectAnAccount"]
                 </RadzenAlert>
             }
 

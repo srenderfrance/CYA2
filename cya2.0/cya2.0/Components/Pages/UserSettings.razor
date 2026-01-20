@@ -12,6 +12,7 @@
 @inject IStringLocalizer<Resource> Localizer
 @inject IJSRuntime JS
 @inject IHttpContextAccessor HttpContextAccessor
+@using UtilityClasses
 
 <PageTitle>@Localizer["UserSettings"]</PageTitle>
 
@@ -52,7 +53,15 @@
                                         @bind-Value="selectedAccountingClass"
                                         Placeholder="@Localizer["SelectDefaultAccount"]"
                                         Style="width: 100%;"
-                                        Disabled="@(userAccounts == null || userAccounts.Count == 0)" />
+                                        Disabled="@(userAccounts == null || userAccounts.Count == 0)">
+                            <ValueTemplate>
+                                @{ var sel = userAccounts.FirstOrDefault(a => a.AccountingClass == selectedAccountingClass); }
+                                @FundDisplayHelper.GetDisplay(sel?.Fund)
+                            </ValueTemplate>
+                            <Template Context="acct">
+                                @FundDisplayHelper.GetDisplay(acct.Fund)
+                            </Template>
+                        </RadzenDropDown>
                         
                         <RadzenButton Text="@Localizer["UpdateAccount"]"
                                       Click="SaveAccountSetting"
@@ -111,6 +120,10 @@
     private string selectedAccountingClass = string.Empty;
     private string selectedLanguage = "en-US";
 
+    // Role flags
+    private bool isAdmin = false;
+    private bool isViewer = false;
+
     protected override async Task OnInitializedAsync()
     {
         await LoadUserData();
@@ -128,6 +141,11 @@
 
             if (user.Identity?.IsAuthenticated == true)
             {
+                // Determine role flags from claims
+                var authLevel = user.FindFirstValue("AuthLevel") ?? string.Empty;
+                isAdmin = user.IsInRole("Admin") || string.Equals(authLevel, "Admin", StringComparison.OrdinalIgnoreCase);
+                isViewer = string.Equals(authLevel, "Viewer", StringComparison.OrdinalIgnoreCase);
+
                 var userIdClaim = user.FindFirstValue("UserId");
                 if (!string.IsNullOrEmpty(userIdClaim) && int.TryParse(userIdClaim, out int id))
                 {
@@ -198,35 +216,55 @@
     {
         try
         {
-            string sql = @"
+            if (isAdmin || isViewer)
+            {
+                // Admin and Viewer: access to all accounts
+                string sqlAll = @"SELECT AccountId, Fund, AccountingClass, CreatedAt FROM Accounts ORDER BY Fund";
+                var accounts = await _data.LoadData<Account, dynamic>(
+                    sqlAll,
+                    new { },
+                    _config.GetConnectionString("default") ?? string.Empty
+                );
+
+                userAccounts = accounts?.ToList() ?? new List<Account>();
+
+                if (userAccounts.Count == 0)
+                {
+                    errorMessage = "No accounts found.";
+                }
+            }
+            else
+            {
+                string sql = @"
                 SELECT a.AccountId, a.Fund, a.AccountingClass, a.CreatedAt
                 FROM Accounts a
                 INNER JOIN AccountsUsers au ON a.AccountId = au.AccountId
                 WHERE au.UserId = @UserId
                 ORDER BY a.Fund";
 
-            var accounts = await _data.LoadData<Account, dynamic>(
-                sql,
-                new { UserId = userId },
-                _config.GetConnectionString("default") ?? string.Empty
-            );
+                var accounts = await _data.LoadData<Account, dynamic>(
+                    sql,
+                    new { UserId = userId },
+                    _config.GetConnectionString("default") ?? string.Empty
+                );
 
-            if (accounts != null && accounts.Any())
-            {
-                userAccounts = accounts;
-
-                if (currentDefaultAccountId.HasValue &&
-                    !userAccounts.Any(a => a.AccountId == currentDefaultAccountId.Value))
+                if (accounts != null && accounts.Any())
                 {
-                    errorMessage = "Your currently set default account is no longer accessible. Please select a new one.";
-                    currentDefaultAccountId = null;
-                    selectedAccountingClass = string.Empty;
+                    userAccounts = accounts.ToList();
+
+                    if (currentDefaultAccountId.HasValue &&
+                        !userAccounts.Any(a => a.AccountId == currentDefaultAccountId.Value))
+                    {
+                        errorMessage = "Your currently set default account is no longer accessible. Please select a new one.";
+                        currentDefaultAccountId = null;
+                        selectedAccountingClass = string.Empty;
+                    }
                 }
-            }
-            else
-            {
-                userAccounts = new List<Account>();
-                errorMessage = "You don't have access to any accounts. Please contact an administrator.";
+                else
+                {
+                    userAccounts = new List<Account>();
+                    errorMessage = "You don't have access to any accounts. Please contact an administrator.";
+                }
             }
         }
         catch (Exception ex)
@@ -378,7 +416,7 @@
             return "None";
 
         var account = userAccounts.FirstOrDefault(a => a.AccountId == accountId.Value);
-        return account?.Fund ?? "Unknown Account";
+        return FundDisplayHelper.GetDisplay(account?.Fund);
     }
 
     private class LanguageOption
