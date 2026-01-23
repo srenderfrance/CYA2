@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Security.Claims;
 using UserAuth;
+using System;
 
 namespace cya2.Services
 {
@@ -134,6 +135,15 @@ namespace cya2.Services
         
         // Property to check if user can view all accounts (both Admin and Viewer)
         public bool CanViewAllAccounts => IsAdmin || IsViewer;
+
+        public string? ImportProgressId { get; private set; }
+        public event Action<string>? ImportProgressIdChanged;
+
+        public void SetImportProgressId(string id)
+        {
+            ImportProgressId = id;
+            ImportProgressIdChanged?.Invoke(id);
+        }
     }
     
     // Helper class to store data for an account

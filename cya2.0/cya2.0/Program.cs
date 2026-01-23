@@ -551,7 +551,7 @@ app.MapPost("/api/upload/donations", async (HttpRequest req, IDonationImportServ
         var file = form.Files.Count > 0 ? form.Files[0] : null;
         if (file is null || file.Length == 0) return Results.BadRequest("No file");
         await using var stream = file.OpenReadStream(); // TODO: add size limit
-        var res = await import.ImportAsync(stream, CancellationToken.None);
+        var res = await import.StartImportAsync(stream, CancellationToken.None);
         return Results.Json(res);
     }
     catch (Exception ex)
@@ -569,7 +569,7 @@ app.MapPost("/api/upload/accounting", async (HttpRequest req, IAccountingImportS
         var file = form.Files.Count > 0 ? form.Files[0] : null;
         if (file is null || file.Length == 0) return Results.BadRequest("No file");
         await using var stream = file.OpenReadStream(); // TODO: add size limit
-        var res = await import.ImportAsync(stream, CancellationToken.None);
+        var res = await import.StartImportAsync(stream, CancellationToken.None);
         return Results.Json(res);
     }
     catch (Exception ex)
@@ -578,6 +578,21 @@ app.MapPost("/api/upload/accounting", async (HttpRequest req, IAccountingImportS
         return Results.Problem(ex.Message);
     }
 });
+
+app.MapGet("/api/mysql-debug", async (IConfiguration config, ILogger<Program> logger) =>
+{
+    try
+    {
+        logger.LogInformation("Starting MySQL diagnostics...");
+        var diagnostics = await cya2.Services.MySqlDebugger.DiagnoseMySqlIssues(config, logger);
+        return Results.Json(diagnostics);
+    }
+    catch (Exception ex)
+    {
+        logger.LogError(ex, "MySQL diagnostics endpoint failed");
+        return Results.Problem($"Diagnostics failed: {ex.Message}");
+    }
+}).WithMetadata(new AllowAnonymousAttribute());
 
 app.Run();
 

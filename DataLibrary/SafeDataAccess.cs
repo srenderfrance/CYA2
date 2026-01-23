@@ -112,15 +112,15 @@ namespace DataLibrary
             
             try
             {
-                // Execute with timeout protection
-                var timeoutTask = Task.Delay(5000); // 5 second timeout
+                // Execute with extended timeout protection for import operations
+                var timeoutTask = Task.Delay(30000); // 30 second timeout (increased from 5)
                 var operationTask = operation();
                 
                 var completedTask = await Task.WhenAny(operationTask, timeoutTask);
                 if (completedTask == timeoutTask)
                 {
                     // Operation timed out - use the interface method instead of direct access
-                    _logger.LogWarning("Database operation timed out");
+                    _logger.LogWarning("Database operation timed out after 30 seconds");
                     _dbMonitor.MarkAsDisconnected("Operation timed out");
                     return defaultValue;
                 }
@@ -130,10 +130,44 @@ namespace DataLibrary
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error in database operation");
-                // Use the interface method instead of direct access
-                _dbMonitor.MarkAsDisconnected(ex.Message);
+                
+                // Only mark as disconnected for actual connection-level errors
+                if (IsConnectionLevelError(ex))
+                {
+                    _dbMonitor.MarkAsDisconnected(ex.Message);
+                }
+                
                 return defaultValue;
             }
+        }
+        
+        private static bool IsConnectionLevelError(Exception ex)
+        {
+            // Connection-level MySQL error codes that indicate server/network problems
+            var connectionErrorCodes = new HashSet<int>
+            {
+                1042, // ER_BAD_HOST_ERROR - Can't get hostname address
+                1043, // ER_HANDSHAKE_ERROR - Bad handshake
+                2002, // CR_CONNECTION_ERROR - Can't connect to MySQL server
+                2003, // CR_CONN_HOST_ERROR - Can't connect to MySQL server on '%s' (%d)
+                2006, // CR_SERVER_GONE_ERROR - MySQL server has gone away
+                2013, // CR_SERVER_LOST - Lost connection to MySQL server during query
+                2055  // CR_SERVER_LOST_EXTENDED - Lost connection to MySQL server at '%s'
+            };
+            
+            if (ex is MySqlException myEx)
+            {
+                if (connectionErrorCodes.Contains(myEx.Number)) return true;
+                
+                // Check for timeout-related error messages
+                if (myEx.Message?.Contains("Timeout in IO operation", StringComparison.OrdinalIgnoreCase) == true) return true;
+                if (myEx.Message?.Contains("Timeout expired", StringComparison.OrdinalIgnoreCase) == true) return true;
+            }
+            
+            if (ex is TimeoutException) return true;
+            if (ex.InnerException is System.Net.Sockets.SocketException) return true;
+            
+            return false;
         }
     }
 }

@@ -47,7 +47,8 @@ namespace cya2.Services
             _logger = logger;
             _suspended = true; // Start suspended
 
-            // Add global first-chance exception handler for MySQL exceptions
+            // TEMPORARY: Comment out aggressive first-chance exception handling during debugging
+            /*
             AppDomain.CurrentDomain.FirstChanceException += (sender, args) =>
             {
                 try
@@ -70,6 +71,10 @@ namespace cya2.Services
                     // Never throw from exception handlers
                 }
             };
+            */
+            
+            // TODO: Implement more targeted exception handling that only catches actual connection failures
+            _logger.LogInformation("DatabaseMonitorService initialized - aggressive exception handling disabled for debugging");
         }
 
         // Required to maintain API compatibility

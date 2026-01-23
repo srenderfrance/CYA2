@@ -10,6 +10,7 @@
 @inject NavigationManager Navigation
 @inject AuthenticationStateProvider AuthStateProvider
 @inject DialogService DialogService
+@inject NotificationService NotificationService
 @using ModelsLibrary
 @using System.ComponentModel.DataAnnotations
 @using DataLibrary
@@ -22,6 +23,7 @@
 @inject TooltipService tooltipService
 @using System.Text.Json
 @using cya2.Services.Imports
+@using cya2.Components.Shared
 
 <RadzenStack Orientation="Orientation.Vertical" Gap="1rem" Class="rz-p-4">
     <!-- Top row: accounts buttons on the left, upload buttons on the right -->
@@ -49,7 +51,6 @@
                               Complete="OnDonationUploadComplete"
                               Progress="OnUploadProgress"
                               Change="@(async args => await OnUploadStarted())" />
-                <RadzenButton Text="Show Donation Status" Click="() => showDonationStatus = !showDonationStatus" />
             </div>
 
             <div style="display:flex; align-items:center; gap:0.5rem;">
@@ -59,7 +60,6 @@
                               Complete="OnAccountingUploadComplete"
                               Progress="OnUploadProgress"
                               Change="@(async args => await OnUploadStarted())" />
-                <RadzenButton Text="Show Accounting Status" Click="() => showAccountingStatus = !showAccountingStatus" />
             </div>
         </RadzenStack>
     </RadzenStack>
@@ -251,29 +251,6 @@
             </RadzenAlert>
         }
         
-        <!-- Upload status panels -->
-        @if (showDonationStatus)
-        {
-            <RadzenCard Class="rz-mt-3">
-                <RadzenText TextStyle="TextStyle.Subtitle2">Donation Upload Status</RadzenText>
-                <div>Progress: @uploadProgressPercent% </div>
-                <div>Total rows read: @(donationImportResult?.TotalRows ?? 0)</div>
-                <div>Rows inserted: @(donationImportResult?.InsertedRows ?? 0)</div>
-                <div>Rows failed: @(donationImportResult?.FailedRows ?? 0)</div>
-            </RadzenCard>
-        }
-
-        @if (showAccountingStatus)
-        {
-            <RadzenCard Class="rz-mt-3">
-                <RadzenText TextStyle="TextStyle.Subtitle2">Accounting Upload Status</RadzenText>
-                <div>Progress: @uploadProgressPercent% </div>
-                <div>Total rows read: @(accountingImportResult?.TotalRows ?? 0)</div>
-                <div>Rows inserted: @(accountingImportResult?.InsertedRows ?? 0)</div>
-                <div>Rows failed: @(accountingImportResult?.FailedRows ?? 0)</div>
-            </RadzenCard>
-        }
-        
         <!-- Update and Add buttons -->
         <div style="margin-top: 1rem;">
             <RadzenButton 
@@ -310,7 +287,7 @@
         <!-- Toggle in upper right of Fund Management input area -->
         <div style="display:flex; justify-content:flex-end;">
             <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="0.5rem">
-                <RadzenText TextStyle="TextStyle.Subtitle2">@(createSubFund ? Localizer["CreateSubFund"] : Localizer["CreatePrincipleFund"])</RadzenText>
+                <RadzenText TextStyle="TextStyle.Subtitle2">@(createSubFund ? Localizer["CreateSecondaryFund"] : Localizer["CreatePrimaryFund"])</RadzenText>
                 <RadzenSwitch @bind-Value="createSubFund" />
             </RadzenStack>
         </div>
@@ -420,10 +397,6 @@
                                     Style="width: 100%;" />
                 </RadzenStack>
 
-                <RadzenStack Orientation="Orientation.Vertical" Gap="1rem">
-                    <RadzenText TextStyle="TextStyle.Subtitle2" Style="font-weight: bold;">@Localizer["SubFundDetails"]</RadzenText>
-                </RadzenStack>
-
                 <!-- Sub Fund Name -->
                 <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="2rem">
                     <RadzenText TextStyle="TextStyle.Subtitle2" Style="font-weight: bold; width: 150px;">@Localizer["Fund"]</RadzenText>
@@ -507,149 +480,121 @@
 <RadzenTooltip />
 
 @code {
-    // Upload complete handlers
-    private async Task OnDonationUploadComplete(UploadCompleteEventArgs args)
+    private class ImportResultTemp
+    {
+        public string? ProgressId { get; set; }
+    }
+
+    private string? currentProgressId;
+    private bool uploadDialogOpen;
+
+    private void OnUploadProgress(UploadProgressArgs args)
     {
         try
         {
-            if (args?.RawResponse is string raw && !string.IsNullOrWhiteSpace(raw))
+            if (!uploadDialogOpen)
             {
-                var res = JsonSerializer.Deserialize<cya2.Services.Imports.ImportResult>(raw, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
-                if (res is not null)
-                {
-                    currentProgressId = res.ProgressId;
-                    donationImportResult = new ImportResultTemp { TotalRows = res.TotalRows, InsertedRows = res.InsertedRows, FailedRows = res.FailedRows };
-                    uploadProgressPercent = 100;
-                    await DialogService.Alert($"Donations import complete. Read: {res.TotalRows}, Inserted: {res.InsertedRows}, Failed: {res.FailedRows}");
-                    progressPollTimer?.Dispose();
-                    isProgressDialogOpen = false;
-                    return;
-                }
+                _logger.LogInformation("OnUploadProgress fired - opening upload progress dialog as fallback");
+                DialogService.Open<UploadProgressDialog>(
+                    title: Localizer["UploadInProgress"],
+                    parameters: new Dictionary<string, object> { ["ProgressId"] = currentProgressId ?? string.Empty },
+                    options: new DialogOptions { Width = "800px", Height = "auto", Resizable = false, ShowClose = false }
+                );
+                uploadDialogOpen = true;
             }
-            await DialogService.Alert("Donations upload finished");
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "OnDonationUploadComplete parse failed");
-            await DialogService.Alert($"Donation upload failed: {ex.Message}", "Error");
+            _logger.LogError(ex, "Failed to open UploadProgressDialog in OnUploadProgress");
         }
+    }
+
+    private Task OnUploadStarted()
+    {
+        try
+        {
+            _logger.LogInformation("OnUploadStarted fired - opening upload progress dialog");
+            NotificationService.Notify(new NotificationMessage
+            {
+                Severity = NotificationSeverity.Info,
+                Summary = "Upload",
+                Detail = "Starting...",
+                Duration = 1200
+            });
+            DialogService.Open<UploadProgressDialog>(
+                title: Localizer["UploadInProgress"],
+                parameters: new Dictionary<string, object> { ["ProgressId"] = currentProgressId ?? string.Empty },
+                options: new DialogOptions { Width = "800px", Height = "auto", Resizable = false, ShowClose = false }
+            );
+            uploadDialogOpen = true;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to open UploadProgressDialog in OnUploadStarted");
+            NotificationService.Notify(new NotificationMessage
+            {
+                Severity = NotificationSeverity.Error,
+                Summary = "Dialog Error",
+                Detail = ex.Message,
+                Duration = 4000
+            });
+        }
+        return Task.CompletedTask;
+    }
+
+    private async Task OnDonationUploadComplete(UploadCompleteEventArgs args)
+    {
+        await HandleUploadComplete(args);
     }
 
     private async Task OnAccountingUploadComplete(UploadCompleteEventArgs args)
     {
+        await HandleUploadComplete(args);
+    }
+
+    private async Task HandleUploadComplete(UploadCompleteEventArgs args)
+    {
         try
         {
-            if (args?.RawResponse is string raw && !string.IsNullOrWhiteSpace(raw))
+            var raw = args?.RawResponse as string;
+            _logger.LogInformation("Upload Complete received. RawResponse length: {Len}", raw?.Length ?? 0);
+            if (!string.IsNullOrWhiteSpace(raw))
             {
                 var res = JsonSerializer.Deserialize<cya2.Services.Imports.ImportResult>(raw, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
-                if (res is not null)
+                if (res is not null && !string.IsNullOrWhiteSpace(res.ProgressId))
                 {
                     currentProgressId = res.ProgressId;
-                    accountingImportResult = new ImportResultTemp { TotalRows = res.TotalRows, InsertedRows = res.InsertedRows, FailedRows = res.FailedRows };
-                    uploadProgressPercent = 100;
-                    await DialogService.Alert($"Accounting import complete. Read: {res.TotalRows}, Inserted: {res.InsertedRows}, Failed: {res.FailedRows}");
-                    progressPollTimer?.Dispose();
-                    isProgressDialogOpen = false;
+                    _logger.LogInformation("ProgressId obtained: {ProgressId}", currentProgressId);
+                    NotificationService.Notify(new NotificationMessage
+                    {
+                        Severity = NotificationSeverity.Info,
+                        Summary = "Upload",
+                        Detail = $"ProgressId: {currentProgressId}",
+                        Duration = 1500
+                    });
+                    AppState.SetImportProgressId(currentProgressId);
                     return;
                 }
-            }
-            await DialogService.Alert("Accounting upload finished");
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "OnAccountingUploadComplete parse failed");
-            await DialogService.Alert($"Accounting upload failed: {ex.Message}", "Error");
-        }
-    }
-
-    // temp type for deserialization to avoid internal visibility issues
-    private class ImportResultTemp
-    {
-        public int TotalRows { get; set; }
-        public int InsertedRows { get; set; }
-        public int FailedRows { get; set; }
-    }
-
-    private ImportResultTemp? donationImportResult;
-    private ImportResultTemp? accountingImportResult;
-    private int uploadProgressPercent = 0;
-    private bool showDonationStatus = false;
-    private bool showAccountingStatus = false;
-    private string? currentProgressId;
-    private System.Threading.Timer? progressPollTimer;
-    private bool isProgressDialogOpen = false;
-
-    private void OnUploadProgress(UploadProgressArgs args)
-    {
-        if (args == null)
-        {
-            uploadProgressPercent = 0;
-            return;
-        }
-
-        try
-        {
-            var loaded = args.Loaded;
-            var total = args.Total;
-            if (total > 0)
-            {
-                uploadProgressPercent = (int)((loaded * 100L) / total);
+                else
+                {
+                    _logger.LogWarning("ImportResult deserialized but ProgressId missing");
+                }
             }
             else
             {
-                uploadProgressPercent = 0;
-            }
-        }
-        catch
-        {
-            uploadProgressPercent = 0;
-        }
-        StateHasChanged();
-    }
-
-    private async Task OnUploadStarted()
-    {
-        // When upload starts, automatically open the progress dialog and poll
-        if (!isProgressDialogOpen)
-        {
-            showDonationStatus = true;
-            showAccountingStatus = true;
-            isProgressDialogOpen = true;
-            // start polling - UI will set currentProgressId when response returns
-            StartProgressPolling();
-        }
-        await InvokeAsync(StateHasChanged);
-    }
-
-    private void StartProgressPolling()
-    {
-        // Poll every 2 seconds
-        progressPollTimer?.Dispose();
-        progressPollTimer = new System.Threading.Timer(async _ => await PollProgress(), null, 2000, 2000);
-    }
-
-    private async Task PollProgress()
-    {
-        try
-        {
-            if (string.IsNullOrEmpty(currentProgressId)) return;
-            // call endpoint to get progress
-            var http = new System.Net.Http.HttpClient();
-            var baseUrl = Navigation.BaseUri.TrimEnd('/');
-            var resp = await http.GetAsync($"{baseUrl}/api/import-progress/{currentProgressId}");
-            if (!resp.IsSuccessStatusCode) return;
-            var json = await resp.Content.ReadAsStringAsync();
-            var prog = JsonSerializer.Deserialize<ImportResultTemp>(json, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
-            if (prog != null)
-            {
-                donationImportResult = prog;
-                accountingImportResult = prog;
-                await InvokeAsync(StateHasChanged);
+                _logger.LogWarning("RawResponse was empty or whitespace");
             }
         }
         catch (Exception ex)
         {
-            _logger.LogDebug(ex, "PollProgress failed");
+            _logger.LogError(ex, "HandleUploadComplete parse failed");
+            NotificationService.Notify(new NotificationMessage
+            {
+                Severity = NotificationSeverity.Error,
+                Summary = "Upload Error",
+                Detail = ex.Message,
+                Duration = 4000
+            });
         }
     }
 
