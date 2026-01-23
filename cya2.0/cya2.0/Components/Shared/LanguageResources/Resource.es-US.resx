@@ -501,4 +501,10 @@
   <data name="PleaseSelectAnAccount" xml:space="preserve">
     <value>Por favor seleccione una cuenta.</value>
   </data>
+  <data name="CreatePrimaryFund" xml:space="preserve">
+    <value>Crear Fondo Primario</value>
+  </data>
+  <data name="CreateSecondaryFund" xml:space="preserve">
+    <value>Crear Fondo Secondario</value>
+  </data>
 </root>

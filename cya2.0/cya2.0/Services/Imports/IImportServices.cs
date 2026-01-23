@@ -8,10 +8,12 @@ namespace cya2.Services.Imports
     internal interface IAccountingImportService
     {
         Task<ImportResult> ImportAsync(Stream file, CancellationToken ct);
+        Task<ImportResult> StartImportAsync(Stream file, CancellationToken ct);
     }
 
     internal interface IDonationImportService
     {
         Task<ImportResult> ImportAsync(Stream file, CancellationToken ct);
+        Task<ImportResult> StartImportAsync(Stream file, CancellationToken ct);
     }
 }

@@ -252,24 +252,47 @@ namespace DataLibrary
         {
             try
             {
-                using (var connection = new MySqlConnection(connectionString))
+                // Ensure proper connection string configuration for import operations
+                var builder = new MySqlConnectionStringBuilder(connectionString);
+                
+                // Configure connection timeouts for better performance during imports
+                builder.ConnectionTimeout = 30; // Increased from 2 seconds
+                
+                // Add resilience settings using indexer for unsupported properties
+                builder["ConnectionReset"] = false; // Don't reset connections
+                builder["AllowUserVariables"] = true; // Allow user variables
+                builder["MaxPoolSize"] = 20; // Allow more connections
+                builder["MinPoolSize"] = 5;  // Keep some connections alive
+                builder["ConnectionLifetime"] = 3600; // 1 hour connection lifetime
+                
+                using (var connection = new MySqlConnection(builder.ConnectionString))
                 {
                     // Open connection with ConfigureAwait(false) to avoid deadlocks
                     await connection.OpenAsync().ConfigureAwait(false);
+                    
+                    // Test with a simple query to ensure connection works
+                    using var cmd = connection.CreateCommand();
+                    cmd.CommandText = "SELECT 1";
+                    cmd.CommandTimeout = 30;
+                    await cmd.ExecuteScalarAsync();
+                    
                     await connection.CloseAsync().ConfigureAwait(false);
                     return true;
                 }
             }
-            catch (MySqlException)
+            catch (MySqlException ex)
             {
+                _logger?.LogWarning("MySQL connection test failed: {Error} (Code: {Code})", ex.Message, ex.Number);
                 return false;
             }
-            catch (TimeoutException)
+            catch (TimeoutException ex)
             {
+                _logger?.LogWarning("MySQL connection timeout: {Error}", ex.Message);
                 return false;
             }
-            catch (Exception)
+            catch (Exception ex)
             {
+                _logger?.LogWarning("MySQL connection error: {Error}", ex.Message);
                 return false;
             }
         }
@@ -314,7 +337,27 @@ namespace DataLibrary
                 // Ensure public key retrieval is enabled
                 if (!connectionString.Contains("AllowPublicKeyRetrieval=", StringComparison.OrdinalIgnoreCase))
                     builder["AllowPublicKeyRetrieval"] = true;
-                    
+                
+                // Add import-specific optimizations using indexer syntax
+                if (!connectionString.Contains("MaxPoolSize=", StringComparison.OrdinalIgnoreCase))
+                    builder["MaxPoolSize"] = 20;
+                
+                if (!connectionString.Contains("MinPoolSize=", StringComparison.OrdinalIgnoreCase))
+                    builder["MinPoolSize"] = 5;
+                
+                if (!connectionString.Contains("ConnectionLifetime=", StringComparison.OrdinalIgnoreCase))
+                    builder["ConnectionLifetime"] = 3600; // 1 hour
+                
+                // Improve timeout handling for large operations
+                if (!connectionString.Contains("DefaultCommandTimeout=", StringComparison.OrdinalIgnoreCase))
+                    builder["DefaultCommandTimeout"] = 300; // 5 minutes for imports
+                
+                // Add performance optimizations
+                builder["UseAffectedRows"] = false;      // Better for bulk operations
+                builder["AllowBatch"] = true;            // Allow batch statements
+                builder["ConnectionReset"] = false;      // Don't reset connections
+                builder["AllowUserVariables"] = true;    // Allow user variables
+                
                 return builder.ConnectionString;
             }
             catch
