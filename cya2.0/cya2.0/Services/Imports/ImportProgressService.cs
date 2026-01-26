@@ -23,6 +23,7 @@ namespace cya2.Services.Imports
         public List<string> Errors { get; } = new List<string>();
         public bool IsComplete { get; set; }
         public List<ImportStep> Steps { get; } = new List<ImportStep>();
+        public string ImportType { get; set; } = string.Empty; // "Donations" or "Accounting"
     }
 
     public sealed class ImportProgressService
@@ -38,6 +39,12 @@ namespace cya2.Services.Imports
         public void Start(string id, int expectedRows)
         {
             var prog = new ImportProgress { ExpectedRows = expectedRows };
+            _store[id] = prog;
+        }
+
+        public void Start(string id, string importType)
+        {
+            var prog = new ImportProgress { ImportType = importType };
             _store[id] = prog;
         }
 

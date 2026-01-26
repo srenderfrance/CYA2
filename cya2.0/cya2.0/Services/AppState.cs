@@ -133,6 +133,63 @@ namespace cya2.Services
             SelectedDatePreset = "ThisYear";
         }
         
+        // New methods for cache clearing after data updates
+        public void ClearAllDataCaches()
+        {
+            // Clear all account data caches and mark as not loaded
+            foreach (var accountData in AccountDataCache.Values)
+            {
+                accountData.IsLoaded = false;
+                accountData.AccountingData.Clear();
+                accountData.DonationData.Clear();
+            }
+            
+            // Clear global caches
+            AccountingData.Clear();
+            DonationData.Clear();
+            IsLoadingData = false;
+        }
+        
+        public void ClearAccountingDataCache()
+        {
+            // Clear accounting data from per-account cache and mark entire cache as not loaded
+            // This forces a complete reload of both accounting and donation data
+            foreach (var accountData in AccountDataCache.Values)
+            {
+                accountData.AccountingData.Clear();
+                accountData.IsLoaded = false; // Force complete reload
+            }
+            
+            // Clear global accounting cache
+            AccountingData.Clear();
+            IsLoadingData = false;
+        }
+        
+        public void ClearDonationDataCache()
+        {
+            // Clear donation data from per-account cache and mark entire cache as not loaded  
+            // This forces a complete reload of both accounting and donation data
+            foreach (var accountData in AccountDataCache.Values)
+            {
+                accountData.DonationData.Clear();
+                accountData.IsLoaded = false; // Force complete reload
+            }
+            
+            // Clear global donation cache
+            DonationData.Clear();
+            IsLoadingData = false;
+        }
+        
+        public void MarkAllAccountDataAsStale()
+        {
+            // Mark all account data as not loaded, forcing refresh on next access
+            foreach (var accountData in AccountDataCache.Values)
+            {
+                accountData.IsLoaded = false;
+            }
+            IsLoadingData = false;
+        }
+        
         // Property to check if user can view all accounts (both Admin and Viewer)
         public bool CanViewAllAccounts => IsAdmin || IsViewer;
 

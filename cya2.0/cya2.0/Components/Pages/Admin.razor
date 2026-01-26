@@ -24,6 +24,14 @@
 @using System.Text.Json
 @using cya2.Services.Imports
 @using cya2.Components.Shared
+@inject RollbackService RollbackService
+@inject HttpClient HttpClient
+@inject IHttpClientFactory HttpClientFactory
+@inject IHttpContextAccessor HttpContextAccessor
+@using System.Net
+
+@inject IDonationImportService DonationImportService
+@inject IAccountingImportService AccountingImportService
 
 <RadzenStack Orientation="Orientation.Vertical" Gap="1rem" Class="rz-p-4">
     <!-- Top row: accounts buttons on the left, upload buttons on the right -->
@@ -45,22 +53,27 @@
         <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="0.75rem">
             <!-- NOTE: No size limit for now. TODO: enforce a sensible max file size. -->
             <div style="display:flex; align-items:center; gap:0.5rem;">
-                <RadzenUpload Url="/api/upload/donations"
+                <RadzenUpload Url="/api/upload/donations/preview"
                               Accept=".xlsx"
+                              Auto="true"
                               ChooseText="@Localizer["UploadDonationData"]"
-                              Complete="OnDonationUploadComplete"
-                              Progress="OnUploadProgress"
-                              Change="@(async args => await OnUploadStarted())" />
+                              Complete="OnDonationPreviewComplete" />
             </div>
 
             <div style="display:flex; align-items:center; gap:0.5rem;">
-                <RadzenUpload Url="/api/upload/accounting"
+                <RadzenUpload Url="/api/upload/accounting/preview"
                               Accept=".xlsx"
+                              Auto="true"
                               ChooseText="@Localizer["UploadAccountingData"]"
-                              Complete="OnAccountingUploadComplete"
-                              Progress="OnUploadProgress"
-                              Change="@(async args => await OnUploadStarted())" />
+                              Complete="OnAccountingPreviewComplete" />
             </div>
+
+            <!-- Rollback button with danger styling -->
+            <RadzenButton Text="@GetLocalizedString("RollbackLastUpdate", "Rollback Last Update")"
+                          ButtonStyle="ButtonStyle.Danger"
+                          Icon="history"
+                          Click="@(async () => await OpenRollbackDialog())"
+                          Style="background-color: #dc3545; border-color: #dc3545; color: white;" />
         </RadzenStack>
     </RadzenStack>
 
@@ -473,6 +486,72 @@
     OnConfirm="@ConfirmDeleteFund"
     OnCancel="@(() => showDeleteFundConfirmation = false)" />
 
+<!-- Rollback Dialog -->
+@if (showRollbackDialog)
+{
+    <div style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 10000; display: flex; align-items: center; justify-content: center;">
+        <RadzenCard Style="min-width: 500px; max-width: 600px; padding: 2rem; background: white; border-radius: 8px; box-shadow: 0 4px 20px rgba(0,0,0,0.3);">
+            <RadzenStack Orientation="Orientation.Vertical" Gap="1.5rem">
+                <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="1rem">
+                    <i class="bi bi-clock-history" style="font-size: 1.5rem; color: #dc3545;"></i>
+                    <RadzenText TextStyle="TextStyle.H6" Style="margin: 0; color: #212529;">@GetLocalizedString("RollbackLastUpdate", "Rollback Last Update")</RadzenText>
+                </RadzenStack>
+
+                <RadzenText TextStyle="TextStyle.Body1" Style="color: #666; margin: 0;">
+                    @GetLocalizedString("RollbackDescription", "Select which data to rollback to the last backup. This will restore the data to its state before the most recent import.")
+                </RadzenText>
+
+                <!-- Rollback Options -->
+                <RadzenStack Orientation="Orientation.Vertical" Gap="1rem" Style="padding: 1rem; background-color: #f8f9fa; border-radius: 6px;">
+                    <RadzenText TextStyle="TextStyle.Subtitle2" Style="font-weight: bold; color: #212529; margin: 0;">
+                        @GetLocalizedString("SelectRollbackTarget", "Select Rollback Target:")
+                    </RadzenText>
+                    
+                    <RadzenStack Orientation="Orientation.Vertical" Gap="0.75rem">
+                        <RadzenRadioButtonList @bind-Value="rollbackTarget" Orientation="Orientation.Vertical" Gap="0.75rem">
+                            <Items>
+                                <RadzenRadioButtonListItem Text="@GetLocalizedString("RollbackDonations", "Rollback Donation Data Only")" Value='"donations"' />
+                                <RadzenRadioButtonListItem Text="@GetLocalizedString("RollbackAccounting", "Rollback Accounting Data Only")" Value='"accounting"' />
+                                <RadzenRadioButtonListItem Text="@GetLocalizedString("RollbackBoth", "Rollback Both Donation and Accounting Data")" Value='"both"' />
+                            </Items>
+                        </RadzenRadioButtonList>
+                    </RadzenStack>
+                </RadzenStack>
+
+                <!-- Status and Error Messages -->
+                @if (!string.IsNullOrEmpty(rollbackStatus))
+                {
+                    <RadzenAlert AlertStyle="AlertStyle.Info" ShowIcon="true" Variant="Variant.Filled">
+                        @rollbackStatus
+                    </RadzenAlert>
+                }
+
+                @if (!string.IsNullOrEmpty(rollbackError))
+                {
+                    <RadzenAlert AlertStyle="AlertStyle.Danger" ShowIcon="true" Variant="Variant.Filled">
+                        @rollbackError
+                    </RadzenAlert>
+                }
+
+                <!-- Action Buttons -->
+                <RadzenStack Orientation="Orientation.Horizontal" JustifyContent="JustifyContent.End" Gap="1rem" Style="margin-top: 1rem;">
+                    <RadzenButton Text="@GetLocalizedString("Cancel", "Cancel")" 
+                                  ButtonStyle="ButtonStyle.Light" 
+                                  Click="CancelRollback" 
+                                  Disabled="@(!string.IsNullOrEmpty(rollbackStatus))" />
+                    
+                    <RadzenButton Text="@GetLocalizedString("ExecuteRollback", "Execute Rollback")" 
+                                  ButtonStyle="ButtonStyle.Danger" 
+                                  Icon="play_arrow"
+                                  Click="@(async () => await ExecuteRollback())" 
+                                  Disabled="@(string.IsNullOrEmpty(rollbackTarget) || !string.IsNullOrEmpty(rollbackStatus))"
+                                  Style="background-color: #dc3545; border-color: #dc3545; color: white;" />
+                </RadzenStack>
+            </RadzenStack>
+        </RadzenCard>
+    </div>
+}
+
 <!-- Radzen hosts inside the Admin interactive island -->
 <RadzenDialog />
 <RadzenNotification />
@@ -488,110 +567,156 @@
     private string? currentProgressId;
     private bool uploadDialogOpen;
 
-    private void OnUploadProgress(UploadProgressArgs args)
+    private async Task OnDonationPreviewComplete(UploadCompleteEventArgs args)
+    {
+        await HandlePreviewComplete(args, "donations");
+    }
+
+    private async Task OnAccountingPreviewComplete(UploadCompleteEventArgs args)
+    {
+        await HandlePreviewComplete(args, "accounting");
+    }
+
+    private async Task HandlePreviewComplete(UploadCompleteEventArgs args, string importType)
     {
         try
         {
-            if (!uploadDialogOpen)
+            var raw = args?.RawResponse as string ?? string.Empty;
+            _logger.LogInformation("Preview response for {Type}: length {Len}", importType, raw.Length);
+
+            if (string.IsNullOrWhiteSpace(raw))
             {
-                _logger.LogInformation("OnUploadProgress fired - opening upload progress dialog as fallback");
-                DialogService.Open<UploadProgressDialog>(
-                    title: Localizer["UploadInProgress"],
-                    parameters: new Dictionary<string, object> { ["ProgressId"] = currentProgressId ?? string.Empty },
-                    options: new DialogOptions { Width = "800px", Height = "auto", Resizable = false, ShowClose = false }
-                );
-                uploadDialogOpen = true;
+                NotificationService.Notify(new NotificationMessage
+                {
+                    Severity = NotificationSeverity.Error,
+                    Summary = "Upload Error",
+                    Detail = "No response from server for preview.",
+                    Duration = 4000
+                });
+                return;
             }
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Failed to open UploadProgressDialog in OnUploadProgress");
-        }
-    }
 
-    private Task OnUploadStarted()
-    {
-        try
-        {
-            _logger.LogInformation("OnUploadStarted fired - opening upload progress dialog");
-            NotificationService.Notify(new NotificationMessage
+            var preview = JsonSerializer.Deserialize<FilePreviewResult>(raw, new JsonSerializerOptions
             {
-                Severity = NotificationSeverity.Info,
-                Summary = "Upload",
-                Detail = "Starting...",
-                Duration = 1200
+                PropertyNameCaseInsensitive = true
             });
-            DialogService.Open<UploadProgressDialog>(
-                title: Localizer["UploadInProgress"],
-                parameters: new Dictionary<string, object> { ["ProgressId"] = currentProgressId ?? string.Empty },
-                options: new DialogOptions { Width = "800px", Height = "auto", Resizable = false, ShowClose = false }
-            );
-            uploadDialogOpen = true;
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Failed to open UploadProgressDialog in OnUploadStarted");
-            NotificationService.Notify(new NotificationMessage
+
+            if (preview == null || string.IsNullOrWhiteSpace(preview.PreviewId))
             {
-                Severity = NotificationSeverity.Error,
-                Summary = "Dialog Error",
-                Detail = ex.Message,
-                Duration = 4000
-            });
-        }
-        return Task.CompletedTask;
-    }
+                NotificationService.Notify(new NotificationMessage
+                {
+                    Severity = NotificationSeverity.Error,
+                    Summary = "Upload Error",
+                    Detail = "Could not read preview information.",
+                    Duration = 4000
+                });
+                return;
+            }
 
-    private async Task OnDonationUploadComplete(UploadCompleteEventArgs args)
-    {
-        await HandleUploadComplete(args);
-    }
+            // Show confirmation dialog
+            var confirmed = await DialogService.OpenAsync<UploadConfirmationDialog>(
+                title: Localizer["ConfirmUpload"],
+                parameters: new Dictionary<string, object> { { "Preview", preview } },
+                options: new DialogOptions { Width = "520px", Height = "auto", Resizable = false, ShowClose = true });
 
-    private async Task OnAccountingUploadComplete(UploadCompleteEventArgs args)
-    {
-        await HandleUploadComplete(args);
-    }
-
-    private async Task HandleUploadComplete(UploadCompleteEventArgs args)
-    {
-        try
-        {
-            var raw = args?.RawResponse as string;
-            _logger.LogInformation("Upload Complete received. RawResponse length: {Len}", raw?.Length ?? 0);
-            if (!string.IsNullOrWhiteSpace(raw))
+            if (confirmed is bool b && b)
             {
-                var res = JsonSerializer.Deserialize<cya2.Services.Imports.ImportResult>(raw, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
-                if (res is not null && !string.IsNullOrWhiteSpace(res.ProgressId))
-                {
-                    currentProgressId = res.ProgressId;
-                    _logger.LogInformation("ProgressId obtained: {ProgressId}", currentProgressId);
-                    NotificationService.Notify(new NotificationMessage
-                    {
-                        Severity = NotificationSeverity.Info,
-                        Summary = "Upload",
-                        Detail = $"ProgressId: {currentProgressId}",
-                        Duration = 1500
-                    });
-                    AppState.SetImportProgressId(currentProgressId);
-                    return;
-                }
-                else
-                {
-                    _logger.LogWarning("ImportResult deserialized but ProgressId missing");
-                }
+                await StartImportFromPreview(preview.PreviewId, importType);
             }
             else
             {
-                _logger.LogWarning("RawResponse was empty or whitespace");
+                _logger.LogInformation("User cancelled {Type} upload for PreviewId {PreviewId}", importType, preview.PreviewId);
             }
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "HandleUploadComplete parse failed");
+            _logger.LogError(ex, "HandlePreviewComplete failed for {Type}", importType);
             NotificationService.Notify(new NotificationMessage
             {
                 Severity = NotificationSeverity.Error,
                 Summary = "Upload Error",
+                Detail = ex.Message,
+                Duration = 4000
+            });
+        }
+    }
+
+    private async Task StartImportFromPreview(string previewId, string importType)
+    {
+        try
+        {
+            // Generate ProgressId
+            string localProgressId = Guid.NewGuid().ToString("N");
+
+            // Store ProgressId in AppState so any listening component (including UploadProgressDialog)
+            // receives it via the ImportProgressIdChanged event
+            AppState.SetImportProgressId(localProgressId);
+
+            // Open the progress dialog immediately
+            DialogService.Open<UploadProgressDialog>(
+                title: Localizer["UploadInProgress"],
+                // Do not pass ProgressId here - the dialog will pick it up from AppState.ImportProgressIdChanged
+                parameters: new Dictionary<string, object>(),
+                options: new DialogOptions { Width = "800px", Height = "auto", Resizable = false, ShowClose = false });
+            uploadDialogOpen = true;
+
+            // Let the UI render the dialog and let the dialog component initialize and start polling
+            await InvokeAsync(StateHasChanged);
+
+            // Call the import service directly
+            ImportResult result;
+            if (importType == "donations")
+            {
+                result = await DonationImportService.StartImportFromPreviewAsync(previewId, localProgressId);
+            }
+            else if (importType == "accounting")
+            {
+                result = await AccountingImportService.StartImportFromPreviewAsync(previewId, localProgressId);
+            }
+            else
+            {
+                throw new ArgumentException("Invalid import type");
+            }
+
+            if (result == null || string.IsNullOrWhiteSpace(result.ProgressId))
+            {
+                NotificationService.Notify(new NotificationMessage
+                {
+                    Severity = NotificationSeverity.Error,
+                    Summary = "Import Error",
+                    Detail = "Import did not return a progress id.",
+                    Duration = 4000
+                });
+
+                // Clear the temporary progress id we set earlier
+                AppState.SetImportProgressId(string.Empty);
+                return;
+            }
+
+            // If the service generated its own ProgressId, update AppState so the dialog polls the correct id
+            if (!string.Equals(result.ProgressId, localProgressId, StringComparison.Ordinal))
+            {
+                _logger.LogInformation("Replacing temporary ProgressId {Temp} with server ProgressId {Server}", localProgressId, result.ProgressId);
+                AppState.SetImportProgressId(result.ProgressId);
+            }
+            else
+            {
+                // Ensure AppState contains the final id
+                AppState.SetImportProgressId(localProgressId);
+            }
+
+            // Store locally as well
+            currentProgressId = AppState.ImportProgressId;
+
+            _logger.LogInformation("Import started with ProgressId {ProgressId}", currentProgressId);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "StartImportFromPreview failed for {Type}", importType);
+            NotificationService.Notify(new NotificationMessage
+            {
+                Severity = NotificationSeverity.Error,
+                Summary = "Import Error",
                 Detail = ex.Message,
                 Duration = 4000
             });
@@ -687,6 +812,12 @@
     private string subFundName = string.Empty;
     private string subFundKind = "Merged";
     private readonly List<string> subFundKinds = new() { "Merged", "Separate" };
+
+    // Rollback functionality placeholders
+    private bool showRollbackDialog = false;
+    private string rollbackTarget = string.Empty; // "donations", "accounting", "both"
+    private string rollbackStatus = string.Empty;
+    private string rollbackError = string.Empty;
 
     protected override async Task OnInitializedAsync()
     {
@@ -1158,7 +1289,7 @@
         staffUpdateError = string.Empty;
         staffUpdateSuccess = string.Empty;
 
-        Console.WriteLine("UpdateStaffMember called");
+        _logger.LogInformation("UpdateStaffMember called");
 
         if (IsAddNewSelected)
         {
@@ -1227,8 +1358,8 @@
             sql += " WHERE Id = @Id";
 
             // Execute update
-            Console.WriteLine($"Executing SQL: {sql}");
-            Console.WriteLine($"Parameters: {string.Join(", ", parameters.Select(p => $"{p.Key}={p.Value}"))}");
+            _logger.LogInformation("Executing SQL: {Sql}", sql);
+            _logger.LogInformation("Parameters: {Params}", string.Join(", ", parameters.Select(p => $"{p.Key}={p.Value}")));
 
             int result = await _data.SaveData(
                 sql,
@@ -1236,7 +1367,7 @@
                 _config.GetConnectionString("default") ?? string.Empty
             );
 
-            Console.WriteLine($"Update result: {result}");
+            _logger.LogInformation("Update result: {Result}", result);
             if (result > 0)
             {
                 staffUpdateSuccess = "User updated successfully";
@@ -1287,7 +1418,7 @@
                 return;
             }
 
-            var selectedUser = staff.FirstOrDefault(u => u.Name == staffMember);
+            var selectedUser = staff.FirstOrDefault(u => u.Name == userToDelete);
             if (selectedUser == null)
             {
                 staffUpdateError = "Selected user not found";
@@ -1718,7 +1849,6 @@
             string sql = @"
                 INSERT INTO Accounts (Fund, AccountingClass, AccountNumber, SoftCredit, BalanceAdjustment, OtherFunds, CreatedAt, Overhead)
                 VALUES (@Fund, @AccountingClass, @AccountNumber, @SoftCredit, @BalanceAdjustment, @OtherFunds, @CreatedAt, @Overhead)";
-            _logger.LogInformation("Executing SQL: {Sql}", sql);
 
             int result = await _data.SaveData(
                 sql,
@@ -1978,6 +2108,116 @@
         public string DisplayText { get; set; } = string.Empty;
     }
 
+    // Rollback functionality implementation
+    private async Task OpenRollbackDialog()
+    {
+        try
+        {
+            rollbackError = string.Empty;
+            rollbackStatus = string.Empty;
+            rollbackTarget = string.Empty;
+            
+            // Check what backups are available
+            var availability = await RollbackService.GetRollbackAvailabilityAsync();
+            
+            if (!availability.CanRollback)
+            {
+                if (!string.IsNullOrEmpty(availability.ErrorMessage))
+                {
+                    rollbackError = availability.ErrorMessage;
+                }
+                else
+                {
+                    rollbackError = "No recent backups are available for rollback.";
+                }
+                showRollbackDialog = true;
+                return;
+            }
+            
+            // Show available rollback options
+            showRollbackDialog = true;
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            rollbackError = $"Error checking rollback availability: {ex.Message}";
+            showRollbackDialog = true;
+        }
+    }
+
+    private async Task ExecuteRollback()
+    {
+        try
+        {
+            if (string.IsNullOrEmpty(rollbackTarget))
+            {
+                rollbackError = "Please select a rollback target";
+                return;
+            }
+
+            rollbackError = string.Empty;
+            rollbackStatus = "Executing rollback...";
+            StateHasChanged();
+            
+            // Execute the rollback
+            var result = await RollbackService.ExecuteRollbackAsync(rollbackTarget);
+            
+            if (result.Success)
+            {
+                rollbackStatus = result.Message;
+                
+                // Auto-close dialog after success and show notification
+                await Task.Delay(3000);
+                showRollbackDialog = false;
+                
+                // Show success notification
+                NotificationService.Notify(new NotificationMessage
+                {
+                    Severity = NotificationSeverity.Success,
+                    Summary = "Rollback Complete",
+                    Detail = result.Message,
+                    Duration = 8000
+                });
+            }
+            else
+            {
+                rollbackError = result.ErrorMessage;
+                rollbackStatus = string.Empty;
+            }
+            
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error executing rollback");
+            rollbackError = $"Rollback failed: {ex.Message}";
+            rollbackStatus = string.Empty;
+            StateHasChanged();
+        }
+    }
+
+    private void CancelRollback()
+    {
+        showRollbackDialog = false;
+        rollbackTarget = string.Empty;
+        rollbackError = string.Empty;
+        rollbackStatus = string.Empty;
+        StateHasChanged();
+    }
+
+    private string GetLocalizedString(string key, string fallback)
+    {
+        try
+        {
+            var localized = Localizer[key];
+            return localized.ResourceNotFound ? fallback : localized.Value;
+        }
+        catch
+        {
+            return fallback;
+        }
+    }
+
     public class UserFormModel
     {
         [Required(ErrorMessage = "Email is required")]
@@ -1988,4 +2228,4 @@
         [StringLength(100, MinimumLength = 2, ErrorMessage = "Name must be between 2 and 100 characters")]
         public string Name { get; set; } = string.Empty;
     }
-}
+}}

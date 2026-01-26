@@ -1,0 +1,38 @@
+@using cya2.Services.Imports
+@inject DialogService DialogService
+
+<RadzenCard Style="padding: 1.5rem; min-width: 400px; max-width: 520px;">
+    <RadzenStack Orientation="Orientation.Vertical" Gap="1rem">
+        <RadzenText TextStyle="TextStyle.H6">Confirm File Upload</RadzenText>
+
+        <RadzenStack Orientation="Orientation.Vertical" Gap="0.5rem" Style="background-color:#f8f9fa; padding:0.75rem; border-radius:4px;">
+            <div><b>File name:</b> @Preview?.FileName</div>
+            <div><b>Size:</b> @(Preview == null ? "" : FormatSize(Preview.FileSizeBytes))</div>
+            <div><b>Format:</b> @Preview?.ContentType</div>
+        </RadzenStack>
+
+        <RadzenText TextStyle="TextStyle.Body2">
+            This file will be used to update the database. Are you sure this is the correct file?
+        </RadzenText>
+
+        <RadzenStack Orientation="Orientation.Horizontal" JustifyContent="JustifyContent.End" Gap="0.75rem">
+            <RadzenButton Text="Cancel" ButtonStyle="ButtonStyle.Light" Click="@(() => DialogService.Close(false))" />
+            <RadzenButton Text="Confirm" ButtonStyle="ButtonStyle.Primary" Click="@(() => DialogService.Close(true))" />
+        </RadzenStack>
+    </RadzenStack>
+</RadzenCard>
+
+@code {
+    [Parameter] public FilePreviewResult? Preview { get; set; }
+
+    private static string FormatSize(long bytes)
+    {
+        if (bytes < 1024) return $"{bytes} B";
+        double kb = bytes / 1024d;
+        if (kb < 1024) return $"{kb:F1} KB";
+        double mb = kb / 1024d;
+        if (mb < 1024) return $"{mb:F1} MB";
+        double gb = mb / 1024d;
+        return $"{gb:F1} GB";
+    }
+}

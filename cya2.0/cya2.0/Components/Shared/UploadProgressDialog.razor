@@ -21,6 +21,7 @@
         public bool IsComplete { get; set; }
         public List<string> Errors { get; set; } = new();
         public List<ImportStepDto> Steps { get; set; } = new();
+        public string ImportType { get; set; } = string.Empty; // "Donations" or "Accounting"
     }
     
     private class ImportStepDto
@@ -39,6 +40,11 @@
     protected override void OnInitialized()
     {
         AppState.ImportProgressIdChanged += OnProgressIdChanged;
+        // If AppState already has an id (was set before dialog initialized), pick it up now
+        if (!string.IsNullOrWhiteSpace(AppState.ImportProgressId))
+        {
+            OnProgressIdChanged(AppState.ImportProgressId!);
+        }
         _timer = new System.Threading.Timer(async _ => await Poll(), null, 250, 750);
     }
 
@@ -74,6 +80,7 @@
             _p.Status = string.IsNullOrWhiteSpace(srv.Status) ? "Processing..." : srv.Status;
             _p.Errors = srv.Errors?.ToList() ?? new List<string>();
             _p.IsComplete = srv.IsComplete;
+            _p.ImportType = srv.ImportType ?? string.Empty;
 
             // Map steps
             _p.Steps = srv.Steps?.Select(s => new ImportStepDto
@@ -121,7 +128,7 @@
 
 <div style="padding:1rem; min-width: 420px;">
     <RadzenStack Orientation="Orientation.Vertical" Gap="0.75rem">
-        <RadzenText TextStyle="TextStyle.Subtitle2">@GetLocalizedString("DatabaseUpdateProgress", "Database Update Progress")</RadzenText>
+        <RadzenText TextStyle="TextStyle.Subtitle2">@GetDialogTitle()</RadzenText>
         
         @* Always reserve space for progress bar to prevent size changes *@
         <div style="min-height: 60px;">
@@ -335,6 +342,16 @@
         {
             return fallback;
         }
+    }
+    
+    private string GetDialogTitle()
+    {
+        return _p.ImportType switch
+        {
+            "Donations" => GetLocalizedString("UpdatingDonationDataTable", "Updating Donation Data Table"),
+            "Accounting" => GetLocalizedString("UpdatingAccountingDataTable", "Updating Accounting Data Table"),
+            _ => GetLocalizedString("DatabaseUpdateProgress", "Database Update Progress")
+        };
     }
     
     private string GetStepBackgroundColor(string stepName)
