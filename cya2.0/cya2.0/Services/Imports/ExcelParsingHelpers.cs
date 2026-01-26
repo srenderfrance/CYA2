@@ -21,7 +21,18 @@ namespace cya2.Services.Imports
                 date = default;
                 return false;
             }
-            return DateTime.TryParse(input, UsCulture, DateTimeStyles.AssumeLocal, out date);
+
+            var trimmed = input.Trim();
+            
+            // Only accept US format (MM/dd/yyyy) to avoid date ambiguity
+            // This prevents donations from being incorrectly aggregated due to date misinterpretation
+            if (DateTime.TryParse(trimmed, UsCulture, DateTimeStyles.AssumeLocal, out date))
+            {
+                return true;
+            }
+            
+            date = default;
+            return false;
         }
 
         public static bool TryParseDoubleUS(string? input, out double number)

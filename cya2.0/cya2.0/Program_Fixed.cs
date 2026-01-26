@@ -63,6 +63,9 @@ builder.Services.AddLogging(l =>
 // Add HttpContextAccessor for component injection
 builder.Services.AddHttpContextAccessor();
 
+// Add HttpClient for file uploads
+builder.Services.AddHttpClient();
+
 // Core application services
 builder.Services.AddSingleton<AppState>();
 builder.Services.AddScoped<DataLoadingService>();
@@ -73,6 +76,7 @@ builder.Services.AddSingleton<IHostedService>(sp => sp.GetRequiredService<Databa
 // Import services
 builder.Services.AddScoped<IDonationImportService, DonationImportService>();
 builder.Services.AddScoped<IAccountingImportService, AccountingImportService>();
+builder.Services.AddScoped<RollbackService>(); // Add rollback service
 // Import progress reporting
 builder.Services.AddSingleton<ImportProgressService>();
 
@@ -344,11 +348,10 @@ app.MapHealthChecks("/health");
 
 // Initialize monitor service
 dbMonitorService = app.Services.GetRequiredService<DatabaseMonitorService>();
-dbMonitorService?.Suspend();
 
 app.Lifetime.ApplicationStarted.Register(() =>
 {
-    Task.Delay(5000).ContinueWith(_ =>
+    Task.Delay(2000).ContinueWith(_ =>
     {
         try
         {
@@ -579,6 +582,51 @@ app.MapPost("/api/upload/accounting", async (HttpRequest req, IAccountingImportS
     }
 });
 
+app.MapPost("/api/rollback", async (HttpRequest req, RollbackService rollbackService, ILogger<Program> logger) =>
+{
+    try
+    {
+        var body = await req.ReadFromJsonAsync<RollbackRequest>();
+        if (body == null || string.IsNullOrEmpty(body.Target))
+        {
+            return Results.BadRequest("Invalid rollback request");
+        }
+
+        logger.LogInformation("Rollback requested for target: {Target}", body.Target);
+        var result = await rollbackService.ExecuteRollbackAsync(body.Target);
+        
+        if (result.Success)
+        {
+            logger.LogInformation("Rollback completed successfully: {Message}", result.Message);
+        }
+        else
+        {
+            logger.LogWarning("Rollback failed: {Error}", result.ErrorMessage);
+        }
+
+        return Results.Json(result);
+    }
+    catch (Exception ex)
+    {
+        logger.LogError(ex, "Rollback endpoint failed");
+        return Results.Problem(ex.Message);
+    }
+}).RequireAuthorization("RequireAdmin");
+
+app.MapGet("/api/rollback/availability", async (RollbackService rollbackService, ILogger<Program> logger) =>
+{
+    try
+    {
+        var availability = await rollbackService.GetRollbackAvailabilityAsync();
+        return Results.Json(availability);
+    }
+    catch (Exception ex)
+    {
+        logger.LogError(ex, "Rollback availability check failed");
+        return Results.Problem(ex.Message);
+    }
+}).RequireAuthorization("RequireAdmin");
+
 app.MapGet("/api/mysql-debug", async (IConfiguration config, ILogger<Program> logger) =>
 {
     try
@@ -596,3 +644,4 @@ app.MapGet("/api/mysql-debug", async (IConfiguration config, ILogger<Program> lo
 
 app.Run();
 
+public record RollbackRequest(string Target);

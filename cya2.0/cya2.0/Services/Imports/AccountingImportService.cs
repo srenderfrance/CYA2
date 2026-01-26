@@ -16,23 +16,28 @@ namespace cya2.Services.Imports
 {
     internal sealed class AccountingImportService : IAccountingImportService
     {
+        private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, (byte[] Data, string FileName, string ContentType, DateTime CreatedAt)> _previews
+            = new();
+
         private readonly IDataAccess _data;
         private readonly IConfiguration _config;
         private readonly ILogger<AccountingImportService> _logger;
         private readonly ImportProgressService _progressService;
+        private readonly AppState _appState;
 
-        public AccountingImportService(IDataAccess data, IConfiguration config, ILogger<AccountingImportService> logger, ImportProgressService progressService)
+        public AccountingImportService(IDataAccess data, IConfiguration config, ILogger<AccountingImportService> logger, ImportProgressService progressService, AppState appState)
         {
             _data = data;
             _config = config;
             _logger = logger;
             _progressService = progressService;
+            _appState = appState;
         }
 
         public async Task<ImportResult> ImportAsync(Stream file, CancellationToken ct)
         {
             var progressId = Guid.NewGuid().ToString("N");
-            _progressService.Start(progressId);
+            _progressService.Start(progressId, "Accounting");
             return await ProcessAsync(file, ct, progressId);
         }
 
@@ -40,7 +45,7 @@ namespace cya2.Services.Imports
         {
             var result = new ImportResult();
             var progressId = Guid.NewGuid().ToString("N");
-            _progressService.Start(progressId);
+            _progressService.Start(progressId, "Accounting");
             result.ProgressId = progressId;
 
             // Buffer request stream immediately
@@ -61,6 +66,92 @@ namespace cya2.Services.Imports
                 catch (Exception ex)
                 {
                     _progressService.SetStatus(progressId, $"Error: {ex.Message}");
+                }
+            });
+
+            return result;
+        }
+
+        public async Task<FilePreviewResult> PreviewAsync(Stream file, string fileName, string contentType, CancellationToken ct)
+        {
+            if (file == null) throw new ArgumentNullException(nameof(file));
+
+            byte[] data;
+            using (var ms = new MemoryStream())
+            {
+                await file.CopyToAsync(ms, ct);
+                data = ms.ToArray();
+            }
+
+            var previewId = Guid.NewGuid().ToString("N");
+
+            _previews[previewId] = (data, fileName, contentType, DateTime.UtcNow);
+
+            _logger.LogInformation("Created accounting file preview {PreviewId} for {FileName} ({Size} bytes, {ContentType})",
+                previewId, fileName, data.LongLength, contentType ?? string.Empty);
+
+            return new FilePreviewResult
+            {
+                PreviewId = previewId,
+                FileName = fileName ?? string.Empty,
+                FileSizeBytes = data.LongLength,
+                ContentType = contentType ?? string.Empty
+            };
+        }
+
+        public async Task<ImportResult> ImportFromPreviewAsync(string previewId, CancellationToken ct)
+        {
+            if (string.IsNullOrWhiteSpace(previewId))
+                throw new ArgumentException("PreviewId is required", nameof(previewId));
+
+            if (!_previews.TryRemove(previewId, out var entry))
+            {
+                _logger.LogWarning("Accounting preview {PreviewId} not found or expired", previewId);
+                var res = new ImportResult();
+                res.Errors.Add("Preview session expired. Please upload the file again.");
+                return res;
+            }
+
+            using var ms = new MemoryStream(entry.Data, writable: false);
+            return await ImportAsync(ms, ct);
+        }
+
+        public async Task<ImportResult> StartImportFromPreviewAsync(string previewId, string progressId)
+        {
+            var result = new ImportResult();
+            var pId = string.IsNullOrWhiteSpace(progressId) ? Guid.NewGuid().ToString("N") : progressId;
+            _progressService.Start(pId, "Accounting");
+            result.ProgressId = pId;
+
+            if (string.IsNullOrWhiteSpace(previewId))
+            {
+                result.Errors.Add("PreviewId is required");
+                _progressService.SetStatus(pId, "PreviewId is required");
+                return result;
+            }
+
+            if (!_previews.TryRemove(previewId, out var entry))
+            {
+                _logger.LogWarning("Accounting preview {PreviewId} not found or expired", previewId);
+                result.Errors.Add("Preview session expired. Please upload the file again.");
+                _progressService.SetStatus(pId, "Preview session expired");
+                return result;
+            }
+
+            // Buffer data for background processing
+            var data = entry.Data;
+
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    using var ms = new MemoryStream(data, writable: false);
+                    await ProcessAsync(ms, CancellationToken.None, pId);
+                }
+                catch (Exception ex)
+                {
+                    _progressService.SetStatus(pId, $"Error: {ex.Message}");
+                    _logger.LogError(ex, "Background accounting import failed for preview {PreviewId}", previewId);
                 }
             });
 
@@ -205,6 +296,83 @@ namespace cya2.Services.Imports
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Backup/delete range for accounting failed");
+                _progressService.UpdateStep(progressId, "Database Backup", $"Failed: {ex.Message}");
+                throw; // Re-throw to let the import process handle the error appropriately
+            }
+        }
+
+        private async Task BackupAllDataAndDeleteFromDateAsync(DateTime fromDate, string progressId, CancellationToken ct)
+        {
+            try
+            {
+                _progressService.UpdateStep(progressId, "Database Backup", "Connecting to database...");
+                var connStr = _config.GetConnectionString("default") ?? string.Empty;
+                
+                // Build connection string with extended timeouts for backup operations
+                var csb = new MySqlConnectionStringBuilder(connStr)
+                {
+                    ConnectionTimeout = 60, // 1 minute for connection
+                    DefaultCommandTimeout = 300 // 5 minutes for commands
+                };
+
+                await using var conn = new MySqlConnection(csb.ConnectionString);
+                await conn.OpenAsync(ct);
+                await using var tx = await conn.BeginTransactionAsync(ct);
+
+                await EnsureAccountingBackupTableAsync(conn, (MySqlTransaction)tx, ct);
+
+                string backupId = Guid.NewGuid().ToString();
+
+                // Check how many rows we'll be backing up (ALL existing data)
+                _progressService.UpdateStep(progressId, "Database Backup", "Counting existing records...");
+                var countCmd = conn.CreateCommand();
+                countCmd.Transaction = (MySqlTransaction)tx;
+                countCmd.CommandTimeout = 30;
+                countCmd.CommandText = "SELECT COUNT(*) FROM AccountingData";
+                var rowCount = Convert.ToInt32(await countCmd.ExecuteScalarAsync(ct));
+                
+                if (rowCount > 0)
+                {
+                    _progressService.UpdateStep(progressId, "Database Backup", $"Backing up all {rowCount:N0} existing records...");
+
+                    // Build INSERT ... SELECT to backup ALL existing data
+                    var insert = conn.CreateCommand();
+                    insert.Transaction = (MySqlTransaction)tx;
+                    insert.CommandTimeout = 300; // 5 minutes for large backup operations
+                    insert.CommandText = @"INSERT INTO AccountingDataBackup
+                        (Id, AccountingClass, Date, Num, Amount, AccountNumber, Account, Type, DateCreated, BackupId, BackupAt, Pinned, SourceRangeStart)
+                        SELECT Id, AccountingClass, Date, Num, Amount, AccountNumber, Account, Type, DateCreated, @bid, UTC_TIMESTAMP(), 0, @from
+                        FROM AccountingData";
+                    insert.Parameters.Add(new MySqlParameter("@bid", backupId));
+                    insert.Parameters.Add(new MySqlParameter("@from", fromDate));
+                    
+                    var backupRows = await insert.ExecuteNonQueryAsync(ct);
+                    
+                    _progressService.UpdateStep(progressId, "Database Backup", $"Removing records from {fromDate:yyyy-MM-dd} forward...");
+
+                    // Delete only from the import start date forward
+                    var del = conn.CreateCommand();
+                    del.Transaction = (MySqlTransaction)tx;
+                    del.CommandTimeout = 300; // 5 minutes for large delete operations
+                    del.CommandText = "DELETE FROM AccountingData WHERE Date >= @from";
+                    del.Parameters.Add(new MySqlParameter("@from", fromDate));
+                    var deletedRows = await del.ExecuteNonQueryAsync(ct);
+                    
+                    _progressService.UpdateStep(progressId, "Database Backup", "Cleaning up old backups...");
+
+                    // Retention cleanup (non-pinned)
+                    await CleanupAccountingBackupsAsync(conn, (MySqlTransaction)tx, ct);
+                }
+                else
+                {
+                    _progressService.UpdateStep(progressId, "Database Backup", "No existing records found");
+                }
+
+                await tx.CommitAsync(ct);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Backup all data and delete range for accounting failed");
                 _progressService.UpdateStep(progressId, "Database Backup", $"Failed: {ex.Message}");
                 throw; // Re-throw to let the import process handle the error appropriately
             }
@@ -388,10 +556,10 @@ namespace cya2.Services.Imports
             {
                 _progressService.CompleteStep(progressId, "Data Analysis", "Completed", $"Earliest date: {earliest.Value:yyyy-MM-dd}");
                 
-                // Step 4: Database Backup & Cleanup
-                _progressService.AddStep(progressId, "Database Backup", "Backing up existing records...");
-                await BackupRangeToTableAndDeleteAsync(earliest.Value, progressId, ct);
-                _progressService.CompleteStep(progressId, "Database Backup", "Completed", "Existing data backed up and cleared");
+                // Step 4: Database Backup & Cleanup - Always backup ALL existing data
+                _progressService.AddStep(progressId, "Database Backup", "Backing up all existing records...");
+                await BackupAllDataAndDeleteFromDateAsync(earliest.Value, progressId, ct);
+                _progressService.CompleteStep(progressId, "Database Backup", "Completed", "All existing data backed up, range cleared");
             }
             else
             {
@@ -471,6 +639,14 @@ namespace cya2.Services.Imports
             _logger.LogInformation("Accounting import complete. TotalRows={TotalRows}, InsertedRows={InsertedRows}, FailedRows={FailedRows}", result.TotalRows, result.InsertedRows, result.FailedRows);
             _progressService.AddErrors(progressId, result.Errors);
             _progressService.Complete(progressId);
+            
+            // Clear only the current admin user's accounting data cache after successful import
+            if (result.InsertedRows > 0)
+            {
+                _appState.ClearAccountingDataCache();
+                _logger.LogInformation("Cleared current admin user's accounting data cache after successful import");
+            }
+            
             return result;
         }
 

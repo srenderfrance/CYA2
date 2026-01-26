@@ -85,6 +85,39 @@ namespace cya2.Services
         {
             _pageCache.Clear();
         }
+        
+        /// <summary>
+        /// Clears all caches after data updates (imports/rollbacks)
+        /// </summary>
+        public void ClearAllCaches()
+        {
+            _pageCache.Clear();
+            _appState.ClearAllDataCaches();
+        }
+        
+        /// <summary>
+        /// Clears only accounting data from caches
+        /// </summary>
+        public void ClearAccountingCache()
+        {
+            // Clear page cache completely since we can't determine which parts are stale
+            _pageCache.Clear();
+            
+            // Clear accounting data from AppState
+            _appState.ClearAccountingDataCache();
+        }
+        
+        /// <summary>
+        /// Clears only donation data from caches
+        /// </summary>
+        public void ClearDonationCache()
+        {
+            // Clear page cache completely since we can't determine which parts are stale
+            _pageCache.Clear();
+            
+            // Clear donation data from AppState
+            _appState.ClearDonationDataCache();
+        }
 
         /// <summary>
         /// Checks if account data is available in page cache

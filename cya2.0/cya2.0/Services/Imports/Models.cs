@@ -17,7 +17,7 @@ namespace cya2.Services.Imports
         public DateTime SubmittedAtUtc { get; init; } = DateTime.UtcNow;
     }
 
-    internal sealed class ImportResult
+    public sealed class ImportResult
     {
         public int TotalRows { get; set; }
         public int InsertedRows { get; set; }

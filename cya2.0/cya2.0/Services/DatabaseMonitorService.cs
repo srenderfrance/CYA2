@@ -45,7 +45,7 @@ namespace cya2.Services
             _serviceProvider = serviceProvider;
             _configuration = configuration;
             _logger = logger;
-            _suspended = true; // Start suspended
+            _suspended = false; // Re-enable monitoring - Start active instead of suspended
 
             // TEMPORARY: Comment out aggressive first-chance exception handling during debugging
             /*
@@ -73,8 +73,7 @@ namespace cya2.Services
             };
             */
             
-            // TODO: Implement more targeted exception handling that only catches actual connection failures
-            _logger.LogInformation("DatabaseMonitorService initialized - aggressive exception handling disabled for debugging");
+            _logger.LogInformation("DatabaseMonitorService initialized - monitoring enabled");
         }
 
         // Required to maintain API compatibility
