@@ -69,7 +69,7 @@
             </div>
 
             <!-- Rollback button with danger styling -->
-            <RadzenButton Text="@GetLocalizedString("RollbackLastUpdate", "Rollback Last Update")"
+            <RadzenButton Text="@Localizer["RollbackLastUpdate"]"
                           ButtonStyle="ButtonStyle.Danger"
                           Icon="history"
                           Click="@(async () => await OpenRollbackDialog())"
@@ -88,14 +88,15 @@
                 <!-- User -->
                 <RadzenStack Orientation="Orientation.Vertical" Gap="1rem">
                     <RadzenText TextStyle="TextStyle.Subtitle2" Style="font-weight: bold;">@Localizer["User"]</RadzenText>
-                    <RadzenDropDown TValue="string"
-                                   Data="@staffWithAddOption"
-                                   TextProperty="Name"
-                                   ValueProperty="Name"
-                                   @bind-Value="staffMember"
-                                   Change="@(async args => await staffSelection(args?.ToString() ?? string.Empty))"
-                                   Placeholder="@Localizer["SelectUser"]"
-                                   Style="width: 100%;" />
+                    <div style="width:100%;">
+                        <CustomDropdown TItem="UserData" TValue="string"
+                                        Data="@staffWithAddOption"
+                                        TextSelector="@(u => u.Name)"
+                                        ValueSelector="@(u => u.Name)"
+                                        Value="@staffMember"
+                                        ValueChanged="@(async (string val) => { staffMember = val; await staffSelection(val); })"
+                                        Placeholder="@Localizer["SelectUser"]" />
+                    </div>
                               
                                <RadzenStack Orientation="Orientation.Vertical" Gap="1rem">
                     <RadzenText TextStyle="TextStyle.Subtitle2" Style="font-weight: bold;">@Localizer["NewName"]</RadzenText>
@@ -108,7 +109,7 @@
                     <RadzenText TextStyle="TextStyle.Subtitle2" Style="font-weight: bold;">@Localizer["CurrentEmail"]</RadzenText>
                     <div class="rz-border-radius-1 rz-border-1" style="height: 38px; display: grid; align-items: center; justify-items: start; background-color: #f0f0f0; padding: 0 0.5rem;">
                         <RadzenText TextStyle="TextStyle.Body1" Style="margin:0;">
-                            @(string.IsNullOrEmpty(selectedStaffEmail) ? "No user has been selected." : selectedStaffEmail)
+                            @(string.IsNullOrEmpty(selectedStaffEmail) ? @Localizer["NoUserSelected"]: selectedStaffEmail)
                         </RadzenText>
                     </div>
                     
@@ -124,17 +125,21 @@
                 <RadzenText TextStyle="TextStyle.Subtitle2" Style="font-weight: bold;">@Localizer["AuthLevel"]</RadzenText>
                 <div class="rz-border-radius-1 rz-border-1" style="height: 38px; display: grid; align-items: center; justify-items: start; background-color: #f0f0f0; padding: 0 0.5rem;">
                     <RadzenText TextStyle="TextStyle.Body1" Style="margin:0;">
-                        @(string.IsNullOrEmpty(selectedStaffAuthLevel) ? "No user has been selected." : selectedStaffAuthLevel)
+                        @(string.IsNullOrEmpty(selectedStaffAuthLevel) ? @Localizer["NoUserSelected"] : selectedStaffAuthLevel)
                     </RadzenText>
                 </div>
                 
                 <RadzenStack Orientation="Orientation.Vertical" Gap="1rem">
                     <RadzenText TextStyle="TextStyle.Subtitle2" Style="font-weight: bold;">@Localizer["NewAuthLevel"]</RadzenText>
-                    <RadzenDropDown TValue="string"
-                                   Data="@authLevels"
-                                   @bind-Value="@newAuthLevel"
-                                   Placeholder="@Localizer["SelectNewAuthLevel"]"
-                                   Style="width: 100%;" />
+                    <div style="width:100%;">
+                        <CustomDropdown TItem="string" TValue="string"
+                                        Data="@authLevels"
+                                        TextSelector="@(s => s)"
+                                        ValueSelector="@(s => s)"
+                                        Value="@newAuthLevel"
+                                        ValueChanged="@(async (string v) => newAuthLevel = v)"
+                                        Placeholder="@Localizer["SelectNewAuthLevel"]" />
+                    </div>
                 </RadzenStack>
             </RadzenStack>
             
@@ -143,63 +148,29 @@
                 <RadzenText TextStyle="TextStyle.Subtitle2" Style="font-weight: bold;">@Localizer["FundAccess"]</RadzenText>
                 
                 <RadzenStack Orientation="Orientation.Vertical" Gap="0.5rem">
-                    <!-- Single, consistent dropdown for account selection -->
-                    <RadzenDropDown TValue="int"
-                                    Data="@accountsOptions"
-                                    TextProperty="@nameof(Account.Fund)"
-                                    ValueProperty="@nameof(Account.AccountId)"
-                                    @bind-Value="accountToAddId"
-                                    Change="@(args => accountToAddId = (args is int v) ? v : 0)"
-                                    Placeholder="@Localizer["GrantFundAccess"]"
-                                    Style="width: 100%;" >
-                        <Template Context="account">
-                            @if (account.AccountId == 0)
-                            {
-                                <RadzenText TextStyle="TextStyle.Body1">@Localizer["GrantFundAccess"]</RadzenText>
-                            }
-                            else
-                            {
-                                <RadzenText TextStyle="TextStyle.Body1">@FundDisplayHelper.GetDisplay(account.Fund)</RadzenText>
-                            }
-                        </Template>
-                    </RadzenDropDown>
-                    
-                    <RadzenButton 
-                        Text="@Localizer["GrantAccess"]" 
-                        ButtonStyle="ButtonStyle.Primary" 
-                        Click="LinkAccountToStaff" 
-                        Disabled="@(string.IsNullOrEmpty(staffMember) || accountToAddId == 0)"
-                        Style="width: fit-content;" />
+                    <!-- Single, consistent dropdown for account selection (custom) -->
+                    <div style="width:100%;">
+                        <CustomDropdown TItem="Account" TValue="int"
+                                        Data="@accountsOptions"
+                                        TextSelector="@(a => a.AccountId == 0 ? Localizer["GrantFundAccess"].Value : FundDisplayHelper.GetDisplay(a.Fund))"
+                                        ValueSelector="@(a => a.AccountId)"
+                                        Value="@accountToAddId"
+                                        ValueChanged="@(async (int v) => accountToAddId = v)"
+                                        Placeholder="@Localizer["GrantFundAccess"]" />
+                    </div>
                 </RadzenStack>
                 
                 <RadzenStack Orientation="Orientation.Vertical" Gap="0.5rem" Class="rz-mt-3">
-                    <!-- Removed label; show as default text in dropdown -->
-                    <RadzenDropDown TValue="int"
-                                    Data="@userAccounts"
-                                    TextProperty="@nameof(Account.Fund)"
-                                    ValueProperty="@nameof(Account.AccountId)"
-                                    @bind-Value="selectedLinkedAccountId"
-                                    Change="@(args => selectedLinkedAccountId = (args is int v) ? v : 0)"
-                                    Placeholder="@Localizer["RemoveFundAccess"]"
-                                    Style="width: 100%;" >
-                        <Template Context="account">
-                            @if (account.AccountId == 0)
-                            {
-                                <RadzenText TextStyle="TextStyle.Body1">@Localizer["RemoveFundAccess"]</RadzenText>
-                            }
-                            else
-                            {
-                                <RadzenText TextStyle="TextStyle.Body1">@FundDisplayHelper.GetDisplay(account.Fund)</RadzenText>
-                            }
-                        </Template>
-                    </RadzenDropDown>
-                    
-                    <RadzenButton 
-                        Text="@Localizer["RemoveAccess"]" 
-                        ButtonStyle="ButtonStyle.Danger" 
-                        Click="RemoveAccountLink" 
-                        Disabled="@(selectedLinkedAccountId == 0 || string.IsNullOrEmpty(staffMember) || IsAddNewSelected)"
-                        Style="width: fit-content;" />
+                    <!-- Removed label; show as default text in dropdown (custom) -->
+                    <div style="width:100%;">
+                        <CustomDropdown TItem="Account" TValue="int"
+                                        Data="@userAccounts"
+                                        TextSelector="@(a => a.AccountId == 0 ? Localizer["RemoveFundAccess"].Value : FundDisplayHelper.GetDisplay(a.Fund))"
+                                        ValueSelector="@(a => a.AccountId)"
+                                        Value="@selectedLinkedAccountId"
+                                        ValueChanged="@(async (int v) => selectedLinkedAccountId = v)"
+                                        Placeholder="@Localizer["RemoveFundAccess"]" />
+                    </div>
                 </RadzenStack>
             </RadzenStack>
             
@@ -209,7 +180,7 @@
                 <div style="border: 1px solid #ccc; border-radius: 4px; padding: 0.75rem; max-height: 200px; overflow-y: auto; background-color: #f0f0f0; min-height: 120px;">
                     @if (IsAddNewSelected)
                     {
-                        <RadzenText TextStyle="TextStyle.Body1">No user has been selected.</RadzenText>
+                        <RadzenText TextStyle="TextStyle.Body1">@Localizer["NoUserSelected"]</RadzenText>
                     }
                     else if (selectedStaffAuthLevel == "Admin")
                     {
@@ -312,14 +283,15 @@
                 <!-- Fund Selection -->
                 <RadzenStack Orientation="Orientation.Vertical" Gap="1rem">
                     <RadzenText TextStyle="TextStyle.Subtitle2" Style="font-weight: bold;">@Localizer["Fund"]</RadzenText>
-                    <RadzenDropDown TValue="string"
-                                   Data="@fundsWithAddOption"
-                                   TextProperty="DisplayText"
-                                   ValueProperty="DisplayText"
-                                   @bind-Value="selectedFund"
-                                   Change="@(async args => await fundSelection(args?.ToString() ?? string.Empty))"
-                                   Placeholder="@Localizer["SelectFund"]"
-                                   Style="width: 100%;"/>
+                    <div style="width:100%;">
+                        <CustomDropdown TItem="FundDisplayItem" TValue="string"
+                                        Data="@fundsWithAddOption"
+                                        TextSelector="@(f => f.DisplayText)"
+                                        ValueSelector="@(f => f.DisplayText)"
+                                        Value="@selectedFund"
+                                        ValueChanged="@(async (string v) => await fundSelection(v))"
+                                        Placeholder="@Localizer["SelectFund"]" />
+                    </div>
                 </RadzenStack>
 
                 <!-- Fund Number -->
@@ -401,13 +373,15 @@
                 <!-- Principle Fund Selection -->
                 <RadzenStack Orientation="Orientation.Vertical" Gap="1rem">
                     <RadzenText TextStyle="TextStyle.Subtitle2" Style="font-weight: bold;">@Localizer["PrincipleFund"]</RadzenText>
-                    <RadzenDropDown TValue="int"
-                                    Data="@accountsOptions"
-                                    TextProperty="@nameof(Account.Fund)"
-                                    ValueProperty="@nameof(Account.AccountId)"
-                                    @bind-Value="selectedPrincipleAccountId"
-                                    Placeholder="@Localizer["SelectFund"]"
-                                    Style="width: 100%;" />
+                    <div style="width:100%;">
+                        <CustomDropdown TItem="Account" TValue="int"
+                                        Data="@accountsOptions"
+                                        TextSelector="@(a => a.AccountId == 0 ? Localizer["SelectFund"].Value : FundDisplayHelper.GetDisplay(a.Fund))"
+                                        ValueSelector="@(a => a.AccountId)"
+                                        Value="@selectedPrincipleAccountId"
+                                        ValueChanged="@(async (int v) => selectedPrincipleAccountId = v)"
+                                        Placeholder="@Localizer["SelectFund"]" />
+                    </div>
                 </RadzenStack>
 
                 <!-- Sub Fund Name -->
@@ -422,10 +396,14 @@
                 <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="2rem">
                     <RadzenText TextStyle="TextStyle.Subtitle2" Style="font-weight: bold; width: 150px;">@Localizer["Type"]</RadzenText>
                     <RadzenFormField Variant="Variant.Outlined" Style="flex: 1;">
-                        <RadzenDropDown TValue="string"
-                                       Data="@subFundKinds"
-                                       @bind-Value="subFundKind"
-                                       Style="width: 100%;" />
+                        <div style="width:100%;">
+                            <CustomDropdown TItem="string" TValue="string"
+                                            Data="@subFundKinds"
+                                            TextSelector="@(s => s)"
+                                            ValueSelector="@(s => s)"
+                                            Value="@subFundKind"
+                                            ValueChanged="@(async (string v) => subFundKind = v)" />
+                        </div>
                     </RadzenFormField>
                 </RadzenStack>
             </RadzenStack>
@@ -786,7 +764,8 @@
             .Where(f => f.AccountId != 0)  // Exclude any zero IDs from allFunds
             .Select(f => new FundDisplayItem { 
                 Account = f,
-                DisplayText = FundDisplayHelper.GetDisplay(f.AccountingClass)
+                // Use the Fund value (not AccountingClass) for display, normalized via helper
+                DisplayText = FundDisplayHelper.GetDisplay(f.Fund)
             }));
     
     private Account? selectedFundAccount; // The currently selected fund account for display

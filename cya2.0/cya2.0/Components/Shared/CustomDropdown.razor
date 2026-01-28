@@ -1,0 +1,167 @@
+@typeparam TItem
+@typeparam TValue
+
+<style>
+/* Match Radzen/RadzenTextBox exact computed font metrics provided */
+.custom-dropdown { position: relative; display: inline-block; min-width: 220px; font-family: "Source Sans Pro", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol"; }
+.custom-dropdown-toggle { display:flex; align-items:center; justify-content:space-between; padding:0 6px; border:1px solid #ced4da; border-radius:4px; background:white; cursor:pointer; height:40px; box-sizing:border-box; }
+.custom-dropdown-toggle.disabled { opacity:0.6; cursor:not-allowed; }
+.custom-dropdown-label { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; flex:1; font-size:16px; font-weight:400; letter-spacing:-0.32px; line-height:20px; color:#212529; }
+/* SVG arrow inherits current color and is sized to match input icon */
+.custom-dropdown-arrow { margin-left:6px; color: #495057; width: 0.85rem; height: 0.85rem; flex-shrink:0; }
+.custom-dropdown-panel { position: absolute; top:100%; left:0; right:0; background:white; border:1px solid #dee2e6; box-shadow:0 6px 18px rgba(0,0,0,0.08); z-index:2000; margin-top:4px; border-radius:4px; }
+.custom-dropdown-list { max-height:240px; overflow:auto; margin:0; padding:2px 0; list-style:none; }
+.custom-dropdown-item { padding:4px 6px; cursor:pointer; font-size:16px; font-weight:400; letter-spacing:-0.32px; line-height:20px; color:#212529; }
+.custom-dropdown-item:hover { background:#f1f5f9; }
+.custom-dropdown-item.selected { background:#e6f0ff; font-weight:600; }
+.custom-dropdown-placeholder { color:#6c757d; }
+</style>
+
+<div class="custom-dropdown" id="@Id" tabindex="0" @onkeydown="OnKeyDown">
+    <div class="custom-dropdown-toggle @(Disabled ? "disabled" : "")" @onclick="Toggle">
+        <span class="custom-dropdown-label">@DisplayLabel</span>
+        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="currentColor" class="bi bi-caret-down-fill custom-dropdown-arrow" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+            <path d="M7.247 11.14 2.451 5.658C1.885 5.013 2.345 4 3.204 4h9.592a1 1 0 0 1 .753 1.659l-4.796 5.48a1 1 0 0 1-1.506 0z" />
+        </svg>
+    </div>
+
+    @if (IsOpen)
+    {
+        <div class="custom-dropdown-panel" @ref="panelRef">
+            <ul class="custom-dropdown-list">
+                @if (Data != null)
+                {
+                    foreach (var item in Data)
+                    {
+                        var itemValue = ValueSelector(item);
+                        var isSelected = EqualityComparer<TValue>.Default.Equals(itemValue, Value);
+                        <li class="custom-dropdown-item @(isSelected ? "selected" : "")" @onclick="() => SelectItem(item)">
+                            @if (ItemTemplate != null)
+                            {
+                                @ItemTemplate(item)
+                            }
+                            else
+                            {
+                                @TextSelector(item)
+                            }
+                        </li>
+                    }
+                }
+            </ul>
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter] public IEnumerable<TItem>? Data { get; set; }
+    [Parameter] public Func<TItem, string> TextSelector { get; set; } = _ => string.Empty;
+    [Parameter] public Func<TItem, TValue> ValueSelector { get; set; } = _ => default!;
+    [Parameter] public TValue Value { get; set; } = default!;
+    [Parameter] public EventCallback<TValue> ValueChanged { get; set; }
+    [Parameter] public string Placeholder { get; set; } = "Select";
+    [Parameter] public RenderFragment<TItem>? ItemTemplate { get; set; }
+    [Parameter] public bool Disabled { get; set; }
+
+    private string Id = "custom-dropdown-" + Guid.NewGuid().ToString("N");
+    private bool IsOpen { get; set; }
+    private ElementReference panelRef;
+    private DotNetObjectReference<object>? dotNetRef;
+
+    private string DisplayLabel
+    {
+        get
+        {
+            if (Data == null) return Placeholder;
+            var match = Data.FirstOrDefault(d => EqualityComparer<TValue>.Default.Equals(ValueSelector(d), Value));
+            if (match != null)
+            {
+                var txt = TextSelector(match);
+                return string.IsNullOrWhiteSpace(txt) ? Placeholder : txt;
+            }
+            return Placeholder;
+        }
+    }
+
+    private void Toggle()
+    {
+        if (Disabled) return;
+        if (IsOpen) Close(); else Open();
+    }
+
+    private async void Open()
+    {
+        IsOpen = true;
+        StateHasChanged();
+        await Task.Delay(50); // allow render
+        dotNetRef = DotNetObjectReference.Create<object>(new JsCallback(this));
+        await JS.InvokeVoidAsync("customDropdown.register", dotNetRef, Id);
+    }
+
+    [JSInvokable]
+    public Task CloseDropdown()
+    {
+        Close();
+        return Task.CompletedTask;
+    }
+
+    private async void Close()
+    {
+        if (!IsOpen) return;
+        IsOpen = false;
+        StateHasChanged();
+        try
+        {
+            await JS.InvokeVoidAsync("customDropdown.unregister", Id);
+        }
+        catch { }
+        dotNetRef?.Dispose();
+        dotNetRef = null;
+    }
+
+    private async Task SelectItem(TItem item)
+    {
+        var val = ValueSelector(item);
+        Value = val!;
+        await ValueChanged.InvokeAsync(Value);
+        Close();
+    }
+
+    private async Task OnKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Escape") Close();
+        if (e.Key == "Enter") Toggle();
+    }
+
+    [Inject] private IJSRuntime JS { get; set; } = default!;
+
+    protected override void OnInitialized()
+    {
+        // noop
+    }
+
+    public void Dispose()
+    {
+        try
+        {
+            JS.InvokeVoidAsync("customDropdown.unregister", Id);
+        }
+        catch { }
+        dotNetRef?.Dispose();
+    }
+
+    // Helper bridging object to expose CloseDropdown as JSInvokable on dotNetRef created above
+    private class JsCallback
+    {
+        private readonly CustomDropdown<TItem, TValue> _parent;
+        public JsCallback(CustomDropdown<TItem, TValue> parent)
+        {
+            _parent = parent;
+        }
+
+        [JSInvokable]
+        public Task CloseDropdown()
+        {
+            return _parent.CloseDropdown();
+        }
+    }
+}

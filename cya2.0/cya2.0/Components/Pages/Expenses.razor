@@ -52,23 +52,82 @@
         font-size: 1.125rem; /* Example: Subtitle1 size */
         font-weight: 500;
     }
+
+    /* Ensure header titles line up with right-aligned cell content for Amount (first) and Date (last) */
+    .narrow-expense-grid th:nth-child(1) .rz-column-title,
+    .narrow-expense-grid td:nth-child(1) {
+        text-align: right !important;
+        padding-right: 8px !important;
+        box-sizing: border-box;
+    }
+
+    .narrow-expense-grid th:last-child .rz-column-title,
+    .narrow-expense-grid td:last-child {
+        text-align: right !important;
+        padding-right: 8px !important;
+        box-sizing: border-box;
+    }
 </style>
 
 <RadzenStack Orientation="Orientation.Vertical" Gap="1rem" Class="rz-p-4">
 
-    <!-- Top two control sections -->
+    <!-- Top two control sections: date range on left, account + toggle on right -->
     <RadzenStack Orientation="Orientation.Horizontal"
                  Gap="2rem"
                  JustifyContent="JustifyContent.SpaceBetween"
                  AlignItems="AlignItems.End"
                  Style="width:100%;">
 
-        <!-- Left side controls -->
+        <!-- Left side: Date Range controls -->
         <RadzenStack Orientation="Orientation.Horizontal"
                      Gap="0.75rem"
                      AlignItems="AlignItems.End"
-                     Wrap="FlexWrap.Wrap">
-            <!-- Account section -->
+                     Wrap="FlexWrap.Wrap"
+                     Style="flex:1;">
+
+            <!-- Date Range section (match Donations layout: label above, controls in a single horizontal row) -->
+            <RadzenStack Orientation="Orientation.Vertical" Gap="0.25rem">
+                <RadzenText TextStyle="TextStyle.Subtitle1">@Localizer["DateRange"]</RadzenText>
+                <RadzenStack Orientation="Orientation.Horizontal" Gap="0.5rem" AlignItems="AlignItems.Center" Wrap="FlexWrap.Wrap">
+                    <RadzenLabel Text="@Localizer["StartDate"]" />
+                    <RadzenDatePicker @bind-Value="@dateRangeState.PendingStartDate" DateFormat="MM/dd/yyyy" Style="max-width:130px"
+                                      Change="@OnDatePickerChanged" />
+
+                    <RadzenLabel Text="@Localizer["EndDate"]" />
+                    <RadzenDatePicker @bind-Value="@dateRangeState.PendingEndDate" DateFormat="MM/dd/yyyy" Style="max-width:130px"
+                                      Change="@OnDatePickerChanged" />
+
+                    <!-- Preset dropdown -->
+                    <RadzenDropDown TValue="DateRangeManager.DateRangePreset"
+                                    Data="@presetOptions"
+                                    TextProperty="Text"
+                                    ValueProperty="Value"
+                                    @bind-Value="@dateRangeState.SelectedPreset"
+                                    Change="@OnPresetChanged"
+                                    Style="width: 180px;">
+                        <ValueTemplate>
+                            <span style="display:flex;align-items:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding-right:1.75rem;width:100%;">
+                                @(presetOptions.FirstOrDefault(o => o.Value == dateRangeState.SelectedPreset)?.Text ?? "")
+                            </span>
+                        </ValueTemplate>
+                        <Template Context="opt">
+                            <span style="display:flex;align-items:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;width:100%;">
+                                @opt.Text
+                            </span>
+                        </Template>
+                    </RadzenDropDown>
+
+                    <RadzenButton Text="@Localizer["ApplyFilter"]"
+                                  Icon="filter_alt"
+                                  Click="@(async () => await ApplyDateFilter())"
+                                  Size="ButtonSize.Small"
+                                  ButtonStyle="ButtonStyle.Primary" />
+                </RadzenStack>
+            </RadzenStack>
+        </RadzenStack>
+
+        <!-- Right side: Account selector and Information toggle (kept on right) -->
+        <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.End" Gap="1rem">
             <RadzenStack Orientation="Orientation.Vertical" Gap="0.25rem">
                 <RadzenLabel Text="@Localizer["Account"]" />
                 <RadzenDropDown TValue="string"
@@ -88,51 +147,13 @@
                 </RadzenDropDown>
             </RadzenStack>
 
-            <!-- Date Range section -->
-            <RadzenStack Orientation="Orientation.Vertical" Gap="0.25rem">
-                <RadzenLabel Text="@Localizer["DateRange"]" />
-                <!-- Preset dropdown -->
-                <RadzenDropDown TValue="DateRangeManager.DateRangePreset"
-                                Data="@presetOptions"
-                                TextProperty="Text"
-                                ValueProperty="Value"
-                                @bind-Value="@dateRangeState.SelectedPreset"
-                                Change="@OnPresetChanged"
-                                Style="width: 180px;">
-                    <ValueTemplate>
-                        <span style="display:flex;align-items:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding-right:1.75rem;width:100%;">
-                            @(presetOptions.FirstOrDefault(o => o.Value == dateRangeState.SelectedPreset)?.Text ?? "")
-                        </span>
-                    </ValueTemplate>
-                    <Template Context="opt">
-                        <span style="display:flex;align-items:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;width:100%;">
-                            @opt.Text
-                        </span>
-                    </Template>
-                </RadzenDropDown>
-            </RadzenStack>
-
-            <RadzenLabel Text="@Localizer["StartDate"]" />
-            <RadzenDatePicker @bind-Value="@dateRangeState.PendingStartDate" DateFormat="MM/dd/yyyy" Style="max-width:130px"
-                              Change="@OnDatePickerChanged" />
-
-            <RadzenLabel Text="@Localizer["EndDate"]" />
-            <RadzenDatePicker @bind-Value="@dateRangeState.PendingEndDate" DateFormat="MM/dd/yyyy" Style="max-width:130px"
-                              Change="@OnDatePickerChanged" />
-
-            <RadzenButton Text="@Localizer["ApplyFilter"]"
-                          Icon="filter_alt"
-                          Click="@ApplyDateFilter"
-                          ButtonStyle="ButtonStyle.Primary" />
+            <RadzenToggleButton Value="useMinimalView"
+                                ValueChanged="@(async (bool v) => await OnViewModeChange(v))"
+                                Text="@(useMinimalView ? Localizer["ShowMoreDetail"] : Localizer["ShowLessDetail"])"
+                                ButtonStyle="ButtonStyle.Primary"
+                                ToggleButtonStyle="ButtonStyle.Primary"
+                                Style="background-color: #0a3b6b; border-color: #0a3b6b; color: white; max-width: 200px;" />
         </RadzenStack>
-
-        <!-- Right side toggle button -->
-        <RadzenToggleButton Value="useMinimalView"
-                            ValueChanged="OnViewModeChange"
-                            Text="@(useMinimalView ? Localizer["ShowMoreDetail"] : Localizer["ShowLessDetail"])"
-                            ButtonStyle="ButtonStyle.Primary"
-                            ToggleButtonStyle="ButtonStyle.Primary"
-                            Style="background-color: #0a3b6b; border-color: #0a3b6b; color: white; max-width: 200px;" />
     </RadzenStack>
 
     <!-- Summary cards and grids layout -->
@@ -257,7 +278,7 @@
 
     protected override async Task OnInitializedAsync()
     {
-        try 
+        try
         {
             var authState = await AuthStateProvider.GetAuthenticationStateAsync();
             var user = authState.User;
@@ -286,7 +307,7 @@
                 }
             }
         }
-        catch (Exception ex) 
+        catch (Exception ex)
         {
             errorMessage = $"Error initializing data: {ex.Message}";
         }
@@ -316,34 +337,35 @@
         StateHasChanged();
     }
 
-    public async Task AccountSelection(string? accountName)
+    private async Task ApplyDateFilter()
     {
-        if (string.IsNullOrEmpty(accountName)) return;
-
-        selectedAccount = accountName;
-        AppState.SelectedAccount = accountName;
-        currentAccount = userAccounts.FirstOrDefault(a => a.Fund == accountName);
-        
-        errorMessage = string.Empty;
-        isLoadingAccountData = true;
-        
-        // Clear existing data when switching accounts
-        allAccountingData = new List<AccountingDataModel>();
-        expenseTransactions = new List<AccountingDataModel>();
-        transferTransactions = new List<AccountingDataModel>();
-        expenseTotal = 0.00m;
-        transferTotal = 0.00m;
-        
-        StateHasChanged(); // Update UI to show loading state
-        
-        if (currentAccount != null)
+        try
         {
-            // Apply the same comprehensive filtering logic as the Filter button
-            await ApplyDateFilter();
+            // Apply pending dates and save to AppState using centralized manager
+            DateRangeManager.ApplyPendingDates(dateRangeState);
+            DateRangeManager.SaveDateRangeToAppState(AppState, dateRangeState);
+            
+            // If we don't have data loaded yet for the current account, try to load it
+            if ((allAccountingData == null || !allAccountingData.Any()) && currentAccount != null)
+            {
+                if (!isLoadingAccountData)
+                {
+                    isLoadingAccountData = true;
+                    StateHasChanged();
+                }
+                
+                await LoadAccountData();
+                
+                isLoadingAccountData = false;
+            }
+            
+            ProcessTransactions();
         }
-        
-        isLoadingAccountData = false;
-        StateHasChanged();
+        catch (Exception ex)
+        {
+            errorMessage = $"Error applying date filter: {ex.Message}";
+            isLoadingAccountData = false;
+        }
     }
 
     private async Task LoadAccountData()
@@ -410,71 +432,75 @@
         }
     }
 
-    private async Task ApplyDateFilter()
+    private async Task AccountSelection(string? accountName)
     {
-        try
-        {
-            // Apply pending dates and save to AppState using centralized manager
-            DateRangeManager.ApplyPendingDates(dateRangeState);
-            DateRangeManager.SaveDateRangeToAppState(AppState, dateRangeState);
-            
-            // If we don't have data loaded yet for the current account, try to load it
-            if ((allAccountingData == null || !allAccountingData.Any()) && currentAccount != null)
-            {
-                if (!isLoadingAccountData)
-                {
-                    isLoadingAccountData = true;
-                    StateHasChanged();
-                }
-                
-                await LoadAccountData();
-                
-                isLoadingAccountData = false;
-            }
-            
-            ProcessTransactions();
-        }
-        catch (Exception ex)
-        {
-            errorMessage = $"Error applying date filter: {ex.Message}";
-            isLoadingAccountData = false;
-        }
-    }
+        if (string.IsNullOrEmpty(accountName)) return;
 
-    private void OnViewModeChange(bool newValue)
-    {
-        useMinimalView = newValue;
-        refreshTransferGrid = true;
-        refreshExpenseGrid = true;
+        selectedAccount = accountName;
+
+        if (string.IsNullOrEmpty(selectedAccount)) return;
+
+        currentAccount = userAccounts.FirstOrDefault(a => a.Fund == selectedAccount);
+
+        errorMessage = string.Empty;
+        isLoadingAccountData = true;
+
+        // Clear existing data when switching accounts
+        allAccountingData = new List<AccountingDataModel>();
+        expenseTransactions = new List<AccountingDataModel>();
+        transferTransactions = new List<AccountingDataModel>();
+        expenseTotal = 0.00m;
+        transferTotal = 0.00m;
+
+        StateHasChanged(); // Update UI to show loading state
+
+        if (currentAccount != null)
+        {
+            // Apply the same comprehensive filtering logic as the Filter button
+            await LoadAccountData();
+            await ApplyDateFilter();
+        }
+
+        isLoadingAccountData = false;
         StateHasChanged();
     }
 
-    RenderFragment RenderTransferColumns()
+    private RenderFragment RenderTransferColumns()
     {
         return __builder =>
         {
             if (refreshTransferGrid)
             {
                 refreshTransferGrid = false;
-                <text>
-                </text>
+                <text></text>
             }
             else
             {
                 <text>
-                    <RadzenDataGridColumn TItem="AccountingDataModel" Property="Date" Title="@Localizer["Date"]" FormatString="{0:yyyy-MM-dd}" Width="110px" />
-                    <RadzenDataGridColumn TItem="AccountingDataModel" Property="Amount" Title="@Localizer["Amount"]" FormatString="{0:F2}" Width="100px" TextAlign="TextAlign.Right">
+                    <!-- Amount on the far left -->
+                    <RadzenDataGridColumn TItem="AccountingDataModel" Property="Amount" Title="@Localizer["Amount"]" FormatString="{0:C2}" Width="120px" TextAlign="TextAlign.Right">
                         <HeaderTemplate>
-                            <div style="text-align: right; padding-right: 8px; width: 100%;">@Localizer["Amount"]</div>
+                            <div style="display:flex;justify-content:flex-end;padding-right:8px;box-sizing:border-box;width:100%;">@Localizer["Amount"]</div>
                         </HeaderTemplate>
+                        <Template Context="row">
+                            <div style="display:flex;justify-content:flex-end;padding-right:8px;box-sizing:border-box;width:100%;">@row.Amount.ToString("C2")</div>
+                        </Template>
                     </RadzenDataGridColumn>
+
                     @if (!useMinimalView)
                     {
                         <RadzenDataGridColumn TItem="AccountingDataModel" Property="Num" Title="@Localizer["RefNum"]" Width="80px" />
                     }
-                    <RadzenDataGridColumn TItem="AccountingDataModel" Property="Account" Title="@Localizer["Description"]">
+
+                    <RadzenDataGridColumn TItem="AccountingDataModel" Property="Account" Title="@Localizer["Description"]" />
+
+                    <!-- Date on the far right -->
+                    <RadzenDataGridColumn TItem="AccountingDataModel" Property="Date" Title="@Localizer["Date"]" FormatString="{0:yyyy-MM-dd}" Width="110px" TextAlign="TextAlign.Right">
+                        <HeaderTemplate>
+                            <div style="display:flex;justify-content:flex-end;padding-right:8px;box-sizing:border-box;width:100%;">@Localizer["Date"]</div>
+                        </HeaderTemplate>
                         <Template Context="row">
-                            @(useMinimalView ? (row.Account.Length > 8 ? row.Account.Substring(8) : row.Account) : row.Account)
+                            <div style="display:flex;justify-content:flex-end;padding-right:8px;box-sizing:border-box;width:100%;">@row.Date.ToString("yyyy-MM-dd")</div>
                         </Template>
                     </RadzenDataGridColumn>
                 </text>
@@ -482,32 +508,42 @@
         };
     }
 
-    RenderFragment RenderExpenseColumns()
+    private RenderFragment RenderExpenseColumns()
     {
         return __builder =>
         {
             if (refreshExpenseGrid)
             {
                 refreshExpenseGrid = false;
-                <text>
-                </text>
+                <text></text>
             }
             else
             {
                 <text>
-                    <RadzenDataGridColumn TItem="AccountingDataModel" Property="Date" Title="@Localizer["Date"]" FormatString="{0:yyyy-MM-dd}" Width="110px" />
-                    <RadzenDataGridColumn TItem="AccountingDataModel" Property="Amount" Title="@Localizer["Amount"]" FormatString="{0:F2}" Width="100px" TextAlign="TextAlign.Right">
+                    <!-- Amount on the far left -->
+                    <RadzenDataGridColumn TItem="AccountingDataModel" Property="Amount" Title="@Localizer["Amount"]" FormatString="{0:C2}" Width="120px" TextAlign="TextAlign.Right">
                         <HeaderTemplate>
-                            <div style="text-align: right; padding-right: 8px; width: 100%;">@Localizer["Amount"]</div>
+                            <div style="display:flex;justify-content:flex-end;padding-right:8px;box-sizing:border-box;width:100%;">@Localizer["Amount"]</div>
                         </HeaderTemplate>
+                        <Template Context="row">
+                            <div style="display:flex;justify-content:flex-end;padding-right:8px;box-sizing:border-box;width:100%;">@row.Amount.ToString("C2")</div>
+                        </Template>
                     </RadzenDataGridColumn>
+
                     @if (!useMinimalView)
                     {
                         <RadzenDataGridColumn TItem="AccountingDataModel" Property="Num" Title="@Localizer["RefNum"]" Width="80px" />
                     }
-                    <RadzenDataGridColumn TItem="AccountingDataModel" Property="Account" Title="@Localizer["Description"]">
+
+                    <RadzenDataGridColumn TItem="AccountingDataModel" Property="Account" Title="@Localizer["Description"]" />
+
+                    <!-- Date on the far right -->
+                    <RadzenDataGridColumn TItem="AccountingDataModel" Property="Date" Title="@Localizer["Date"]" FormatString="{0:yyyy-MM-dd}" Width="110px" TextAlign="TextAlign.Right">
+                        <HeaderTemplate>
+                            <div style="display:flex;justify-content:flex-end;padding-right:8px;box-sizing:border-box;width:100%;">@Localizer["Date"]</div>
+                        </HeaderTemplate>
                         <Template Context="row">
-                            @(useMinimalView ? (row.Account.Length > 8 ? row.Account.Substring(8) : row.Account) : row.Account)
+                            <div style="display:flex;justify-content:flex-end;padding-right:8px;box-sizing:border-box;width:100%;">@row.Date.ToString("yyyy-MM-dd")</div>
                         </Template>
                     </RadzenDataGridColumn>
                 </text>
@@ -539,5 +575,14 @@
         {
             return "Date Range";
         }
+    }
+
+    private async Task OnViewModeChange(bool newValue)
+    {
+        useMinimalView = newValue;
+        // Keep behavior consistent with other pages
+        refreshTransferGrid = true;
+        refreshExpenseGrid = true;
+        await InvokeAsync(StateHasChanged);
     }
 }

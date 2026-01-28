@@ -1,6 +1,714 @@
 @page "/donors"
+@using static Microsoft.AspNetCore.Components.Web.RenderMode
+@using Microsoft.Extensions.Configuration
+@using ModelsLibrary
+@using DataLibrary
+@using UtilityClasses
+@using Radzen
+@using Radzen.Blazor
+@using Microsoft.AspNetCore.Components.Authorization
+@using System.Security.Claims
+@using Microsoft.AspNetCore.Components.Web
+@inject AuthenticationStateProvider AuthStateProvider
+@inject IDataAccess _data
+@inject IConfiguration _config
+@inject AppState AppState
+@inject DataLoadingService DataLoader
+@inject PageAccountCache PageCache
+@rendermode InteractiveServer
+@attribute [StreamRendering]
 @inject IStringLocalizer<Resource> Localizer
+@inject IJSRuntime JS
+@inject NotificationService NotificationService
 
 <PageTitle>@Localizer["Donors"]</PageTitle>
 
-<h1>@Localizer["DonorInfo"]</h1>
+<style>
+    .donor-search-row { display:flex; gap:0.5rem; align-items:center; flex-wrap:wrap; }
+</style>
+
+<RadzenStack Orientation="Orientation.Vertical" Gap="0.75rem" Class="rz-p-4">
+
+    <RadzenStack Orientation="Orientation.Horizontal"
+                 Gap="2rem"
+                 JustifyContent="JustifyContent.SpaceBetween"
+                 AlignItems="AlignItems.Start"
+                 Style="width:100%;">
+
+        <RadzenStack Orientation="Orientation.Vertical" Gap="0.4rem" Style="flex:1;">
+            <RadzenText TextStyle="TextStyle.Subtitle1">@Localizer["DateRange"]</RadzenText>
+            <RadzenStack Orientation="Orientation.Horizontal"
+                         Gap="0.5rem"
+                         AlignItems="AlignItems.Center"
+                         Wrap="FlexWrap.Wrap">
+                <RadzenLabel Text="@Localizer["StartDate"]" />
+                <RadzenDatePicker @bind-Value="@dateRangeState.PendingStartDate" DateFormat="MM/dd/yyyy" Style="max-width:130px"
+                                  Change="@OnDatePickerChanged" />
+                <RadzenLabel Text="@Localizer["EndDate"]" />
+                <RadzenDatePicker @bind-Value="@dateRangeState.PendingEndDate" DateFormat="MM/dd/yyyy" Style="max-width:130px"
+                                  Change="@OnDatePickerChanged" />
+
+                <RadzenDropDown TValue="DateRangeManager.DateRangePreset"
+                                Data="@presetOptions"
+                                TextProperty="Text"
+                                ValueProperty="Value"
+                                @bind-Value="@dateRangeState.SelectedPreset"
+                                Change="@OnPresetChanged"
+                                Style="width: 180px;">
+                    <ValueTemplate>
+                        <span style="display:flex;align-items:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding-right:1.75rem;width:100%;">
+                            @(presetOptions.FirstOrDefault(o => o.Value == dateRangeState.SelectedPreset)?.Text ?? "")
+                        </span>
+                    </ValueTemplate>
+                    <Template Context="opt">
+                        <span style="display:flex;align-items:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;width:100%;">
+                            @opt.Text
+                        </span>
+                    </Template>
+                </RadzenDropDown>
+
+                <RadzenButton Text="@Localizer["ApplyFilter"]"
+                              Icon="filter_alt"
+                              Click="@selectDateRange"
+                              Size="ButtonSize.Small"
+                              ButtonStyle="ButtonStyle.Primary" />
+            </RadzenStack>
+        </RadzenStack>
+
+        <RadzenStack Orientation="Orientation.Vertical" Gap="0.4rem" Style="flex:1; max-width:300px;">
+            <RadzenText TextStyle="TextStyle.Subtitle1">@Localizer["Account"]</RadzenText>
+            <RadzenDropDown TValue="string"
+                            Data="@userAccounts"
+                            TextProperty="Fund"
+                            ValueProperty="Fund"
+                            @bind-Value="selectedAccount"
+                            Change="@(async (args) => await accountSelection(args?.ToString() ?? string.Empty))"
+                            Placeholder="@Localizer["ChooseAccount"]"
+                            Style="width: 300px;">
+                <ValueTemplate>
+                    <span style="display:flex;align-items:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding-right:1.75rem;width:100%;">
+                        @FundDisplayHelper.GetDisplay(selectedAccount)
+                    </span>
+                </ValueTemplate>
+                <Template Context="acct">
+                    <span style="display:flex;align-items:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;width:100%;">
+                        @FundDisplayHelper.GetDisplay(acct.Fund)
+                    </span>
+                </Template>
+            </RadzenDropDown>
+        </RadzenStack>
+
+    </RadzenStack>
+
+    <!-- Left column: donors in selected date range. Right column: search and donor details (quarter width) -->
+    <RadzenStack Orientation="Orientation.Horizontal" Gap="1.5rem" Class="rz-mt-3" Style="width:100%;">
+        <div style="flex:1 1 0;">
+            <RadzenCard Style="padding:0.5rem;">
+                <RadzenText TextStyle="TextStyle.Subtitle1">@Localizer["SelectedDonors"]</RadzenText>
+
+                <!-- Column selectors and action buttons on same row -->
+                <div style="margin-top:0.5rem; display:flex; gap:0.75rem; align-items:center; flex-wrap:wrap;">
+                    <div style="display:flex; gap:0.75rem; align-items:center; flex-wrap:wrap;">
+                        <label style="font-weight:600; color:#666; margin-right:0.5rem;">@Localizer["ColumnSelection"]</label>
+                        <div style="display:flex; gap:0.5rem; align-items:center;">
+                            <RadzenCheckBox @bind-Value="showTotal" /> <span>@Localizer["AmountGiven"]</span>
+                        </div>
+                        <div style="display:flex; gap:0.5rem; align-items:center;">
+                            <RadzenCheckBox @bind-Value="showPaymentMethod" /> <span>@Localizer["PaymentMethod"]</span>
+                        </div>
+                        <div style="display:flex; gap:0.5rem; align-items:center;">
+                            <RadzenCheckBox @bind-Value="showGiftType" /> <span>@Localizer["GiftType"]</span>
+                        </div>
+                        <div style="display:flex; gap:0.5rem; align-items:center;">
+                            <RadzenCheckBox @bind-Value="showSoftCredit" /> <span>@Localizer["SoftCredit"]</span>
+                        </div>
+                        <div style="display:flex; gap:0.5rem; align-items:center;">
+                            <RadzenCheckBox @bind-Value="showEmail" /> <span>@Localizer["Email"]</span>
+                        </div>
+                        <div style="display:flex; gap:0.5rem; align-items:center;">
+                            <RadzenCheckBox @bind-Value="showPhone" /> <span>@Localizer["Phone"]</span>
+                        </div>
+                        <div style="display:flex; gap:0.5rem; align-items:center;">
+                            <RadzenCheckBox @bind-Value="showAddress" /> <span>@Localizer["Address"]</span>
+                        </div>
+                    </div>
+
+                    <div style="display:flex; gap:0.5rem; align-items-center;">
+                        <RadzenButton Icon="content_copy" Size="ButtonSize.Small" ButtonStyle="ButtonStyle.Light" Click="@(async () => await CopyDonorsInRange())" Style="margin-bottom:0.25rem;">@Localizer["Copy"]</RadzenButton>
+                        <RadzenButton Icon="download" Size="ButtonSize.Small" ButtonStyle="ButtonStyle.Primary" Click="@(async () => await DownloadDonorsExcel())" Style="margin-bottom:0.25rem;">@Localizer["DownloadExcel"]</RadzenButton>
+                    </div>
+                </div>
+
+                <RadzenDataGrid TItem="DonorSummary" Data="@donorsInRange" Style="width:100%;" RowSelect="@(async (args) => await OnDonorRowSelect(args))">
+                    <Columns>
+                        <RadzenDataGridColumn TItem="DonorSummary" Property="Name" Title="@Localizer["Donor"]" />
+                        @if (showPaymentMethod)
+                        {
+                            <RadzenDataGridColumn TItem="DonorSummary" Property="PaymentMethod" Title="@Localizer["PaymentMethod"]" />
+                        }
+                        @if (showGiftType)
+                        {
+                            <RadzenDataGridColumn TItem="DonorSummary" Property="GiftType" Title="@Localizer["GiftType"]" />
+                        }
+                        @if (showSoftCredit)
+                        {
+                            <RadzenDataGridColumn TItem="DonorSummary" Property="SoftCredit" Title="@Localizer["SoftCredit"]" />
+                        }
+                        @if (showEmail)
+                        {
+                            <RadzenDataGridColumn TItem="DonorSummary" Property="Email" Title="@Localizer["Email"]" />
+                        }
+                        @if (showPhone)
+                        {
+                            <RadzenDataGridColumn TItem="DonorSummary" Property="PhoneSummary" Title="@Localizer["Phone"]" />
+                        }
+                        @if (showAddress)
+                        {
+                            <RadzenDataGridColumn TItem="DonorSummary" Property="AddressSummary" Title="@Localizer["Address"]" />
+                        } 
+                        @if (showTotal)
+                        {
+                            <RadzenDataGridColumn TItem="DonorSummary" Property="Total" Title="@Localizer["TotalGiven"]" FormatString="{0:C2}" />
+                        }
+
+                    </Columns>
+                </RadzenDataGrid>
+            </RadzenCard>
+        </div>
+
+        <div style="flex:0 0 28%; min-width:260px;">
+            <div class="donor-search-row" style="margin-bottom:0.75rem;">
+                <div id="donorAutoCompleteContainer">
+                    <RadzenAutoComplete TValue="string"
+                                        Data="@donorNames"
+                                        @bind-Value="searchText"
+                                        Placeholder="@Localizer["SearchDonors"]"
+                                        Change="@OnAutocompleteChanged"
+                                        Style="width:100%;"
+                                        KeyDown="@OnSearchKeyDown" />
+                </div>
+
+                <RadzenButton Text="Clear" Click="@(()=> ClearDonorSelection())" ButtonStyle="ButtonStyle.Light" Style="margin-left:0.5rem;" />
+            </div>
+
+            <RadzenCard Style="padding:0.75rem;">
+                 <div style="display:grid; grid-template-columns: 110px 1fr; row-gap:6px; column-gap:8px; align-items:start;">
+                    <div style="grid-column: 1 / span 2; text-align:right; margin-bottom:0.5rem;">
+                        <RadzenButton Icon="content_copy" Size="ButtonSize.Small" ButtonStyle="ButtonStyle.Light" Click="@(async () => await CopySelectedDonor())" Style="margin-bottom:0.25rem;">@Localizer["Copy"]</RadzenButton>
+                    </div>
+                     <div style="font-weight:600; color:#666;">@Localizer["Name"]</div>
+                     <div>@(string.IsNullOrWhiteSpace(selectedDonor) ? Localizer["NoDonorSelected"] : selectedDonor)</div>
+
+                    <div style="font-weight:600; color:#666;">@Localizer["TotalGiven"]</div>
+                    <div>@donorTotal.ToString("C2")</div>
+
+                    <div style="font-weight:600; color:#666;">@Localizer["LastDonation"]</div>
+                    <div>@DonorDisplayHelper.FormatDate(donorLastDate)</div>
+
+                    <div style="font-weight:600; color:#666;">@Localizer["EmailShort"]</div>
+                    <div>@(string.IsNullOrWhiteSpace(donorEmail) ? Localizer["None"] : donorEmail)</div>
+
+                    <div style="font-weight:600; color:#666;">@Localizer["Phone"]</div>
+                    <div>
+                        @if (!string.IsNullOrWhiteSpace(donorPhoneMobile)) { <div>Cell: @DonorDisplayHelper.FormatPhone(donorPhoneMobile)</div> }
+                        @if (!string.IsNullOrWhiteSpace(donorPhoneFixed)) { <div>Primary: @DonorDisplayHelper.FormatPhone(donorPhoneFixed)</div> }
+                        @if (string.IsNullOrWhiteSpace(donorPhoneMobile) && string.IsNullOrWhiteSpace(donorPhoneFixed)) { <div>@Localizer["None"]</div> }
+                    </div>
+
+                    <div style="font-weight:600; color:#666;">@Localizer["Address"]</div>
+                    <div>
+                        @if (string.IsNullOrWhiteSpace(donorAddress))
+                        {
+                            <div>@Localizer["None"]</div>
+                        }
+                        else
+                        {
+                            <div>@donorAddress</div>
+                            <div>@string.Join(" ", new[]{ donorCity, donorState, donorPostal }.Where(s => !string.IsNullOrWhiteSpace(s)))</div>
+                            @if (!string.IsNullOrWhiteSpace(donorCountry)) { <div>@donorCountry</div> }
+                        }
+                    </div>
+                </div>
+            </RadzenCard>
+        </div>
+    </RadzenStack>
+
+</RadzenStack>
+
+@code {
+    // Use DateRangeManager for centralized date management
+    private DateRangeManager.DateRangeState dateRangeState = new();
+    private List<DateRangeManager.PresetOption> presetOptions = new();
+
+    private string selectedAccount = string.Empty;
+    private Account? currentAccount = null;
+    // Local copy used by the dropdown so UI updates reliably when AppState is populated elsewhere
+    private List<Account> userAccounts = new List<Account>();
+
+    // Donor search/cache
+    private List<string> donorNames = new();
+    private string searchText = string.Empty;
+    private string? selectedDonor;
+
+    private List<DonationsDataModel> donorDonations = new();
+    private decimal donorTotal = 0m;
+    private DateTime? donorLastDate = null;
+    private string donorEmail = string.Empty;
+    private string donorPhoneMobile = string.Empty;
+    private string donorPhoneFixed = string.Empty;
+     private string donorAddress = string.Empty;
+     private string donorCity = string.Empty;
+     private string donorState = string.Empty;
+     private string donorPostal = string.Empty;
+     private string donorCountry = string.Empty;
+     private List<DonorSummary> donorsInRange = new();
+
+     // Track column visibility settings
+    private bool showTotal = true;
+    private bool showEmail = false;
+    private bool showPhone = false;
+    private bool showAddress = false;
+    private bool showPaymentMethod = false;
+    private bool showGiftType = false;
+    private bool showSoftCredit = false;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+            var user = authState.User;
+
+            // Follow the same initialization flow as Donations/Expenses pages
+            await DataLoader.InitializeUserDataAsync(user);
+
+            // Initialize date range preset options and state
+            presetOptions = DateRangeManager.GetPresetOptions(Localizer);
+            dateRangeState = DateRangeManager.InitializeDateRange(AppState);
+
+            // Use AppState accounts for the dropdown (consistent with other pages)
+            userAccounts = AppState.UserAccounts?.ToList() ?? new List<Account>();
+
+            selectedAccount = !string.IsNullOrEmpty(AppState.SelectedAccount) ? AppState.SelectedAccount : AppState.DefaultAccount;
+
+            if (AppState.UserAccounts.Any())
+            {
+                if (!string.IsNullOrEmpty(selectedAccount))
+                {
+                    currentAccount = AppState.UserAccounts.FirstOrDefault(a => a.Fund == selectedAccount);
+                }
+
+                if (currentAccount != null)
+                {
+                    // Load donor names (PageCache will consult AppState cache or load via DataLoader)
+                    await LoadDonorNamesForAccount(currentAccount);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error initializing Donors page: {ex.Message}");
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+             try
+             {
+                 // Try to find the underlying input element id
+                await JS.InvokeVoidAsync("import", "/js/autocomplete-tab.js");
+                await JS.InvokeVoidAsync("enableAutocompleteTabBehavior", "donorAutoCompleteContainer");
+             }
+             catch (Exception ex)
+             {
+                 await JS.InvokeVoidAsync("console.error", ex.Message);
+             }
+         }
+    }
+
+    private async Task LoadDonorNamesForAccount(Account account)
+    {
+        try
+        {
+            var pageAccountData = await PageCache.GetAccountDataAsync(account.Fund);
+            if (pageAccountData?.DonationData != null && pageAccountData.DonationData.Any())
+            {
+                donorNames = pageAccountData.DonationData
+                    .Where(d => !string.IsNullOrWhiteSpace(d.AccountName))
+                    .Select(d => d.AccountName!.Trim())
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .OrderBy(n => n)
+                    .ToList();
+            }
+            else
+            {
+                // Fallback: attempt DB query for distinct AccountName for this account
+                try
+                {
+                    const string sql = "SELECT AccountName FROM Donations WHERE Fund = @Fund";
+                    var rows = await _data.LoadData<string, dynamic>(sql, new { Fund = account.Fund }, _config.GetConnectionString("default") ?? string.Empty) ?? new List<string>();
+                    donorNames = rows.Where(s => !string.IsNullOrWhiteSpace(s)).Select(s => s.Trim()).Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(s => s).ToList();
+                }
+                catch
+                {
+                    donorNames = new List<string>();
+                }
+            }
+            // Build donorsInRange using current date range (separate from donorNames)
+            await BuildDonorsInRange(account);
+        }
+        catch
+        {
+            donorNames = new List<string>();
+        }
+    }
+    private async Task BuildDonorsInRange(Account account)
+    {
+        donorsInRange.Clear();
+        try
+        {
+            if (account == null) return;
+
+            var pageAccountData = await PageCache.GetAccountDataAsync(account.Fund);
+            var donationRows = pageAccountData?.DonationData ?? new List<DonationsDataModel>();
+
+            // Ensure date range is applied
+            var start = dateRangeState.StartDate;
+            var end = dateRangeState.EndDate;
+
+            var filtered = donationRows.Where(d => d.Date >= start && d.Date <= end).ToList();
+
+            var grouped = filtered
+                .Where(d => !string.IsNullOrWhiteSpace(d.AccountName))
+                .GroupBy(d => d.AccountName!.Trim(), StringComparer.OrdinalIgnoreCase)
+                .Select(g => new DonorSummary
+                {
+                    Name = g.Key,
+                    Total = g.Sum(x => Convert.ToDecimal(x.Amount)),
+                    LastDonation = DonorDisplayHelper.FormatDate(g.Max(x => (DateTime?)x.Date)),
+                    Email = g.Select(x => x.Email).FirstOrDefault(e => !string.IsNullOrWhiteSpace(e)) ?? string.Empty,
+                    PhoneSummary = string.Join("; ", g.Select(x => DonorDisplayHelper.GetPrimaryPhone(x)).Where(s => !string.IsNullOrWhiteSpace(s)).Distinct()),
+                    AddressSummary = g.Select(x => x.Address).FirstOrDefault(a => !string.IsNullOrWhiteSpace(a)) ?? string.Empty,
+                    PaymentMethod = g.Select(x => x.PaymentMethod).FirstOrDefault(pm => !string.IsNullOrWhiteSpace(pm)) ?? string.Empty,
+                    GiftType = g.Select(x => x.GiftType).FirstOrDefault(gt => !string.IsNullOrWhiteSpace(gt)) ?? string.Empty,
+                    SoftCredit = g.Select(x => x.SoftCreditName).FirstOrDefault(sc => !string.IsNullOrWhiteSpace(sc)) ?? string.Empty
+                })
+                .OrderByDescending(d => d.Total)
+                .ThenBy(d => d.Name)
+                .ToList();
+
+            donorsInRange = grouped;
+        }
+        catch
+        {
+            donorsInRange = new List<DonorSummary>();
+        }
+    }
+
+    private async Task OnDonorSelected(object? args)
+    {
+        if (string.IsNullOrWhiteSpace(selectedDonor))
+        {
+            ClearDonorSelection();
+            return;
+        }
+
+        // Try to get donations for this donor from page cache first
+        donorDonations.Clear();
+        donorTotal = 0m;
+        donorLastDate = null;
+        donorEmail = string.Empty;
+        donorPhoneMobile = string.Empty;
+        donorPhoneFixed = string.Empty;
+        donorAddress = string.Empty;
+        donorCity = string.Empty;
+        donorState = string.Empty;
+        donorPostal = string.Empty;
+        donorCountry = string.Empty;
+
+        if (currentAccount != null)
+        {
+            var pageAccountData = await PageCache.GetAccountDataAsync(currentAccount.Fund);
+            if (pageAccountData?.DonationData != null)
+            {
+                donorDonations = pageAccountData.DonationData
+                    .Where(d => string.Equals(d.AccountName?.Trim(), selectedDonor?.Trim(), StringComparison.OrdinalIgnoreCase))
+                    .OrderByDescending(d => d.Date)
+                    .ToList();
+            }
+
+            if (!donorDonations.Any())
+            {
+                // Fallback: query DB for this donor and account
+                try
+                {
+                    const string sql = "SELECT * FROM Donations WHERE Fund = @Fund AND AccountName = @AccountName";
+                    donorDonations = (await _data.LoadData<DonationsDataModel, dynamic>(sql, new { Fund = currentAccount.Fund, AccountName = selectedDonor }, _config.GetConnectionString("default") ?? string.Empty))?.ToList() ?? new List<DonationsDataModel>();
+                }
+                catch
+                {
+                    donorDonations = new List<DonationsDataModel>();
+                }
+            }
+
+            if (donorDonations.Any())
+            {
+                donorTotal = donorDonations.Sum(d => Convert.ToDecimal(d.Amount));
+                donorLastDate = donorDonations.Max(d => d.Date);
+
+                var first = donorDonations.FirstOrDefault();
+                donorEmail = first?.Email ?? string.Empty;
+                donorPhoneMobile = first?.PhoneMobile ?? string.Empty;
+                donorPhoneFixed = first?.PhoneFixed ?? string.Empty;
+
+                // Additional fields
+                var address = donorDonations.FirstOrDefault(d => !string.IsNullOrWhiteSpace(d.Address));
+                if (address != null)
+                {
+                    donorAddress = address.Address;
+                    donorCity = address.City;
+                    donorState = address.State;
+                    donorPostal = address.PostalCode;
+                    donorCountry = address.Country;
+                }
+            }
+        }
+
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task OnAutocompleteChanged(object? args)
+    {
+        // When user selects from autocomplete, set selected donor and load data
+        searchText = args?.ToString() ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(searchText)) return;
+
+        selectedDonor = searchText;
+        await OnDonorSelected(null);
+    }
+
+    private async Task OnSearchKeyDown(KeyboardEventArgs e)
+    {
+        // Customize Enter and Tab behavior: Enter selects the current searchText if it exists in donorNames
+        if (e.Key == "Enter" || e.Key == "Tab")
+        {
+            var text = searchText?.Trim() ?? string.Empty;
+            if (!string.IsNullOrEmpty(text))
+            {
+                // Prefer the exact match, otherwise pick the first suggestion that starts with the typed text
+                var suggestion = donorNames.FirstOrDefault(d => string.Equals(d, text, StringComparison.OrdinalIgnoreCase))
+                                 ?? donorNames.FirstOrDefault(d => d.StartsWith(text, StringComparison.OrdinalIgnoreCase))
+                                 ?? donorNames.FirstOrDefault(d => d.IndexOf(text, StringComparison.OrdinalIgnoreCase) >= 0);
+
+                if (!string.IsNullOrEmpty(suggestion))
+                {
+                    selectedDonor = suggestion;
+                    // Clear the input box to indicate selection and load details
+                    searchText = string.Empty;
+                    await OnDonorSelected(null);
+                }
+            }
+        }
+    }
+
+    private async Task OnDonorRowSelect(DonorSummary summary)
+    {
+        if (summary == null) return;
+
+        // Set the selected donor from the grid and clear search text
+        selectedDonor = summary.Name;
+        searchText = string.Empty;
+
+        // Load donor details as if selected from search
+        await OnDonorSelected(null);
+    }
+
+    private void OnPresetChanged(object? args)
+    {
+        if (args is DateRangeManager.DateRangePreset preset)
+        {
+            DateRangeManager.ApplyPreset(dateRangeState, preset);
+            StateHasChanged();
+        }
+    }
+
+    private void OnDatePickerChanged()
+    {
+        // Apply pending dates locally; actual save occurs when Apply button is pressed
+        DateRangeManager.ApplyPendingDates(dateRangeState);
+        StateHasChanged();
+    }
+
+    private void ClearDonorSelection()
+    {
+        selectedDonor = null;
+        donorDonations.Clear();
+        donorTotal = 0m;
+        donorLastDate = null;
+        donorEmail = string.Empty;
+        donorPhoneMobile = string.Empty;
+        donorPhoneFixed = string.Empty;
+        donorAddress = string.Empty;
+        donorCity = string.Empty;
+        donorState = string.Empty;
+        donorPostal = string.Empty;
+        donorCountry = string.Empty;
+        StateHasChanged();
+    }
+
+    private async Task selectDateRange()
+    {
+        DateRangeManager.ApplyPendingDates(dateRangeState);
+        DateRangeManager.SaveDateRangeToAppState(AppState, dateRangeState);
+
+        // If an account is selected, refresh donor list from cache/db to reflect new date range if needed
+        if (currentAccount != null)
+        {
+            await LoadDonorNamesForAccount(currentAccount);
+            await BuildDonorsInRange(currentAccount);
+        }
+
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task accountSelection(string accountName)
+    {
+        if (string.IsNullOrEmpty(accountName)) return;
+
+        selectedAccount = accountName;
+        AppState.SelectedAccount = accountName;
+
+        currentAccount = userAccounts.FirstOrDefault(a => a.Fund == selectedAccount) ?? AppState.UserAccounts.FirstOrDefault(a => a.Fund == selectedAccount);
+        if (currentAccount != null)
+        {
+            if (!AppState.IsAccountDataLoaded(currentAccount.Fund))
+            {
+                await DataLoader.LoadAccountDataAsync(currentAccount);
+            }
+
+            await LoadDonorNamesForAccount(currentAccount);
+            await BuildDonorsInRange(currentAccount);
+        }
+
+        // Ensure any existing selection is cleared when switching accounts
+        ClearDonorSelection();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private record DonorSummary
+    {
+        public string Name { get; init; } = string.Empty;
+        public decimal Total { get; init; }
+        public string LastDonation { get; init; } = string.Empty;
+        public string Email { get; init; } = string.Empty;
+        public string PhoneSummary { get; init; } = string.Empty;
+        public string AddressSummary { get; init; } = string.Empty;
+        public string PaymentMethod { get; init; } = string.Empty;
+        public string GiftType { get; init; } = string.Empty;
+        public string SoftCredit { get; init; } = string.Empty;
+    }
+
+    private async Task CopySelectedDonor()
+    {
+        if (string.IsNullOrWhiteSpace(selectedDonor))
+        {
+            NotificationService.Notify(new NotificationMessage { Severity = NotificationSeverity.Info, Summary = Localizer["Copy"], Detail = Localizer["NoDonorSelected"], Duration = 3000 });
+            return;
+        }
+
+        var lines = new List<string>
+        {
+            $"{Localizer["Name"]}: {selectedDonor}",
+            $"{Localizer["TotalDonations"]}: {donorTotal:C2}",
+            $"{Localizer["LastDonation"]}: {DonorDisplayHelper.FormatDate(donorLastDate)}",
+            $"{Localizer["Email"]}: {(string.IsNullOrWhiteSpace(donorEmail) ? Localizer["None"].Value : donorEmail)}",
+            $"{Localizer["Phone"]}: {(string.IsNullOrWhiteSpace(donorPhoneMobile) && string.IsNullOrWhiteSpace(donorPhoneFixed) ? Localizer["None"].Value : (donorPhoneMobile + (string.IsNullOrWhiteSpace(donorPhoneFixed) ? string.Empty : "; " + donorPhoneFixed)))}"
+        };
+
+        if (!string.IsNullOrWhiteSpace(donorAddress))
+        {
+            lines.Add(donorAddress);
+            lines.Add(string.Join(" ", new[] { donorCity, donorState, donorPostal }.Where(s => !string.IsNullOrWhiteSpace(s))));
+            if (!string.IsNullOrWhiteSpace(donorCountry)) lines.Add(donorCountry);
+        }
+
+        var payload = string.Join("\n", lines);
+
+        await JS.InvokeVoidAsync("navigator.clipboard.writeText", payload);
+        NotificationService.Notify(new NotificationMessage { Severity = NotificationSeverity.Success, Summary = Localizer["Copy"], Detail = Localizer["CopiedToClipboard"], Duration = 3000 });
+    }
+
+    private async Task CopyDonorsInRange()
+    {
+        if (donorsInRange == null || !donorsInRange.Any())
+        {
+            NotificationService.Notify(new NotificationMessage { Severity = NotificationSeverity.Info, Summary = Localizer["Copy"], Detail = Localizer["NoDonorsInRange"], Duration = 3000 });
+            return;
+        }
+
+        var rows = donorsInRange.Select(d =>
+        {
+            var parts = new List<string> { d.Name };
+            if (showTotal) parts.Add(d.Total.ToString("C2"));
+            if (showPaymentMethod) parts.Add(d.PaymentMethod);
+            if (showGiftType) parts.Add(d.GiftType);
+            if (showSoftCredit) parts.Add(d.SoftCredit);
+            if (showEmail) parts.Add(d.Email);
+            if (showPhone) parts.Add(d.PhoneSummary);
+            if (showAddress) parts.Add(d.AddressSummary);
+            return string.Join('\t', parts);
+        });
+        var payload = string.Join("\n", rows);
+
+        await JS.InvokeVoidAsync("navigator.clipboard.writeText", payload);
+        NotificationService.Notify(new NotificationMessage { Severity = NotificationSeverity.Success, Summary = Localizer["Copy"], Detail = Localizer["CopiedToClipboard"], Duration = 3000 });
+    }
+
+    private async Task DownloadDonorsExcel()
+    {
+        if (currentAccount == null)
+        {
+            NotificationService.Notify(new NotificationMessage { Severity = NotificationSeverity.Info, Summary = Localizer["DownloadExcel"], Detail = Localizer["NoAccountSelected"], Duration = 3000 });
+            return;
+        }
+
+        // Build export request payload from the currently displayed donorsInRange and selected columns
+        var req = new
+        {
+            Fund = currentAccount.Fund,
+            Rows = donorsInRange.Select(d => new {
+                Name = d.Name,
+                Total = d.Total,
+                Email = d.Email,
+                Phone = d.PhoneSummary,
+                Address = d.AddressSummary,
+                PaymentMethod = d.PaymentMethod,
+                GiftType = d.GiftType,
+                SoftCredit = d.SoftCredit
+            }).ToList(),
+            IncludeTotal = showTotal,
+            IncludeLastDonation = false,
+            IncludePaymentMethod = showPaymentMethod,
+            IncludeGiftType = showGiftType,
+            IncludeSoftCredit = showSoftCredit,
+            IncludeEmail = showEmail,
+            IncludePhone = showPhone,
+            IncludeAddress = showAddress
+        };
+
+        // Use a small JS helper to post JSON and force download via window.location
+        var payload = System.Text.Json.JsonSerializer.Serialize(req);
+        await JS.InvokeVoidAsync("postJsonAndDownload", "/api/donors/export-data", payload);
+
+         NotificationService.Notify(new NotificationMessage { Severity = NotificationSeverity.Info, Summary = Localizer["DownloadExcel"], Detail = Localizer["DownloadStarted"], Duration = 3000 });
+     }
+
+    private void OnColumnSelectionChanged()
+    {
+        // Triggered when any column visibility checkbox is changed
+        // Simply call StateHasChanged to re-render the grid with updated columns
+        StateHasChanged();
+    }
+}

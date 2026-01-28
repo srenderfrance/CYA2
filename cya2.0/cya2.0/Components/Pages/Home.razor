@@ -367,11 +367,8 @@ else
                     user.FindFirstValue(ClaimTypes.Email) ?? 
                     "User";
 
-                // Only initialize if not already loaded (first time login)
-                if (!AppState.UserAccountsLoaded)
-                {
-                    await DataLoader.InitializeUserDataAsync(user);
-                }
+                // Always (re)initialize user data to ensure AppState matches current principal
+                await DataLoader.InitializeUserDataAsync(user);
                 
                 userAccounts = AppState.UserAccounts;
                 

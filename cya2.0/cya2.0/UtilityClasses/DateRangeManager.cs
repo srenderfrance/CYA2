@@ -10,6 +10,7 @@ namespace UtilityClasses
     {
         public enum DateRangePreset 
         { 
+            AllDates,
             ThisYear, 
             Previous12Months, 
             LastYear, 
@@ -90,6 +91,11 @@ namespace UtilityClasses
             
             switch (preset)
             {
+                case DateRangePreset.AllDates:
+                    // Represent "All Dates" by using a very early start date and current date as end
+                    state.PendingStartDate = new DateTime(1900, 1, 1);
+                    state.PendingEndDate = now;
+                    break;
                 case DateRangePreset.ThisYear:
                     state.PendingStartDate = new DateTime(now.Year, 1, 1);
                     state.PendingEndDate = now;
@@ -212,6 +218,9 @@ namespace UtilityClasses
         public static DateRangePreset DeterminePresetFromDates(DateTime start, DateTime end)
         {
             var now = DateTime.Now;
+            // Detect AllDates: very early start date and end near now
+            if (start.Date <= new DateTime(1900, 1, 1).Date && end.Date >= now.AddDays(-1).Date)
+                return DateRangePreset.AllDates;
             var thisYearStart = new DateTime(now.Year, 1, 1);
             var lastYearStart = new DateTime(now.Year - 1, 1, 1);
             var lastYearEnd = new DateTime(now.Year - 1, 12, 31);
@@ -260,6 +269,7 @@ namespace UtilityClasses
         {
             return new List<PresetOption>
             {
+                new() { Text = localizer["AllDates"], Value = DateRangePreset.AllDates },
                 new() { Text = localizer["ThisYear"], Value = DateRangePreset.ThisYear },
                 new() { Text = localizer["Previous12Months"], Value = DateRangePreset.Previous12Months },
                 new() { Text = localizer["LastYear"], Value = DateRangePreset.LastYear },

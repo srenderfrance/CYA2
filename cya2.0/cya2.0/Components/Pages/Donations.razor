@@ -550,13 +550,36 @@
                 }
 
                 // Display under the primary account name
+                var donorDisplay = donation.IsAnonymous ? Localizer["Anonymous"] : donation.AccountName;
+
+                // Personal fields - blank them out when anonymous
+                var email = donation.IsAnonymous ? string.Empty : (donation.Email ?? string.Empty);
+                var phoneFixed = donation.IsAnonymous ? string.Empty : (donation.PhoneFixed ?? string.Empty);
+                var phoneMobile = donation.IsAnonymous ? string.Empty : (donation.PhoneMobile ?? string.Empty);
+                var addr = donation.IsAnonymous ? string.Empty : (donation.Address ?? string.Empty);
+                var city = donation.IsAnonymous ? string.Empty : (donation.City ?? string.Empty);
+                var state = donation.IsAnonymous ? string.Empty : (donation.State ?? string.Empty);
+                var postal = donation.IsAnonymous ? string.Empty : (donation.PostalCode ?? string.Empty);
+                var country = donation.IsAnonymous ? string.Empty : (donation.Country ?? string.Empty);
+                var soft = donation.IsAnonymous ? string.Empty : (donation.SoftCreditName ?? string.Empty);
+
                 var newDonation = new UserDataDonations(
                     FundDisplayHelper.GetDisplay(currentAccount?.Fund ?? donation.Fund),
-                    donation.AccountName,
+                    donorDisplay,
                     donation.Date,
                     donation.Amount,
                     donation.PaymentMethod,
-                    donation.GiftType);
+                    donation.GiftType,
+                    email,
+                    phoneFixed,
+                    phoneMobile,
+                    addr,
+                    city,
+                    state,
+                    postal,
+                    country,
+                    soft,
+                    donation.IsAnonymous);
 
                 donations.Add(newDonation);
                 included++;
