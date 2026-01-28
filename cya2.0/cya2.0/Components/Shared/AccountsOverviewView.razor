@@ -14,7 +14,7 @@
                  JustifyContent="JustifyContent.SpaceBetween">
         <!-- Left: current view label -->
         <RadzenText TextStyle="TextStyle.Subtitle1">
-            @(showDonations12m ? Localizer["TotalDonationsLTM"] : Localizer["AccountOverhead"])
+            @(showDonations12m ? Localizer["TotalDonationsLTM"] : Localizer["CurrentBalance"])
         </RadzenText>
 
         <!-- Right: actions -->
@@ -24,7 +24,7 @@
                           ButtonStyle="ButtonStyle.Primary"
                           Style="background-color: #0a3b6b; border-color: #0a3b6b;"
                           Click="CopyTableAsync" />
-            <RadzenButton Text="@(showDonations12m ? Localizer["AccountOverhead"] : Localizer["TotalDonationsLTM"])"
+            <RadzenButton Text="@(showDonations12m ? Localizer["CurrentBalance"] : Localizer["TotalDonationsLTM"])"
                           ButtonStyle="ButtonStyle.Primary"
                           Click="@(() => { showDonations12m = !showDonations12m; })" />
         </RadzenStack>
@@ -48,7 +48,7 @@
                 <RadzenDataGridColumn TItem="FundBalanceRow" Property="Fund" Title="@Localizer["Account"]" />
                 @if (!showDonations12m)
                 {
-                    <RadzenDataGridColumn TItem="FundBalanceRow" Property="Overhead" Title="@Localizer["Overhead"]" FormatString="{0:C2}" TextAlign="TextAlign.Right" />
+                    <RadzenDataGridColumn TItem="FundBalanceRow" Property="CurrentBalance" Title="@Localizer["CurrentBalance"]" FormatString="{0:C2}" TextAlign="TextAlign.Right" />
                 }
                 else
                 {
@@ -69,7 +69,7 @@
 @code {
     private string errorMessage = string.Empty;
     private List<FundBalanceRow> fundBalances = new();
-    private bool showDonations12m = false; // default to overhead view
+    private bool showDonations12m = false; // default to balance view
     private bool donationsLoaded = false;
 
     protected override async Task OnInitializedAsync()
@@ -91,16 +91,18 @@
                     {
                         Fund = account.Fund,
                         Overhead = account.Overhead,
+                        CurrentBalance = 0m,
                         Last12MonthsDonations = 0m
                     });
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine($"Error loading account overhead for {account.Fund}: {ex.Message}");
+                    Console.WriteLine($"Error loading account row for {account.Fund}: {ex.Message}");
                     rows.Add(new FundBalanceRow
                     {
                         Fund = account.Fund,
                         Overhead = 0m,
+                        CurrentBalance = 0m,
                         Last12MonthsDonations = 0m
                     });
                 }
@@ -108,11 +110,49 @@
 
             fundBalances = rows.OrderBy(r => r.Fund).ToList();
 
+            // Load donations and balances in background
             _ = Task.Run(async () => await LoadDonationsAsync(accounts ?? new List<Account>()));
+            _ = Task.Run(async () => await LoadBalancesAsync(accounts ?? new List<Account>()));
         }
         catch (Exception ex)
         {
             errorMessage = $"Error loading balances: {ex.Message}";
+        }
+    }
+
+    private async Task LoadBalancesAsync(List<Account> accounts)
+    {
+        try
+        {
+            var conn = _config.GetConnectionString("default");
+            foreach (var account in accounts ?? Enumerable.Empty<Account>())
+            {
+                try
+                {
+                    if (account == null) continue;
+
+                    // Use BalanceCalculator same as Home/AccountSummaries to compute current balance as of now
+                    var result = await BalanceCalculator.CalculateBalanceFromDatabaseAsync(account, _data, conn, null, DateTime.Now);
+                    var balance = result?.TotalBalance ?? 0m;
+
+                    var row = fundBalances.FirstOrDefault(r => r.Fund == account.Fund);
+                    if (row != null)
+                    {
+                        row.CurrentBalance = balance;
+                    }
+
+                    await InvokeAsync(StateHasChanged);
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"Error computing balance for {account?.Fund}: {ex.Message}");
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error loading balances: {ex.Message}";
+            await InvokeAsync(StateHasChanged);
         }
     }
 
@@ -124,22 +164,27 @@
             var last12Start = new DateTime(now.Year, now.Month, 1).AddMonths(-12);
             var last12End = now;
 
-            var map = accounts.ToDictionary(a => a.Fund, a => a.AccountingClass);
+            // Use DonationsTotalsCalculator to calculate totals consistently with Donations.razor
+            var calculator = new DonationsTotalsCalculator(_data, _config);
+
+            var map = accounts?.ToDictionary(a => a.Fund, a => a) ?? new Dictionary<string, Account>(StringComparer.OrdinalIgnoreCase);
 
             foreach (var row in fundBalances)
             {
-                if (!map.TryGetValue(row.Fund, out var fundRef) || string.IsNullOrWhiteSpace(fundRef))
+                if (!map.TryGetValue(row.Fund, out var account) || account == null)
                 {
                     continue;
                 }
 
-                const string donationsSql = "SELECT * FROM DonationData WHERE Fund = @Fund AND Date >= @Start AND Date <= @End";
-                var donations = await _data.LoadData<DonationsDataModel, dynamic>(
-                    donationsSql,
-                    new { Fund = fundRef, Start = last12Start, End = last12End },
-                    _config.GetConnectionString("default"));
-
-                row.Last12MonthsDonations = donations?.Sum(d => Convert.ToDecimal(d.Amount)) ?? 0m;
+                try
+                {
+                    var totals = await calculator.CalculateAsync(account, last12Start, last12End);
+                    row.Last12MonthsDonations = totals?.TotalDonations ?? 0m;
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"Error loading donations for {row.Fund}: {ex.Message}");
+                }
 
                 await InvokeAsync(StateHasChanged);
             }
@@ -158,12 +203,12 @@
     {
         try
         {
-            var header = showDonations12m ? Localizer["TotalDonationsLTM"] : Localizer["AccountOverhead"];
+            var header = showDonations12m ? Localizer["TotalDonationsLTM"] : Localizer["CurrentBalance"];
             var sb = new System.Text.StringBuilder();
             sb.AppendLine($"{Localizer["Account"]}\t{header}");
             foreach (var row in fundBalances)
             {
-                var value = showDonations12m ? row.Last12MonthsDonations : row.Overhead;
+                var value = showDonations12m ? row.Last12MonthsDonations : row.CurrentBalance;
                 sb.AppendLine($"{row.Fund}\t{value}");
             }
             await JS.InvokeVoidAsync("navigator.clipboard.writeText", sb.ToString());
@@ -178,6 +223,7 @@
     {
         public string Fund { get; set; } = string.Empty;
         public decimal Overhead { get; set; }
+        public decimal CurrentBalance { get; set; }
         public decimal Last12MonthsDonations { get; set; }
     }
 }

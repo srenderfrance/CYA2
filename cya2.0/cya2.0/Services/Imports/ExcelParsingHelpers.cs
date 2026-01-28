@@ -49,7 +49,20 @@ namespace cya2.Services.Imports
         {
             if (string.IsNullOrWhiteSpace(input)) return false;
             var v = input.Trim();
-            return v.Equals("YES", StringComparison.OrdinalIgnoreCase) || v.Equals("Y", StringComparison.OrdinalIgnoreCase) || v.Equals("TRUE", StringComparison.OrdinalIgnoreCase);
+            // Normalize common representations
+            var norm = v.Trim().ToUpperInvariant();
+
+            // Numeric representations
+            if (int.TryParse(norm, out var n))
+            {
+                return n != 0;
+            }
+
+            // Common text representations for true
+            if (norm == "YES" || norm == "Y" || norm == "TRUE" || norm == "T" || norm == "ON") return true;
+
+            // Also accept localized single-letter true/false if needed
+            return false;
         }
     }
 }

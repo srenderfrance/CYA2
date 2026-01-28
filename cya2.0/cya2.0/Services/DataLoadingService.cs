@@ -229,6 +229,31 @@ namespace cya2.Services
             }
         }
 
+        // Public helper to force refresh of user accounts from the database using the current principal
+        public async Task ForceLoadUserAccountsAsync(ClaimsPrincipal user)
+        {
+            try
+            {
+                // Update admin flag from claims
+                _appState.IsAdmin = user.IsInRole("Admin") ||
+                                    user.FindFirstValue("AuthLevel")?.Equals("Admin", StringComparison.OrdinalIgnoreCase) == true;
+
+                // Ensure CurrentUserId is set from claims if available
+                var userIdClaim = user.FindFirstValue("UserId");
+                if (!string.IsNullOrEmpty(userIdClaim) && int.TryParse(userIdClaim, out int idFromClaim))
+                {
+                    _appState.CurrentUserId = idFromClaim;
+                }
+
+                await LoadUserAccountsAsync();
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error forcing user accounts load: {ex.Message}");
+                throw;
+            }
+        }
+
         private class UserIdOnly
         {
             public int Id { get; set; }

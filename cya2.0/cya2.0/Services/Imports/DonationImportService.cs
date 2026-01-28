@@ -462,27 +462,28 @@ namespace cya2.Services.Imports
                     continue;
                 }
 
+                var isAnonymous = ExcelParsingHelpers.ParseYesNo(anonTxt);
+
                 batch.Add(new DonationRowDto
                 {
                     Date = date,
-                    AccountName = name ?? string.Empty,
+                    AccountName = isAnonymous ? "Anonymous" : (name ?? string.Empty),
                     PaymentMethod = payType ?? string.Empty,
                     GiftType = giftType ?? string.Empty,
                     Amount = amount,
                     Fund = fund ?? string.Empty,
-                    SoftCreditName = soft ?? string.Empty,
-                    Address = addr ?? string.Empty,
-                    City = city ?? string.Empty,
-                    State = state ?? string.Empty,
-                    PostalCode = zip ?? string.Empty,
-                    Country = country ?? string.Empty,
-                    Email = email ?? string.Empty,
-                    PhoneFixed = phone ?? string.Empty,
-                    PhoneMobile = mobile ?? string.Empty,
-                    IsAnonymous = ExcelParsingHelpers.ParseYesNo(anonTxt),
+                    SoftCreditName = isAnonymous ? null : (soft ?? null),
+                    Address = isAnonymous ? null : (addr ?? null),
+                    City = isAnonymous ? null : (city ?? null),
+                    State = isAnonymous ? null : (state ?? null),
+                    PostalCode = isAnonymous ? null : (zip ?? null),
+                    Country = isAnonymous ? null : (country ?? null),
+                    Email = isAnonymous ? null : (email ?? null),
+                    PhoneFixed = isAnonymous ? null : (phone ?? null),
+                    PhoneMobile = isAnonymous ? null : (mobile ?? null),
+                    IsAnonymous = isAnonymous,
                     DateCreated = DateTime.UtcNow
                 });
-
                 result.TotalRows++;
 
                 if (batch.Count >= batchSize)
@@ -555,6 +556,8 @@ namespace cya2.Services.Imports
                     sb.Append(Quote(r.Email)); sb.Append(',');
                     sb.Append(Quote(r.PhoneFixed)); sb.Append(',');
                     sb.Append(Quote(r.PhoneMobile)); sb.Append(',');
+                    // Include IsAnonymous as 1/0
+                    sb.Append(Quote(r.IsAnonymous ? "1" : "0")); sb.Append(',');
                     sb.Append(Quote(r.DateCreated.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture)));
                     sb.Append('\n');
                 }
@@ -602,6 +605,7 @@ namespace cya2.Services.Imports
                     loader.Columns.Add("Email");
                     loader.Columns.Add("PhoneFixed");
                     loader.Columns.Add("PhoneMobile");
+                    loader.Columns.Add("IsAnonymous");
                     loader.Columns.Add("DateCreated");
 
                     int attempt = 0;
@@ -632,7 +636,7 @@ namespace cya2.Services.Imports
                         try
                         {
                             using var tx = await conn.BeginTransactionAsync();
-                            var cols = new[] { "Date", "AccountName", "PaymentMethod", "GiftType", "Amount", "Fund", "SoftCreditName", "Address", "City", "State", "PostalCode", "Country", "Email", "PhoneFixed", "PhoneMobile", "DateCreated" };
+                            var cols = new[] { "Date", "AccountName", "PaymentMethod", "GiftType", "Amount", "Fund", "SoftCreditName", "Address", "City", "State", "PostalCode", "Country", "Email", "PhoneFixed", "PhoneMobile", "IsAnonymous", "DateCreated" };
                             var values = new List<string>(batch.Count);
                             var cmd = conn.CreateCommand();
                             cmd.Transaction = tx;
@@ -658,7 +662,8 @@ namespace cya2.Services.Imports
                                 cmd.Parameters.Add(new MySqlParameter(pNames[12], row.Email));
                                 cmd.Parameters.Add(new MySqlParameter(pNames[13], row.PhoneFixed));
                                 cmd.Parameters.Add(new MySqlParameter(pNames[14], row.PhoneMobile));
-                                cmd.Parameters.Add(new MySqlParameter(pNames[15], row.DateCreated));
+                                cmd.Parameters.Add(new MySqlParameter(pNames[15], row.IsAnonymous ? 1 : 0));
+                                cmd.Parameters.Add(new MySqlParameter(pNames[16], row.DateCreated));
                             }
 
                             cmd.CommandText = $"INSERT INTO DonationData ({string.Join(',', cols)}) VALUES {string.Join(',', values)}";
@@ -683,8 +688,8 @@ namespace cya2.Services.Imports
                 // Final fallback: row-by-row
                 int insertedCount = 0;
                 const string sql = @"INSERT INTO DonationData
-                (Date, AccountName, PaymentMethod, GiftType, Amount, Fund, SoftCreditName, Address, City, State, PostalCode, Country, Email, PhoneFixed, PhoneMobile, DateCreated)
-                VALUES (@Date, @AccountName, @PaymentMethod, @GiftType, @Amount, @Fund, @SoftCreditName, @Address, @City, @State, @PostalCode, @Country, @Email, @PhoneFixed, @PhoneMobile, @DateCreated)";
+                (Date, AccountName, PaymentMethod, GiftType, Amount, Fund, SoftCreditName, Address, City, State, PostalCode, Country, Email, PhoneFixed, PhoneMobile, IsAnonymous, DateCreated)
+                VALUES (@Date, @AccountName, @PaymentMethod, @GiftType, @Amount, @Fund, @SoftCreditName, @Address, @City, @State, @PostalCode, @Country, @Email, @PhoneFixed, @PhoneMobile, @IsAnonymous, @DateCreated)";
 
                 foreach (var row in batch)
                 {

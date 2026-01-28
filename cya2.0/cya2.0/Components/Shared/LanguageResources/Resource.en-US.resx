@@ -471,7 +471,7 @@
   <data name="ShowMoreDetail" xml:space="preserve">
     <value>Show More Detail</value>
   </data>
-  <data name="Show Less Detail" xml:space="preserve">
+  <data name="ShowLessDetail" xml:space="preserve">
     <value>Sow Less Detail</value>
   </data>
   <data name="Logout" xml:space="preserve">
@@ -506,5 +506,56 @@
   </data>
   <data name="CreateSecondaryFund" xml:space="preserve">
     <value>Create Secondary Fund</value>
+  </data>
+  <data name="ThisMonth" xml:space="preserve">
+    <value>This Month</value>
+  </data>
+  <data name="LastMonth" xml:space="preserve">
+    <value>Last Month</value>
+  </data>
+  <data name="AllDates" xml:space="preserve">
+    <value>All Dates</value>
+  </data>
+  <data name="NoDonorSelected" xml:space="preserve">
+    <value>No donor has been selected.</value>
+  </data>
+  <data name="Copy" xml:space="preserve">
+    <value>Copy</value>
+  </data>
+  <data name="Clear" xml:space="preserve">
+    <value>Clear</value>
+  </data>
+  <data name="Phone" xml:space="preserve">
+    <value>Phone</value>
+  </data>
+  <data name="Address" xml:space="preserve">
+    <value>Address</value>
+  </data>
+  <data name="TotalDonations" xml:space="preserve">
+    <value>Total Donations</value>
+  </data>
+  <data name="ColumnSelection" xml:space="preserve">
+    <value>Column Selection</value>
+  </data>
+  <data name="AmountGiven" xml:space="preserve">
+    <value>Amount Given</value>
+  </data>
+  <data name="PaymentMethod" xml:space="preserve">
+    <value>Payment Method</value>
+  </data>
+  <data name="TotalGiven" xml:space="preserve">
+    <value>Total Given</value>
+  </data>
+  <data name="SearchDonors" xml:space="preserve">
+    <value>Search Donors</value>
+  </data>
+  <data name="DownloadExcel" xml:space="preserve">
+    <value>Download Excel</value>
+  </data>
+  <data name="RollbackLastUpdate" xml:space="preserve">
+    <value>Rollback Last Update</value>
+  </data>
+  <data name="SelectedDonors" xml:space="preserve">
+    <value>Selected Donors</value>
   </data>
 </root>
