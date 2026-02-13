@@ -162,9 +162,6 @@
   <data name="CurrentDefault" xml:space="preserve">
     <value>Predeterminado actual</value>
   </data>
-  <data name="CurrentEmail" xml:space="preserve">
-    <value>Email Actual</value>
-  </data>
   <data name="CurrentLanguage" xml:space="preserve">
     <value>Idioma actual</value>
   </data>
@@ -219,11 +216,11 @@
   <data name="EndOfYearBalance" xml:space="preserve">
     <value>Saldo de Fin de Año</value>
   </data>
-  <data name="EnterUpdatedEmail" xml:space="preserve">
-    <value>Ingrese el correo actualizado</value>
+  <data name="EnterUpdateEmail" xml:space="preserve">
+    <value>Ingrese actualice el correo</value>
   </data>
-  <data name="EnterUpdatedName" xml:space="preserve">
-    <value>Ingrese el nombre actualizado</value>
+  <data name="EnterUpdateName" xml:space="preserve">
+    <value>Ingrese o actualice el nombre</value>
   </data>
   <data name="Expenses" xml:space="preserve">
     <value>Gastos</value>
@@ -312,8 +309,8 @@
   <data name="SelectDefaultAccount" xml:space="preserve">
     <value>Seleccione una cuenta predeterminada</value>
   </data>
-  <data name="SelectNewAuthLevel" xml:space="preserve">
-    <value>Seleccionar Nuevo Nivel de Autorización</value>
+  <data name="SelectAuthLevel" xml:space="preserve">
+    <value>Seleccionar nivel de autorización</value>
   </data>
   <data name="SelectStaffMember" xml:space="preserve">
     <value>Seleccionar Miembro del Personal</value>
@@ -414,8 +411,8 @@
   <data name="AccountName" xml:space="preserve">
     <value>Nombre de la Cuenta</value>
   </data>
-  <data name="AddNewFund" xml:space="preserve">
-    <value>Agregar Nuevo Fondo</value>
+  <data name="AddNewAccount" xml:space="preserve">
+    <value>Agregar Nueva Cuenta</value>
   </data>
   <data name="DeleteFund" xml:space="preserve">
     <value>Eliminar Fondo</value>
@@ -501,9 +498,6 @@
   <data name="PleaseSelectAnAccount" xml:space="preserve">
     <value>Por favor seleccione una cuenta.</value>
   </data>
-  <data name="CreatePrimaryFund" xml:space="preserve">
-    <value>Crear Fondo Primario</value>
-  </data>
   <data name="CreateSecondaryFund" xml:space="preserve">
     <value>Crear Fondo Secondario</value>
   </data>
@@ -557,5 +551,23 @@
   </data>
   <data name="SelectedDonors" xml:space="preserve">
     <value>Donantes Seleccionados</value>
+  </data>
+  <data name="ManageFundraisingAccounts" xml:space="preserve">
+    <value>Administrar Cuentas de Recaudación de Fondos</value>
+  </data>
+  <data name="PrimaryAccount" xml:space="preserve">
+    <value>Cuenta Principal</value>
+  </data>
+  <data name="FundraisingAccount" xml:space="preserve">
+    <value>Cuenta de Recaudación de Fondos</value>
+  </data>
+  <data name="AddNewFund" xml:space="preserve">
+    <value>Agregar Nuevo Fondo</value>
+  </data>
+  <data name="SecondaryFund" xml:space="preserve">
+    <value>Fondo Secundario</value>
+  </data>
+  <data name="CreatePrimaryAccount" xml:space="preserve">
+    <value>Crear Cuenta Primario</value>
   </data>
 </root>

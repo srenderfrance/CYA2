@@ -113,13 +113,13 @@ namespace cya2.Services
 
                 if (_appState.IsAdmin)
                 {
-                    sql = "SELECT AccountId, Fund, AccountingClass, CreatedAt, Overhead, AccountNumber, SoftCredit, BalanceAdjustment, OtherFunds FROM Accounts ORDER BY Fund";
+                    sql = "SELECT AccountId, Fund, AccountingClass, CreatedAt, Overhead, AccountNumber, SoftCredit, BalanceAdjustment FROM Accounts ORDER BY Fund";
                     parameters = new { };
                 }
                 else
                 {
                     sql = @"
-                        SELECT a.AccountId, a.Fund, a.AccountingClass, a.CreatedAt, a.Overhead, a.AccountNumber, a.SoftCredit, a.BalanceAdjustment, a.OtherFunds
+                        SELECT a.AccountId, a.Fund, a.AccountingClass, a.CreatedAt, a.Overhead, a.AccountNumber, a.SoftCredit, a.BalanceAdjustment
                         FROM Accounts a
                         INNER JOIN AccountsUsers au ON a.AccountId = au.AccountId
                         WHERE au.UserId = @UserId
@@ -132,6 +132,11 @@ namespace cya2.Services
                 if (accounts?.Any() == true)
                 {
                     _appState.UserAccounts = accounts.ToList();
+                }
+                else
+                {
+                    // Ensure there's always a non-null list assigned so consumers don't get null
+                    _appState.UserAccounts = new List<Account>();
                 }
 
                 _appState.UserAccountsLoaded = true;

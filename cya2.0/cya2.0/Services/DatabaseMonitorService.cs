@@ -45,7 +45,7 @@ namespace cya2.Services
             _serviceProvider = serviceProvider;
             _configuration = configuration;
             _logger = logger;
-            _suspended = false; // Re-enable monitoring - Start active instead of suspended
+            _suspended = false;
 
             // TEMPORARY: Comment out aggressive first-chance exception handling during debugging
             /*
@@ -100,6 +100,17 @@ namespace cya2.Services
             return Task.CompletedTask;
         }
 
+        private static bool IsTransientMySqlTimeout(Exception ex)
+        {
+            if (ex is MySql.Data.MySqlClient.MySqlException my)
+            {
+                if (my.Message.Contains("Timeout expired", StringComparison.OrdinalIgnoreCase)) return true;
+            }
+            if (ex is TimeoutException) return true;
+            if (ex.InnerException is TimeoutException) return true;
+            return false;
+        }
+
         private void MonitorLoop()
         {
             try
@@ -117,7 +128,7 @@ namespace cya2.Services
                         // Only perform checks when not suspended
                         if (!_suspended && !_bypassMonitoring)
                         {
-                            bool newConnectionState = false;
+                            bool newConnectionState;
                             
                             // Always attempt a lightweight TCP check - this doesn't use MySQL assemblies
                             var connectionString = _configuration.GetConnectionString("default") ?? "";
@@ -148,47 +159,22 @@ namespace cya2.Services
                                 cya2.GlobalSettings.AllowMySqlLoading = true;
                             }
                             
-                            // Now do the full MySQL check only if allowed
-                            if (cya2.GlobalSettings.AllowMySqlLoading)
-                            {
-                                using (var scope = _serviceProvider.CreateScope())
-                                {
-                                    try
-                                    {
-                                        var dataAccess = scope.ServiceProvider.GetRequiredService<IDataAccess>();
-                                        
-                                        // Use a safer check with timeout
-                                        var checkTask = Task.Run(async () =>
-                                            await dataAccess.CheckConnection(connectionString));
-
-                                        if (checkTask.Wait(3000)) // 3 second timeout
-                                        {
-                                            newConnectionState = checkTask.Result;
-                                        }
-                                        else
-                                        {
-                                            _logger.LogWarning("Database connection check timed out");
-                                            newConnectionState = false;
-                                        }
-                                    }
-                                    catch (Exception ex)
-                                    {
-                                        _logger.LogError(ex, "Error checking database connection");
-                                        newConnectionState = false;
-                                    }
-                                }
-                            }
-                            
-                            // If connection state changes, update
-                            if (_isConnected != newConnectionState)
-                            {
+                            // IMPORTANT: Do not perform periodic MySQL Open checks here.
+                            // These checks can create unobserved task exceptions and crash the process when the server is slow/unreachable.
+                            // TCP reachability is sufficient for gating UI and allowing SafeDataAccess to attempt real operations.
+                            // If TCP is reachable, enable MySQL operations. If not, disable.
+                            cya2.GlobalSettings.AllowMySqlLoading = newConnectionState;
+ 
+                             // If connection state changes, update
+                             if (_isConnected != newConnectionState)
+                             {
                                 _logger.LogInformation("Database connection state changed from {OldState} to {NewState}",
                                     _isConnected ? "connected" : "disconnected",
                                     newConnectionState ? "connected" : "disconnected");
 
                                 _isConnected = newConnectionState;
                                 OnConnectionStatusChanged(newConnectionState);
-                            }
+                             }
                         }
                         else if (_bypassMonitoring)
                         {
@@ -260,4 +246,4 @@ namespace cya2.Services
             OnConnectionStatusChanged(false);
         }
     }
-}
+ }

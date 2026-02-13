@@ -76,7 +76,9 @@ namespace DataLibrary
                 }
                 
                 // Don't create a real connection if monitor shows database is disconnected
-                if (!_dbMonitor.IsConnected || !_dbMonitor.AllowMySqlOperations)
+                // Allow connection checks even when currently disconnected so the monitor can detect recovery.
+                // Still block checks when MySQL operations are disabled.
+                if (!_dbMonitor.AllowMySqlOperations)
                 {
                     return false;
                 }
