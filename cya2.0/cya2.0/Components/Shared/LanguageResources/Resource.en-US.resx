@@ -162,9 +162,6 @@
   <data name="CurrentDefault" xml:space="preserve">
     <value>Current default</value>
   </data>
-  <data name="CurrentEmail" xml:space="preserve">
-    <value>Current Email</value>
-  </data>
   <data name="CurrentLanguage" xml:space="preserve">
     <value>Current language</value>
   </data>
@@ -219,11 +216,11 @@
   <data name="EndOfYearBalance" xml:space="preserve">
     <value>End of Year Balance</value>
   </data>
-  <data name="EnterUpdatedEmail" xml:space="preserve">
-    <value>Enter updated email</value>
+  <data name="EnterUpdateEmail" xml:space="preserve">
+    <value>Enter or updated email</value>
   </data>
-  <data name="EnterUpdatedName" xml:space="preserve">
-    <value>Enter updated name</value>
+  <data name="EnterUpdateName" xml:space="preserve">
+    <value>Enter or updated name</value>
   </data>
   <data name="Expenses" xml:space="preserve">
     <value>Expenses</value>
@@ -312,8 +309,8 @@
   <data name="SelectDefaultAccount" xml:space="preserve">
     <value>Select a default account</value>
   </data>
-  <data name="SelectNewAuthLevel" xml:space="preserve">
-    <value>Select New Authorization Level</value>
+  <data name="SelectAuthLevel" xml:space="preserve">
+    <value>Select authorization level</value>
   </data>
   <data name="SelectStaffMember" xml:space="preserve">
     <value>Select Staff Member</value>
@@ -414,8 +411,8 @@
   <data name="AccountName" xml:space="preserve">
     <value>Account Name</value>
   </data>
-  <data name="AddNewFund" xml:space="preserve">
-    <value>Add New Fund</value>
+  <data name="AddNewAccount" xml:space="preserve">
+    <value>Add New Account</value>
   </data>
   <data name="DeleteFund" xml:space="preserve">
     <value>Delete Fund</value>
@@ -501,9 +498,6 @@
   <data name="PleaseSelectAnAccount" xml:space="preserve">
     <value>Please select and account.</value>
   </data>
-  <data name="CreatePrimaryFund" xml:space="preserve">
-    <value>Create Primary Fund</value>
-  </data>
   <data name="CreateSecondaryFund" xml:space="preserve">
     <value>Create Secondary Fund</value>
   </data>
@@ -557,5 +551,23 @@
   </data>
   <data name="SelectedDonors" xml:space="preserve">
     <value>Selected Donors</value>
+  </data>
+  <data name="ManageFundraisingAccounts" xml:space="preserve">
+    <value>Manage Fundraising Accounts</value>
+  </data>
+  <data name="PrimaryAccount" xml:space="preserve">
+    <value>Primary Account</value>
+  </data>
+  <data name="FundraisingAccount" xml:space="preserve">
+    <value>Fundraising Account</value>
+  </data>
+  <data name="AddNewFund" xml:space="preserve">
+    <value>Add New Fund</value>
+  </data>
+  <data name="SecondaryFund" xml:space="preserve">
+    <value>Secondary Fund</value>
+  </data>
+  <data name="CreatePrimaryAccount" xml:space="preserve">
+    <value>Create Primary Account</value>
   </data>
 </root>

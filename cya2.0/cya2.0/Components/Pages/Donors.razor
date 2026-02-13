@@ -27,7 +27,7 @@
     .donor-search-row { display:flex; gap:0.5rem; align-items:center; flex-wrap:wrap; }
 </style>
 
-<RadzenStack Orientation="Orientation.Vertical" Gap="0.75rem" Class="rz-p-4">
+<RadzenStack Orientation="Orientation.Vertical" Gap="15px" Class="rz-p-4">
 
     <RadzenStack Orientation="Orientation.Horizontal"
                  Gap="2rem"
@@ -100,82 +100,10 @@
 
     </RadzenStack>
 
-    <!-- Left column: donors in selected date range. Right column: search and donor details (quarter width) -->
+    <!-- Left column: donor details and search. Right column: donors list (swapped to match Expenses layout) -->
     <RadzenStack Orientation="Orientation.Horizontal" Gap="1.5rem" Class="rz-mt-3" Style="width:100%;">
-        <div style="flex:1 1 0;">
-            <RadzenCard Style="padding:0.5rem;">
-                <RadzenText TextStyle="TextStyle.Subtitle1">@Localizer["SelectedDonors"]</RadzenText>
 
-                <!-- Column selectors and action buttons on same row -->
-                <div style="margin-top:0.5rem; display:flex; gap:0.75rem; align-items:center; flex-wrap:wrap;">
-                    <div style="display:flex; gap:0.75rem; align-items:center; flex-wrap:wrap;">
-                        <label style="font-weight:600; color:#666; margin-right:0.5rem;">@Localizer["ColumnSelection"]</label>
-                        <div style="display:flex; gap:0.5rem; align-items:center;">
-                            <RadzenCheckBox @bind-Value="showTotal" /> <span>@Localizer["AmountGiven"]</span>
-                        </div>
-                        <div style="display:flex; gap:0.5rem; align-items:center;">
-                            <RadzenCheckBox @bind-Value="showPaymentMethod" /> <span>@Localizer["PaymentMethod"]</span>
-                        </div>
-                        <div style="display:flex; gap:0.5rem; align-items:center;">
-                            <RadzenCheckBox @bind-Value="showGiftType" /> <span>@Localizer["GiftType"]</span>
-                        </div>
-                        <div style="display:flex; gap:0.5rem; align-items:center;">
-                            <RadzenCheckBox @bind-Value="showSoftCredit" /> <span>@Localizer["SoftCredit"]</span>
-                        </div>
-                        <div style="display:flex; gap:0.5rem; align-items:center;">
-                            <RadzenCheckBox @bind-Value="showEmail" /> <span>@Localizer["Email"]</span>
-                        </div>
-                        <div style="display:flex; gap:0.5rem; align-items:center;">
-                            <RadzenCheckBox @bind-Value="showPhone" /> <span>@Localizer["Phone"]</span>
-                        </div>
-                        <div style="display:flex; gap:0.5rem; align-items:center;">
-                            <RadzenCheckBox @bind-Value="showAddress" /> <span>@Localizer["Address"]</span>
-                        </div>
-                    </div>
-
-                    <div style="display:flex; gap:0.5rem; align-items-center;">
-                        <RadzenButton Icon="content_copy" Size="ButtonSize.Small" ButtonStyle="ButtonStyle.Light" Click="@(async () => await CopyDonorsInRange())" Style="margin-bottom:0.25rem;">@Localizer["Copy"]</RadzenButton>
-                        <RadzenButton Icon="download" Size="ButtonSize.Small" ButtonStyle="ButtonStyle.Primary" Click="@(async () => await DownloadDonorsExcel())" Style="margin-bottom:0.25rem;">@Localizer["DownloadExcel"]</RadzenButton>
-                    </div>
-                </div>
-
-                <RadzenDataGrid TItem="DonorSummary" Data="@donorsInRange" Style="width:100%;" RowSelect="@(async (args) => await OnDonorRowSelect(args))">
-                    <Columns>
-                        <RadzenDataGridColumn TItem="DonorSummary" Property="Name" Title="@Localizer["Donor"]" />
-                        @if (showPaymentMethod)
-                        {
-                            <RadzenDataGridColumn TItem="DonorSummary" Property="PaymentMethod" Title="@Localizer["PaymentMethod"]" />
-                        }
-                        @if (showGiftType)
-                        {
-                            <RadzenDataGridColumn TItem="DonorSummary" Property="GiftType" Title="@Localizer["GiftType"]" />
-                        }
-                        @if (showSoftCredit)
-                        {
-                            <RadzenDataGridColumn TItem="DonorSummary" Property="SoftCredit" Title="@Localizer["SoftCredit"]" />
-                        }
-                        @if (showEmail)
-                        {
-                            <RadzenDataGridColumn TItem="DonorSummary" Property="Email" Title="@Localizer["Email"]" />
-                        }
-                        @if (showPhone)
-                        {
-                            <RadzenDataGridColumn TItem="DonorSummary" Property="PhoneSummary" Title="@Localizer["Phone"]" />
-                        }
-                        @if (showAddress)
-                        {
-                            <RadzenDataGridColumn TItem="DonorSummary" Property="AddressSummary" Title="@Localizer["Address"]" />
-                        } 
-                        @if (showTotal)
-                        {
-                            <RadzenDataGridColumn TItem="DonorSummary" Property="Total" Title="@Localizer["TotalGiven"]" FormatString="{0:C2}" />
-                        }
-
-                    </Columns>
-                </RadzenDataGrid>
-            </RadzenCard>
-        </div>
-
+        <!-- Left narrow column: search and selected donor details (moved here) -->
         <div style="flex:0 0 28%; min-width:260px;">
             <div class="donor-search-row" style="margin-bottom:0.75rem;">
                 <div id="donorAutoCompleteContainer">
@@ -205,7 +133,7 @@
                     <div style="font-weight:600; color:#666;">@Localizer["LastDonation"]</div>
                     <div>@DonorDisplayHelper.FormatDate(donorLastDate)</div>
 
-                    <div style="font-weight:600; color:#666;">@Localizer["EmailShort"]</div>
+                    <div style="font-weight:600; color:#666;">@Localizer["Email"]</div>
                     <div>@(string.IsNullOrWhiteSpace(donorEmail) ? Localizer["None"] : donorEmail)</div>
 
                     <div style="font-weight:600; color:#666;">@Localizer["Phone"]</div>
@@ -231,6 +159,73 @@
                 </div>
             </RadzenCard>
         </div>
+
+        <!-- Right flexible column: donors list -->
+        <div style="flex:1 1 0;">
+            <RadzenCard Style="padding:0.5rem; margin-top:0.75rem;">
+                <RadzenText TextStyle="TextStyle.Subtitle1">@Localizer["SelectedDonors"]</RadzenText>
+
+                <!-- Column selectors and action buttons on same row -->
+                <div style="margin-top:0.5rem; display:flex; gap:0.75rem; align-items:center; flex-wrap:wrap; justify-content:space-between; width:100%;">
+                    <div style="display:flex; gap:0.75rem; align-items:center; flex-wrap:wrap; flex:1;">
+                        <label style="font-weight:600; color:#666; margin-right:0.5rem;">@Localizer["ColumnSelection"]</label>
+                        <div style="display:flex; gap:0.5rem; align-items:center;">
+                            <RadzenCheckBox @bind-Value="showTotal" /> <span>@Localizer["AmountGiven"]</span>
+                        </div>
+                        <div style="display:flex; gap:0.5rem; align-items-center;">
+                            <RadzenCheckBox @bind-Value="showPaymentMethod" /> <span>@Localizer["PaymentMethod"]</span>
+                        </div>
+                        <div style="display:flex; gap:0.5rem; align-items-center;">
+                            <RadzenCheckBox @bind-Value="showEmail" /> <span>@Localizer["Email"]</span>
+                        </div>
+                        <div style="display:flex; gap:0.5rem; align-items-center;">
+                            <RadzenCheckBox @bind-Value="showPhone" /> <span>@Localizer["Phone"]</span>
+                        </div>
+                        <div style="display:flex; gap:0.5rem; align-items-center;">
+                            <RadzenCheckBox @bind-Value="showAddress" /> <span>@Localizer["Address"]</span>
+                        </div>
+                    </div>
+
+                    <div style="display:flex; gap:0.5rem; align-items-center;">
+                        <RadzenButton Icon="content_copy" Size="ButtonSize.Small" ButtonStyle="ButtonStyle.Light" Click="@(async () => await CopyDonorsInRange())" Style="margin-bottom:0.25rem;">@Localizer["Copy"]</RadzenButton>
+                        <RadzenButton Icon="download" Size="ButtonSize.Small" ButtonStyle="ButtonStyle.Primary" Click="@(async () => await DownloadDonorsExcel())" Style="margin-bottom:0.25rem;">@Localizer["DownloadExcel"]</RadzenButton>
+                    </div>
+                </div>
+
+                <RadzenDataGrid TItem="DonorSummary" Data="@donorsInRange" Style="width:100%;" RowSelect="@(async (args) => await OnDonorRowSelect(args))">
+                    <Columns>
+                        <RadzenDataGridColumn TItem="DonorSummary" Property="Name" Title="@Localizer["Donor"]" />
+                        @if (showPaymentMethod)
+                        {
+                            <RadzenDataGridColumn TItem="DonorSummary" Property="PaymentMethod" Title="@Localizer["PaymentMethod"]" />
+                        }
+                        @if (showEmail)
+                        {
+                            <RadzenDataGridColumn TItem="DonorSummary" Property="Email" Title="@Localizer["Email"]" />
+                        }
+                        @if (showPhone)
+                        {
+                            <RadzenDataGridColumn TItem="DonorSummary" Property="PhoneSummary" Title="@Localizer["Phone"]" />
+                        }
+                        @if (showAddress)
+                        {
+                            <RadzenDataGridColumn TItem="DonorSummary" Property="AddressSummary" Title="@Localizer["Address"]" />
+                        } 
+                        @if (showTotal)
+                        {
+                            <RadzenDataGridColumn TItem="DonorSummary" Property="Total" Title="@Localizer["TotalGiven"]" FormatString="{0:C2}" />
+                        }
+                        <RadzenDataGridColumn TItem="DonorSummary" Title="@Localizer["Frequency"]">
+                            <Template Context="d">
+                                N/A
+                            </Template>
+                        </RadzenDataGridColumn>
+
+                    </Columns>
+                </RadzenDataGrid>
+            </RadzenCard>
+        </div>
+
     </RadzenStack>
 
 </RadzenStack>
@@ -269,8 +264,6 @@
     private bool showPhone = false;
     private bool showAddress = false;
     private bool showPaymentMethod = false;
-    private bool showGiftType = false;
-    private bool showSoftCredit = false;
 
     protected override async Task OnInitializedAsync()
     {
@@ -392,8 +385,8 @@
                     PhoneSummary = string.Join("; ", g.Select(x => DonorDisplayHelper.GetPrimaryPhone(x)).Where(s => !string.IsNullOrWhiteSpace(s)).Distinct()),
                     AddressSummary = g.Select(x => x.Address).FirstOrDefault(a => !string.IsNullOrWhiteSpace(a)) ?? string.Empty,
                     PaymentMethod = g.Select(x => x.PaymentMethod).FirstOrDefault(pm => !string.IsNullOrWhiteSpace(pm)) ?? string.Empty,
-                    GiftType = g.Select(x => x.GiftType).FirstOrDefault(gt => !string.IsNullOrWhiteSpace(gt)) ?? string.Empty,
-                    SoftCredit = g.Select(x => x.SoftCreditName).FirstOrDefault(sc => !string.IsNullOrWhiteSpace(sc)) ?? string.Empty
+                    // Frequency heuristic based on number of donations in the selected range
+                    Frequency = GetFrequencyLabel(g.Count())
                 })
                 .OrderByDescending(d => d.Total)
                 .ThenBy(d => d.Name)
@@ -544,6 +537,7 @@
     private void ClearDonorSelection()
     {
         selectedDonor = null;
+        searchText = string.Empty; // ensure the autocomplete input is cleared
         donorDonations.Clear();
         donorTotal = 0m;
         donorLastDate = null;
@@ -606,8 +600,7 @@
         public string PhoneSummary { get; init; } = string.Empty;
         public string AddressSummary { get; init; } = string.Empty;
         public string PaymentMethod { get; init; } = string.Empty;
-        public string GiftType { get; init; } = string.Empty;
-        public string SoftCredit { get; init; } = string.Empty;
+        public string Frequency { get; init; } = string.Empty;
     }
 
     private async Task CopySelectedDonor()
@@ -653,14 +646,14 @@
             var parts = new List<string> { d.Name };
             if (showTotal) parts.Add(d.Total.ToString("C2"));
             if (showPaymentMethod) parts.Add(d.PaymentMethod);
-            if (showGiftType) parts.Add(d.GiftType);
-            if (showSoftCredit) parts.Add(d.SoftCredit);
-            if (showEmail) parts.Add(d.Email);
-            if (showPhone) parts.Add(d.PhoneSummary);
-            if (showAddress) parts.Add(d.AddressSummary);
-            return string.Join('\t', parts);
-        });
-        var payload = string.Join("\n", rows);
+            // Include frequency by default
+            parts.Add(d.Frequency);
+             if (showEmail) parts.Add(d.Email);
+             if (showPhone) parts.Add(d.PhoneSummary);
+             if (showAddress) parts.Add(d.AddressSummary);
+             return string.Join('\t', parts);
+         });
+         var payload = string.Join("\n", rows);
 
         await JS.InvokeVoidAsync("navigator.clipboard.writeText", payload);
         NotificationService.Notify(new NotificationMessage { Severity = NotificationSeverity.Success, Summary = Localizer["Copy"], Detail = Localizer["CopiedToClipboard"], Duration = 3000 });
@@ -685,14 +678,11 @@
                 Phone = d.PhoneSummary,
                 Address = d.AddressSummary,
                 PaymentMethod = d.PaymentMethod,
-                GiftType = d.GiftType,
-                SoftCredit = d.SoftCredit
+                Frequency = d.Frequency
             }).ToList(),
             IncludeTotal = showTotal,
             IncludeLastDonation = false,
             IncludePaymentMethod = showPaymentMethod,
-            IncludeGiftType = showGiftType,
-            IncludeSoftCredit = showSoftCredit,
             IncludeEmail = showEmail,
             IncludePhone = showPhone,
             IncludeAddress = showAddress
@@ -710,5 +700,16 @@
         // Triggered when any column visibility checkbox is changed
         // Simply call StateHasChanged to re-render the grid with updated columns
         StateHasChanged();
+    }
+
+    private static string GetFrequencyLabel(int count)
+    {
+        // Simple heuristic for frequency labeling based on number of donations within the selected range
+        if (count <= 0) return "Unknown";
+        if (count == 1) return "One-time";
+        if (count >= 12) return "Monthly";
+        if (count >= 4) return "Quarterly";
+        if (count == 2) return "Biannual";
+        return "Occasional";
     }
 }

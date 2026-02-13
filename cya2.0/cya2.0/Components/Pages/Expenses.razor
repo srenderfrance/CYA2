@@ -69,67 +69,61 @@
     }
 </style>
 
-<RadzenStack Orientation="Orientation.Vertical" Gap="1rem" Class="rz-p-4">
+<RadzenStack Orientation="Orientation.Vertical" Gap="15px" Class="rz-p-4">
 
     <!-- Top two control sections: date range on left, account + toggle on right -->
     <RadzenStack Orientation="Orientation.Horizontal"
                  Gap="2rem"
                  JustifyContent="JustifyContent.SpaceBetween"
-                 AlignItems="AlignItems.End"
+                 AlignItems="AlignItems.Start"
                  Style="width:100%;">
 
         <!-- Left side: Date Range controls -->
-        <RadzenStack Orientation="Orientation.Horizontal"
-                     Gap="0.75rem"
-                     AlignItems="AlignItems.End"
-                     Wrap="FlexWrap.Wrap"
-                     Style="flex:1;">
+        <RadzenStack Orientation="Orientation.Vertical" Gap="0.4rem" Style="flex:1;">
 
-            <!-- Date Range section (match Donations layout: label above, controls in a single horizontal row) -->
-            <RadzenStack Orientation="Orientation.Vertical" Gap="0.25rem">
-                <RadzenText TextStyle="TextStyle.Subtitle1">@Localizer["DateRange"]</RadzenText>
-                <RadzenStack Orientation="Orientation.Horizontal" Gap="0.5rem" AlignItems="AlignItems.Center" Wrap="FlexWrap.Wrap">
-                    <RadzenLabel Text="@Localizer["StartDate"]" />
-                    <RadzenDatePicker @bind-Value="@dateRangeState.PendingStartDate" DateFormat="MM/dd/yyyy" Style="max-width:130px"
-                                      Change="@OnDatePickerChanged" />
+            <!-- Date Range section (match Donations/Donors layout: label above, controls in a single horizontal row) -->
+            <RadzenText TextStyle="TextStyle.Subtitle1">@Localizer["DateRange"]</RadzenText>
+            <RadzenStack Orientation="Orientation.Horizontal" Gap="0.5rem" AlignItems="AlignItems.Center" Wrap="FlexWrap.Wrap">
+                <RadzenLabel Text="@Localizer["StartDate"]" />
+                <RadzenDatePicker @bind-Value="@dateRangeState.PendingStartDate" DateFormat="MM/dd/yyyy" Style="max-width:130px"
+                                  Change="@OnDatePickerChanged" />
 
-                    <RadzenLabel Text="@Localizer["EndDate"]" />
-                    <RadzenDatePicker @bind-Value="@dateRangeState.PendingEndDate" DateFormat="MM/dd/yyyy" Style="max-width:130px"
-                                      Change="@OnDatePickerChanged" />
+                <RadzenLabel Text="@Localizer["EndDate"]" />
+                <RadzenDatePicker @bind-Value="@dateRangeState.PendingEndDate" DateFormat="MM/dd/yyyy" Style="max-width:130px"
+                                  Change="@OnDatePickerChanged" />
 
-                    <!-- Preset dropdown -->
-                    <RadzenDropDown TValue="DateRangeManager.DateRangePreset"
-                                    Data="@presetOptions"
-                                    TextProperty="Text"
-                                    ValueProperty="Value"
-                                    @bind-Value="@dateRangeState.SelectedPreset"
-                                    Change="@OnPresetChanged"
-                                    Style="width: 180px;">
-                        <ValueTemplate>
-                            <span style="display:flex;align-items:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding-right:1.75rem;width:100%;">
-                                @(presetOptions.FirstOrDefault(o => o.Value == dateRangeState.SelectedPreset)?.Text ?? "")
-                            </span>
-                        </ValueTemplate>
-                        <Template Context="opt">
-                            <span style="display:flex;align-items:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;width:100%;">
-                                @opt.Text
-                            </span>
-                        </Template>
-                    </RadzenDropDown>
+                <!-- Preset dropdown -->
+                <RadzenDropDown TValue="DateRangeManager.DateRangePreset"
+                                Data="@presetOptions"
+                                TextProperty="Text"
+                                ValueProperty="Value"
+                                @bind-Value="@dateRangeState.SelectedPreset"
+                                Change="@OnPresetChanged"
+                                Style="width: 180px;">
+                    <ValueTemplate>
+                        <span style="display:flex;align-items:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding-right:1.75rem;width:100%;">
+                            @(presetOptions.FirstOrDefault(o => o.Value == dateRangeState.SelectedPreset)?.Text ?? "")
+                        </span>
+                    </ValueTemplate>
+                    <Template Context="opt">
+                        <span style="display:flex;align-items:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;width:100%;">
+                            @opt.Text
+                        </span>
+                    </Template>
+                </RadzenDropDown>
 
-                    <RadzenButton Text="@Localizer["ApplyFilter"]"
-                                  Icon="filter_alt"
-                                  Click="@(async () => await ApplyDateFilter())"
-                                  Size="ButtonSize.Small"
-                                  ButtonStyle="ButtonStyle.Primary" />
-                </RadzenStack>
+                <RadzenButton Text="@Localizer["ApplyFilter"]"
+                              Icon="filter_alt"
+                              Click="@(async () => await ApplyDateFilter())"
+                              Size="ButtonSize.Small"
+                              ButtonStyle="ButtonStyle.Primary" />
             </RadzenStack>
         </RadzenStack>
 
         <!-- Right side: Account selector and Information toggle (kept on right) -->
         <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.End" Gap="1rem">
-            <RadzenStack Orientation="Orientation.Vertical" Gap="0.25rem">
-                <RadzenLabel Text="@Localizer["Account"]" />
+            <RadzenStack Orientation="Orientation.Vertical" Gap="0.4rem">
+                <RadzenText TextStyle="TextStyle.Subtitle1">@Localizer["Account"]</RadzenText>
                 <RadzenDropDown TValue="string"
                                 Data="@userAccounts"
                                 TextProperty="Fund"
@@ -157,23 +151,25 @@
     </RadzenStack>
 
     <!-- Summary cards and grids layout -->
-    <RadzenStack Orientation="Orientation.Horizontal" Gap="2rem" AlignItems="AlignItems.Start" Class="rz-mt-4">
-        <!-- Summary cards (left side) -->
-        <RadzenCard Style="min-width: 250px; margin-top: 8px; background-color: #f8f9fa;">
-            <RadzenStack Orientation="Orientation.Vertical" Gap="1rem">
-                <RadzenText TextStyle="TextStyle.Subtitle1" Style="font-weight: bold;">@Localizer["SummaryOfTransactions"]</RadzenText>
-                <RadzenText TextStyle="TextStyle.Body2" Style="color: #666;">@GetDateRangeDisplay()</RadzenText>
-                <RadzenStack Orientation="Orientation.Vertical" Gap="0.25rem">
-                    <RadzenText TextStyle="TextStyle.Subtitle1" Style="font-weight: bold;">@Localizer["TotalTransfers"]</RadzenText>
-                    <RadzenText TextStyle="TextStyle.Subtitle1" Style="font-weight: bold; color: black;">@transferTotal.ToString("C2")</RadzenText>
+    <RadzenStack Orientation="Orientation.Horizontal" Gap="2rem" AlignItems="AlignItems.Start">
+        <!-- Summary cards (left side) - fixed width to match Donors narrow column (~28%) -->
+        <div style="flex:0 0 28%; min-width:260px;">
+            <RadzenCard Style="width:100%; margin-top: 0.5rem; background-color: #f8f9fa;">
+                <RadzenStack Orientation="Orientation.Vertical" Gap="1rem">
+                    <RadzenText TextStyle="TextStyle.Subtitle1" Style="font-weight: bold;">@Localizer["SummaryOfTransactions"]</RadzenText>
+                    <RadzenText TextStyle="TextStyle.Body2" Style="color: #666;">@GetDateRangeDisplay()</RadzenText>
+                    <RadzenStack Orientation="Orientation.Vertical" Gap="0.25rem">
+                        <RadzenText TextStyle="TextStyle.Subtitle1" Style="font-weight: bold;">@Localizer["TotalTransfers"]</RadzenText>
+                        <RadzenText TextStyle="TextStyle.Subtitle1" Style="font-weight: bold; color: black;">@transferTotal.ToString("C2")</RadzenText>
+                    </RadzenStack>
+                    
+                    <RadzenStack Orientation="Orientation.Vertical" Gap="0.25rem">
+                        <RadzenText TextStyle="TextStyle.Subtitle1" Style="font-weight: bold;">@Localizer["TotalExpenses"]</RadzenText>
+                        <RadzenText TextStyle="TextStyle.Subtitle1" Style="font-weight: bold; color: black;">@expenseTotal.ToString("C2")</RadzenText>
+                    </RadzenStack>
                 </RadzenStack>
-                
-                <RadzenStack Orientation="Orientation.Vertical" Gap="0.25rem">
-                    <RadzenText TextStyle="TextStyle.Subtitle1" Style="font-weight: bold;">@Localizer["TotalExpenses"]</RadzenText>
-                    <RadzenText TextStyle="TextStyle.Subtitle1" Style="font-weight: bold; color: black;">@expenseTotal.ToString("C2")</RadzenText>
-                </RadzenStack>
-            </RadzenStack>
-        </RadzenCard>
+            </RadzenCard>
+        </div>
 
         <!-- Grids and messages (right side) -->
         <RadzenStack Orientation="Orientation.Vertical" Gap="1rem" Style="flex: 1;">
