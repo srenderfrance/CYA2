@@ -9,6 +9,7 @@
 @using Microsoft.AspNetCore.Components.Authorization
 @using System.Security.Claims
 @using Microsoft.AspNetCore.Components.Web
+@using cya2.Components.Shared
 @inject AuthenticationStateProvider AuthStateProvider
 @inject IDataAccess _data
 @inject IConfiguration _config
@@ -37,7 +38,7 @@
 
         <RadzenStack Orientation="Orientation.Vertical" Gap="0.4rem" Style="flex:1;">
             <RadzenText TextStyle="TextStyle.Subtitle1">@Localizer["DateRange"]</RadzenText>
-            <RadzenStack Orientation="Orientation.Horizontal"
+            <RadZenStack Orientation="Orientation.Horizontal"
                          Gap="0.5rem"
                          AlignItems="AlignItems.Center"
                          Wrap="FlexWrap.Wrap">
@@ -72,7 +73,7 @@
                               Click="@selectDateRange"
                               Size="ButtonSize.Small"
                               ButtonStyle="ButtonStyle.Primary" />
-            </RadzenStack>
+            </RadZenStack>
         </RadzenStack>
 
         <RadzenStack Orientation="Orientation.Vertical" Gap="0.4rem" Style="flex:1; max-width:300px;">
@@ -100,10 +101,10 @@
 
     </RadzenStack>
 
-    <!-- Left column: donor details and search. Right column: donors list (swapped to match Expenses layout) -->
+    <!-- Left column: donor details and search. Right column: donors list -->
     <RadzenStack Orientation="Orientation.Horizontal" Gap="1.5rem" Class="rz-mt-3" Style="width:100%;">
 
-        <!-- Left narrow column: search and selected donor details (moved here) -->
+        <!-- Left narrow column: search and selected donor details -->
         <div style="flex:0 0 28%; min-width:260px;">
             <div class="donor-search-row" style="margin-bottom:0.75rem;">
                 <div id="donorAutoCompleteContainer">
@@ -120,42 +121,23 @@
             </div>
 
             <RadzenCard Style="padding:0.75rem;">
-                 <div style="display:grid; grid-template-columns: 110px 1fr; row-gap:6px; column-gap:8px; align-items:start;">
-                    <div style="grid-column: 1 / span 2; text-align:right; margin-bottom:0.5rem;">
-                        <RadzenButton Icon="content_copy" Size="ButtonSize.Small" ButtonStyle="ButtonStyle.Light" Click="@(async () => await CopySelectedDonor())" Style="margin-bottom:0.25rem;">@Localizer["Copy"]</RadzenButton>
+                 <div style="display:grid; grid-template-columns: 1fr; row-gap:6px; align-items:start;">
+                    <div style="text-align:right; margin-bottom:0.5rem;">
+                        <RadzenButton Icon="content_copy" Size="ButtonSize.Small" ButtonStyle="ButtonStyle.Light" Click="@(async () => await CopySelectedDonor())" Style="margin-bottom:0.25rem;" Text="@Localizer["Copy"]" />
                     </div>
-                     <div style="font-weight:600; color:#666;">@Localizer["Name"]</div>
-                     <div>@(string.IsNullOrWhiteSpace(selectedDonor) ? Localizer["NoDonorSelected"] : selectedDonor)</div>
-
-                    <div style="font-weight:600; color:#666;">@Localizer["TotalGiven"]</div>
-                    <div>@donorTotal.ToString("C2")</div>
-
-                    <div style="font-weight:600; color:#666;">@Localizer["LastDonation"]</div>
-                    <div>@DonorDisplayHelper.FormatDate(donorLastDate)</div>
-
-                    <div style="font-weight:600; color:#666;">@Localizer["Email"]</div>
-                    <div>@(string.IsNullOrWhiteSpace(donorEmail) ? Localizer["None"] : donorEmail)</div>
-
-                    <div style="font-weight:600; color:#666;">@Localizer["Phone"]</div>
-                    <div>
-                        @if (!string.IsNullOrWhiteSpace(donorPhoneMobile)) { <div>Cell: @DonorDisplayHelper.FormatPhone(donorPhoneMobile)</div> }
-                        @if (!string.IsNullOrWhiteSpace(donorPhoneFixed)) { <div>Primary: @DonorDisplayHelper.FormatPhone(donorPhoneFixed)</div> }
-                        @if (string.IsNullOrWhiteSpace(donorPhoneMobile) && string.IsNullOrWhiteSpace(donorPhoneFixed)) { <div>@Localizer["None"]</div> }
-                    </div>
-
-                    <div style="font-weight:600; color:#666;">@Localizer["Address"]</div>
-                    <div>
-                        @if (string.IsNullOrWhiteSpace(donorAddress))
-                        {
-                            <div>@Localizer["None"]</div>
-                        }
-                        else
-                        {
-                            <div>@donorAddress</div>
-                            <div>@string.Join(" ", new[]{ donorCity, donorState, donorPostal }.Where(s => !string.IsNullOrWhiteSpace(s)))</div>
-                            @if (!string.IsNullOrWhiteSpace(donorCountry)) { <div>@donorCountry</div> }
-                        }
-                    </div>
+                    
+                    <!-- Use the shared DonorInfoDisplay component for contact information only -->
+                    <DonorInfoDisplay DonorName="@(string.IsNullOrWhiteSpace(selectedDonor) ? string.Empty : selectedDonor)"
+                                     DonorEmail="@donorEmail"
+                                     DonorPhoneMobile="@donorPhoneMobile"
+                                     DonorPhoneFixed="@donorPhoneFixed"
+                                     DonorAddress="@donorAddress"
+                                     DonorCity="@donorCity"
+                                     DonorState="@donorState"
+                                     DonorPostal="@donorPostal"
+                                     DonorCountry="@donorCountry"
+                                     AdditionalStyling=""
+                                     AllowTextSelection="false" />
                 </div>
             </RadzenCard>
         </div>
@@ -614,17 +596,35 @@
         var lines = new List<string>
         {
             $"{Localizer["Name"]}: {selectedDonor}",
-            $"{Localizer["TotalDonations"]}: {donorTotal:C2}",
-            $"{Localizer["LastDonation"]}: {DonorDisplayHelper.FormatDate(donorLastDate)}",
-            $"{Localizer["Email"]}: {(string.IsNullOrWhiteSpace(donorEmail) ? Localizer["None"].Value : donorEmail)}",
-            $"{Localizer["Phone"]}: {(string.IsNullOrWhiteSpace(donorPhoneMobile) && string.IsNullOrWhiteSpace(donorPhoneFixed) ? Localizer["None"].Value : (donorPhoneMobile + (string.IsNullOrWhiteSpace(donorPhoneFixed) ? string.Empty : "; " + donorPhoneFixed)))}"
+            $"{Localizer["Email"]}: {(string.IsNullOrWhiteSpace(donorEmail) ? Localizer["None"].Value : donorEmail)}"
         };
 
+        // Add phone information
+        var phoneLines = new List<string>();
+        if (!string.IsNullOrWhiteSpace(donorPhoneMobile))
+            phoneLines.Add($"Cell: {DonorDisplayHelper.FormatPhone(donorPhoneMobile)}");
+        if (!string.IsNullOrWhiteSpace(donorPhoneFixed))
+            phoneLines.Add($"Primary: {DonorDisplayHelper.FormatPhone(donorPhoneFixed)}");
+        
+        if (phoneLines.Any())
+            lines.Add($"{Localizer["Phone"]}: {string.Join("; ", phoneLines)}");
+        else
+            lines.Add($"{Localizer["Phone"]}: {Localizer["None"]}");
+
+        // Add address information
         if (!string.IsNullOrWhiteSpace(donorAddress))
         {
-            lines.Add(donorAddress);
-            lines.Add(string.Join(" ", new[] { donorCity, donorState, donorPostal }.Where(s => !string.IsNullOrWhiteSpace(s))));
-            if (!string.IsNullOrWhiteSpace(donorCountry)) lines.Add(donorCountry);
+            lines.Add($"{Localizer["Address"]}:");
+            lines.Add($"  {donorAddress}");
+            var cityStatePostal = string.Join(" ", new[] { donorCity, donorState, donorPostal }.Where(s => !string.IsNullOrWhiteSpace(s)));
+            if (!string.IsNullOrWhiteSpace(cityStatePostal))
+                lines.Add($"  {cityStatePostal}");
+            if (!string.IsNullOrWhiteSpace(donorCountry))
+                lines.Add($"  {donorCountry}");
+        }
+        else
+        {
+            lines.Add($"{Localizer["Address"]}: {Localizer["None"]}");
         }
 
         var payload = string.Join("\n", lines);
@@ -707,9 +707,7 @@
         // Simple heuristic for frequency labeling based on number of donations within the selected range
         if (count <= 0) return "Unknown";
         if (count == 1) return "One-time";
-        if (count >= 12) return "Monthly";
-        if (count >= 4) return "Quarterly";
-        if (count == 2) return "Biannual";
-        return "Occasional";
+        if (count <= 4) return "Occasional";
+        return "Frequent";
     }
 }

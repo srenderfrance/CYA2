@@ -570,4 +570,7 @@
   <data name="CreatePrimaryAccount" xml:space="preserve">
     <value>Create Primary Account</value>
   </data>
+  <data name="HasSecondaryFund" xml:space="preserve">
+    <value>Has Secondary Fund</value>
+  </data>
 </root>

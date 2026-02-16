@@ -8,12 +8,14 @@
 @using Radzen
 @using Microsoft.AspNetCore.Components.Authorization
 @using System.Security.Claims
+@using cya2.Components.Shared
 @inject AuthenticationStateProvider AuthStateProvider
 @inject IDataAccess _data
 @inject IConfiguration _config
 @inject AppState AppState
 @inject DataLoadingService DataLoader
 @inject PageAccountCache PageCache
+@inject DialogService DialogService
 @rendermode InteractiveServer
 @inject IStringLocalizer<Resource> Localizer
 @inject SubAccountHelper SubAccountHelper
@@ -37,7 +39,21 @@
 
     .giving-grid .donor-cell {
         white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 160px; display: inline-block;
+        cursor: pointer; color: #0066cc; text-decoration: none; transition: color 0.2s ease;
     }
+    
+    .giving-grid .donor-cell:hover {
+        color: #004499; text-decoration: underline;
+    }
+    
+    .donation-list .donor-cell {
+        cursor: pointer; color: #0066cc; text-decoration: none; transition: color 0.2s ease;
+    }
+    
+    .donation-list .donor-cell:hover {
+        color: #004499; text-decoration: underline;
+    }
+
     .view-mode-buttons .rz-button { padding: 4px 10px; font-size: 0.75rem; }
 
     /* Vertically center dropdown text */
@@ -239,7 +255,7 @@
                                               OrderIndex="0"
                                               TextAlign="TextAlign.Left">
                             <Template Context="row">
-                                <span class="donor-cell" title="@row.Donor">@row.Donor</span>
+                                <span class="donor-cell" title="@row.Donor" @onclick="@(() => OnDonorClick(row.Donor))">@row.Donor</span>
                             </Template>
                             <FooterTemplate>
                                 <strong>@Localizer["Total"]</strong>
@@ -290,26 +306,46 @@
         }
         else if (currentView == ViewMode.DonationList)
         {
-            <!-- Existing donation list -->
-            <RadzenCard>
-                <RadzenDataGrid Data="@selectedDonations"
-                                TItem="UserDataDonations"
-                                AllowFiltering="true"
-                                AllowColumnResize="true"
-                                AllowSorting="true"
-                                AllowPaging="false"
-                                FilterMode="FilterMode.Advanced"
-                                EmptyText="@GetEmptyText()">
-                    <Columns>
-                        <RadzenDataGridColumn TItem="UserDataDonations" Property="Account" Title="@(Localizer["Account"])" />
-                        <RadzenDataGridColumn TItem="UserDataDonations" Property="Donor" Title="@(Localizer["Donor"])" />
-                        <RadzenDataGridColumn TItem="UserDataDonations" Property="Date" Title="@(Localizer["Date"])" FormatString="{0:MM/dd/yyyy}" />
-                        <RadzenDataGridColumn TItem="UserDataDonations" Property="Amount" Title="@(Localizer["Amount"])" FormatString="{0:C2}" />
-                        <RadzenDataGridColumn TItem="UserDataDonations" Property="Frequency" Title="@(Localizer["Frequency"])" />
-                        <RadzenDataGridColumn TItem="UserDataDonations" Property="TransactionType" Title="@(Localizer["TransactionType"])" />
-                    </Columns>
-                </RadzenDataGrid>
-            </RadzenCard>
+            <!-- Summary cards and list layout -->
+            <RadzenStack Orientation="Orientation.Horizontal" Gap="2rem" AlignItems="AlignItems.Start">
+                <!-- Summary card (left side) - fixed width at 20% -->
+                <div style="flex:0 0 20%; min-width:260px;">
+                    <DonationSummaryCard Donations="@selectedDonations" 
+                                         StartDate="@dateRangeState.StartDate" 
+                                         EndDate="@dateRangeState.EndDate" />
+                </div>
+
+                <!-- Donation list (right side) -->
+                <div style="flex: 1;">
+                    <RadzenCard>
+                        <RadzenDataGrid Data="@selectedDonations"
+                                        TItem="UserDataDonations"
+                                        AllowFiltering="true"
+                                        AllowColumnResize="true"
+                                        AllowSorting="true"
+                                        AllowPaging="false"
+                                        FilterMode="FilterMode.Advanced"
+                                        EmptyText="@GetEmptyText()"
+                                        Class="donation-list">
+                            <Columns>
+                                <RadzenDataGridColumn TItem="UserDataDonations" Property="Date" Title="@(Localizer["Date"])" FormatString="{0:MM/dd/yyyy}" />
+                                <RadzenDataGridColumn TItem="UserDataDonations" Property="Donor" Title="@(Localizer["Donor"])">
+                                    <Template Context="donation">
+                                        <span class="donor-cell" @onclick="@(() => OnDonorClick(donation.Donor))">@donation.Donor</span>
+                                    </Template>
+                                </RadzenDataGridColumn>
+                                <RadzenDataGridColumn TItem="UserDataDonations" Property="Amount" Title="@(Localizer["Amount"])" FormatString="{0:C2}" />
+                                <RadzenDataGridColumn TItem="UserDataDonations" Property="TransactionType" Title="@(Localizer["TransactionType"])" />
+                                <RadzenDataGridColumn TItem="UserDataDonations" Title="@(Localizer["Frequency"])">
+                                    <Template Context="donation">
+                                        <!-- Leave blank for now - no frequency data available yet -->
+                                    </Template>
+                                </RadzenDataGridColumn>
+                            </Columns>
+                        </RadzenDataGrid>
+                    </RadzenCard>
+                </div>
+            </RadzenStack>
         }
         else
         {
@@ -760,6 +796,14 @@
                 includedFunds.Add(donation.Fund);
             }
 
+            // IMPORTANT: Sort all donations by date (newest first) after processing
+            // This ensures that separate sub account data is properly mixed with primary account data
+            if (donations.Any())
+            {
+                donations = donations.OrderByDescending(d => d.Date).ToList();
+                Debug($"Sorted {donations.Count} donations by date (newest first)");
+            }
+
             Debug($"ProcessDonationData: included={included} (total={includedTotal:F2}) from funds: {string.Join(", ", includedFunds)}; " +
                   $"skipped={skipped} (total={skippedTotal:F2}) from funds: {string.Join(", ", skippedFunds)}");
         }
@@ -887,5 +931,62 @@
         return string.IsNullOrWhiteSpace(selectedAccount)
             ? Localizer["PleaseSelectAnAccount"]
             : Localizer["NoDonationsFound"]; 
+    }
+
+    private async Task OnDonorClick(string? donorName)
+    {
+        if (string.IsNullOrWhiteSpace(donorName) || donorName == Localizer["Unknown"] || donorName == Localizer["Anonymous"])
+        {
+            return;
+        }
+
+        try
+        {
+            // Get all donations for this donor from the current filtered data
+            var donorDonations = selectedDonations
+                .Where(d => string.Equals(d.Donor?.Trim(), donorName?.Trim(), StringComparison.OrdinalIgnoreCase))
+                .ToList();
+
+            if (!donorDonations.Any())
+            {
+                return;
+            }
+
+            // Calculate donor statistics
+            var donorTotal = donorDonations.Sum(d => Convert.ToDecimal(d.Amount));
+            var donorLastDate = donorDonations.Max(d => d.Date);
+            var donationCount = donorDonations.Count;
+
+            // Get donor contact information from the most recent donation
+            var mostRecent = donorDonations.OrderByDescending(d => d.Date).First();
+
+            await DialogService.OpenAsync<DonorDetailsDialog>(
+                title: Localizer["DonorDetails"],
+                parameters: new Dictionary<string, object>
+                {
+                    { nameof(DonorDetailsDialog.DonorName), donorName },
+                    { nameof(DonorDetailsDialog.DonorEmail), mostRecent.Email ?? string.Empty },
+                    { nameof(DonorDetailsDialog.DonorPhoneMobile), mostRecent.PhoneMobile ?? string.Empty },
+                    { nameof(DonorDetailsDialog.DonorPhoneFixed), mostRecent.PhoneFixed ?? string.Empty },
+                    { nameof(DonorDetailsDialog.DonorAddress), mostRecent.Address ?? string.Empty },
+                    { nameof(DonorDetailsDialog.DonorCity), mostRecent.City ?? string.Empty },
+                    { nameof(DonorDetailsDialog.DonorState), mostRecent.State ?? string.Empty },
+                    { nameof(DonorDetailsDialog.DonorPostal), mostRecent.PostalCode ?? string.Empty },
+                    { nameof(DonorDetailsDialog.DonorCountry), mostRecent.Country ?? string.Empty }
+                },
+                options: new DialogOptions
+                {
+                    Width = "600px",
+                    Height = "auto",
+                    Resizable = false,
+                    ShowClose = true
+                }
+            );
+        }
+        catch (Exception ex)
+        {
+            Debug($"Error opening donor dialog: {ex.Message}");
+            Console.WriteLine($"Error in OnDonorClick: {ex.Message}");
+        }
     }
 }

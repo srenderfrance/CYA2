@@ -1,4 +1,4 @@
-﻿@page "/admin"
+@page "/admin"
 @using Microsoft.AspNetCore.Authorization
 @using UserAuth
 @using static Microsoft.AspNetCore.Components.Web.RenderMode
@@ -185,13 +185,13 @@
                             <div style="flex: 1; display: flex; align-items: center; padding: 0.5rem;">
                                 @if (HasSecondaryFunds)
                                 {
-                                    <i class="bi bi-check-circle-fill" style="color: #28a745; font-size: 1.2rem; margin-right: 0.5rem;"></i>
-                                    <RadzenText TextStyle="TextStyle.Body1" Style="color: #28a745; font-weight: 500;">@Localizer["Yes"]</RadzenText>
+                                    <i class="bi bi-check-circle-fill boolean-indicator-yes"></i>
+                                    <RadzenText TextStyle="TextStyle.Body1" Class="boolean-indicator-text">@Localizer["Yes"]</RadzenText>
                                 }
                                 else
                                 {
-                                    <i class="bi bi-x-circle-fill" style="color: #dc3545; font-size: 1.2rem; margin-right: 0.5rem;"></i>
-                                    <RadzenText TextStyle="TextStyle.Body1" Style="color: #dc3545; font-weight: 500;">@Localizer["No"]</RadzenText>
+                                    <i class="bi bi-x-circle-fill boolean-indicator-no"></i>
+                                    <RadzenText TextStyle="TextStyle.Body1" Class="boolean-indicator-text">@Localizer["No"]</RadzenText>
                                 }
                             </div>
                         </RadzenStack>
@@ -2562,5 +2562,20 @@
 
         .admin-mode-switch.rz-switch.rz-switch-checked .rz-switch-circle {
             background: var(--rz-primary) !important;
+        }
+
+        /* Boolean indicators styles */
+        .boolean-indicator-yes {
+            color: rgb(96, 188, 181) !important; /* Updated to specified teal color */
+            font-size: 2rem !important; /* Make icon bigger, similar height to switch */
+        }
+
+        .boolean-indicator-no {
+            color: rgb(145, 8, 19) !important; /* Updated to specified dark red color */
+            font-size: 2rem !important; /* Make icon bigger, similar height to switch */
+        }
+
+        .boolean-indicator-text {
+            display: none !important; /* Hide the Yes/No text labels */
         }
     </style>

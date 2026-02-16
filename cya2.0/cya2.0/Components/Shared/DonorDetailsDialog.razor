@@ -1,0 +1,93 @@
+@using ModelsLibrary
+@using UtilityClasses
+@using cya2.Components.Shared
+@inject DialogService DialogService
+@inject IStringLocalizer<Resource> Localizer
+@inject IJSRuntime JS
+
+<RadzenCard Style="padding: 1.5rem; min-width: 500px; max-width: 600px;">
+    <RadzenStack Orientation="Orientation.Vertical" Gap="1rem">
+        <!-- Copy button at the top right -->
+        <div style="display: flex; justify-content: flex-end; margin-bottom: 0.5rem;">
+            <RadzenButton Icon="content_copy" 
+                          Size="ButtonSize.Small" 
+                          ButtonStyle="ButtonStyle.Light" 
+                          Click="@(async () => await CopyDonorInfo())" 
+                          Text="@Localizer["Copy"]" />
+        </div>
+
+        <!-- Use the shared DonorInfoDisplay component for contact information only -->
+        <DonorInfoDisplay DonorName="@DonorName"
+                         DonorEmail="@DonorEmail"
+                         DonorPhoneMobile="@DonorPhoneMobile"
+                         DonorPhoneFixed="@DonorPhoneFixed"
+                         DonorAddress="@DonorAddress"
+                         DonorCity="@DonorCity"
+                         DonorState="@DonorState"
+                         DonorPostal="@DonorPostal"
+                         DonorCountry="@DonorCountry"
+                         AllowTextSelection="true" />
+    </RadzenStack>
+</RadzenCard>
+
+@code {
+    [Parameter] public string DonorName { get; set; } = string.Empty;
+    [Parameter] public string DonorEmail { get; set; } = string.Empty;
+    [Parameter] public string DonorPhoneMobile { get; set; } = string.Empty;
+    [Parameter] public string DonorPhoneFixed { get; set; } = string.Empty;
+    [Parameter] public string DonorAddress { get; set; } = string.Empty;
+    [Parameter] public string DonorCity { get; set; } = string.Empty;
+    [Parameter] public string DonorState { get; set; } = string.Empty;
+    [Parameter] public string DonorPostal { get; set; } = string.Empty;
+    [Parameter] public string DonorCountry { get; set; } = string.Empty;
+
+    private async Task CopyDonorInfo()
+    {
+        try
+        {
+            var lines = new List<string>
+            {
+                $"{Localizer["Name"]}: {(string.IsNullOrWhiteSpace(DonorName) ? Localizer["Unknown"] : DonorName)}",
+                $"{Localizer["Email"]}: {(string.IsNullOrWhiteSpace(DonorEmail) ? Localizer["None"].Value : DonorEmail)}"
+            };
+
+            // Add phone information
+            var phoneLines = new List<string>();
+            if (!string.IsNullOrWhiteSpace(DonorPhoneMobile))
+                phoneLines.Add($"Cell: {DonorDisplayHelper.FormatPhone(DonorPhoneMobile)}");
+            if (!string.IsNullOrWhiteSpace(DonorPhoneFixed))
+                phoneLines.Add($"Primary: {DonorDisplayHelper.FormatPhone(DonorPhoneFixed)}");
+            
+            if (phoneLines.Any())
+                lines.Add($"{Localizer["Phone"]}: {string.Join("; ", phoneLines)}");
+            else
+                lines.Add($"{Localizer["Phone"]}: {Localizer["None"]}");
+
+            // Add address information
+            if (!string.IsNullOrWhiteSpace(DonorAddress))
+            {
+                lines.Add($"{Localizer["Address"]}:");
+                lines.Add($"  {DonorAddress}");
+                var cityStatePostal = string.Join(" ", new[] { DonorCity, DonorState, DonorPostal }.Where(s => !string.IsNullOrWhiteSpace(s)));
+                if (!string.IsNullOrWhiteSpace(cityStatePostal))
+                    lines.Add($"  {cityStatePostal}");
+                if (!string.IsNullOrWhiteSpace(DonorCountry))
+                    lines.Add($"  {DonorCountry}");
+            }
+            else
+            {
+                lines.Add($"{Localizer["Address"]}: {Localizer["None"]}");
+            }
+
+            var payload = string.Join("\n", lines);
+            await JS.InvokeVoidAsync("navigator.clipboard.writeText", payload);
+            
+            // Optional: Show a brief success message (you could add a notification service call here)
+            Console.WriteLine("Donor information copied to clipboard");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error copying to clipboard: {ex.Message}");
+        }
+    }
+}

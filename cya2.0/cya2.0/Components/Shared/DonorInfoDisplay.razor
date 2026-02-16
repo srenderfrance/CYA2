@@ -1,0 +1,68 @@
+@using UtilityClasses
+@inject IStringLocalizer<Resource> Localizer
+
+<div style="display:grid; grid-template-columns: 120px 1fr; row-gap:12px; column-gap:12px; align-items:start; @AdditionalStyling">
+    <div style="font-weight:600; color:#666; @SelectableTextStyle">@Localizer["Name"]</div>
+    <div style="font-weight:500; @SelectableTextStyle">@(string.IsNullOrWhiteSpace(DonorName) ? Localizer["Unknown"] : DonorName)</div>
+
+    <div style="font-weight:600; color:#666; @SelectableTextStyle">@Localizer["Email"]</div>
+    <div style="@SelectableTextStyle">@(string.IsNullOrWhiteSpace(DonorEmail) ? Localizer["None"] : DonorEmail)</div>
+
+    <div style="font-weight:600; color:#666; @SelectableTextStyle">@Localizer["Phone"]</div>
+    <div style="@SelectableTextStyle">
+        @if (!string.IsNullOrWhiteSpace(DonorPhoneMobile)) 
+        { 
+            <div style="@SelectableTextStyle">Cell: @DonorDisplayHelper.FormatPhone(DonorPhoneMobile)</div> 
+        }
+        @if (!string.IsNullOrWhiteSpace(DonorPhoneFixed)) 
+        { 
+            <div style="@SelectableTextStyle">Primary: @DonorDisplayHelper.FormatPhone(DonorPhoneFixed)</div> 
+        }
+        @if (string.IsNullOrWhiteSpace(DonorPhoneMobile) && string.IsNullOrWhiteSpace(DonorPhoneFixed)) 
+        { 
+            <div style="@SelectableTextStyle">@Localizer["None"]</div> 
+        }
+    </div>
+
+    <div style="font-weight:600; color:#666; @SelectableTextStyle">@Localizer["Address"]</div>
+    <div style="@SelectableTextStyle">
+        @if (string.IsNullOrWhiteSpace(DonorAddress))
+        {
+            <div style="@SelectableTextStyle">@Localizer["None"]</div>
+        }
+        else
+        {
+            <div style="@SelectableTextStyle">@DonorAddress</div>
+            <div style="@SelectableTextStyle">@string.Join(" ", new[]{ DonorCity, DonorState, DonorPostal }.Where(s => !string.IsNullOrWhiteSpace(s)))</div>
+            @if (!string.IsNullOrWhiteSpace(DonorCountry)) 
+            { 
+                <div style="@SelectableTextStyle">@DonorCountry</div> 
+            }
+        }
+    </div>
+</div>
+
+@code {
+    [Parameter] public string DonorName { get; set; } = string.Empty;
+    [Parameter] public string DonorEmail { get; set; } = string.Empty;
+    [Parameter] public string DonorPhoneMobile { get; set; } = string.Empty;
+    [Parameter] public string DonorPhoneFixed { get; set; } = string.Empty;
+    [Parameter] public string DonorAddress { get; set; } = string.Empty;
+    [Parameter] public string DonorCity { get; set; } = string.Empty;
+    [Parameter] public string DonorState { get; set; } = string.Empty;
+    [Parameter] public string DonorPostal { get; set; } = string.Empty;
+    [Parameter] public string DonorCountry { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Additional CSS styling to apply to the grid container. 
+    /// Default includes background and padding for dialog usage.
+    /// </summary>
+    [Parameter] public string AdditionalStyling { get; set; } = "background-color:#f8f9fa; padding:1rem; border-radius:6px;";
+
+    /// <summary>
+    /// Whether text should be selectable. Set to true for dialogs, false for regular displays.
+    /// </summary>
+    [Parameter] public bool AllowTextSelection { get; set; } = false;
+
+    private string SelectableTextStyle => AllowTextSelection ? "user-select: text;" : string.Empty;
+}

@@ -1,0 +1,47 @@
+@using UtilityClassLibrary
+
+<RadzenCard Style="width:100%; margin-top: 0.5rem; background-color: #f8f9fa;">
+    <RadzenStack Orientation="Orientation.Vertical" Gap="1rem">
+        <RadzenText TextStyle="TextStyle.Subtitle1" Style="font-weight: bold;">@($"{Localizer["Total"]} {Localizer["Donations"]}")</RadzenText>
+        <RadzenText TextStyle="TextStyle.Body2" Style="color: #666;">@GetDateRangeDisplay()</RadzenText>
+        <RadzenStack Orientation="Orientation.Vertical" Gap="0.25rem">
+            <RadzenText TextStyle="TextStyle.Subtitle1" Style="font-weight: bold;">@GetDonationTotal().ToString("C2")</RadzenText>
+        </RadzenStack>
+    </RadzenStack>
+</RadzenCard>
+
+@code {
+    [Parameter] public List<UserDataDonations> Donations { get; set; } = new();
+    [Parameter] public DateTime StartDate { get; set; }
+    [Parameter] public DateTime EndDate { get; set; }
+
+    [Inject] private IStringLocalizer<Resource> Localizer { get; set; } = default!;
+
+    private decimal GetDonationTotal()
+    {
+        return Donations?.Sum(d => Convert.ToDecimal(d.Amount)) ?? 0m;
+    }
+
+    private string GetDateRangeDisplay()
+    {
+        try
+        {
+            // Format: "Jan 5, 2026" or "Jan 5, 2026 - Feb 15, 2026"
+            var startFormatted = StartDate.ToString("MMM d, yyyy");
+            var endFormatted = EndDate.ToString("MMM d, yyyy");
+            
+            if (StartDate.Date == EndDate.Date)
+            {
+                return startFormatted;
+            }
+            else
+            {
+                return $"{startFormatted} - {endFormatted}";
+            }
+        }
+        catch
+        {
+            return "Date Range";
+        }
+    }
+}

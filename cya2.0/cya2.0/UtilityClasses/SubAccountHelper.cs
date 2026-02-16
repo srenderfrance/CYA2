@@ -85,7 +85,7 @@ namespace UtilityClasses
             options.Add(new SubAccountOption
             {
                 Value = "Primary",
-                DisplayText = $"{FundDisplayHelper.GetDisplay(primaryAccount.Fund)} (Default)",
+                DisplayText = $"{FundDisplayHelper.GetDisplay(primaryAccount.Fund)}",
                 IsAll = false,
                 IsPrimary = true,
                 SubAccountId = null,
