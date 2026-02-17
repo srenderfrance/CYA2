@@ -1,0 +1,193 @@
+@* Example of simplified Admin.razor using AccountManagementService *@
+@page "/admin-simplified"
+@using Cya2.Application.Interfaces
+@inject IAccountManagementService AccountService
+@inject NotificationService NotificationService
+
+<h3>Account Management (Simplified with Service)</h3>
+
+<RadzenStack Orientation="Orientation.Vertical" Gap="1rem">
+    <!-- Account Form -->
+    <RadzenCard>
+        <RadzenStack Orientation="Orientation.Vertical" Gap="0.75rem">
+            
+            <!-- Fund Name -->
+            <RadzenFormField Text="Fund Name">
+                <RadzenTextBox @bind-Value="accountForm.Fund" Placeholder="Fund Name" />
+            </RadzenFormField>
+
+            <!-- Account Number -->
+            <RadzenFormField Text="Account Number">
+                <RadzenTextBox @bind-Value="accountForm.AccountNumber" Placeholder="Account Number" />
+            </RadzenFormField>
+
+            <!-- Accounting Class -->
+            <RadzenFormField Text="Accounting Class">
+                <RadzenTextBox @bind-Value="accountForm.AccountingClass" Placeholder="Accounting Class" />
+            </RadzenFormField>
+
+            <!-- Overhead -->
+            <RadzenFormField Text="Overhead %">
+                <RadzenNumeric @bind-Value="accountForm.Overhead" Format="n2" Suffix="%" />
+            </RadzenFormField>
+
+            <!-- Buttons -->
+            <RadzenStack Orientation="Orientation.Horizontal" Gap="1rem">
+                <RadzenButton Text="Create Account" 
+                            ButtonStyle="ButtonStyle.Primary" 
+                            Click="CreateAccount" 
+                            Disabled="isProcessing" />
+                
+                <RadzenButton Text="Update Account" 
+                            ButtonStyle="ButtonStyle.Secondary" 
+                            Click="UpdateAccount" 
+                            Disabled="isProcessing || selectedAccountId == 0" />
+            </RadzenStack>
+        </RadzenStack>
+    </RadzenCard>
+
+    <!-- Error/Success Messages -->
+    @if (!string.IsNullOrEmpty(message))
+    {
+        <RadzenAlert AlertStyle="@alertStyle" ShowIcon="true" Variant="Variant.Filled">
+            @message
+        </RadzenAlert>
+    }
+</RadzenStack>
+
+@code {
+    private CreateAccountRequest accountForm = new();
+    private int selectedAccountId = 0;
+    private string message = string.Empty;
+    private AlertStyle alertStyle = AlertStyle.Info;
+    private bool isProcessing = false;
+
+    // ✅ MUCH SIMPLER: Just call the service instead of 100+ lines of business logic
+    private async Task CreateAccount()
+    {
+        try
+        {
+            isProcessing = true;
+            message = string.Empty;
+
+            // ✅ Business logic is handled by the service
+            var result = await AccountService.CreateAccountAsync(accountForm);
+
+            if (result.IsSuccess)
+            {
+                message = result.Message;
+                alertStyle = AlertStyle.Success;
+                
+                // Clear form
+                accountForm = new CreateAccountRequest();
+                
+                // Show toast notification
+                NotificationService.Notify(new NotificationMessage
+                {
+                    Severity = NotificationSeverity.Success,
+                    Summary = "Success",
+                    Detail = result.Message,
+                    Duration = 4000
+                });
+            }
+            else
+            {
+                message = result.Message;
+                alertStyle = AlertStyle.Danger;
+                
+                // Could also show validation errors
+                if (result.Errors.Any())
+                {
+                    message += $"\nErrors: {string.Join(", ", result.Errors)}";
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            message = $"Unexpected error: {ex.Message}";
+            alertStyle = AlertStyle.Danger;
+        }
+        finally
+        {
+            isProcessing = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task UpdateAccount()
+    {
+        try
+        {
+            isProcessing = true;
+            message = string.Empty;
+
+            var updateRequest = new UpdateAccountRequest
+            {
+                AccountId = selectedAccountId,
+                Fund = accountForm.Fund,
+                AccountNumber = accountForm.AccountNumber,
+                AccountingClass = accountForm.AccountingClass,
+                Overhead = accountForm.Overhead,
+                SoftCredit = accountForm.SoftCredit,
+                BalanceAdjustment = accountForm.BalanceAdjustment
+            };
+
+            // ✅ Service handles all the complexity
+            var result = await AccountService.UpdateAccountAsync(updateRequest);
+
+            if (result.IsSuccess)
+            {
+                message = result.Message;
+                alertStyle = AlertStyle.Success;
+            }
+            else
+            {
+                message = result.Message;
+                alertStyle = AlertStyle.Danger;
+            }
+        }
+        catch (Exception ex)
+        {
+            message = $"Unexpected error: {ex.Message}";
+            alertStyle = AlertStyle.Danger;
+        }
+        finally
+        {
+            isProcessing = false;
+            StateHasChanged();
+        }
+    }
+
+    // ✅ COMPARISON: Before vs After
+    // 
+    // BEFORE (in your current Admin.razor): 
+    // - 50+ lines of validation logic
+    // - 30+ lines of duplicate checking 
+    // - 20+ lines of database operations
+    // - Error handling mixed with UI logic
+    // - Hard to test business rules
+    // - Difficult to reuse in other components
+    //
+    // AFTER (with service):
+    // - 10 lines in component (just UI logic)
+    // - All business logic testable in isolation
+    // - Can reuse same logic in API controllers, other components, etc.
+    // - Clean separation of concerns
+    // - Standardized error handling and result objects
+}
+
+@* 
+    Key Benefits of Using Services in Blazor:
+    
+    1. 🎯 CLEAN COMPONENTS: Components focus only on UI and user interaction
+    2. 🧪 TESTABLE: Business logic can be unit tested independently 
+    3. 🔄 REUSABLE: Same logic can be used in API controllers, background jobs, etc.
+    4. 📦 ORGANIZED: Related functionality grouped together
+    5. 🛡️ CONSISTENT: Standardized error handling and validation
+    6. 🚀 MAINTAINABLE: Changes to business rules happen in one place
+    
+    Service Lifetime in Blazor:
+    - AddScoped: One instance per user session/circuit (recommended for most cases)
+    - AddTransient: New instance every time (use for stateless utilities)
+    - AddSingleton: One instance for entire app (use for configuration, caches)
+*@

@@ -19,6 +19,16 @@
 @rendermode InteractiveServer
 @inject IStringLocalizer<Resource> Localizer
 @inject SubAccountHelper SubAccountHelper
+@inject ILogger<Donations> Logger
+
+@* Clean Architecture Service Injections - TEMPORARILY DISABLED *@
+@* TODO: Resolve interface conflicts before enabling
+@using Cya2.Application.Interfaces
+@inject IDonationService DonationService
+@inject IAccountService AccountService
+@inject IDonorService DonorService
+*@
+
 @attribute [StreamRendering]
 
 <PageTitle>@Localizer["Donations"]</PageTitle>
@@ -142,7 +152,7 @@
                     </span>
                 </ValueTemplate>
                 <Template Context="acct">
-                    <span style="display:flex;align-items:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;width:100%;">
+                    <span style="display:flex;align-items:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;width=100%;">
                         @FundDisplayHelper.GetDisplay(acct.Fund)
                     </span>
                 </Template>
@@ -166,7 +176,7 @@
                             </span>
                         </ValueTemplate>
                         <Template Context="option">
-                            <span style="display:flex;align-items:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;width:100%;">
+                            <span style="display:flex;align-items:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;width=100%;">
                                 @option.DisplayText
                             </span>
                         </Template>

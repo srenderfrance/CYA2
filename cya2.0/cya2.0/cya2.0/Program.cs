@@ -17,6 +17,10 @@ using OfficeOpenXml;
 using Radzen;
 using System.Security.Claims;
 using System.Threading;
+// Clean Architecture Extensions - TEMPORARILY DISABLED
+// TODO: Resolve interface conflicts before enabling
+// using Cya2.Application.Extensions;
+// using Cya2.Infrastructure.Extensions;
 
 var _lastResetTime = DateTime.Now;
 var _lockObject = new object();
@@ -72,6 +76,11 @@ builder.Services.AddScoped<IDonationImportService, DonationImportService>();
 builder.Services.AddScoped<IAccountingImportService, AccountingImportService>();
 builder.Services.AddScoped<RollbackService>();
 builder.Services.AddSingleton<ImportProgressService>();
+
+// Clean Architecture Services - TEMPORARILY DISABLED
+// TODO: Resolve duplicate interface definitions before enabling
+// builder.Services.AddApplicationServices(); // Registers all application services
+// builder.Services.AddCleanArchitectureRepositories(); // Uses existing IDataAccess
 
 builder.Services.AddScoped<IDataAccess>(sp =>
 {

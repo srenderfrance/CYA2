@@ -6,7 +6,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <RootNamespace>cya2</RootNamespace>
     <AssemblyName>cya2</AssemblyName>
-    <UserSecretsId>53201ee5-e9ff-4a42-b53e-7655ae21f069</UserSecretsId>
+    <UserSecretsId>b0afc62a-8a85-4a86-a8e1-fca2b94c7ef7</UserSecretsId>
   </PropertyGroup>
 
   <ItemGroup>
@@ -22,6 +22,13 @@
     <ProjectReference Include="..\..\ModelsLibrary\ModelsLibrary.csproj" />
     <ProjectReference Include="..\..\UserDataLibrary\UserDataLibrary.csproj" />
     <ProjectReference Include="..\..\UtilityClassLibrary\UtilityClassLibrary.csproj" />
+    <!-- Clean Architecture Project References - TEMPORARILY DISABLED -->
+    <!-- TODO: Resolve interface conflicts before enabling
+    <ProjectReference Include="..\src\Cya2.Core\Cya2.Core.csproj" />
+    <ProjectReference Include="..\src\Cya2.Application\Cya2.Application.csproj" />
+    <ProjectReference Include="..\src\Cya2.Infrastructure\Cya2.Infrastructure.csproj" />
+    <ProjectReference Include="..\src\Cya2.Shared\Cya2.Shared.csproj" />
+    -->
   </ItemGroup>
 
   <ItemGroup>
