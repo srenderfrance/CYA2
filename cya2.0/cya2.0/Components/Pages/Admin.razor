@@ -33,6 +33,15 @@
 
 @inject IDonationImportService DonationImportService
 @inject IAccountingImportService AccountingImportService
+
+@* Clean Architecture Service Injections - TEMPORARILY DISABLED *@
+@* TODO: Resolve interface conflicts before enabling
+@using Cya2.Application.Interfaces
+@inject IAccountService AccountService
+@inject IDonorService DonorService
+@inject IDonationService DonationService
+*@
+
 <RadzenStack Orientation="Orientation.Vertical" Gap="1rem" Class="rz-pt-0 rz-px-4 rz-pb-4">
     <!-- Top row: accounts buttons on the left, upload buttons on the right -->
     <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" JustifyContent="JustifyContent.SpaceBetween" Gap="1rem" Class="rz-mb-3">

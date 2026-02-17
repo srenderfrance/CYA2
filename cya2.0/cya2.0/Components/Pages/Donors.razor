@@ -21,6 +21,15 @@
 @inject IStringLocalizer<Resource> Localizer
 @inject IJSRuntime JS
 @inject NotificationService NotificationService
+@inject ILogger<Donors> Logger
+
+@* Clean Architecture Service Injections - TEMPORARILY DISABLED *@
+@* TODO: Resolve interface conflicts before enabling
+@using Cya2.Application.Interfaces
+@inject IDonorService DonorService
+@inject IAccountService AccountService
+@inject IDonationService DonationService
+*@
 
 <PageTitle>@Localizer["Donors"]</PageTitle>
 
@@ -38,7 +47,7 @@
 
         <RadzenStack Orientation="Orientation.Vertical" Gap="0.4rem" Style="flex:1;">
             <RadzenText TextStyle="TextStyle.Subtitle1">@Localizer["DateRange"]</RadzenText>
-            <RadZenStack Orientation="Orientation.Horizontal"
+            <RadzenStack Orientation="Orientation.Horizontal"
                          Gap="0.5rem"
                          AlignItems="AlignItems.Center"
                          Wrap="FlexWrap.Wrap">
@@ -73,7 +82,7 @@
                               Click="@selectDateRange"
                               Size="ButtonSize.Small"
                               ButtonStyle="ButtonStyle.Primary" />
-            </RadZenStack>
+            </RadzenStack>
         </RadzenStack>
 
         <RadzenStack Orientation="Orientation.Vertical" Gap="0.4rem" Style="flex:1; max-width:300px;">
