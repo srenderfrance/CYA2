@@ -90,10 +90,7 @@ namespace cya2.Services
                 }
 
                 // For non-admin users, start background loading of remaining accounts
-                if (!_appState.IsAdmin && _appState.UserAccounts.Count > 1 && !string.IsNullOrEmpty(_appState.DefaultAccount))
-                {
-                    _ = Task.Run(async () => await LoadAllUserAccountDataAsync());
-                }
+                // Background loading of non-default accounts disabled per requirements
             }
             catch (Exception ex)
             {

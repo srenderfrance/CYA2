@@ -18,17 +18,18 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- Project libraries at repository root (two levels up from this project) -->
     <ProjectReference Include="..\..\DataLibrary\DataLibrary.csproj" />
     <ProjectReference Include="..\..\ModelsLibrary\ModelsLibrary.csproj" />
     <ProjectReference Include="..\..\UserDataLibrary\UserDataLibrary.csproj" />
     <ProjectReference Include="..\..\UtilityClassLibrary\UtilityClassLibrary.csproj" />
-    <!-- Clean Architecture Project References - TEMPORARILY DISABLED -->
-    <!-- TODO: Resolve interface conflicts before enabling
-    <ProjectReference Include="..\src\Cya2.Core\Cya2.Core.csproj" />
-    <ProjectReference Include="..\src\Cya2.Application\Cya2.Application.csproj" />
-    <ProjectReference Include="..\src\Cya2.Infrastructure\Cya2.Infrastructure.csproj" />
-    <ProjectReference Include="..\src\Cya2.Shared\Cya2.Shared.csproj" />
-    -->
+    
+    <!-- Clean Architecture Project References - now under repository `src` folder (two levels up) -->
+    <ProjectReference Include="..\..\src\Cya2.Core\Cya2.Core.csproj" />
+    <ProjectReference Include="..\..\src\Cya2.Application\Cya2.Application.csproj" />
+    <ProjectReference Include="..\..\src\Cya2.Shared\Cya2.Shared.csproj" />
+    <!-- Infrastructure layer disabled until compilation errors are fixed -->
+    <!-- <ProjectReference Include="..\..\src\Cya2.Infrastructure\Cya2.Infrastructure.csproj" /> -->
   </ItemGroup>
 
   <ItemGroup>

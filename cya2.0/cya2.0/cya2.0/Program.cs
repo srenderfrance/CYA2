@@ -17,9 +17,8 @@ using OfficeOpenXml;
 using Radzen;
 using System.Security.Claims;
 using System.Threading;
-// Clean Architecture Extensions - TEMPORARILY DISABLED
-// TODO: Resolve interface conflicts before enabling
-// using Cya2.Application.Extensions;
+// Clean Architecture Extensions - Application layer enabled, Infrastructure disabled
+using Cya2.Application.Extensions;
 // using Cya2.Infrastructure.Extensions;
 
 var _lastResetTime = DateTime.Now;
@@ -69,18 +68,17 @@ builder.Services.AddScoped<PageAccountCache>();
 builder.Services.AddSingleton<DatabaseMonitorService>();
 builder.Services.AddSingleton<IHostedService>(sp => sp.GetRequiredService<DatabaseMonitorService>());
 
-// Add SubAccountHelper for handling separate sub accounts
-builder.Services.AddScoped<UtilityClasses.SubAccountHelper>();
+        // Add SubAccountHelper for handling separate sub accounts
+        builder.Services.AddScoped<UtilityClasses.SubAccountHelper>();
 
-builder.Services.AddScoped<IDonationImportService, DonationImportService>();
-builder.Services.AddScoped<IAccountingImportService, AccountingImportService>();
-builder.Services.AddScoped<RollbackService>();
-builder.Services.AddSingleton<ImportProgressService>();
+        builder.Services.AddScoped<IDonationImportService, DonationImportService>();
+        builder.Services.AddScoped<IAccountingImportService, AccountingImportService>();
+        builder.Services.AddScoped<RollbackService>();
+        builder.Services.AddSingleton<ImportProgressService>();
 
-// Clean Architecture Services - TEMPORARILY DISABLED
-// TODO: Resolve duplicate interface definitions before enabling
-// builder.Services.AddApplicationServices(); // Registers all application services
-// builder.Services.AddCleanArchitectureRepositories(); // Uses existing IDataAccess
+// Clean Architecture Services - Fully enabled
+builder.Services.AddApplicationServices(); // Registers all application services
+// builder.Services.AddCleanArchitectureRepositories(); // Infrastructure layer disabled
 
 builder.Services.AddScoped<IDataAccess>(sp =>
 {
@@ -97,10 +95,25 @@ builder.Services.AddScoped<IHostEnvironmentAuthenticationStateProvider>(sp =>
 builder.Services.AddCascadingAuthenticationState();
 builder.Services.AddAuthorizationCore();
 
-builder.Services.AddAuthentication(opts =>
+// Google OAuth configuration with validation
+var googleClientId = builder.Configuration["Authentication:Google:ClientId"] ?? "";
+var googleClientSecret = builder.Configuration["Authentication:Google:ClientSecret"] ?? "";
+
+// Check if we have valid Google OAuth configuration
+bool hasValidGoogleConfig = !string.IsNullOrEmpty(googleClientId) && 
+                           !string.IsNullOrEmpty(googleClientSecret) &&
+                           !googleClientId.Contains("PLACEHOLDER") &&
+                           !googleClientSecret.Contains("PLACEHOLDER") &&
+                           !googleClientId.Contains("YOUR_GOOGLE_CLIENT_ID") &&
+                           !googleClientSecret.Contains("YOUR_GOOGLE_CLIENT_SECRET");
+
+var authBuilder = builder.Services.AddAuthentication(opts =>
 {
     opts.DefaultScheme = CookieAuthenticationDefaults.AuthenticationScheme;
-    opts.DefaultChallengeScheme = GoogleDefaults.AuthenticationScheme;
+    if (hasValidGoogleConfig)
+    {
+        opts.DefaultChallengeScheme = GoogleDefaults.AuthenticationScheme;
+    }
 })
 .AddCookie(opts =>
 {
@@ -130,122 +143,150 @@ builder.Services.AddAuthentication(opts =>
             return Task.CompletedTask;
         }
     };
-})
-.AddGoogle(options =>
+});
+
+if (hasValidGoogleConfig)
 {
-    options.ClientId = builder.Configuration["Authentication:Google:ClientId"] ?? string.Empty;
-    options.ClientSecret = builder.Configuration["Authentication:Google:ClientSecret"] ?? string.Empty;
-    options.CallbackPath = "/signin-google";
-    options.Events = new OAuthEvents
+    authBuilder.AddGoogle(options =>
     {
-        OnRedirectToAuthorizationEndpoint = context =>
+        options.ClientId = googleClientId;
+        options.ClientSecret = googleClientSecret;
+        options.CallbackPath = "/signin-google";
+        options.Events = new OAuthEvents
         {
-            if (context.Request.Path.StartsWithSegments("/_blazor") ||
-                context.Request.Path.StartsWithSegments("/_framework"))
+            OnRedirectToAuthorizationEndpoint = context =>
             {
+                if (context.Request.Path.StartsWithSegments("/_blazor") ||
+                    context.Request.Path.StartsWithSegments("/_framework"))
+                {
+                    return Task.CompletedTask;
+                }
+                context.Response.Headers.CacheControl = "no-store, no-cache";
+                context.Response.Headers.Pragma = "no-cache";
+                context.Response.Redirect(context.RedirectUri);
+                return Task.CompletedTask;
+            },
+            OnRemoteFailure = context =>
+            {
+                context.Response.Redirect("/not-authorized");
+                context.HandleResponse();
+                return Task.CompletedTask;
+            },
+            OnTicketReceived = async context =>
+            {
+                var logger = context.HttpContext.RequestServices.GetRequiredService<ILogger<Program>>();
+                var userRepo = context.HttpContext.RequestServices.GetRequiredService<UserAuth.UserRepository>();
+                var monitor = context.HttpContext.RequestServices.GetRequiredService<DatabaseMonitorService>();
+                monitor.Suspend();
+                try
+                {
+                    var principal = context.Principal;
+                    if (principal is null)
+                    {
+                        logger.LogWarning("OAuth ticket received without a principal.");
+                        context.Fail("Missing principal");
+                        await context.HttpContext.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
+                        context.Response.Redirect("/not-authorized");
+                        context.HandleResponse();
+                        monitor.Resume();
+                        return;
+                    }
+
+                    var email = principal.FindFirstValue(ClaimTypes.Email);
+                    if (string.IsNullOrWhiteSpace(email))
+                    {
+                        logger.LogWarning("OAuth principal missing email claim.");
+                        context.Fail("Missing email");
+                        await context.HttpContext.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
+                        context.Response.Redirect("/not-authorized");
+                        context.HandleResponse();
+                        monitor.Resume();
+                        return;
+                    }
+
+                    var user = await userRepo.GetUserByEmailAsync(email);
+                    if (user == null)
+                    {
+                        logger.LogWarning("User not registered: {Email}", email);
+                        context.Fail("User not registered");
+                        await context.HttpContext.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
+                        context.Response.Redirect("/not-authorized");
+                        context.HandleResponse();
+                        monitor.Resume();
+                        return;
+                    }
+
+                    if (principal.Identity is not ClaimsIdentity identity)
+                    {
+                        logger.LogWarning("Principal has no ClaimsIdentity.");
+                        context.Fail("Invalid identity");
+                        await context.HttpContext.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
+                        context.Response.Redirect("/not-authorized");
+                        context.HandleResponse();
+                        monitor.Resume();
+                        return;
+                    }
+
+                    identity.AddClaim(new Claim(ClaimTypes.Role, user.AuthLevel ?? "User"));
+                    identity.AddClaim(new Claim("AuthLevel", user.AuthLevel ?? string.Empty));
+                    identity.AddClaim(new Claim("DefaultAccount", user.DefaultAccount?.ToString() ?? string.Empty));
+                    identity.AddClaim(new Claim("Language", user.Language ?? string.Empty));
+                    identity.AddClaim(new Claim("UserId", user.Id.ToString()));
+                    identity.AddClaim(new Claim("UserName", user.Name ?? string.Empty));
+
+                    context.Properties.RedirectUri = user.AuthLevel == "Admin" ? "/admin" : "/";
+
+                    monitor.Resume();
+                }
+                catch (Exception)
+                {
+                    context.Response.Redirect("/error");
+                    context.HandleResponse();
+                    monitor.Resume();
+                }
+            },
+            OnCreatingTicket = context =>
+            {
+                if (context.Properties?.RedirectUri == null)
+                    context.Properties.RedirectUri = "/";
                 return Task.CompletedTask;
             }
-            context.Response.Headers.CacheControl = "no-store, no-cache";
-            context.Response.Headers.Pragma = "no-cache";
-            context.Response.Redirect(context.RedirectUri);
-            return Task.CompletedTask;
-        },
-        OnRemoteFailure = context =>
-        {
-            context.Response.Redirect("/not-authorized");
-            context.HandleResponse();
-            return Task.CompletedTask;
-        },
-        OnTicketReceived = async context =>
-        {
-            var logger = context.HttpContext.RequestServices.GetRequiredService<ILogger<Program>>();
-            var userRepo = context.HttpContext.RequestServices.GetRequiredService<UserAuth.UserRepository>();
-            var monitor = context.HttpContext.RequestServices.GetRequiredService<DatabaseMonitorService>();
-            monitor.Suspend();
-            try
-            {
-                var principal = context.Principal;
-                if (principal is null)
-                {
-                    logger.LogWarning("OAuth ticket received without a principal.");
-                    context.Fail("Missing principal");
-                    await context.HttpContext.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
-                    context.Response.Redirect("/not-authorized");
-                    context.HandleResponse();
-                    monitor.Resume();
-                    return;
-                }
-
-                var email = principal.FindFirstValue(ClaimTypes.Email);
-                if (string.IsNullOrWhiteSpace(email))
-                {
-                    logger.LogWarning("OAuth principal missing email claim.");
-                    context.Fail("Missing email");
-                    await context.HttpContext.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
-                    context.Response.Redirect("/not-authorized");
-                    context.HandleResponse();
-                    monitor.Resume();
-                    return;
-                }
-
-                var user = await userRepo.GetUserByEmailAsync(email);
-                if (user == null)
-                {
-                    logger.LogWarning("User not registered: {Email}", email);
-                    context.Fail("User not registered");
-                    await context.HttpContext.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
-                    context.Response.Redirect("/not-authorized");
-                    context.HandleResponse();
-                    monitor.Resume();
-                    return;
-                }
-
-                if (principal.Identity is not ClaimsIdentity identity)
-                {
-                    logger.LogWarning("Principal has no ClaimsIdentity.");
-                    context.Fail("Invalid identity");
-                    await context.HttpContext.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
-                    context.Response.Redirect("/not-authorized");
-                    context.HandleResponse();
-                    monitor.Resume();
-                    return;
-                }
-
-                identity.AddClaim(new Claim(ClaimTypes.Role, user.AuthLevel ?? "User"));
-                identity.AddClaim(new Claim("AuthLevel", user.AuthLevel ?? string.Empty));
-                identity.AddClaim(new Claim("DefaultAccount", user.DefaultAccount?.ToString() ?? string.Empty));
-                identity.AddClaim(new Claim("Language", user.Language ?? string.Empty));
-                identity.AddClaim(new Claim("UserId", user.Id.ToString()));
-                identity.AddClaim(new Claim("UserName", user.Name ?? string.Empty));
-
-                context.Properties.RedirectUri = user.AuthLevel == "Admin" ? "/admin" : "/";
-
-                monitor.Resume();
-            }
-            catch (Exception)
-            {
-                context.Response.Redirect("/error");
-                context.HandleResponse();
-                monitor.Resume();
-            }
-        },
-        OnCreatingTicket = context =>
-        {
-            if (context.Properties?.RedirectUri == null)
-                context.Properties.RedirectUri = "/";
-            return Task.CompletedTask;
-        }
-    };
-});
+        };
+    });
+    Console.WriteLine("Google OAuth authentication configured successfully");
+}
+else
+{
+    Console.WriteLine("Google OAuth configuration not found or invalid - OAuth authentication disabled");
+    Console.WriteLine("To enable Google OAuth, set valid values for Authentication:Google:ClientId and Authentication:Google:ClientSecret");
+}
 
 builder.Services.AddAuthorization(options =>
 {
-    options.FallbackPolicy = new AuthorizationPolicyBuilder()
-        .RequireAuthenticatedUser()
-        .Build();
+    // In development with bypass enabled, make pages more accessible
+    var isDevelopment = builder.Environment.IsDevelopment();
+    var bypassAuth = builder.Configuration.GetValue<bool>("Development:BypassGoogleAuth", false);
+    
+    if (isDevelopment && bypassAuth)
+    {
+        // More permissive policies for development
+        options.DefaultPolicy = new AuthorizationPolicyBuilder()
+            .RequireAuthenticatedUser()
+            .Build();
+            
+        // Allow anonymous access to more pages in development
+        options.AddPolicy("AllowAnonymous", p => p.RequireAssertion(_ => true));
+        options.AddPolicy("ErrorPages", p => p.RequireAssertion(_ => true));
+        options.AddPolicy("Development", p => p.RequireAssertion(_ => true));
+    }
+    else
+    {
+        // Production policies - require authentication
+        options.FallbackPolicy = new AuthorizationPolicyBuilder()
+            .RequireAuthenticatedUser()
+            .Build();
+    }
 
-    options.AddPolicy("AllowAnonymous", p => p.RequireAssertion(_ => true));
-    options.AddPolicy("ErrorPages", p => p.RequireAssertion(_ => true));
     options.AddPolicy("RequireAdmin", p =>
         p.RequireAuthenticatedUser().RequireClaim("AuthLevel", "Admin"));
     options.AddPolicy("CanViewAllAccounts", p =>
@@ -305,10 +346,14 @@ try
         }
     }
 
+    logger.LogInformation("Testing database connection to {Host}:{Port}", host, port);
     initialDbConnected = GlobalSettings.CheckDatabaseTcpConnection(host, port, 2000);
+    logger.LogInformation("Database connection test result: {Result}", initialDbConnected);
 }
-catch
+catch (Exception ex)
 {
+    var logger = app.Services.GetRequiredService<ILogger<Program>>();
+    logger.LogWarning(ex, "Database connectivity check failed");
     initialDbConnected = false;
 }
 
@@ -349,11 +394,7 @@ TaskScheduler.UnobservedTaskException += (sender, args) =>
 app.MapHealthChecks("/health");
 
 // Initialize monitor service
-// Note: this program historically suspends monitoring until ApplicationStarted.
-// Keep behavior consistent with the GitHub version.
 dbMonitorService = app.Services.GetRequiredService<DatabaseMonitorService>();
-//dbMonitorService.Suspend();
-// Let the hosted service monitor loop run immediately
 dbMonitorService.Resume();
 
 app.Lifetime.ApplicationStarted.Register(() =>
@@ -429,6 +470,20 @@ app.MapGet("/api/login", (HttpContext ctx, DatabaseMonitorService monitor, ILogg
     if (!monitor.IsConnected)
     {
         ctx.Response.Redirect("/database-error", false);
+        return Results.Empty;
+    }
+
+    // Check if Google OAuth is configured
+    var config = ctx.RequestServices.GetRequiredService<IConfiguration>();
+    var googleClientId = config["Authentication:Google:ClientId"] ?? "";
+    var hasValidGoogleConfig = !string.IsNullOrEmpty(googleClientId) && 
+                               !googleClientId.Contains("PLACEHOLDER") &&
+                               !googleClientId.Contains("YOUR_GOOGLE_CLIENT_ID");
+
+    if (!hasValidGoogleConfig)
+    {
+        logger.LogWarning("Google OAuth not configured, redirecting to auth config page");
+        ctx.Response.Redirect("/auth-config-required", false);
         return Results.Empty;
     }
 

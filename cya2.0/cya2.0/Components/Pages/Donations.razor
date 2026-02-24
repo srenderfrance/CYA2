@@ -1,8 +1,6 @@
 ﻿@page "/donations"
 @using static Microsoft.AspNetCore.Components.Web.RenderMode
-@using Microsoft.Extensions.Configuration
 @using ModelsLibrary
-@using DataLibrary
 @using UtilityClassLibrary
 @using UtilityClasses
 @using Radzen
@@ -10,24 +8,17 @@
 @using System.Security.Claims
 @using cya2.Components.Shared
 @inject AuthenticationStateProvider AuthStateProvider
-@inject IDataAccess _data
-@inject IConfiguration _config
 @inject AppState AppState
-@inject DataLoadingService DataLoader
-@inject PageAccountCache PageCache
 @inject DialogService DialogService
 @rendermode InteractiveServer
 @inject IStringLocalizer<Resource> Localizer
-@inject SubAccountHelper SubAccountHelper
 @inject ILogger<Donations> Logger
 
-@* Clean Architecture Service Injections - TEMPORARILY DISABLED *@
-@* TODO: Resolve interface conflicts before enabling
+@* CLEAN ARCHITECTURE INTEGRATION *@
 @using Cya2.Application.Interfaces
+@using Cya2.Application.DTOs
+@using Cya2.Core.ValueObjects
 @inject IDonationService DonationService
-@inject IAccountService AccountService
-@inject IDonorService DonorService
-*@
 
 @attribute [StreamRendering]
 
@@ -139,7 +130,7 @@
         <RadzenStack Orientation="Orientation.Vertical" Gap="0.4rem" Style="flex:1; max-width:300px;">
             <RadzenText TextStyle="TextStyle.Subtitle1">@Localizer["Account"]</RadzenText>
             <RadzenDropDown TValue="string"
-                            Data="@AppState.UserAccounts"
+                            Data="@donationData.UserAccounts"
                             TextProperty="Fund"
                             ValueProperty="Fund"
                             @bind-Value="selectedAccount"
@@ -369,24 +360,27 @@
 </RadzenStack>
 
 @code {
+    private DonationDataDto donationData = new();
     private List<UserDataDonations> donations = new();
     private List<UserDataDonations> selectedDonations = new();
 
     private string selectedAccount = string.Empty;
+    private string selectedSubAccount = "All";
+    private string userId = string.Empty;
+    private bool isAdminOrViewer = false;
     private string errorMessage = string.Empty;
     private bool isLoading = true;
     private Account? currentAccount = null;
-    private Dictionary<string, int> subFundToPrimaryAccountId = new(StringComparer.OrdinalIgnoreCase);
     private bool showDebug = false;
     private List<string> debugLogs = new();
     private List<string> lastRawDonationFunds = new();
-    
-    // New SubAccount support
+
+    // SubAccount support
     private bool showSubAccountDropdown = false;
-    private string selectedSubAccount = "All"; // Default to "All"
-    private List<SubAccountOption> subAccountOptions = new();
+    private List<SubAccountOptionDto> subAccountOptions = new();
     private List<string> currentFundNamesForSelection = new();
-    
+    private Dictionary<string, int> subFundToPrimaryAccountId = new(StringComparer.OrdinalIgnoreCase);
+
     private void Debug(string message)
     {
         var line = $"[{DateTime.Now:HH:mm:ss}] {message}";
@@ -422,7 +416,14 @@
         try
         {
             var authState = await AuthStateProvider.GetAuthenticationStateAsync();
-            await DataLoader.InitializeUserDataAsync(authState.User);
+            var user = authState.User;
+
+            userId = user.FindFirstValue("UserId") ?? user.FindFirstValue(ClaimTypes.Email) ?? user.Identity?.Name ?? string.Empty;
+            var authLevel = user.FindFirstValue("AuthLevel") ?? string.Empty;
+            isAdminOrViewer = user.IsInRole("Admin") ||
+                              string.Equals(authLevel, "Admin", StringComparison.OrdinalIgnoreCase) ||
+                              string.Equals(authLevel, "Viewer", StringComparison.OrdinalIgnoreCase);
+            AppState.IsAdmin = isAdminOrViewer;
 
             // Initialize preset options using the centralized manager
             presetOptions = DateRangeManager.GetPresetOptions(Localizer);
@@ -431,38 +432,25 @@
             dateRangeState = DateRangeManager.InitializeDateRange(AppState);
 
             // Use SelectedAccount from AppState for cross-page navigation
-            selectedAccount = !string.IsNullOrEmpty(AppState.SelectedAccount) 
-                ? AppState.SelectedAccount 
+            selectedAccount = !string.IsNullOrEmpty(AppState.SelectedAccount)
+                ? AppState.SelectedAccount
                 : AppState.DefaultAccount;
 
-            if (AppState.UserAccounts.Any())
-            {
-                if (!string.IsNullOrEmpty(selectedAccount))
-                {
-                    currentAccount = AppState.UserAccounts.FirstOrDefault(a => a.Fund == selectedAccount);
-                }
+            await LoadDonationsData(selectedAccount, selectedSubAccount);
 
-                if (currentAccount != null)
-                {
-                    await LoadDonationsForAccount(currentAccount);
-                }
-            }
-
-            // Only apply date range if we're not loading from AppState
-            // If we loaded dates from AppState, they're already set and data is ready
+            // Only apply date range if not already saved
             if (!AppState.SelectedStartDate.HasValue || !AppState.SelectedEndDate.HasValue)
             {
-                await selectDateRange(); // Only apply default dates
+                await selectDateRange();
             }
             else
             {
-                // We loaded from AppState, just apply the filtering without saving back to AppState
                 selectedDonations = SelectData(donations, dateRangeState.StartDate, dateRangeState.EndDate);
                 BuildPivot();
             }
 
             isLoading = false;
-            Debug($"Initialized. SelectedAccount='{selectedAccount}', UserAccounts={AppState.UserAccounts.Count}");
+            Debug($"Initialized. SelectedAccount='{selectedAccount}', UserAccounts={donationData.UserAccounts.Count}");
         }
         catch (Exception ex)
         {
@@ -483,7 +471,6 @@
 
     private void OnDatePickerChanged()
     {
-        // Check if user manually changed dates
         DateRangeManager.ApplyPendingDates(dateRangeState);
         StateHasChanged();
     }
@@ -492,19 +479,7 @@
     {
         selectedSubAccount = value;
         Debug($"SubAccount selected: '{selectedSubAccount}'");
-        
-        if (currentAccount != null)
-        {
-            // Get the fund names for this selection
-            currentFundNamesForSelection = await SubAccountHelper.GetFundNamesForSelectionAsync(currentAccount, selectedSubAccount);
-            Debug($"Fund names for selection: {string.Join(", ", currentFundNamesForSelection)}");
-            
-            // Rebuild the data with new filtering
-            await LoadDonationsForAccount(currentAccount, true);
-            await selectDateRange(); // Apply date filtering
-        }
-        
-        StateHasChanged();
+        await LoadDonationsData(selectedAccount, selectedSubAccount);
     }
 
     public async Task accountSelection(string accountName)
@@ -522,33 +497,10 @@
             StateHasChanged();
 
             selectedAccount = accountName;
-            AppState.SelectedAccount = accountName; // Update AppState for cross-page navigation
-
-            currentAccount = AppState.UserAccounts.FirstOrDefault(a => a.Fund == selectedAccount);
-
-            Debug($"Account selected: '{selectedAccount}'. CurrentAccountId={(currentAccount?.AccountId.ToString() ?? "null")}");
-            
-            // Reset sub account selection when changing accounts
+            AppState.SelectedAccount = accountName;
             selectedSubAccount = "All";
-            showSubAccountDropdown = false;
-            subAccountOptions.Clear();
-            currentFundNamesForSelection.Clear();
-            
-            if (currentAccount != null)
-            {
-                // Check if account has separate sub accounts and setup dropdown if needed
-                var hasSeparateSubAccounts = await SubAccountHelper.HasSeparateSubAccountsAsync(currentAccount.AccountId);
-                if (hasSeparateSubAccounts)
-                {
-                    subAccountOptions = await SubAccountHelper.GetSubAccountOptionsAsync(currentAccount);
-                    showSubAccountDropdown = true;
-                    selectedSubAccount = "All"; // Default to "All"
-                    Debug($"Account has {subAccountOptions.Count} sub account options");
-                }
 
-                await LoadDonationsForAccount(currentAccount);
-                await selectDateRange(); // Refresh the display with current date range
-            }
+            await LoadDonationsData(selectedAccount, selectedSubAccount);
 
             isLoading = false;
         }
@@ -560,267 +512,36 @@
         }
     }
 
-    private async Task LoadDonationsForAccount(Account account, bool isSubAccountChange = false)
+    private async Task LoadDonationsData(string accountName, string subAccountValue)
     {
         try
         {
-            if (account == null)
-            {
-                errorMessage = "No account selected";
-                return;
-            }
+            isLoading = true;
+            var dto = await DonationService.GetDonationDataAsync(accountName, subAccountValue, new DateRange(dateRangeState.StartDate, dateRangeState.EndDate), userId, isAdminOrViewer);
+            donationData = dto;
 
-            // If this is not a sub account change, rebuild the sub fund mapping
-            if (!isSubAccountChange)
-            {
-                // Load subfund -> primary AccountId mapping for this primary account (Merged only)
-                subFundToPrimaryAccountId = await LoadSubFundAccountMapAsync(account);
-                Debug($"Loaded subfund map for AccountId={account.AccountId}, keys={subFundToPrimaryAccountId.Count}: {string.Join(", ", subFundToPrimaryAccountId.Keys)}");
-            }
+            AppState.UserAccounts = dto.UserAccounts;
+            selectedAccount = dto.SelectedAccount;
+            selectedSubAccount = dto.SelectedSubAccount;
+            showSubAccountDropdown = dto.ShowSubAccountDropdown;
+            subAccountOptions = dto.SubAccountOptions;
+            currentFundNamesForSelection = dto.FundNamesForSelection;
+            lastRawDonationFunds = dto.RawDonationFunds;
+            currentAccount = dto.UserAccounts.FirstOrDefault(a => a.Fund == selectedAccount);
+            donations = dto.Donations;
 
-            // Get fund names for current sub account selection
-            if (showSubAccountDropdown)
-            {
-                currentFundNamesForSelection = await SubAccountHelper.GetFundNamesForSelectionAsync(account, selectedSubAccount);
-                Debug($"Using fund names for selection ({selectedSubAccount}): {string.Join(", ", currentFundNamesForSelection)}");
-            }
-            else
-            {
-                // For accounts without separate sub accounts, use existing logic
-                currentFundNamesForSelection = new List<string> { account.Fund };
-                // Also include any merged sub account fund names in the map
-                currentFundNamesForSelection.AddRange(subFundToPrimaryAccountId.Keys.Where(k => k != account.Fund));
-                Debug($"Using default fund names (no sub accounts): {string.Join(", ", currentFundNamesForSelection)}");
-            }
-
-            // NEW: Load data for all relevant fund names if we have separate sub accounts
-            List<DonationsDataModel> allDonationData;
-            
-            if (showSubAccountDropdown)
-            {
-                // For accounts with separate sub accounts, we need to load data directly from database
-                allDonationData = new List<DonationsDataModel>();
-                
-                // Get all fund names we might need (for "All" selection)
-                var allRelevantFundNames = await SubAccountHelper.GetFundNamesForSelectionAsync(account, "All");
-                Debug($"Loading separate sub account data for fund names: {string.Join(", ", allRelevantFundNames)}");
-                
-                // Load data directly from database for each fund name
-                foreach (var fundName in allRelevantFundNames)
-                {
-                    try
-                    {
-                        Debug($"Querying database for Fund = '{fundName}'");
-                        const string donationSql = "SELECT * FROM DonationData WHERE Fund = @Fund";
-                        var fundDonationData = await _data.LoadData<DonationsDataModel, dynamic>(
-                            donationSql,
-                            new { Fund = fundName },
-                            _config.GetConnectionString("default") ?? string.Empty
-                        );
-                        
-                        if (fundDonationData != null && fundDonationData.Any())
-                        {
-                            allDonationData.AddRange(fundDonationData);
-                            Debug($"Found {fundDonationData.Count()} records for Fund = '{fundName}'");
-                        }
-                        else
-                        {
-                            Debug($"No records found for Fund = '{fundName}'");
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        Debug($"Error loading data for fund '{fundName}': {ex.Message}");
-                    }
-                }
-                
-                Debug($"Loaded donation data for separate sub accounts from {allRelevantFundNames.Count} fund names, total records: {allDonationData.Count}");
-            }
-            else
-            {
-                // Use existing logic for accounts without separate sub accounts
-                var pageAccountData = await PageCache.GetAccountDataAsync(account.Fund);
-                allDonationData = pageAccountData?.DonationData ?? new List<DonationsDataModel>();
-                Debug($"Loaded donation data for primary account: {account.Fund}");
-            }
-
-            if (allDonationData.Any())
-            {
-                var totalRows = allDonationData.Count;
-                lastRawDonationFunds = allDonationData.Select(d => d.Fund)
-                    .Distinct(StringComparer.OrdinalIgnoreCase)
-                    .OrderBy(s => s)
-                    .ToList();
-                Debug($"Total donation data loaded: rows={totalRows}, distinctFunds={lastRawDonationFunds.Count}: {string.Join(", ", lastRawDonationFunds)}");
-                ProcessDonationData(allDonationData);
-            }
-            else
-            {
-                errorMessage = "No donation data found for this account";
-                Debug("No donation data found for this account.");
-            }
+            selectedDonations = SelectData(donations, dateRangeState.StartDate, dateRangeState.EndDate);
+            BuildPivot();
         }
         catch (Exception ex)
         {
             errorMessage = $"Error loading donation data: {ex.Message}";
-            Console.WriteLine($"Error in LoadDonationsForAccount: {ex.Message}");
+            Console.WriteLine($"Error in LoadDonationsData: {ex.Message}");
         }
-    }
-
-    private async Task<Dictionary<string, int>> LoadSubFundAccountMapAsync(Account primary)
-    {
-        try
+        finally
         {
-            const string sql = "SELECT SubFund, Kind FROM SubAccounts WHERE AccountId = @AccountId";
-            var subRows = await _data.LoadData<(string SubFund, string Kind), dynamic>(sql, new { AccountId = primary.AccountId }, _config.GetConnectionString("default") ?? string.Empty) 
-                            ?? new List<(string SubFund, string Kind)>();
-            var map = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
-            // Map each merged subfund name to the primary AccountId (only Merged, not Separate)
-            foreach (var row in subRows)
-            {
-                if (string.Equals(row.Kind, "Merged", StringComparison.OrdinalIgnoreCase))
-                {
-                    var name = row.SubFund;
-                    if (!string.IsNullOrWhiteSpace(name) && !map.ContainsKey(name))
-                        map[name] = primary.AccountId;
-                }
-            }
-            // Also map the primary fund name to its own AccountId
-            if (!string.IsNullOrWhiteSpace(primary.Fund) && !map.ContainsKey(primary.Fund))
-            {
-                map[primary.Fund] = primary.AccountId;
-            }
-            return map;
-        }
-        catch
-        {
-            // Fallback to at least include the primary fund name
-            var map = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
-            if (!string.IsNullOrWhiteSpace(primary.Fund)) map[primary.Fund] = primary.AccountId;
-            return map;
-        }
-    }
-
-    private void ProcessDonationData(List<DonationsDataModel> donationData)
-    {
-        try
-        {
-            donations.Clear();
-
-            int included = 0, skipped = 0;
-            double includedTotal = 0, skippedTotal = 0;
-            var includedFunds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            var skippedFunds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            
-            foreach (var donation in donationData)
-            {
-                if (currentAccount == null) continue;
-
-                bool shouldInclude = false;
-                string displayAccountName = currentAccount.Fund; // Default display name
-
-                if (showSubAccountDropdown && currentFundNamesForSelection.Any())
-                {
-                    // Use Sub Account filtering for accounts with Separate sub accounts
-                    if (currentFundNamesForSelection.Contains(donation.Fund, StringComparer.OrdinalIgnoreCase))
-                    {
-                        shouldInclude = true;
-                        // For separate sub accounts, show the actual fund name
-                        if (selectedSubAccount != "All" && selectedSubAccount != "Primary")
-                        {
-                            displayAccountName = FundDisplayHelper.GetDisplay(donation.Fund);
-                        }
-                        else
-                        {
-                            displayAccountName = FundDisplayHelper.GetDisplay(currentAccount.Fund);
-                        }
-                    }
-                }
-                else
-                {
-                    // Use existing logic for accounts without separate sub accounts (Merged logic)
-                    // Determine the primary AccountId for this donation via fund->AccountId mapping
-                    int mappedPrimaryId;
-                    if (!subFundToPrimaryAccountId.TryGetValue(donation.Fund, out mappedPrimaryId))
-                    {
-                        // Unknown fund name for this selection -> skip
-                        skipped++;
-                        skippedTotal += donation.Amount;
-                        skippedFunds.Add(donation.Fund);
-                        continue;
-                    }
-                    if (mappedPrimaryId != currentAccount.AccountId)
-                    {
-                        skipped++;
-                        skippedTotal += donation.Amount;
-                        skippedFunds.Add(donation.Fund);
-                        continue;
-                    }
-                    shouldInclude = true;
-                    // Display under the primary account name
-                    displayAccountName = FundDisplayHelper.GetDisplay(currentAccount.Fund);
-                }
-
-                if (!shouldInclude)
-                {
-                    skipped++;
-                    skippedTotal += donation.Amount;
-                    skippedFunds.Add(donation.Fund);
-                    continue;
-                }
-
-                var donorDisplay = donation.IsAnonymous ? Localizer["Anonymous"] : donation.AccountName;
-
-                // Personal fields - blank them out when anonymous
-                var email = donation.IsAnonymous ? string.Empty : (donation.Email ?? string.Empty);
-                var phoneFixed = donation.IsAnonymous ? string.Empty : (donation.PhoneFixed ?? string.Empty);
-                var phoneMobile = donation.IsAnonymous ? string.Empty : (donation.PhoneMobile ?? string.Empty);
-                var addr = donation.IsAnonymous ? string.Empty : (donation.Address ?? string.Empty);
-                var city = donation.IsAnonymous ? string.Empty : (donation.City ?? string.Empty);
-                var state = donation.IsAnonymous ? string.Empty : (donation.State ?? string.Empty);
-                var postal = donation.IsAnonymous ? string.Empty : (donation.PostalCode ?? string.Empty);
-                var country = donation.IsAnonymous ? string.Empty : (donation.Country ?? string.Empty);
-                var soft = donation.IsAnonymous ? string.Empty : (donation.SoftCreditName ?? string.Empty);
-
-                var newDonation = new UserDataDonations(
-                    displayAccountName,
-                    donorDisplay,
-                    donation.Date,
-                    donation.Amount,
-                    donation.PaymentMethod,
-                    donation.GiftType,
-                    email,
-                    phoneFixed,
-                    phoneMobile,
-                    addr,
-                    city,
-                    state,
-                    postal,
-                    country,
-                    soft,
-                    donation.IsAnonymous);
-
-                donations.Add(newDonation);
-                included++;
-                includedTotal += donation.Amount;
-                includedFunds.Add(donation.Fund);
-            }
-
-            // IMPORTANT: Sort all donations by date (newest first) after processing
-            // This ensures that separate sub account data is properly mixed with primary account data
-            if (donations.Any())
-            {
-                donations = donations.OrderByDescending(d => d.Date).ToList();
-                Debug($"Sorted {donations.Count} donations by date (newest first)");
-            }
-
-            Debug($"ProcessDonationData: included={included} (total={includedTotal:F2}) from funds: {string.Join(", ", includedFunds)}; " +
-                  $"skipped={skipped} (total={skippedTotal:F2}) from funds: {string.Join(", ", skippedFunds)}");
-        }
-        catch (Exception ex)
-        {
-            errorMessage = $"Error processing donation data: {ex.Message}";
-            Console.WriteLine($"Error in ProcessDonationData: {ex.Message}");
+            isLoading = false;
+            await InvokeAsync(StateHasChanged);
         }
     }
 
@@ -837,7 +558,6 @@
     {
         try
         {
-            // Apply pending dates and save to AppState using centralized manager
             DateRangeManager.ApplyPendingDates(dateRangeState);
             DateRangeManager.SaveDateRangeToAppState(AppState, dateRangeState);
 
@@ -952,7 +672,6 @@
 
         try
         {
-            // Get all donations for this donor from the current filtered data
             var donorDonations = selectedDonations
                 .Where(d => string.Equals(d.Donor?.Trim(), donorName?.Trim(), StringComparison.OrdinalIgnoreCase))
                 .ToList();
@@ -962,12 +681,10 @@
                 return;
             }
 
-            // Calculate donor statistics
             var donorTotal = donorDonations.Sum(d => Convert.ToDecimal(d.Amount));
             var donorLastDate = donorDonations.Max(d => d.Date);
             var donationCount = donorDonations.Count;
 
-            // Get donor contact information from the most recent donation
             var mostRecent = donorDonations.OrderByDescending(d => d.Date).First();
 
             await DialogService.OpenAsync<DonorDetailsDialog>(

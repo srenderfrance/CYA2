@@ -1,17 +1,19 @@
 @page "/expenses"
 @using static Microsoft.AspNetCore.Components.Web.RenderMode
+@using Microsoft.Extensions.Configuration
 @using ModelsLibrary
+@using DataLibrary
 @using UtilityClasses
 @using Radzen
 @using Radzen.Blazor
 @using Microsoft.AspNetCore.Components.Authorization
 @using System.Security.Claims
-@using Cya2.Application.DTOs
-@using Cya2.Application.Interfaces
-@using Cya2.Core.ValueObjects
 @inject AuthenticationStateProvider AuthStateProvider
+@inject IDataAccess _data
+@inject IConfiguration _config
 @inject AppState AppState
-@inject IExpenseService ExpenseService
+@inject DataLoadingService DataLoader
+@inject PageAccountCache PageCache
 @rendermode InteractiveServer
 @attribute [StreamRendering]
 @inject IStringLocalizer<Resource> Localizer
@@ -123,11 +125,11 @@
             <RadzenStack Orientation="Orientation.Vertical" Gap="0.4rem">
                 <RadzenText TextStyle="TextStyle.Subtitle1">@Localizer["Account"]</RadzenText>
                 <RadzenDropDown TValue="string"
-                                Data="@((expenseData.UserAccounts ?? new List<Account>()))"
+                                Data="@userAccounts"
                                 TextProperty="Fund"
                                 ValueProperty="Fund"
                                 @bind-Value="selectedAccount"
-                                Change="@(async args => await AccountSelection(args?.ToString()))"
+                                Change="@(args => AccountSelection(args?.ToString()))"
                                 Placeholder="@Localizer["ChooseAccount"]"
                                 Style="width: 200px;">
                     <ValueTemplate>
@@ -178,24 +180,24 @@
                 </RadzenAlert>
             }
 
-            @if (isLoading)
+            @if (isLoadingAccountData)
             {
                 <div class="mt-3">
                     <RadzenProgressBar Value="100" ShowValue="false" Mode="ProgressBarMode.Indeterminate" />
-                    <p class="text-muted mt-1">@Localizer["Loading"]</p>
+                    <p class="text-muted mt-1">Loading account data...</p>
                 </div>
             }
 
             <!-- Transfer Transactions Grid -->
-            @if (expenseData.TransferTransactions.Any())
+            @if (transferTransactions.Any())
             {
                 <RadzenCard Class="rz-mt-2 narrow-expense-grid">
                     <RadzenStack Orientation="Orientation.Horizontal" JustifyContent="JustifyContent.SpaceBetween">
                         <RadzenText TextStyle="TextStyle.Subtitle1" Style="font-weight:bold; padding-bottom: 8px;">@Localizer["InternalTransfers"]</RadzenText>
                     </RadzenStack>
 
-                    <RadzenDataGrid Data="@expenseData.TransferTransactions" 
-                                    TItem="ExpenseTransactionDto" 
+                    <RadzenDataGrid Data="@transferTransactions" 
+                                    TItem="AccountingDataModel" 
                                     Dense="true" 
                                     ShowPagingSummary="false" 
                                     AllowPaging="false"
@@ -209,15 +211,15 @@
             }
 
             <!-- Expense Transactions Grid -->
-            @if (expenseData.ExpenseTransactions.Any())
+            @if (expenseTransactions.Any())
             {
                 <RadzenCard Class="rz-mt-2 narrow-expense-grid">
                     <RadzenStack Orientation="Orientation.Horizontal" JustifyContent="JustifyContent.SpaceBetween">
                         <RadzenText TextStyle="TextStyle.Subtitle1" Style="font-weight:bold; padding-bottom: 8px;">@Localizer["Expenses"]</RadzenText>
                     </RadzenStack>
 
-                    <RadzenDataGrid Data="@expenseData.ExpenseTransactions" 
-                                    TItem="ExpenseTransactionDto" 
+                    <RadzenDataGrid Data="@expenseTransactions" 
+                                    TItem="AccountingDataModel" 
                                     Dense="true" 
                                     ShowPagingSummary="false" 
                                     AllowPaging="false"
@@ -230,7 +232,7 @@
                 </RadzenCard>
             }
 
-            @if (!expenseData.TransferTransactions.Any() && !expenseData.ExpenseTransactions.Any() && !string.IsNullOrEmpty(selectedAccount) && selectedAccount != "No Account Selected" && !isLoading)
+            @if (!transferTransactions.Any() && !expenseTransactions.Any() && !string.IsNullOrEmpty(selectedAccount) && selectedAccount != "No Account Selected" && !isLoadingAccountData)
             {
                 <RadzenAlert AlertStyle="AlertStyle.Info" ShowIcon="true" Variant="Variant.Filled">
                     @Localizer["NoExpensesFound"]
@@ -242,21 +244,25 @@
                     @Localizer["PleaseSelectAnAccount"]
                 </RadzenAlert>
             }
+
         </RadzenStack> <!-- End grids stack -->
     </RadzenStack> <!-- End main horizontal layout -->
 
 </RadzenStack> <!-- End main vertical stack -->
 
 @code {
-    private ExpenseDataDto expenseData = new();
+    private List<Account> userAccounts = new List<Account>();
+    private List<AccountingDataModel> allAccountingData = new List<AccountingDataModel>();
+    private List<AccountingDataModel> expenseTransactions = new List<AccountingDataModel>();
+    private List<AccountingDataModel> transferTransactions = new List<AccountingDataModel>();
     private string errorMessage = string.Empty;
+    
     private string selectedAccount = string.Empty;
-    private bool isLoading = false;
+    private Account? currentAccount = null;
+    private bool isLoadingAccountData = false;
 
     private decimal expenseTotal = 0.00m;
     private decimal transferTotal = 0.00m;
-
-    private string userId = string.Empty;
 
     // Use DateRangeManager for centralized date management
     private DateRangeManager.DateRangeState dateRangeState = new();
@@ -273,11 +279,8 @@
             var authState = await AuthStateProvider.GetAuthenticationStateAsync();
             var user = authState.User;
 
-            userId = GetUserId(user);
-            bool isAdminOrViewer = user.IsInRole("Admin") ||
-                                  string.Equals(user.FindFirstValue("AuthLevel"), "Admin", StringComparison.OrdinalIgnoreCase) ||
-                                  string.Equals(user.FindFirstValue("AuthLevel"), "Viewer", StringComparison.OrdinalIgnoreCase);
-            AppState.IsAdmin = isAdminOrViewer;
+            await DataLoader.InitializeUserDataAsync(user);
+            userAccounts = AppState.UserAccounts.ToList();
 
             // Initialize preset options using the centralized manager
             presetOptions = DateRangeManager.GetPresetOptions(Localizer);
@@ -290,12 +293,19 @@
                 ? AppState.SelectedAccount 
                 : AppState.DefaultAccount;
 
-            await LoadExpenseData(isAdminOrViewer);
+            if (!string.IsNullOrEmpty(selectedAccount))
+            {
+                currentAccount = userAccounts.FirstOrDefault(a => a.Fund == selectedAccount);
+                if (currentAccount != null)
+                {
+                    await LoadAccountData();
+                    await ApplyDateFilter();
+                }
+            }
         }
         catch (Exception ex)
         {
             errorMessage = $"Error initializing data: {ex.Message}";
-            isLoading = false;
         }
     }
 
@@ -304,12 +314,21 @@
         if (args is DateRangeManager.DateRangePreset preset)
         {
             DateRangeManager.ApplyPreset(dateRangeState, preset);
-            _ = ApplyDateFilter();
+            
+            // Automatically apply the filter when a preset is selected
+            _ = Task.Run(async () =>
+            {
+                await InvokeAsync(async () =>
+                {
+                    await ApplyDateFilter();
+                });
+            });
         }
     }
 
     private void OnDatePickerChanged()
     {
+        // Check if user manually changed dates
         DateRangeManager.ApplyPendingDates(dateRangeState);
         StateHasChanged();
     }
@@ -318,68 +337,128 @@
     {
         try
         {
+            // Apply pending dates and save to AppState using centralized manager
             DateRangeManager.ApplyPendingDates(dateRangeState);
             DateRangeManager.SaveDateRangeToAppState(AppState, dateRangeState);
-            await LoadExpenseData(AppState.IsAdmin);
+            
+            // If we don't have data loaded yet for the current account, try to load it
+            if ((allAccountingData == null || !allAccountingData.Any()) && currentAccount != null)
+            {
+                if (!isLoadingAccountData)
+                {
+                    isLoadingAccountData = true;
+                    StateHasChanged();
+                }
+                
+                await LoadAccountData();
+                
+                isLoadingAccountData = false;
+            }
+            
+            ProcessTransactions();
         }
         catch (Exception ex)
         {
             errorMessage = $"Error applying date filter: {ex.Message}";
-            isLoading = false;
+            isLoadingAccountData = false;
         }
     }
- 
-    private async Task LoadExpenseData(bool isAdminOrViewer)
-    {
-        if (string.IsNullOrWhiteSpace(userId))
-        {
-            errorMessage = Localizer["UserNotAuthenticated"];
-            return;
-        }
 
+    private async Task LoadAccountData()
+    {
         try
         {
-            isLoading = true;
-            errorMessage = string.Empty;
-            StateHasChanged();
+            if (currentAccount == null) return;
 
-            var dateRange = new DateRange(dateRangeState.StartDate, dateRangeState.EndDate);
-            expenseData = await ExpenseService.GetExpenseDataAsync(selectedAccount ?? string.Empty, dateRange, userId, isAdminOrViewer);
-
-            // Update selected account and AppState
-            if (!string.IsNullOrEmpty(expenseData.SelectedAccount))
+            var pageAccountData = await PageCache.GetAccountDataAsync(currentAccount.Fund);
+            
+            if (pageAccountData != null)
             {
-                selectedAccount = expenseData.SelectedAccount;
+                allAccountingData = pageAccountData.AccountingData;
+                // Data loaded successfully
             }
-            else if (string.IsNullOrEmpty(selectedAccount) && expenseData.UserAccounts.Any())
+            else
             {
-                selectedAccount = expenseData.UserAccounts.First().Fund;
+                allAccountingData = new List<AccountingDataModel>();
+                // Don't set error message here - let ProcessTransactions handle it
             }
-            AppState.SelectedAccount = selectedAccount;
-
-            // Totals
-            expenseTotal = expenseData.ExpenseTotal;
-            transferTotal = expenseData.TransferTotal;
-
-            Console.WriteLine($"[Expenses] userId={userId}, accounts={expenseData.UserAccounts?.Count ?? 0}, selected={selectedAccount}, expenses={expenseData.ExpenseTransactions?.Count ?? 0}, transfers={expenseData.TransferTransactions?.Count ?? 0}");
         }
         catch (Exception ex)
         {
-            errorMessage = $"Error loading expense data: {ex.Message}";
+            allAccountingData = new List<AccountingDataModel>();
+            errorMessage = $"Error loading account data: {ex.Message}";
         }
-        finally
+    }
+
+    private void ProcessTransactions()
+    {
+        try
         {
-            isLoading = false;
-            await InvokeAsync(StateHasChanged);
+            errorMessage = string.Empty;
+
+            if (selectedAccount == "No Account Selected" || string.IsNullOrEmpty(selectedAccount))
+            {
+                errorMessage = "Please select an account.";
+                return;
+            }
+
+            if (allAccountingData == null || !allAccountingData.Any())
+            {
+                errorMessage = "No accounting data available for this account.";
+                return;
+            }
+
+            // Filter by date range using the centralized state
+            var filteredData = allAccountingData.Where(a => 
+                a.Date >= dateRangeState.StartDate && a.Date <= dateRangeState.EndDate).ToList();
+
+            var categorized = TransactionCategorizer.CategorizeTransactions(filteredData);
+
+            expenseTransactions = categorized.ExpenseTransactions;
+            transferTransactions = categorized.TransferTransactions;
+
+            expenseTotal = categorized.ExpenseTotal;
+            transferTotal = categorized.TransferTotal;
+
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error processing transactions: {ex.Message}";
         }
     }
 
     private async Task AccountSelection(string? accountName)
     {
-        if (string.IsNullOrEmpty(accountName) || accountName == selectedAccount) return;
- 
+        if (string.IsNullOrEmpty(accountName)) return;
+
         selectedAccount = accountName;
-        await LoadExpenseData(AppState.IsAdmin);
+
+        if (string.IsNullOrEmpty(selectedAccount)) return;
+
+        currentAccount = userAccounts.FirstOrDefault(a => a.Fund == selectedAccount);
+
+        errorMessage = string.Empty;
+        isLoadingAccountData = true;
+
+        // Clear existing data when switching accounts
+        allAccountingData = new List<AccountingDataModel>();
+        expenseTransactions = new List<AccountingDataModel>();
+        transferTransactions = new List<AccountingDataModel>();
+        expenseTotal = 0.00m;
+        transferTotal = 0.00m;
+
+        StateHasChanged(); // Update UI to show loading state
+
+        if (currentAccount != null)
+        {
+            // Apply the same comprehensive filtering logic as the Filter button
+            await LoadAccountData();
+            await ApplyDateFilter();
+        }
+
+        isLoadingAccountData = false;
+        StateHasChanged();
     }
 
     private RenderFragment RenderTransferColumns()
@@ -395,7 +474,7 @@
             {
                 <text>
                     <!-- Amount on the far left -->
-                    <RadzenDataGridColumn TItem="ExpenseTransactionDto" Property="Amount" Title="@Localizer["Amount"]" FormatString="{0:C2}" Width="120px" TextAlign="TextAlign.Right">
+                    <RadzenDataGridColumn TItem="AccountingDataModel" Property="Amount" Title="@Localizer["Amount"]" FormatString="{0:C2}" Width="120px" TextAlign="TextAlign.Right">
                         <HeaderTemplate>
                             <div style="display:flex;justify-content:flex-end;padding-right:8px;box-sizing:border-box;width:100%;">@Localizer["Amount"]</div>
                         </HeaderTemplate>
@@ -406,13 +485,13 @@
 
                     @if (!useMinimalView)
                     {
-                        <RadzenDataGridColumn TItem="ExpenseTransactionDto" Property="Num" Title="@Localizer["RefNum"]" Width="80px" />
+                        <RadzenDataGridColumn TItem="AccountingDataModel" Property="Num" Title="@Localizer["RefNum"]" Width="80px" />
                     }
 
-                    <RadzenDataGridColumn TItem="ExpenseTransactionDto" Property="Account" Title="@Localizer["Description"]" />
+                    <RadzenDataGridColumn TItem="AccountingDataModel" Property="Account" Title="@Localizer["Description"]" />
 
                     <!-- Date on the far right -->
-                    <RadzenDataGridColumn TItem="ExpenseTransactionDto" Property="Date" Title="@Localizer["Date"]" FormatString="{0:yyyy-MM-dd}" Width="110px" TextAlign="TextAlign.Right">
+                    <RadzenDataGridColumn TItem="AccountingDataModel" Property="Date" Title="@Localizer["Date"]" FormatString="{0:yyyy-MM-dd}" Width="110px" TextAlign="TextAlign.Right">
                         <HeaderTemplate>
                             <div style="display:flex;justify-content:flex-end;padding-right:8px;box-sizing:border-box;width:100%;">@Localizer["Date"]</div>
                         </HeaderTemplate>
@@ -438,7 +517,7 @@
             {
                 <text>
                     <!-- Amount on the far left -->
-                    <RadzenDataGridColumn TItem="ExpenseTransactionDto" Property="Amount" Title="@Localizer["Amount"]" FormatString="{0:C2}" Width="120px" TextAlign="TextAlign.Right">
+                    <RadzenDataGridColumn TItem="AccountingDataModel" Property="Amount" Title="@Localizer["Amount"]" FormatString="{0:C2}" Width="120px" TextAlign="TextAlign.Right">
                         <HeaderTemplate>
                             <div style="display:flex;justify-content:flex-end;padding-right:8px;box-sizing:border-box;width:100%;">@Localizer["Amount"]</div>
                         </HeaderTemplate>
@@ -449,13 +528,13 @@
 
                     @if (!useMinimalView)
                     {
-                        <RadzenDataGridColumn TItem="ExpenseTransactionDto" Property="Num" Title="@Localizer["RefNum"]" Width="80px" />
+                        <RadzenDataGridColumn TItem="AccountingDataModel" Property="Num" Title="@Localizer["RefNum"]" Width="80px" />
                     }
 
-                    <RadzenDataGridColumn TItem="ExpenseTransactionDto" Property="Account" Title="@Localizer["Description"]" />
+                    <RadzenDataGridColumn TItem="AccountingDataModel" Property="Account" Title="@Localizer["Description"]" />
 
                     <!-- Date on the far right -->
-                    <RadzenDataGridColumn TItem="ExpenseTransactionDto" Property="Date" Title="@Localizer["Date"]" FormatString="{0:yyyy-MM-dd}" Width="110px" TextAlign="TextAlign.Right">
+                    <RadzenDataGridColumn TItem="AccountingDataModel" Property="Date" Title="@Localizer["Date"]" FormatString="{0:yyyy-MM-dd}" Width="110px" TextAlign="TextAlign.Right">
                         <HeaderTemplate>
                             <div style="display:flex;justify-content:flex-end;padding-right:8px;box-sizing:border-box;width:100%;">@Localizer["Date"]</div>
                         </HeaderTemplate>
@@ -474,31 +553,32 @@
         {
             var startDate = dateRangeState.StartDate;
             var endDate = dateRangeState.EndDate;
+            
+            // Format: "Jan 5, 2026" or "Jan 5, 2026 - Feb 15, 2026"
             var startFormatted = startDate.ToString("MMM d, yyyy");
             var endFormatted = endDate.ToString("MMM d, yyyy");
-            return startDate.Date == endDate.Date ? startFormatted : $"{startFormatted} - {endFormatted}";
+            
+            if (startDate.Date == endDate.Date)
+            {
+                return startFormatted;
+            }
+            else
+            {
+                return $"{startFormatted} - {endFormatted}";
+            }
         }
         catch
         {
-            return Localizer["DateRange"];
+            return "Date Range";
         }
     }
 
     private async Task OnViewModeChange(bool newValue)
     {
         useMinimalView = newValue;
+        // Keep behavior consistent with other pages
         refreshTransferGrid = true;
         refreshExpenseGrid = true;
         await InvokeAsync(StateHasChanged);
-    }
-
-    private static string GetUserId(ClaimsPrincipal user)
-    {
-        var idClaim = user.FindFirstValue("UserId");
-        if (!string.IsNullOrWhiteSpace(idClaim)) return idClaim;
-
-        return user.FindFirstValue(ClaimTypes.Email) ??
-               user.Identity?.Name ??
-               string.Empty;
     }
 }

@@ -1,0 +1,163 @@
+using Cya2.Application.DTOs;
+using Cya2.Application.Interfaces;
+using Cya2.Core.Interfaces;
+using Cya2.Core.ValueObjects;
+using Microsoft.Extensions.Logging;
+
+namespace Cya2.Application.Services;
+
+public class DonorService : ICleanDonorService
+{
+    private readonly IDonorRepository _donorRepository;
+    private readonly IDonationRepository _donationRepository;
+    private readonly ILogger<DonorService> _logger;
+
+    public DonorService(IDonorRepository donorRepository, IDonationRepository donationRepository, ILogger<DonorService> logger)
+    {
+        _donorRepository = donorRepository;
+        _donationRepository = donationRepository;
+        _logger = logger;
+    }
+
+    public async Task<List<DonorSummaryDto>> GetDonorSummariesAsync(string accountFund, DateRange dateRange)
+    {
+        try
+        {
+            var donors = await _donorRepository.GetDonorSummariesAsync(accountFund, dateRange.StartDate, dateRange.EndDate);
+            return donors.Select(d => new DonorSummaryDto
+            {
+                Name = d.Name,
+                TotalAmount = d.TotalGiving,
+                DonationCount = d.DonationCount,
+                LastDonationDate = d.LastDonationDate,
+                Email = d.ContactInfo?.Email ?? "",
+                Phone = d.ContactInfo?.PrimaryPhone ?? "",
+                Address = d.ContactInfo?.Address?.ToString() ?? ""
+            }).ToList();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting donor summaries for account {AccountFund}", accountFund);
+            return new List<DonorSummaryDto>();
+        }
+    }
+
+    public async Task<DonorDetailDto?> GetDonorDetailAsync(string donorName, string accountFund)
+    {
+        try
+        {
+            var donor = await _donorRepository.GetByNameAndAccountAsync(donorName, accountFund);
+            if (donor == null) return null;
+
+            return new DonorDetailDto
+            {
+                Name = donor.Name,
+                Email = donor.ContactInfo?.Email ?? "",
+                PhoneMobile = donor.ContactInfo?.MobilePhone ?? "",
+                PhoneFixed = donor.ContactInfo?.PrimaryPhone ?? "",
+                Address = donor.ContactInfo?.Address?.Street ?? "",
+                City = donor.ContactInfo?.Address?.City ?? "",
+                State = donor.ContactInfo?.Address?.State ?? "",
+                PostalCode = donor.ContactInfo?.Address?.PostalCode ?? "",
+                Country = donor.ContactInfo?.Address?.Country ?? "",
+                TotalGiving = donor.TotalGiving,
+                DonationCount = donor.DonationCount,
+                LastDonationDate = donor.LastDonationDate
+            };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting donor detail for {DonorName} in account {AccountFund}", donorName, accountFund);
+            return null;
+        }
+    }
+
+    public async Task<List<string>> GetDonorNamesAsync(string accountFund)
+    {
+        try
+        {
+            return await _donorRepository.GetDonorNamesByAccountAsync(accountFund);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting donor names for account {AccountFund}", accountFund);
+            return new List<string>();
+        }
+    }
+
+    public async Task<string> FormatDonorContactForCopyAsync(string donorName, string accountFund)
+    {
+        try
+        {
+            var donor = await _donorRepository.GetByNameAndAccountAsync(donorName, accountFund);
+            if (donor == null) return $"Donor: {donorName} (Not found)";
+
+            var lines = new List<string>
+            {
+                $"Name: {donor.Name}",
+                $"Email: {donor.ContactInfo?.Email ?? "None"}",
+                $"Phone: {donor.ContactInfo?.PrimaryPhone ?? "None"}",
+                $"Address: {donor.ContactInfo?.Address?.ToString() ?? "None"}"
+            };
+
+            return string.Join("\n", lines);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error formatting donor contact for {DonorName}", donorName);
+            return $"Donor: {donorName} (Error retrieving contact info)";
+        }
+    }
+
+    public async Task<List<DonorSummaryDto>> SearchDonorsAsync(string searchTerm, string accountFund)
+    {
+        try
+        {
+            var donors = await _donorRepository.SearchDonorsAsync(searchTerm, accountFund);
+            return donors.Select(d => new DonorSummaryDto
+            {
+                Name = d.Name,
+                TotalAmount = d.TotalGiving,
+                DonationCount = d.DonationCount,
+                LastDonationDate = d.LastDonationDate,
+                Email = d.ContactInfo?.Email ?? "",
+                Phone = d.ContactInfo?.PrimaryPhone ?? "",
+                Address = d.ContactInfo?.Address?.ToString() ?? ""
+            }).ToList();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error searching donors with term {SearchTerm} for account {AccountFund}", searchTerm, accountFund);
+            return new List<DonorSummaryDto>();
+        }
+    }
+
+    public async Task UpdateDonorContactInfoAsync(string donorName, string email, string phoneMobile, string phoneFixed,
+        string address, string city, string state, string postal, string country)
+    {
+        try
+        {
+            var donor = await _donorRepository.GetByNameAsync(donorName);
+            if (donor == null)
+            {
+                _logger.LogWarning("Attempted to update contact info for non-existent donor {DonorName}", donorName);
+                return;
+            }
+
+            var contactInfo = new ContactInfo(email, phoneFixed, phoneMobile);
+            var addressObj = new Address(address, city, state, postal, country);
+            
+            donor.UpdateContactInfo(contactInfo);
+            // Update address if donor supports it (would need to be added to domain model)
+            
+            await _donorRepository.UpdateAsync(donor);
+            
+            _logger.LogInformation("Updated contact info for donor {DonorName}", donorName);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error updating contact info for donor {DonorName}", donorName);
+            throw;
+        }
+    }
+}

@@ -1,0 +1,80 @@
+@page "/auth-config-required"
+@using Microsoft.AspNetCore.Authorization
+@attribute [AllowAnonymous]
+
+<PageTitle>Authentication Configuration Required</PageTitle>
+
+<div class="container mt-5">
+    <div class="row justify-content-center">
+        <div class="col-md-8">
+            <div class="card shadow">
+                <div class="card-header bg-warning text-dark">
+                    <h3><i class="bi bi-exclamation-triangle me-2"></i>Authentication Configuration Required</h3>
+                </div>
+                <div class="card-body p-4">
+                    <div class="alert alert-info">
+                        <h5>Google OAuth Configuration Missing</h5>
+                        <p>To enable user authentication, you need to configure Google OAuth credentials.</p>
+                    </div>
+                    
+                    <h6>How to configure Google OAuth:</h6>
+                    <ol class="mt-3">
+                        <li><strong>Get Google OAuth Credentials:</strong>
+                            <ul>
+                                <li>Go to <a href="https://console.cloud.google.com/" target="_blank">Google Cloud Console</a></li>
+                                <li>Create a new project or select an existing one</li>
+                                <li>Enable the Google+ API</li>
+                                <li>Go to "Credentials" and create OAuth 2.0 Client IDs</li>
+                                <li>Set authorized redirect URIs (e.g., <code>https://localhost:7191/signin-google</code>)</li>
+                            </ul>
+                        </li>
+                        <li><strong>Update Configuration:</strong>
+                            <p>Add your credentials to <code>appsettings.Development.json</code>:</p>
+                            <pre class="bg-light p-3 rounded"><code>{
+  "Authentication": {
+    "Google": {
+      "ClientId": "your-actual-client-id.googleusercontent.com",
+      "ClientSecret": "your-actual-client-secret"
+    }
+  }
+}</code></pre>
+                        </li>
+                        <li><strong>Set up Database:</strong>
+                            <ul>
+                                <li>Ensure MySQL/MariaDB is running</li>
+                                <li>Update the connection string in <code>appsettings.Development.json</code></li>
+                                <li>Create a user in the Users table with your Google email</li>
+                            </ul>
+                        </li>
+                        <li><strong>Restart the Application</strong></li>
+                    </ol>
+
+                    <div class="alert alert-success mt-4">
+                        <h6><i class="bi bi-lightbulb me-2"></i>Development & Setup Options:</h6>
+                        <p class="mb-2">You have several options to proceed:</p>
+                        <ul class="mb-2">
+                            <li><strong>Complete OAuth Setup:</strong> <a href="/oauth-setup-guide" class="btn btn-sm btn-primary ms-2">Setup Guide</a></li>
+                            <li><strong>Development Testing:</strong> <a href="/dev-login" class="btn btn-sm btn-success ms-2">Development Login</a></li>
+                            <li><strong>Architecture Demo:</strong> <a href="/clean-architecture-test" class="text-decoration-none">Clean Architecture Test</a></li>
+                        </ul>
+                    </div>
+
+                    <div class="mt-4 text-center">
+                        <a href="/oauth-setup-guide" class="btn btn-primary me-3">
+                            <i class="bi bi-gear me-1"></i>Complete OAuth Setup
+                        </a>
+                        <a href="/dev-login" class="btn btn-success me-3">
+                            <i class="bi bi-code me-1"></i>Development Login
+                        </a>
+                        <a href="/api/auth-status" class="btn btn-info me-3" target="_blank">
+                            <i class="bi bi-info-circle me-1"></i>Check Auth Status
+                        </a>
+                        <a href="/api/check-db" class="btn btn-info" target="_blank">
+                            <i class="bi bi-database me-1"></i>Check Database
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
