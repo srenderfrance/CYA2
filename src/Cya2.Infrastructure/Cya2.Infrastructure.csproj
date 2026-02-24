@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Dapper" Version="2.1.66" />
+    <PackageReference Include="MySql.Data" Version="9.3.0" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.Abstractions" Version="8.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="8.0.0" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="8.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Cya2.Core\Cya2.Core.csproj" />
+    <ProjectReference Include="..\Cya2.Application\Cya2.Application.csproj" />
+    <!-- Fixed project references - main application libraries are in parent directory -->
+    <ProjectReference Include="..\..\..\DataLibrary\DataLibrary.csproj" />
+    <ProjectReference Include="..\..\..\ModelsLibrary\ModelsLibrary.csproj" />
+    <ProjectReference Include="..\..\..\UtilityClassLibrary\UtilityClassLibrary.csproj" />
+    <ProjectReference Include="..\..\..\UserDataLibrary\UserDataLibrary.csproj" />
+  </ItemGroup>
+
+</Project>
