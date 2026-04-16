@@ -1,0 +1,683 @@
+using cya2;
+using cya2.Components;
+using cya2.Components.Shared;
+using cya2.Middleware;
+using cya2.Services;
+using cya2.Services.Imports;
+using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.AspNetCore.Authentication.Google;
+using Microsoft.AspNetCore.Authentication.OAuth;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Components.Server;
+using Microsoft.AspNetCore.Localization;
+using OfficeOpenXml;
+using Radzen;
+using System.Security.Claims;
+using System.Threading;
+using Cya2.Application.Interfaces;
+using Cya2.Core.Interfaces;
+using Cya2.Core.ValueObjects;
+using Cya2.Application.Extensions;
+using Cya2.Infrastructure.Extensions;
+using Cya2.Infrastructure.Services;
+
+var _lastResetTime = DateTime.Now;
+var _lockObject = new object();
+IDatabaseAvailabilityMonitor? dbMonitorService = null;
+
+AppDomain.CurrentDomain.AssemblyResolve += (sender, args) =>
+{
+    if ((args.Name.Contains("MySql") || args.Name.Contains("mysql", StringComparison.OrdinalIgnoreCase)) &&
+        !GlobalSettings.AllowMySqlLoading)
+    {
+        Console.WriteLine($"Prevented loading of MySQL assembly: {args.Name}");
+        return typeof(object).Assembly;
+    }
+    return null;
+};
+
+var builder = WebApplication.CreateBuilder(args);
+
+ExcelPackage.License.SetNonCommercialOrganization("Servant Partners");
+
+var mysqlConnStr = Environment.GetEnvironmentVariable("MYSQLCONNSTR_default");
+if (!string.IsNullOrEmpty(mysqlConnStr))
+{
+    builder.Configuration["ConnectionStrings:default"] = mysqlConnStr;
+    Console.WriteLine("Added MySQL connection string from environment variable");
+}
+else
+{
+    Console.WriteLine("MySQL connection string not found in environment variables");
+}
+
+builder.Services.AddLogging(l =>
+{
+    l.AddConsole();
+    l.AddDebug();
+});
+
+builder.Services.AddHttpContextAccessor();
+
+// Needed by file upload preview calls and some components/services
+builder.Services.AddHttpClient();
+
+builder.Services.AddSingleton<Cya2.Core.Interfaces.IDatabaseGuard, DatabaseGuardAdapter>();
+
+        builder.Services.AddScoped<IDonationImportService, DonationImportService>();
+        builder.Services.AddScoped<IAccountingImportService, AccountingImportService>();
+        builder.Services.AddScoped<IRollbackService, RollbackService>();
+        builder.Services.AddSingleton<ImportProgressService>();
+        builder.Services.AddSingleton<Cya2.Core.Interfaces.IImportProgressService>(sp => sp.GetRequiredService<ImportProgressService>());
+
+        // Clean Architecture Services - Fully enabled
+builder.Services.AddApplicationServices();
+builder.Services.AddCleanArchitectureRepositories();
+
+// Shared helper: user id resolver (implementation in Infrastructure)
+builder.Services.AddScoped<IUserIdResolver, UserIdResolver>();
+
+// Ensure session/state services have correct lifetimes
+// Per-user UI session state (Blazor Server scope) - preserve across pages in same circuit
+builder.Services.AddScoped<Cya2.Application.Interfaces.ISessionUserStateService, Cya2.Application.Services.SessionUserStateService>();
+
+// Dashboard DTO cache uses internal per-user keys and should survive cross-page scopes
+builder.Services.AddSingleton<Cya2.Application.Interfaces.ISessionDashboardDtoCacheService, Cya2.Application.Services.SessionDashboardDtoCacheService>();
+
+// Import progress/session notifications - singleton so dialogs across components can observe
+builder.Services.AddSingleton<Cya2.Application.Interfaces.ISessionImportProgressService, Cya2.Application.Services.SessionImportProgressService>();
+
+builder.Services.AddAuthenticationCore();
+builder.Services.AddCascadingAuthenticationState();
+builder.Services.AddAuthorizationCore();
+
+// Google OAuth configuration with validation
+var googleClientId = builder.Configuration["Authentication:Google:ClientId"] ?? "";
+var googleClientSecret = builder.Configuration["Authentication:Google:ClientSecret"] ?? "";
+
+// Check if we have valid Google OAuth configuration
+bool hasValidGoogleConfig = !string.IsNullOrEmpty(googleClientId) && 
+                           !string.IsNullOrEmpty(googleClientSecret) &&
+                           !googleClientId.Contains("PLACEHOLDER") &&
+                           !googleClientSecret.Contains("PLACEHOLDER") &&
+                           !googleClientId.Contains("YOUR_GOOGLE_CLIENT_ID") &&
+                           !googleClientSecret.Contains("YOUR_GOOGLE_CLIENT_SECRET");
+
+var authBuilder = builder.Services.AddAuthentication(opts =>
+{
+    opts.DefaultScheme = CookieAuthenticationDefaults.AuthenticationScheme;
+    if (hasValidGoogleConfig)
+    {
+        opts.DefaultChallengeScheme = GoogleDefaults.AuthenticationScheme;
+    }
+})
+.AddCookie(opts =>
+{
+    opts.LoginPath = "/api/login";
+    opts.AccessDeniedPath = "/not-authorized";
+    opts.ExpireTimeSpan = TimeSpan.FromHours(24);
+    opts.SlidingExpiration = false;
+    opts.Cookie.HttpOnly = true;
+    opts.Cookie.SecurePolicy = CookieSecurePolicy.Always;
+    opts.Events = new CookieAuthenticationEvents
+    {
+        OnRedirectToLogin = context =>
+        {
+            if (context.Request.Path.StartsWithSegments("/_blazor") ||
+                context.Request.Path.StartsWithSegments("/_framework"))
+            {
+                return Task.CompletedTask;
+            }
+            if (context.Request.Path.StartsWithSegments("/api"))
+            {
+                context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+            }
+            else
+            {
+                context.Response.Redirect(context.RedirectUri);
+            }
+            return Task.CompletedTask;
+        }
+    };
+});
+
+if (hasValidGoogleConfig)
+{
+    authBuilder.AddGoogle(options =>
+    {
+        options.ClientId = googleClientId;
+        options.ClientSecret = googleClientSecret;
+        options.CallbackPath = "/signin-google";
+        options.Events = new OAuthEvents
+        {
+            OnRedirectToAuthorizationEndpoint = context =>
+            {
+                if (context.Request.Path.StartsWithSegments("/_blazor") ||
+                    context.Request.Path.StartsWithSegments("/_framework"))
+                {
+                    return Task.CompletedTask;
+                }
+                context.Response.Headers.CacheControl = "no-store, no-cache";
+                context.Response.Headers.Pragma = "no-cache";
+                context.Response.Redirect(context.RedirectUri);
+                return Task.CompletedTask;
+            },
+            OnRemoteFailure = async context =>
+            {
+                var logger = context.HttpContext.RequestServices.GetRequiredService<ILogger<Program>>();
+                logger.LogWarning(context.Failure, "Google OAuth remote failure");
+                await context.HttpContext.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
+                context.Response.Redirect("/login-error");
+                context.HandleResponse();
+            },
+            OnTicketReceived = async context =>
+            {
+                var logger = context.HttpContext.RequestServices.GetRequiredService<ILogger<Program>>();
+                var userRepo = context.HttpContext.RequestServices.GetRequiredService<IUserRepository>();
+                var monitor = context.HttpContext.RequestServices.GetRequiredService<IDatabaseAvailabilityMonitor>();
+
+                async Task RejectUnauthorizedAsync(string reason)
+                {
+                    logger.LogWarning("Google sign-in rejected: {Reason}", reason);
+                    context.Fail(reason);
+                    await context.HttpContext.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
+                    context.Response.Redirect("/not-authorized");
+                    context.HandleResponse();
+                }
+
+                async Task FailLoginProcessingAsync(string reason)
+                {
+                    logger.LogWarning("Google sign-in could not be processed: {Reason}", reason);
+                    context.Fail(reason);
+                    await context.HttpContext.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
+                    context.Response.Redirect("/login-error");
+                    context.HandleResponse();
+                }
+
+                try
+                {
+                    if (!monitor.IsConnected)
+                    {
+                        await FailLoginProcessingAsync("Database unavailable");
+                        return;
+                    }
+
+                    var principal = context.Principal;
+                    if (principal is null)
+                    {
+                        await FailLoginProcessingAsync("Missing principal");
+                        return;
+                    }
+
+                    if (principal.Identity is not ClaimsIdentity identity)
+                    {
+                        await FailLoginProcessingAsync("Invalid identity");
+                        return;
+                    }
+
+                    var email = principal.FindFirstValue(ClaimTypes.Email);
+                    if (string.IsNullOrWhiteSpace(email))
+                    {
+                        await FailLoginProcessingAsync("Missing email");
+                        return;
+                    }
+
+                    var googleId = principal.FindFirstValue(ClaimTypes.NameIdentifier) ?? principal.FindFirstValue("sub") ?? string.Empty;
+                    if (string.IsNullOrWhiteSpace(googleId))
+                    {
+                        await FailLoginProcessingAsync("Missing Google subject id");
+                        return;
+                    }
+
+                    var user = await userRepo.GetByExternalIdAsync(googleId);
+                    if (user == null)
+                    {
+                        var emailMatch = await userRepo.GetByEmailAsync(email);
+                        if (emailMatch == null)
+                        {
+                            await RejectUnauthorizedAsync("User not registered");
+                            return;
+                        }
+
+                        if (!string.IsNullOrWhiteSpace(emailMatch.GoogleId) && !string.Equals(emailMatch.GoogleId, googleId, StringComparison.Ordinal))
+                        {
+                            await RejectUnauthorizedAsync("Google ID mismatch");
+                            return;
+                        }
+
+                        if (string.IsNullOrWhiteSpace(emailMatch.GoogleId))
+                        {
+                            emailMatch.GoogleId = googleId;
+                            await userRepo.UpdateAsync(emailMatch);
+                            logger.LogInformation("Bound Google ID to existing user record for {Email}", email);
+                        }
+
+                        user = emailMatch;
+                    }
+                    else if (!string.Equals(user.Email, email, StringComparison.OrdinalIgnoreCase))
+                    {
+                        await RejectUnauthorizedAsync("Email mismatch for Google ID");
+                        return;
+                    }
+
+                    identity.AddClaim(new Claim(ClaimTypes.Role, user.AuthLevel ?? "User"));
+                    identity.AddClaim(new Claim("AuthLevel", user.AuthLevel ?? string.Empty));
+                    identity.AddClaim(new Claim("DefaultAccount", user.DefaultAccount?.ToString() ?? string.Empty));
+                    identity.AddClaim(new Claim("Language", user.Language ?? string.Empty));
+                    identity.AddClaim(new Claim("UserId", user.Id.ToString()));
+                    identity.AddClaim(new Claim("UserName", user.Name ?? string.Empty));
+
+                    context.Properties.RedirectUri = user.AuthLevel == "Admin" ? "/admin" : "/";
+                }
+                catch (InvalidOperationException ex) when (ex.Message.Contains("Database is currently unavailable", StringComparison.OrdinalIgnoreCase))
+                {
+                    monitor.MarkAsDisconnected(ex.Message);
+                    logger.LogWarning(ex, "Database unavailable during Google ticket processing");
+                    await context.HttpContext.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
+                    context.Response.Redirect("/database-error");
+                    context.HandleResponse();
+                }
+                catch (MySql.Data.MySqlClient.MySqlException ex)
+                {
+                    monitor.MarkAsDisconnected(ex.Message);
+                    logger.LogError(ex, "MySQL error during Google ticket processing");
+                    await context.HttpContext.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
+                    context.Response.Redirect("/database-error");
+                    context.HandleResponse();
+                }
+                catch (Exception ex)
+                {
+                    logger.LogError(ex, "Error during Google ticket processing");
+                    await context.HttpContext.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
+                    context.Response.Redirect("/login-error");
+                    context.HandleResponse();
+                }
+            },
+            OnCreatingTicket = context =>
+            {
+                if (context.Properties?.RedirectUri == null)
+                    context.Properties.RedirectUri = "/";
+                return Task.CompletedTask;
+            }
+        };
+    });
+    Console.WriteLine("Google OAuth authentication configured successfully");
+}
+else
+{
+    Console.WriteLine("Google OAuth configuration not found or invalid - OAuth authentication disabled");
+    Console.WriteLine("To enable Google OAuth, set valid values for Authentication:Google:ClientId and Authentication:Google:ClientSecret");
+}
+
+builder.Services.AddAuthorization(options =>
+{
+    // In development with bypass enabled, make pages more accessible
+    var isDevelopment = builder.Environment.IsDevelopment();
+    var bypassAuth = builder.Configuration.GetValue<bool>("Development:BypassGoogleAuth", false);
+    
+    if (isDevelopment && bypassAuth)
+    {
+        // More permissive policies for development
+        options.DefaultPolicy = new AuthorizationPolicyBuilder()
+            .RequireAuthenticatedUser()
+            .Build();
+            
+        // Allow anonymous access to more pages in development
+        options.AddPolicy("AllowAnonymous", p => p.RequireAssertion(_ => true));
+        options.AddPolicy("ErrorPages", p => p.RequireAssertion(_ => true));
+        options.AddPolicy("Development", p => p.RequireAssertion(_ => true));
+    }
+    else
+    {
+        // Production policies - require authentication
+        options.FallbackPolicy = new AuthorizationPolicyBuilder()
+            .RequireAuthenticatedUser()
+            .Build();
+    }
+
+    options.AddPolicy("RequireAdmin", p =>
+        p.RequireAuthenticatedUser().RequireClaim("AuthLevel", "Admin"));
+    options.AddPolicy("CanViewAllAccounts", p =>
+        p.RequireAuthenticatedUser().RequireClaim("AuthLevel", new[] { "Admin", "Viewer" }));
+});
+
+builder.Services.AddHealthChecks()
+    .AddCheck("Database", () =>
+        Microsoft.Extensions.Diagnostics.HealthChecks.HealthCheckResult.Healthy("Deferred DB check"));
+
+builder.Services.AddLocalization();
+
+builder.Services.AddRazorComponents()
+    .AddInteractiveServerComponents();
+
+builder.Services.AddRadzenComponents();
+
+builder.Services.AddControllers();
+
+// Register user selection service and memory cache
+builder.Services.AddMemoryCache();
+builder.Services.AddSingleton<Cya2.Application.Interfaces.IUserSelectionService, Cya2.Infrastructure.Services.MemoryUserSelectionService>();
+builder.Services.AddSingleton<Cya2.Application.Interfaces.IUserDateRangeSelectionService, Cya2.Infrastructure.Services.MemoryUserDateRangeSelectionService>();
+
+var app = builder.Build();
+
+try
+{
+    var startupLogger = app.Services.GetRequiredService<ILogger<Program>>();
+    var env = app.Services.GetRequiredService<IWebHostEnvironment>();
+    startupLogger.LogInformation("Startup paths: ContentRoot={ContentRoot}, WebRoot={WebRoot}", env.ContentRootPath, env.WebRootPath);
+
+    var appCssPath = Path.Combine(env.WebRootPath ?? string.Empty, "app.css");
+    var blazorCulturePath = Path.Combine(env.WebRootPath ?? string.Empty, "js", "blazorCulture.js");
+    startupLogger.LogInformation("Static asset check: app.css exists={AppCssExists} at {AppCssPath}", File.Exists(appCssPath), appCssPath);
+    startupLogger.LogInformation("Static asset check: blazorCulture.js exists={JsExists} at {JsPath}", File.Exists(blazorCulturePath), blazorCulturePath);
+}
+catch { }
+
+string[] supportedCultures = ["en-US", "es-US"];
+var localizationOptions = new RequestLocalizationOptions()
+    .SetDefaultCulture(supportedCultures[0])
+    .AddSupportedCultures(supportedCultures)
+    .AddSupportedUICultures(supportedCultures);
+app.UseRequestLocalization(localizationOptions);
+
+bool initialDbConnected = false;
+try
+{
+    var logger = app.Services.GetRequiredService<ILogger<Program>>();
+    logger.LogInformation("Lightweight DB check...");
+    var monitor = app.Services.GetRequiredService<IDatabaseAvailabilityMonitor>();
+    var config = app.Services.GetRequiredService<IConfiguration>();
+
+    string connectionString = config.GetConnectionString("default") ?? string.Empty;
+    string host = "localhost";
+    int port = 3306;
+    foreach (var part in connectionString.Split(";"))
+    {
+        if (part.StartsWith("server=", StringComparison.OrdinalIgnoreCase) ||
+            part.StartsWith("host=", StringComparison.OrdinalIgnoreCase))
+        {
+            host = part[(part.IndexOf('=') + 1)..].Trim();
+        }
+        else if (part.StartsWith("port=", StringComparison.OrdinalIgnoreCase))
+        {
+            int.TryParse(part[(part.IndexOf('=') + 1)..].Trim(), out port);
+        }
+    }
+
+    logger.LogInformation("Testing database connection to {Host}:{Port}", host, port);
+    initialDbConnected = GlobalSettings.CheckDatabaseTcpConnection(host, port, 2000);
+    logger.LogInformation("Database connection test result: {Result}", initialDbConnected);
+}
+catch (Exception ex)
+{
+    var logger = app.Services.GetRequiredService<ILogger<Program>>();
+    logger.LogWarning(ex, "Database connectivity check failed");
+    initialDbConnected = false;
+}
+
+GlobalSettings.AllowMySqlLoading = initialDbConnected;
+if (!initialDbConnected)
+{
+    Console.WriteLine("Database unavailable - limited mode");
+}
+
+AppDomain.CurrentDomain.UnhandledException += (sender, args) =>
+{
+    var ex = args.ExceptionObject as Exception;
+    Console.Error.WriteLine($"Unhandled exception: {ex?.Message}");
+    GlobalSettings.AllowMySqlLoading = false;
+    try
+    {
+        var monitor = app.Services.GetRequiredService<IDatabaseAvailabilityMonitor>();
+        monitor.MarkAsDisconnected(ex?.Message ?? "Unhandled exception");
+    }
+    catch { }
+};
+
+TaskScheduler.UnobservedTaskException += (sender, args) =>
+{
+    args.SetObserved();
+    var ex = args.Exception;
+    if (ex != null && (ex.ToString().Contains("MySql") || ex.ToString().Contains("Timeout expired")))
+    {
+        GlobalSettings.AllowMySqlLoading = false;
+        try
+        {
+            dbMonitorService?.Suspend();
+        }
+        catch { }
+    }
+};
+
+app.MapHealthChecks("/health");
+
+// Initialize monitor service
+dbMonitorService = app.Services.GetRequiredService<IDatabaseAvailabilityMonitor>();
+if (!initialDbConnected)
+{
+    dbMonitorService.MarkAsDisconnected("Startup connectivity check failed");
+}
+dbMonitorService.Resume();
+
+app.Lifetime.ApplicationStarted.Register(() =>
+{
+    Task.Delay(5000).ContinueWith(_ =>
+    {
+        try
+        {
+            if (initialDbConnected)
+            {
+                GlobalSettings.AllowMySqlLoading = true;
+                dbMonitorService?.Resume();
+            }
+        }
+        catch { }
+    });
+});
+
+if (!app.Environment.IsDevelopment())
+{
+    app.UseExceptionHandler("/Error", createScopeForErrors: true);
+    app.UseHsts();
+}
+
+app.UseHttpsRedirection();
+app.UseStaticFiles();
+
+app.UseAntiforgery();
+
+app.Use(async (context, next) =>
+{
+    context.Response.Headers["X-Content-Type-Options"] = "nosniff";
+    context.Response.Headers["X-Frame-Options"] = "DENY";
+    context.Response.Headers["X-XSS-Protection"] = "1; mode=block";
+    context.Response.Headers["Referrer-Policy"] = "strict-origin-when-cross-origin";
+    await next();
+});
+
+app.UseAuthentication();
+app.UseAuthorization();
+// Use middleware to populate session-selected account from server-side selection store
+app.UseSelectedAccountMiddleware();
+app.UseDatabaseCheck();
+
+app.Use(async (context, next) =>
+{
+    if (context.Request.Path == "/")
+    {
+        var user = context.User;
+        if (user?.Identity?.IsAuthenticated == true &&
+            user.FindFirstValue("AuthLevel") == "Admin")
+        {
+            context.Response.Redirect("/admin", false);
+            return;
+        }
+    }
+    await next();
+});
+
+app.MapControllers().DisableAntiforgery();
+
+app.MapRazorComponents<App>()
+   .AddInteractiveServerRenderMode()
+   .DisableAntiforgery();
+
+app.MapGet("/api/login", async (HttpContext ctx, IDatabaseAvailabilityMonitor monitor, ILogger<Program> logger) =>
+{
+    logger.LogInformation("Login endpoint invoked");
+
+    await ctx.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
+
+    foreach (var cookie in ctx.Request.Cookies.Keys)
+    {
+        if (cookie.Contains("AspNetCore") || cookie.Contains("Microsoft"))
+        {
+            ctx.Response.Cookies.Delete(cookie, new CookieOptions
+            {
+                Path = "/",
+                Secure = true,
+                HttpOnly = true,
+                SameSite = SameSiteMode.Lax
+            });
+        }
+    }
+
+    ctx.Response.Headers.CacheControl = "no-store, no-cache";
+    ctx.Response.Headers.Pragma = "no-cache";
+
+    if (!monitor.IsConnected)
+    {
+        ctx.Response.Redirect("/database-error", false);
+        return Results.Empty;
+    }
+
+    // Check if Google OAuth is configured
+    var config = ctx.RequestServices.GetRequiredService<IConfiguration>();
+    var googleClientId = config["Authentication:Google:ClientId"] ?? "";
+    var hasValidGoogleConfig = !string.IsNullOrEmpty(googleClientId) &&
+                               !googleClientId.Contains("PLACEHOLDER") &&
+                               !googleClientId.Contains("YOUR_GOOGLE_CLIENT_ID");
+
+    if (!hasValidGoogleConfig)
+    {
+        logger.LogWarning("Google OAuth not configured, redirecting to auth config page");
+        ctx.Response.Redirect("/auth-config-required", false);
+        return Results.Empty;
+    }
+
+    var props = new AuthenticationProperties
+    {
+        RedirectUri = "/",
+        AllowRefresh = true,
+        ExpiresUtc = DateTimeOffset.UtcNow.AddHours(24),
+        IsPersistent = true,
+        Items = { { "ts", DateTimeOffset.UtcNow.ToUnixTimeSeconds().ToString() } }
+    };
+
+    props.Parameters["prompt"] = "select_account";
+    return Results.Challenge(props, new[] { GoogleDefaults.AuthenticationScheme });
+});
+
+app.MapGet("/logout", async (HttpContext ctx) =>
+{
+    await ctx.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
+    ctx.Response.Redirect("/logged-out");
+});
+
+app.MapGet("/api/check-db", (HttpContext ctx, IConfiguration cfg, IDatabaseAvailabilityMonitor monitor) =>
+{
+    try
+    {
+        var cs = cfg.GetConnectionString("default") ?? string.Empty;
+        string host = "localhost";
+        int port = 3306;
+
+        foreach (var part in cs.Split(";"))
+        {
+            if (part.StartsWith("server=", StringComparison.OrdinalIgnoreCase) ||
+                part.StartsWith("host=", StringComparison.OrdinalIgnoreCase))
+            {
+                host = part[(part.IndexOf('=') + 1)..].Trim();
+            }
+            else if (part.StartsWith("port=", StringComparison.OrdinalIgnoreCase))
+            {
+                int.TryParse(part[(part.IndexOf('=') + 1)..].Trim(), out port);
+            }
+        }
+
+        var ok = GlobalSettings.CheckDatabaseTcpConnection(host, port, 2000);
+        if (ok)
+        {
+            monitor.Resume();
+            return Results.Ok(new { status = "connected" });
+        }
+
+        return Results.Ok(new { status = "disconnected", message = monitor.LastError });
+    }
+    catch (Exception ex)
+    {
+        return Results.Ok(new { status = "error", message = ex.Message });
+    }
+});
+
+app.MapGet("/api/auth-status", (HttpContext ctx) =>
+{
+    var isAuth = ctx.User.Identity?.IsAuthenticated ?? false;
+    var claims = ctx.User.Claims.Select(c => new { type = c.Type, value = c.Value }).ToList();
+    return Results.Ok(new
+    {
+        isAuthenticated = isAuth,
+        userName = ctx.User.Identity?.Name,
+        claims,
+        systemStatus = new
+        {
+            GlobalSettings.CompleteBypass,
+            GlobalSettings.AllowMySqlLoading,
+            GlobalSettings.BypassDatabaseMonitoring,
+            databaseIsConnected = ctx.RequestServices.GetRequiredService<IDatabaseAvailabilityMonitor>().IsConnected,
+            isAzureEnvironment = !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("WEBSITE_SITE_NAME")),
+            requestPath = ctx.Request.Path.ToString()
+        }
+    });
+}).WithMetadata(new AllowAnonymousAttribute());
+
+// Upload endpoints
+app.MapPost("/api/upload/donations", async (HttpRequest req, IDonationImportService import, ILogger<Program> logger) =>
+{
+    try
+    {
+        var form = await req.ReadFormAsync();
+        var file = form.Files.Count > 0 ? form.Files[0] : null;
+        if (file is null || file.Length == 0) return Results.BadRequest("No file");
+        await using var stream = file.OpenReadStream();
+        var res = await import.StartImportAsync(stream, CancellationToken.None);
+        return Results.Json(res);
+    }
+    catch (Exception ex)
+    {
+        logger.LogError(ex, "Donation upload endpoint failed");
+        return Results.Problem(ex.Message);
+    }
+});
+
+app.MapPost("/api/upload/accounting", async (HttpRequest req, IAccountingImportService import, ILogger<Program> logger) =>
+{
+    try
+    {
+        var form = await req.ReadFormAsync();
+        var file = form.Files.Count > 0 ? form.Files[0] : null;
+        if (file is null || file.Length == 0) return Results.BadRequest("No file");
+        await using var stream = file.OpenReadStream();
+        var res = await import.StartImportAsync(stream, CancellationToken.None);
+        return Results.Json(res);
+    }
+    catch (Exception ex)
+    {
+        logger.LogError(ex, "Accounting upload endpoint failed");
+        return Results.Problem(ex.Message);
+    }
+});
+
+app.Run();

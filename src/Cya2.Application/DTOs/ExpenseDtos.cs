@@ -1,6 +1,3 @@
-using Cya2.Core.ValueObjects;
-using ModelsLibrary;
-
 namespace Cya2.Application.DTOs;
 
 /// <summary>
@@ -8,7 +5,7 @@ namespace Cya2.Application.DTOs;
 /// </summary>
 public class ExpenseDataDto
 {
-    public List<Account> UserAccounts { get; set; } = new();
+    public List<AccountOptionDto> UserAccounts { get; set; } = new();
     public string SelectedAccount { get; set; } = string.Empty;
     public List<ExpenseTransactionDto> ExpenseTransactions { get; set; } = new();
     public List<ExpenseTransactionDto> TransferTransactions { get; set; } = new();

@@ -1,295 +1,219 @@
 using Cya2.Application.DTOs;
 using Cya2.Application.Interfaces;
 using Cya2.Core.ValueObjects;
-using DataLibrary;
-using Microsoft.Extensions.Configuration;
+using Cya2.Core.Interfaces;
 using Microsoft.Extensions.Logging;
-using ModelsLibrary;
-using UtilityClassLibrary;
+using System.Diagnostics;
 
 namespace Cya2.Application.Services;
 
 public class DonationService : IDonationService
 {
-    private readonly IDataAccess _dataAccess;
-    private readonly IConfiguration _configuration;
+    private readonly IUserAccountContextService _userAccountContextService;
+    private readonly IDonationReadRepository _donationReadRepository;
+    private readonly ISessionDonationDataCacheService _donationCache;
     private readonly ILogger<DonationService> _logger;
-    private readonly IExpenseService _expenseService;
 
-    public DonationService(IDataAccess dataAccess, IConfiguration configuration, ILogger<DonationService> logger, IExpenseService expenseService)
+    public DonationService(
+        IUserAccountContextService userAccountContextService,
+        IDonationReadRepository donationReadRepository,
+        ISessionDonationDataCacheService donationCache,
+        ILogger<DonationService> logger)
     {
-        _dataAccess = dataAccess;
-        _configuration = configuration;
+        _userAccountContextService = userAccountContextService;
+        _donationReadRepository = donationReadRepository;
+        _donationCache = donationCache;
         _logger = logger;
-        _expenseService = expenseService;
     }
 
-    public async Task<DonationDataDto> GetDonationDataAsync(string accountName, string? subAccountSelection, DateRange dateRange, string userId, bool isAdminOrViewer = false)
+    public async Task<DonationDataDto> GetDonationDataAsync(string accountName, string? subAccountSelection, DateRange dateRange, string userId, bool isAdminOrViewer = false, bool forceRefresh = false)
     {
-        var result = new DonationDataDto
-        {
-            SelectedSubAccount = string.IsNullOrWhiteSpace(subAccountSelection) ? "All" : subAccountSelection
-        };
+        var sw = Stopwatch.StartNew();
+        var result = new DonationDataDto();
 
         try
         {
-            var userAccounts = await _expenseService.GetUserAccountsAsync(userId, isAdminOrViewer);
-            result.UserAccounts = userAccounts;
-            if (!userAccounts.Any()) return result;
-
-            var selectedAccount = userAccounts.FirstOrDefault(a => a.Fund == accountName) ?? userAccounts.First();
-            result.SelectedAccount = selectedAccount.Fund;
-
-            var subAccounts = await LoadSubAccountsAsync(selectedAccount.AccountId);
-            var separateSubAccounts = subAccounts.Where(sa => string.Equals(sa.Kind, "Separate", StringComparison.OrdinalIgnoreCase)).ToList();
-            var mergedSubAccounts = subAccounts.Where(sa => string.Equals(sa.Kind, "Merged", StringComparison.OrdinalIgnoreCase)).ToList();
-
-            result.ShowSubAccountDropdown = separateSubAccounts.Any();
-            result.SubAccountOptions = BuildSubAccountOptions(selectedAccount, separateSubAccounts);
-            if (!result.SubAccountOptions.Any(o => string.Equals(o.Value, result.SelectedSubAccount, StringComparison.OrdinalIgnoreCase)))
+            if (!forceRefresh && !string.IsNullOrWhiteSpace(userId) && !string.IsNullOrWhiteSpace(accountName) && _donationCache != null)
             {
-                result.SelectedSubAccount = "All";
-            }
-
-            var fundNamesForSelection = result.ShowSubAccountDropdown
-                ? GetFundNamesForSelection(selectedAccount, separateSubAccounts, result.SelectedSubAccount)
-                : GetMergedFundNames(selectedAccount, mergedSubAccounts);
-            result.FundNamesForSelection = fundNamesForSelection;
-
-            var allFundsToLoad = result.ShowSubAccountDropdown
-                ? GetFundNamesForSelection(selectedAccount, separateSubAccounts, "All")
-                : fundNamesForSelection;
-
-            var donationRows = await LoadDonationsForFundsAsync(allFundsToLoad);
-            result.RawDonationFunds = donationRows.Select(d => d.Fund)
-                                                  .Distinct(StringComparer.OrdinalIgnoreCase)
-                                                  .OrderBy(f => f)
-                                                  .ToList();
-
-            var subFundToPrimary = BuildMergedMap(selectedAccount, mergedSubAccounts);
-            result.Donations = MapDonations(donationRows, selectedAccount, result.ShowSubAccountDropdown, fundNamesForSelection, subFundToPrimary, result.SelectedSubAccount);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error getting donation data for account {AccountName}", accountName);
-        }
-
-        return result;
-    }
-
-    private async Task<List<SubAccount>> LoadSubAccountsAsync(int accountId)
-    {
-        try
-        {
-            const string sql = "SELECT Id, AccountId, SubFund, Kind FROM SubAccounts WHERE AccountId = @AccountId";
-            var conn = GetConnectionString();
-            var rows = await _dataAccess.LoadData<SubAccount, dynamic>(sql, new { AccountId = accountId }, conn);
-            return rows?.ToList() ?? new List<SubAccount>();
-        }
-        catch
-        {
-            return new List<SubAccount>();
-        }
-    }
-
-    private List<SubAccountOptionDto> BuildSubAccountOptions(Account primaryAccount, List<SubAccount> separateSubAccounts)
-    {
-        var options = new List<SubAccountOptionDto>();
-
-        options.Add(new SubAccountOptionDto
-        {
-            Value = "All",
-            DisplayText = "All",
-            IsAll = true,
-            IsPrimary = false
-        });
-
-        options.Add(new SubAccountOptionDto
-        {
-            Value = "Primary",
-            DisplayText = GetFundDisplay(primaryAccount.Fund),
-            IsAll = false,
-            IsPrimary = true,
-            SubFund = primaryAccount.Fund
-        });
-
-        foreach (var sub in separateSubAccounts)
-        {
-            options.Add(new SubAccountOptionDto
-            {
-                Value = $"Sub_{sub.Id}",
-                DisplayText = GetFundDisplay(sub.SubFund),
-                IsPrimary = false,
-                IsAll = false,
-                SubAccountId = sub.Id,
-                SubFund = sub.SubFund
-            });
-        }
-
-        return options;
-    }
-
-    private List<string> GetFundNamesForSelection(Account primaryAccount, List<SubAccount> separateSubAccounts, string selectedValue)
-    {
-        var fundNames = new List<string>();
-
-        if (string.Equals(selectedValue, "All", StringComparison.OrdinalIgnoreCase))
-        {
-            fundNames.Add(primaryAccount.Fund);
-            fundNames.AddRange(separateSubAccounts.Select(sa => sa.SubFund));
-        }
-        else if (string.Equals(selectedValue, "Primary", StringComparison.OrdinalIgnoreCase))
-        {
-            fundNames.Add(primaryAccount.Fund);
-        }
-        else if (selectedValue.StartsWith("Sub_", StringComparison.OrdinalIgnoreCase))
-        {
-            if (int.TryParse(selectedValue.Substring(4), out var subId))
-            {
-                var target = separateSubAccounts.FirstOrDefault(sa => sa.Id == subId);
-                if (target != null)
+                if (_donationCache.TryGetDonationData(userId, accountName, out var directCached) &&
+                    CacheCoversRequestedRange(directCached, dateRange))
                 {
-                    fundNames.Add(target.SubFund);
+                    _logger.LogInformation(
+                        "Donation data source=cache-direct user='{UserId}' selectedAccount='{SelectedAccount}' rows={RowCount} range={StartDate:yyyy-MM-dd}..{EndDate:yyyy-MM-dd} elapsedMs={ElapsedMs}",
+                        userId,
+                        directCached.SelectedAccount,
+                        directCached.Donations?.Count ?? 0,
+                        dateRange.StartDate,
+                        dateRange.EndDate,
+                        sw.ElapsedMilliseconds);
+                    return directCached;
                 }
             }
-        }
-        else
-        {
-            fundNames.Add(primaryAccount.Fund);
-        }
 
-        return fundNames.Where(f => !string.IsNullOrWhiteSpace(f)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
-    }
-
-    private List<string> GetMergedFundNames(Account primaryAccount, List<SubAccount> mergedSubAccounts)
-    {
-        var fundNames = new List<string> { primaryAccount.Fund };
-        fundNames.AddRange(mergedSubAccounts.Select(sa => sa.SubFund));
-        return fundNames.Where(f => !string.IsNullOrWhiteSpace(f)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
-    }
-
-    private Dictionary<string, int> BuildMergedMap(Account primaryAccount, List<SubAccount> mergedSubAccounts)
-    {
-        var map = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
-        if (!string.IsNullOrWhiteSpace(primaryAccount.Fund))
-        {
-            map[primaryAccount.Fund] = primaryAccount.AccountId;
-        }
-
-        foreach (var sub in mergedSubAccounts)
-        {
-            if (!string.IsNullOrWhiteSpace(sub.SubFund) && !map.ContainsKey(sub.SubFund))
+            var context = await _userAccountContextService.GetContextAsync(userId, isAdminOrViewer);
+            if (context == null || context.Accounts == null || context.Accounts.Count == 0)
             {
-                map[sub.SubFund] = primaryAccount.AccountId;
+                _logger.LogWarning("Donation context unavailable for user '{UserId}' (isAdminOrViewer={IsAdminOrViewer})", userId, isAdminOrViewer);
+                return result; // no accounts available
             }
-        }
 
-        return map;
-    }
-
-    private async Task<List<DonationsDataModel>> LoadDonationsForFundsAsync(IEnumerable<string> fundNames)
-    {
-        var result = new List<DonationsDataModel>();
-        var conn = GetConnectionString();
-
-        foreach (var fund in fundNames.Distinct(StringComparer.OrdinalIgnoreCase))
-        {
-            try
+            // Map available accounts
+            result.UserAccounts = context.Accounts.Select(a => new AccountOptionDto
             {
-                const string sql = "SELECT * FROM DonationData WHERE Fund = @Fund";
-                var rows = await _dataAccess.LoadData<DonationsDataModel, dynamic>(sql, new { Fund = fund }, conn);
-                if (rows != null && rows.Any())
-                {
-                    result.AddRange(rows);
-                }
+                AccountId = a.AccountId,
+                Fund = a.Fund,
+                AccountingClass = a.AccountingClass,
+                AccountNumber = a.AccountNumber,
+                Overhead = a.Overhead
+            }).ToList();
+
+            // Resolve selected account preference using context helper
+            var selected = _userAccountContextService.ResolveSelectedAccount(context, string.IsNullOrWhiteSpace(accountName) ? null : accountName);
+            if (selected != null)
+            {
+                result.SelectedAccount = selected.Fund;
             }
-            catch (Exception ex)
+            else if (!string.IsNullOrWhiteSpace(accountName) && result.UserAccounts.Any(u => string.Equals(u.Fund, accountName, StringComparison.OrdinalIgnoreCase)))
             {
-                _logger.LogWarning(ex, "Error loading donations for fund {Fund}", fund);
-            }
-        }
-
-        return result;
-    }
-
-    private List<UserDataDonations> MapDonations(List<DonationsDataModel> donationData, Account currentAccount, bool hasSeparateSubAccounts, List<string> fundNamesForSelection, Dictionary<string, int> subFundToPrimaryAccountId, string selectedSubAccount)
-    {
-        var donations = new List<UserDataDonations>();
-        if (currentAccount == null) return donations;
-
-        foreach (var donation in donationData)
-        {
-            bool shouldInclude = false;
-            string displayAccountName = currentAccount.Fund;
-
-            if (hasSeparateSubAccounts)
-            {
-                if (fundNamesForSelection.Contains(donation.Fund, StringComparer.OrdinalIgnoreCase))
-                {
-                    shouldInclude = true;
-                    displayAccountName = (!string.Equals(selectedSubAccount, "All", StringComparison.OrdinalIgnoreCase) && !string.Equals(selectedSubAccount, "Primary", StringComparison.OrdinalIgnoreCase))
-                        ? GetFundDisplay(donation.Fund)
-                        : GetFundDisplay(currentAccount.Fund);
-                }
+                result.SelectedAccount = accountName;
             }
             else
             {
-                if (subFundToPrimaryAccountId.TryGetValue(donation.Fund, out var mappedPrimaryId) && mappedPrimaryId == currentAccount.AccountId)
+                // fallback to first available account for UI only
+                result.SelectedAccount = result.UserAccounts.First().Fund;
+            }
+
+            result.SelectedSubAccount = subAccountSelection ?? "All";
+
+            // Determine which funds to query. If caller passed an explicit accountName use that; otherwise use user's accounts
+            var fundsToQuery = new List<string>();
+            if (!string.IsNullOrWhiteSpace(accountName))
+            {
+                fundsToQuery.Add(accountName);
+            }
+            else
+            {
+                fundsToQuery.AddRange(result.UserAccounts.Select(u => u.Fund));
+            }
+
+            // Ensure distinct and non-empty
+            fundsToQuery = fundsToQuery.Where(f => !string.IsNullOrWhiteSpace(f)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+
+            // If we have a cache and caller requested a single fund, try cache first (this covers initial load where Home may have pre-cached)
+            if (!forceRefresh && !string.IsNullOrWhiteSpace(result.SelectedAccount) && _donationCache != null)
+            {
+                if (_donationCache.TryGetDonationData(userId, result.SelectedAccount, out var cached) &&
+                    CacheCoversRequestedRange(cached, dateRange))
                 {
-                    shouldInclude = true;
-                    displayAccountName = GetFundDisplay(currentAccount.Fund);
+                    // Use cached DTO but still ensure UserAccounts & selection are present
+                    cached.UserAccounts = result.UserAccounts;
+                    cached.SelectedAccount = result.SelectedAccount;
+                    _logger.LogInformation(
+                        "Donation data source=cache user='{UserId}' selectedAccount='{SelectedAccount}' rows={RowCount} range={StartDate:yyyy-MM-dd}..{EndDate:yyyy-MM-dd} elapsedMs={ElapsedMs}",
+                        userId,
+                        cached.SelectedAccount,
+                        cached.Donations?.Count ?? 0,
+                        dateRange.StartDate,
+                        dateRange.EndDate,
+                        sw.ElapsedMilliseconds);
+                    return cached;
                 }
             }
 
-            if (!shouldInclude)
+            // Query donation records from read repository
+            var donationRecords = new List<Cya2.Core.ReadModels.DonationRecord>();
+            if (selected != null && !string.IsNullOrWhiteSpace(selected.Fund))
             {
-                continue;
+                donationRecords = (await _donationReadRepository.GetDonationsByAccountAndDateRangeAsync(
+                        selected.AccountId,
+                        selected.Fund,
+                        dateRange.StartDate,
+                        dateRange.EndDate))
+                    ?? new List<Cya2.Core.ReadModels.DonationRecord>();
+            }
+            else if (fundsToQuery.Count > 0)
+            {
+                donationRecords = (await _donationReadRepository.GetDonationsByFundsAndDateRangeAsync(fundsToQuery, dateRange.StartDate, dateRange.EndDate))
+                    ?? new List<Cya2.Core.ReadModels.DonationRecord>();
             }
 
-            var donorDisplay = donation.IsAnonymous ? "Anonymous" : donation.AccountName;
-            var email = donation.IsAnonymous ? string.Empty : (donation.Email ?? string.Empty);
-            var phoneFixed = donation.IsAnonymous ? string.Empty : (donation.PhoneFixed ?? string.Empty);
-            var phoneMobile = donation.IsAnonymous ? string.Empty : (donation.PhoneMobile ?? string.Empty);
-            var addr = donation.IsAnonymous ? string.Empty : (donation.Address ?? string.Empty);
-            var city = donation.IsAnonymous ? string.Empty : (donation.City ?? string.Empty);
-            var state = donation.IsAnonymous ? string.Empty : (donation.State ?? string.Empty);
-            var postal = donation.IsAnonymous ? string.Empty : (donation.PostalCode ?? string.Empty);
-            var country = donation.IsAnonymous ? string.Empty : (donation.Country ?? string.Empty);
-            var soft = donation.IsAnonymous ? string.Empty : (donation.SoftCreditName ?? string.Empty);
+            _logger.LogInformation(
+                "Donation data source=db loaded for user '{UserId}': selectedAccount='{SelectedAccount}', requestedAccount='{RequestedAccount}', fundsQueried={FundCount}, rows={RowCount}, range={StartDate:yyyy-MM-dd}..{EndDate:yyyy-MM-dd}, elapsedMs={ElapsedMs}",
+                userId,
+                result.SelectedAccount,
+                accountName,
+                fundsToQuery.Count,
+                donationRecords.Count,
+                dateRange.StartDate,
+                dateRange.EndDate,
+                sw.ElapsedMilliseconds);
 
-            donations.Add(new UserDataDonations(
-                displayAccountName,
-                donorDisplay ?? string.Empty,
-                donation.Date,
-                donation.Amount,
-                donation.PaymentMethod ?? string.Empty,
-                donation.GiftType ?? string.Empty,
-                email,
-                phoneFixed,
-                phoneMobile,
-                addr,
-                city,
-                state,
-                postal,
-                country,
-                soft,
-                donation.IsAnonymous));
+            // Map DonationRecord -> DonationRowDto (application DTO)
+            result.Donations = donationRecords.Select(r => new DonationRowDto
+            {
+                Date = r.Date,
+                Account = r.Fund,
+                Donor = string.IsNullOrWhiteSpace(r.AccountName) ? (r.IsAnonymous ? "" : "Unknown") : r.AccountName,
+                Amount = r.Amount,
+                TransactionType = r.PaymentMethod ?? string.Empty,
+                Frequency = GetFrequencyLabel(r.Frequency),
+                Email = r.Email ?? string.Empty,
+                PhoneFixed = r.PhoneFixed ?? string.Empty,
+                PhoneMobile = r.PhoneMobile ?? string.Empty,
+                Address = r.Address ?? string.Empty,
+                City = r.City ?? string.Empty,
+                State = r.State ?? string.Empty,
+                PostalCode = r.PostalCode ?? string.Empty,
+                Country = r.Country ?? string.Empty,
+                SoftCreditName = r.SoftCreditName ?? string.Empty,
+                IsAnonymous = r.IsAnonymous
+            }).ToList();
+
+            // Populate fund name lists for selection / raw funds
+            result.FundNamesForSelection = donationRecords.Select(r => r.Fund).Where(f => !string.IsNullOrWhiteSpace(f)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+            result.RawDonationFunds = donationRecords.Select(r => r.Fund).Where(f => !string.IsNullOrWhiteSpace(f)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+
+            // No sub-account support yet; leave defaults
+            result.ShowSubAccountDropdown = false;
+            result.SubAccountOptions = new List<SubAccountOptionDto>();
+
+            result.CachedStartDate = dateRange.StartDate;
+            result.CachedEndDate = dateRange.EndDate;
+
+            // Store into cache for quick reuse (cache by selectedAccount) - prefer prioritize when explicit account requested
+            if (!string.IsNullOrWhiteSpace(result.SelectedAccount) && _donationCache != null)
+            {
+                _donationCache.SetDonationData(userId, result.SelectedAccount, result, prioritize: !string.IsNullOrWhiteSpace(accountName));
+            }
         }
-
-        return donations.OrderByDescending(d => d.Date).ToList();
-    }
-
-    private string GetFundDisplay(string? fund)
-    {
-        if (string.IsNullOrWhiteSpace(fund)) return string.Empty;
-        var idx = fund.IndexOf(" :", StringComparison.Ordinal);
-        if (idx < 0)
+        catch (Exception ex)
         {
-            idx = fund.IndexOf(':');
+            _logger.LogError(ex,
+                "Failed to load donation data for user '{UserId}' and account '{AccountName}' in range {StartDate:yyyy-MM-dd}..{EndDate:yyyy-MM-dd}",
+                userId,
+                accountName,
+                dateRange.StartDate,
+                dateRange.EndDate);
         }
-        var before = idx >= 0 ? fund.Substring(0, idx) : fund;
-        return before.TrimEnd();
+
+        return result;
     }
 
-    private string GetConnectionString() => _configuration.GetConnectionString("default") ?? string.Empty;
+    private static bool CacheCoversRequestedRange(DonationDataDto cached, DateRange requested)
+    {
+        if (cached == null) return false;
+        if (cached.CachedStartDate == default || cached.CachedEndDate == default) return false;
+
+        return cached.CachedStartDate.Date <= requested.StartDate.Date &&
+               cached.CachedEndDate.Date   >= requested.EndDate.Date;
+    }
+
+    private static string GetFrequencyLabel(Cya2.Core.Enums.DonorFrequency? frequency) => frequency switch
+    {
+        Cya2.Core.Enums.DonorFrequency.OneTime  => "One-time",
+        Cya2.Core.Enums.DonorFrequency.Monthly  => "Monthly",
+        Cya2.Core.Enums.DonorFrequency.Yearly   => "Yearly",
+        Cya2.Core.Enums.DonorFrequency.Sporadic => "Sporadic",
+        _                                        => string.Empty
+    };
 }

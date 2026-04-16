@@ -1,0 +1,984 @@
+﻿@page "/donations"
+@using static Microsoft.AspNetCore.Components.Web.RenderMode
+@using Cya2.Shared.Utilities
+@using Radzen
+@using Microsoft.AspNetCore.Components.Authorization
+@using System.Security.Claims
+@using cya2.Components.Shared
+@inject AuthenticationStateProvider AuthStateProvider
+@inject Cya2.Application.Interfaces.ISessionUserStateService SessionUserStateService
+@inject DialogService DialogService
+@inject Cya2.Application.Interfaces.IUserIdResolver UserIdResolver
+@rendermode InteractiveServer
+@inject IStringLocalizer<Resource> Localizer
+@inject ILogger<Donations> Logger
+@inject IJSRuntime JS
+@inject Cya2.Application.Interfaces.IUserSelectionService UserSelectionService
+@inject Cya2.Application.Interfaces.IUserDateRangeSelectionService DateRangeSelectionService
+
+@* CLEAN ARCHITECTURE INTEGRATION *@
+@using Cya2.Application.Interfaces
+@using Cya2.Application.DTOs
+@using DateRangePreset = Cya2.Application.DTOs.DateRangePreset
+@using Cya2.Core.ValueObjects
+@inject Cya2.Application.Interfaces.ISessionDonationDataCacheService SessionDonationDataCacheService
+@inject IDonationService DonationService
+@inject IDonationPresentationService DonationPresentationService
+@inject IUserAccountContextService UserAccountContextService
+@inject IDateRangeStateService DateRangeStateService
+@inject Cya2.Application.Interfaces.ISessionDashboardDtoCacheService SessionDashboardDtoCacheService
+
+@attribute [StreamRendering]
+
+<PageTitle>@Localizer["Donations"]</PageTitle>
+
+<style>
+    /* Stronger overrides to beat Radzen defaults */
+    .giving-grid-wrapper { overflow-x: auto; display: inline-block, vertical-align: top; }
+
+    /* Ensure the RadzenCard containing the grid shrink-wraps its content */
+    .giving-grid-card,
+    .giving-grid-card.rz-card {
+        display: inline-block !important;
+        width: auto !important;
+        vertical-align: top !important;
+        padding: 0.5rem !important; /* keep card padding consistent */
+        box-sizing: border-box !important;
+        align-self: flex-start !important; /* prevent stretching in flex containers */
+        flex: 0 0 auto !important; /* don't grow or shrink to fill the flex row/column */
+        max-width: none !important;
+    }
+
+    /* Also force the grid container itself to size to content */
+    .giving-grid {
+        display: inline-block !important;
+        width: auto !important;
+        table-layout: auto !important;
+        vertical-align: top !important;
+    }
+
+    /* Target Radzen-generated table inside our giving-grid and force it to size to content */
+    .giving-grid .rz-datatable-tablewrapper > table,
+    .giving-grid .rz-datatable-scrollable-table-wrapper > table,
+    .giving-grid .rz-grid-table {
+        width: auto !important;
+        table-layout: auto !important;
+        display: inline-table !important;
+    }
+
+    /* Cap the donor column (first column) so it can't grow to fill the parent */
+    .giving-grid .rz-grid-table thead th:first-child .rz-column-title,
+    .giving-grid .rz-grid-table tbody td:first-child .rz-cell-data {
+        max-width: 480px !important;
+        white-space: nowrap !important;
+        overflow: hidden !important;
+        text-overflow: ellipsis !important;
+    }
+
+    /* Keep existing grid styling (smaller font, padding) */
+    .giving-grid .rz-data-grid { font-size: 0.75rem; /* table-layout and width overridden above */ }
+    .giving-grid .rz-cell,
+    .giving-grid .rz-column-header,
+    .giving-grid .rz-column-footer { padding: 2px 4px; line-height: 1.1; overflow: hidden; text-overflow: ellipsis; }
+    .giving-grid .rz-column-header { font-size: 0.70rem; font-weight: 600; white-space: nowrap; }
+
+    /* Left-align all headers (column titles) while keeping cell padding consistent */
+    .giving-grid .rz-column-header .rz-column-title {
+        width: 100%;
+        display: block;
+        text-align: left;
+    }
+
+    /* Donor cell: allow to expand but cap its maximum width so grid doesn't stretch to full container */
+    .giving-grid .donor-cell {
+        display: inline-block;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        max-width: 480px; /* cap donor width */
+        cursor: pointer;
+        color: #0a3b6b;
+        text-decoration: none;
+        transition: color 0.2s ease;
+    }
+
+    .giving-grid .donor-cell:hover {
+        color: #072a47; text-decoration: underline;
+    }
+
+    .donation-list .donor-cell {
+        cursor: pointer; color: #0a3b6b; text-decoration: none; transition: color 0.2s ease;
+    }
+
+    .donation-list .donor-cell:hover {
+        color: #072a47; text-decoration: underline;
+    }
+
+    .view-mode-buttons .rz-button { padding: 4px 10px; font-size: 0.75rem; }
+
+    /* Vertically center dropdown text */
+    .rz-dropdown .rz-inputtext { display: flex; align-items: center; }
+    .rz-dropdown .rz-dropdown-label { display: flex; align-items: center; height: 100%; width: 100%; }
+
+    /* Prevent long text from going under the trigger (arrow) and use ellipsis */
+    .rz-dropdown .rz-dropdown-label {
+        padding-right: 1.75rem; /* reserve space for the trigger button */
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        box-sizing: border-box;
+    }
+    /* Also ensure items in the panel clip properly */
+    .rz-dropdown-panel .rz-dropdown-item {
+        display: flex; align-items: center;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+</style>
+
+<RadzenStack Orientation="Orientation.Vertical" Gap="15px" Class="rz-p-4" Style="padding-top:0.5rem;">
+
+    <RadzenStack Orientation="Orientation.Horizontal"
+                 Gap="2rem"
+                 JustifyContent="JustifyContent.SpaceBetween"
+                 AlignItems="AlignItems.Start"
+                 Style="width:100%;">
+
+        <RadzenStack Orientation="Orientation.Vertical" Gap="0.4rem" Style="flex:1;">
+            <RadzenText TextStyle="TextStyle.Subtitle1">@Localizer["DateRange"]</RadzenText>
+            <RadzenStack Orientation="Orientation.Horizontal"
+                         Gap="0.5rem"
+                         AlignItems="AlignItems.Center"
+                         Wrap="FlexWrap.Wrap">
+                <RadzenLabel Text="@Localizer["StartDate"]" />
+                <RadzenDatePicker @bind-Value="@dateRangeState.PendingStartDate" DateFormat="MM/dd/yyyy" Style="max-width:130px"
+                                  Change="@OnDatePickerChanged" />
+                <RadzenLabel Text="@Localizer["EndDate"]" />
+                <RadzenDatePicker @bind-Value="@dateRangeState.PendingEndDate" DateFormat="MM/dd/yyyy" Style="max-width:130px"
+                                  Change="@OnDatePickerChanged" />
+
+                <!-- Preset dropdown -->
+                <RadzenDropDown TValue="DateRangePreset"
+                                Data="@presetOptions"
+                                TextProperty="Text"
+                                ValueProperty="Value"
+                                @bind-Value="@dateRangeState.SelectedPreset"
+                                Change="@OnPresetChanged"
+                                Style="width: 180px;">
+                    <ValueTemplate>
+                        <span style="display:flex;align-items:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding-right:1.75rem;width:100%;">
+                            @(presetOptions.FirstOrDefault(o => o.Value == dateRangeState.SelectedPreset)?.Text ?? "")
+                        </span>
+                    </ValueTemplate>
+                    <Template Context="opt">
+                        <span style="display:flex;align-items:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;width:100%;">
+                            @opt.Text
+                        </span>
+                    </Template>
+                </RadzenDropDown>
+
+                <RadzenButton Text="@Localizer["ApplyFilter"]"
+                              Icon="filter_alt"
+                              Click="@selectDateRange"
+                              Size="ButtonSize.Small"
+                              ButtonStyle="ButtonStyle.Primary" />
+            </RadzenStack>
+        </RadzenStack>
+
+        <RadzenStack Orientation="Orientation.Vertical" Gap="0.4rem" Style="flex:1; max-width:300px;">
+            <RadzenText TextStyle="TextStyle.Subtitle1">@Localizer["Account"]</RadzenText>
+            <RadzenDropDown TValue="string"
+                            Data="@donationData.UserAccounts"
+                            TextProperty="Fund"
+                            ValueProperty="Fund"
+                            Value="@selectedAccount"
+                            Change="@OnAccountDropdownChanged"
+                            Placeholder="@Localizer["ChooseAccount"]"
+                            Style="width: 300px;">
+                <ValueTemplate>
+                    <span style="display:flex;align-items:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding-right:1.75rem;width:100%;">
+                        @DisplayFormatter.FormatFundDisplay(selectedAccount)
+                    </span>
+                </ValueTemplate>
+                <Template Context="acct">
+                    <span style="display:flex;align-items:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;width=100%;">
+                        @DisplayFormatter.FormatFundDisplay(acct.Fund)
+                    </span>
+                </Template>
+            </RadzenDropDown>
+
+            <!-- SubAccount dropdown - only shown for accounts with Separate sub accounts -->
+            @if (showSubAccountDropdown && subAccountOptions.Any())
+            {
+                <RadzenStack Orientation="Orientation.Vertical" Gap="0.2rem" Style="margin-top: 0.5rem;">
+                    <RadzenText TextStyle="TextStyle.Body2" Style="color: #666; font-size: 0.9rem;">Sub Account</RadzenText>
+                    <RadzenDropDown TValue="string"
+                                    Data="@subAccountOptions"
+                                    TextProperty="DisplayText" 
+                                    ValueProperty="Value"
+                                    @bind-Value="selectedSubAccount"
+                                    Change="@(args => OnSubAccountSelection(args?.ToString() ?? string.Empty))"
+                                    Style="width: 300px;">
+                        <ValueTemplate>
+                            <span style="display:flex;align-items:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding-right:1.75rem;width:100%;">
+                                @(subAccountOptions.FirstOrDefault(o => o.Value == selectedSubAccount)?.DisplayText ?? "")
+                            </span>
+                        </ValueTemplate>
+                        <Template Context="option">
+                            <span style="display:flex;align-items:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;width=100%;">
+                                @option.DisplayText
+                            </span>
+                        </Template>
+                    </RadzenDropDown>
+                </RadzenStack>
+            }
+        </RadzenStack>
+    </RadzenStack>
+
+    <RadzenStack Orientation="Orientation.Horizontal"
+                 Gap="0.5rem"
+                 AlignItems="AlignItems.Center"
+                 Class="view-mode-buttons rz-mt-3">
+        <RadzenButton Text="@Localizer["Grid"]"
+                      ButtonStyle="@(currentView == ViewMode.GivingGrid ? ButtonStyle.Primary : ButtonStyle.Light)"
+                      Size="ButtonSize.Small"
+                      Click="@(() => SetView(ViewMode.GivingGrid))" />
+        <RadzenButton Text="@Localizer["List"]"
+                      ButtonStyle="@(currentView == ViewMode.DonationList ? ButtonStyle.Primary : ButtonStyle.Light)"
+                      Size="ButtonSize.Small"
+                      Click="@(() => SetView(ViewMode.DonationList))" />
+        <RadzenButton Text="@Localizer["Graph"]"
+                      ButtonStyle="@(currentView == ViewMode.Graphs ? ButtonStyle.Primary : ButtonStyle.Light)"
+                      Size="ButtonSize.Small"
+                      Click="@(() => SetView(ViewMode.Graphs))" />
+    </RadzenStack>
+
+    @if (!string.IsNullOrEmpty(errorMessage))
+    {
+        <RadzenAlert AlertStyle="AlertStyle.Danger" ShowIcon="true" Variant="Variant.Filled" Class="mt-2">
+            @Localizer[errorMessage]
+        </RadzenAlert>
+    }
+
+    @if (isLoading)
+    {
+        <div class="mt-3">
+            <RadzenProgressBar Value="100" ShowValue="false" Mode="ProgressBarMode.Indeterminate" />
+            <p class="text-muted mt-1">@Localizer["LoadingDonations"]</p>
+        </div>
+    }
+    else
+    {
+        @if (currentView == ViewMode.GivingGrid)
+        {
+            @* Giving Grid *@
+            <RadzenCard Class="giving-grid-card" Style="margin-top:0.75rem;">
+                <div class="giving-grid-wrapper">
+                <RadzenDataGrid TItem="DonationPivotRowDto"
+                                Data="@pivotRows"
+                                Class="giving-grid"
+                                 AllowPaging="false"
+                                 AllowSorting="false"
+                                 AllowFiltering="false"
+                                 AllowVirtualization="false"
+                                 AllowColumnReorder="false"
+                                 @ref="_givingGridRef"
+                                 CellRender="@OnGivingGridCellRender"
+                                 EmptyText="@GetEmptyText()">
+                    <Columns>
+                        <!-- Donor: header/cell left -->
+                        <RadzenDataGridColumn TItem="DonationPivotRowDto"
+                                              Title="@(Localizer["Donor"])"
+                                              OrderIndex="0"
+                                              TextAlign="TextAlign.Left">
+                            <Template Context="row">
+                                <span class="donor-cell" title="@row.Donor" @onclick="@(() => OnDonorClick(row.Donor))">@row.Donor</span>
+                            </Template>
+                            <FooterTemplate>
+                                <strong>@Localizer["Total"]</strong>
+                            </FooterTemplate>
+                        </RadzenDataGridColumn>
+
+                        @for (var i = 0; i < monthColumns.Count; i++)
+                        {
+                            var month = monthColumns[i];
+                            <!-- Months: header left, cell will be right via CellRender -->
+                            <RadzenDataGridColumn @key="month"
+                                                  TItem="DonationPivotRowDto"
+                                                  Title="@(GetMonthHeader(month))"
+                                                  TextAlign="TextAlign.Left"
+                                                  Width="@MonthColumnWidth"
+                                                  OrderIndex="@(i + 1)">
+                                <Template Context="row">
+                                    @{
+                                        var has = row.Monthly.TryGetValue(month, out var amt);
+                                    }
+                                    @(has && amt != 0m ? amt.ToString("C0") : "")
+                                </Template>
+                                <FooterTemplate>
+                                    @{
+                                        var mt = monthTotals.TryGetValue(month, out var t) ? t : 0m;
+                                    }
+                                    <div style="text-align: right; width: 100%;"><strong>@mt.ToString("C0")</strong></div>
+                                </FooterTemplate>
+                            </RadzenDataGridColumn>
+                        }
+
+                        <!-- Total: header left, cell will be right via CellRender -->
+                        <RadzenDataGridColumn TItem="DonationPivotRowDto"
+                                              Title="@(Localizer["Total"])"
+                                              TextAlign="TextAlign.Left"
+                                              Width="90px"
+                                              OrderIndex="@(monthColumns.Count + 1)">
+                            <Template Context="row">
+                                <strong>@row.Total.ToString("C0")</strong>
+                            </Template>
+                            <FooterTemplate>
+                                <div style="text-align: right; width: 100%;"><strong>@grandTotal.ToString("C0")</strong></div>
+                            </FooterTemplate>
+                        </RadzenDataGridColumn>
+                    </Columns>
+                </RadzenDataGrid>
+                </div>
+            </RadzenCard>
+        }
+        else if (currentView == ViewMode.DonationList)
+        {
+            <!-- Summary cards and list layout -->
+            <RadzenStack Orientation="Orientation.Horizontal" Gap="2rem" AlignItems="AlignItems.Start">
+                <!-- Summary card (left side) - fixed width at 20% -->
+                <div style="flex:0 0 20%; min-width:260px;">
+                    <DonationSummaryCard Donations="@selectedDonations" 
+                                         StartDate="@dateRangeState.StartDate" 
+                                         EndDate="@dateRangeState.EndDate" />
+                </div>
+
+                <!-- Donation list (right side) -->
+                <div style="flex: 1;">
+                    <RadzenCard>
+                        <RadzenDataGrid Data="@selectedDonations"
+                                        TItem="DonationRowDto"
+                                        AllowFiltering="true"
+                                        AllowColumnResize="true"
+                                        AllowSorting="true"
+                                        AllowPaging="false"
+                                        FilterMode="FilterMode.Advanced"
+                                        EmptyText="@GetEmptyText()"
+                                        Class="donation-list">
+                            <Columns>
+                                <RadzenDataGridColumn TItem="DonationRowDto" Property="Date" Title="@(Localizer["Date"])" FormatString="{0:MM/dd/yyyy}" />
+                                <RadzenDataGridColumn TItem="DonationRowDto" Property="Donor" Title="@(Localizer["Donor"])">
+                                    <Template Context="donation">
+                                        <span class="donor-cell" @onclick="@(() => OnDonorClick(donation.Donor))">@donation.Donor</span>
+                                    </Template>
+                                </RadzenDataGridColumn>
+                                <RadzenDataGridColumn TItem="DonationRowDto" Property="Amount" Title="@(Localizer["Amount"])" FormatString="{0:C2}" />
+                                <RadzenDataGridColumn TItem="DonationRowDto" Property="TransactionType" Title="@(Localizer["TransactionType"])" />
+                                <RadzenDataGridColumn TItem="DonationRowDto" Property="Frequency" Title="@(Localizer["Frequency"])">
+                                    <Template Context="donation">
+                                        @if (!string.IsNullOrEmpty(donation.Frequency))
+                                        {
+                                            <span>@donation.Frequency</span>
+                                        }
+                                    </Template>
+                                </RadzenDataGridColumn>
+                            </Columns>
+                        </RadzenDataGrid>
+                    </RadzenCard>
+                </div>
+            </RadzenStack>
+        }
+        else
+        {
+            <!-- Graphs placeholder -->
+            <RadzenCard>
+                <RadzenText TextStyle="TextStyle.Subtitle2">@Localizer["Graphs"]</RadzenText>
+                <div class="text-muted">@Localizer["ComingSoon"]</div>
+            </RadzenCard>
+        }
+    }
+</RadzenStack>
+
+@code {
+    private DonationDataDto donationData = new();
+    private List<DonationRowDto> donations = new();
+    private List<DonationRowDto> selectedDonations = new();
+
+    private string selectedAccount = string.Empty;
+    private string selectedSubAccount = "All";
+    private string userId = string.Empty;
+    private bool isAdminOrViewer = false;
+    private string errorMessage = string.Empty;
+    private bool isLoading = true;
+    private AccountOptionDto? currentAccount = null;
+    private bool showDebug = true;
+    private List<string> debugLogs = new();
+    private List<string> lastRawDonationFunds = new();
+
+    // SubAccount support
+    private bool showSubAccountDropdown = false;
+    private List<SubAccountOptionDto> subAccountOptions = new();
+    private List<string> currentFundNamesForSelection = new();
+    private Dictionary<string, int> subFundToPrimaryAccountId = new(StringComparer.OrdinalIgnoreCase);
+
+    private void Debug(string message)
+    {
+        var line = $"[{DateTime.Now:HH:mm:ss}] {message}";
+        debugLogs.Add(line);
+        Console.WriteLine($"DONATIONS DEBUG: {line}");
+    }
+
+    private enum ViewMode { GivingGrid, DonationList, Graphs }
+    private ViewMode currentView = ViewMode.GivingGrid;
+    private void SetView(ViewMode mode) => currentView = mode;
+
+    private readonly List<DateTime> monthColumns = new();
+    private readonly List<DonationPivotRowDto> pivotRows = new();
+    private readonly Dictionary<DateTime, decimal> monthTotals = new();
+    private decimal grandTotal = 0m;
+
+    private RadzenDataGrid<DonationPivotRowDto>? _givingGridRef;
+    private bool _needReloadGivingGrid = false;
+
+    private string MonthColumnWidth => "90px";
+
+    private string GetMonthHeader(DateTime m)
+    {
+        var singleYear = dateRangeState.StartDate.Year == dateRangeState.EndDate.Year;
+        return singleYear ? m.ToString("MMM") : m.ToString("MMM yy");
+    }
+
+    // Use IDateRangeStateService for centralized date management
+    private DateRangeStateDto dateRangeState = new();
+    private List<DateRangePresetOptionDto> presetOptions = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+            var user = authState.User;
+
+            // Resolve user id
+            userId = UserIdResolver.ResolveUserId(user, SessionUserStateService.CurrentUserId);
+
+            // Do not reset session state here. The middleware is responsible for populating per-request
+            // selected-account and setting CurrentUserId. Only initialize CurrentUserId when empty so we
+            // don't accidentally clear middleware-populated SelectedAccountFund.
+            if (string.IsNullOrWhiteSpace(SessionUserStateService.CurrentUserId))
+            {
+                SessionUserStateService.CurrentUserId = userId;
+            }
+
+            // If middleware populated server-side selection (in a separate HTTP request scope) it may be
+            // stored in IUserSelectionService (Memory cache). The Blazor circuit's scoped SessionUserStateService
+            // can be empty because middleware ran in a different scope. Try to hydrate session from the
+            // server-side selection store so the circuit has the same SelectedAccountFund.
+            if (string.IsNullOrWhiteSpace(SessionUserStateService.SelectedAccountFund))
+            {
+                try
+                {
+                    if (!string.IsNullOrWhiteSpace(userId) && UserSelectionService != null && UserSelectionService.TryGetSelectedAccount(userId, out var svcAcct) && !string.IsNullOrWhiteSpace(svcAcct))
+                    {
+                        SessionUserStateService.SelectedAccountFund = svcAcct;
+                        Debug($"Hydrated session SelectedAccountFund from UserSelectionService: '{svcAcct}'");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Logger.LogWarning(ex, "Failed to hydrate session SelectedAccountFund from UserSelectionService");
+                }
+            }
+
+            var authLevel = user.FindFirstValue("AuthLevel") ?? string.Empty;
+            isAdminOrViewer = user.IsInRole("Admin") ||
+                              string.Equals(authLevel, "Admin", StringComparison.OrdinalIgnoreCase) ||
+                              string.Equals(authLevel, "Viewer", StringComparison.OrdinalIgnoreCase);
+
+            presetOptions = GetPresetOptions();
+
+            if ((!SessionUserStateService.SelectedStartDate.HasValue || !SessionUserStateService.SelectedEndDate.HasValue) &&
+                !string.IsNullOrWhiteSpace(userId) &&
+                DateRangeSelectionService.TryGetDateRange(userId, out var hydratedRange))
+            {
+                SessionUserStateService.SelectedStartDate = hydratedRange.StartDate;
+                SessionUserStateService.SelectedEndDate = hydratedRange.EndDate;
+                SessionUserStateService.SelectedDatePreset = string.IsNullOrWhiteSpace(hydratedRange.Preset) ? "ThisMonth" : hydratedRange.Preset;
+            }
+
+            dateRangeState = DateRangeStateService.InitializeDateRange(SessionUserStateService);
+
+            // Only use the middleware-populated SelectedAccountFund on initialization. Do NOT fall back to DefaultAccountFund here.
+            // If middleware didn't provide a selection, leave selectedAccount empty and do not overwrite session —
+            // UI will display server-chosen account from service response but we won't persist it unless the user explicitly selects.
+            selectedAccount = SessionUserStateService.SelectedAccountFund ?? string.Empty;
+
+            // Try to use embedded dashboard donation payload from session dashboard cache first
+            if (!string.IsNullOrWhiteSpace(selectedAccount) && SessionDashboardDtoCacheService != null && !string.IsNullOrWhiteSpace(userId))
+            {
+                if (SessionDashboardDtoCacheService.TryGetDashboard(userId, selectedAccount, out var cachedDashboard) &&
+                    cachedDashboard.SelectedAccountDonations?.Donations?.Any() == true &&
+                    CacheCoversCurrentDateRange(cachedDashboard.SelectedAccountDonations))
+                {
+                    donationData = cachedDashboard.SelectedAccountDonations;
+                    // Ensure UserAccounts are present on donation data for UI binding
+                    donationData.UserAccounts = cachedDashboard.UserAccounts.Select(u => new AccountOptionDto
+                    {
+                        AccountId = u.AccountId,
+                        Fund = u.Fund,
+                        AccountingClass = u.AccountingClass,
+                        AccountNumber = u.AccountNumber,
+                        Overhead = u.Overhead
+                    }).ToList();
+
+                    donations = donationData.Donations ?? new List<DonationRowDto>();
+                    Debug($"Loaded donations from embedded dashboard cache for '{selectedAccount}' rows={donations.Count}");
+                }
+                else if (SessionDonationDataCacheService != null &&
+                         SessionDonationDataCacheService.TryGetDonationData(userId, selectedAccount, out var cachedDto) &&
+                         CacheCoversCurrentDateRange(cachedDto))
+                {
+                    donationData = cachedDto;
+                    donations = donationData.Donations ?? new List<DonationRowDto>();
+                    Debug($"Loaded donations from session donation cache for '{selectedAccount}' rows={donations.Count}");
+                }
+                else
+                {
+                    await LoadDonationsData(selectedAccount, selectedSubAccount);
+                }
+            }
+            else
+            {
+                await LoadDonationsData(selectedAccount, selectedSubAccount);
+            }
+            
+            if (!SessionUserStateService.SelectedStartDate.HasValue || !SessionUserStateService.SelectedEndDate.HasValue)
+            {
+                await selectDateRange();
+            }
+            else
+            {
+                selectedDonations = DonationPresentationService.FilterByDateRange(donations, dateRangeState.StartDate, dateRangeState.EndDate);
+                BuildPivot();
+            }
+
+            // If there are donations cached but none match the current date filter, expand to cached range so user sees data immediately
+            if ((selectedDonations == null || !selectedDonations.Any()) && donations != null && donations.Any())
+            {
+                try
+                {
+                    var minDate = donations.Min(d => d.Date);
+                    var maxDate = donations.Max(d => d.Date);
+
+                    // Only adjust if current filter is narrower than cached range
+                    if (dateRangeState.StartDate > minDate || dateRangeState.EndDate < maxDate)
+                    {
+                        Debug($"No donations in current filter; expanding date range to cached span {minDate:yyyy-MM-dd}..{maxDate:yyyy-MM-dd}");
+
+                        dateRangeState.PendingStartDate = minDate;
+                        dateRangeState.PendingEndDate = maxDate;
+                        dateRangeState.SelectedPreset = DateRangePreset.Custom;
+
+                        DateRangeStateService.ApplyPendingDates(dateRangeState);
+
+                        selectedDonations = DonationPresentationService.FilterByDateRange(donations, dateRangeState.StartDate, dateRangeState.EndDate);
+                        BuildPivot();
+
+                        if (currentView == ViewMode.GivingGrid && _givingGridRef is not null)
+                        {
+                            await _givingGridRef.Reload();
+                        }
+                        else
+                        {
+                            await InvokeAsync(StateHasChanged);
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Debug($"Failed to expand date range: {ex.Message}");
+                }
+            }
+
+            isLoading = false;
+            Debug($"Initialized. SelectedAccount='{selectedAccount}', UserAccounts={donationData.UserAccounts.Count}");
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error loading data: {ex.Message}";
+            Console.WriteLine($"Error in OnInitializedAsync: {ex.Message}");
+            isLoading = false;
+        }
+    }
+
+    private bool CacheCoversCurrentDateRange(DonationDataDto dto)
+    {
+        if (dto is null)
+        {
+            return false;
+        }
+
+        if (dto.CachedStartDate == default || dto.CachedEndDate == default)
+        {
+            return false;
+        }
+
+        var rangeStart = dateRangeState.StartDate.Date;
+        var rangeEnd = dateRangeState.EndDate.Date;
+        var cacheStart = dto.CachedStartDate.Date;
+        var cacheEnd = dto.CachedEndDate.Date;
+
+        return cacheStart <= rangeStart && cacheEnd >= rangeEnd;
+    }
+
+    private async Task LoadDonationsData(string accountName, string subAccountValue, bool explicitSelection = false)
+    {
+        try
+        {
+            isLoading = true;
+            Logger.LogInformation("[Donations] LoadDonationsData start: passedAccount='{Account}', subAccount='{Sub}', userId='{UserId}', isAdminOrViewer={IsAdmin}", accountName, subAccountValue, userId, isAdminOrViewer);
+            Console.WriteLine($"[Donations] LoadDonationsData start: passedAccount='{accountName}', subAccount='{subAccountValue}', userId='{userId}', isAdminOrViewer={isAdminOrViewer}, Session.SelectedAccountFund='{SessionUserStateService.SelectedAccountFund}', Session.DefaultAccountFund='{SessionUserStateService.DefaultAccountFund}'");
+
+            // Remember what we explicitly passed to the service so we only overwrite session when caller provided an explicit account
+            var passedAccount = accountName;
+            var usedSessionPreferred = false;
+
+            // If caller did not explicitly select an account, prefer the session-selected account (middleware may have populated it).
+            // Also treat a non-explicit call where passedAccount equals the session value as session-preferred.
+            if (!explicitSelection)
+            {
+                if (string.IsNullOrWhiteSpace(passedAccount) && !string.IsNullOrWhiteSpace(SessionUserStateService.SelectedAccountFund))
+                {
+                    passedAccount = SessionUserStateService.SelectedAccountFund;
+                    usedSessionPreferred = true;
+                    Logger.LogInformation("[Donations] Using session-selected account when calling service: {Account}", passedAccount);
+                    Console.WriteLine($"[Donations] Using session-selected account when calling service: {passedAccount}");
+                }
+                else if (!string.IsNullOrWhiteSpace(passedAccount) && string.Equals(passedAccount, SessionUserStateService.SelectedAccountFund, StringComparison.OrdinalIgnoreCase))
+                {
+                    // Caller supplied the same value that's already in session, treat as session-preferred so we don't overwrite.
+                    usedSessionPreferred = true;
+                }
+            }
+
+             var dto = await DonationService.GetDonationDataAsync(
+                passedAccount ?? string.Empty,
+                subAccountValue,
+                new DateRange(dateRangeState.StartDate, dateRangeState.EndDate),
+                userId,
+                isAdminOrViewer,
+                forceRefresh: false);
+
+            Logger.LogInformation("[Donations] Service returned SelectedAccount='{SelectedAccount}', UserAccounts={Count}", dto?.SelectedAccount, dto?.UserAccounts?.Count ?? 0);
+            Console.WriteLine($"[Donations] Service returned SelectedAccount='{dto?.SelectedAccount}', UserAccountsCount={dto?.UserAccounts?.Count ?? 0}");
+
+            donationData = dto;
+
+            // Use what the service returned for UI state, but don't overwrite the session unless the user explicitly selected an account.
+            // Prefer a non-empty SelectedAccount from the service, otherwise keep any existing selectedAccount (e.g. hydrated from session/middleware).
+            if (!string.IsNullOrWhiteSpace(dto.SelectedAccount))
+            {
+                selectedAccount = dto.SelectedAccount;
+            }
+            else if (string.IsNullOrWhiteSpace(selectedAccount) && dto.UserAccounts.Count > 0)
+            {
+                // If we had no session/middleware value, fall back to the first available account from the service (UI-only, not persisted).
+                selectedAccount = dto.UserAccounts.First().Fund;
+            }
+             selectedSubAccount = dto.SelectedSubAccount;
+             showSubAccountDropdown = dto.ShowSubAccountDropdown;
+             subAccountOptions = dto.SubAccountOptions;
+             currentFundNamesForSelection = dto.FundNamesForSelection;
+             lastRawDonationFunds = dto.RawDonationFunds;
+            currentAccount = dto.UserAccounts.FirstOrDefault(a => a.Fund == selectedAccount);
+            donations = dto.Donations;
+
+            Debug($"Service returned donations total={dto.Donations?.Count ?? 0}; currentAccount='{currentAccount?.Fund}'");
+
+            if (string.IsNullOrWhiteSpace(selectedAccount) && dto.UserAccounts.Count > 0)
+            {
+                // choose a sensible UI fallback but do NOT persist it to session or to server
+                selectedAccount = dto.UserAccounts.First().Fund;
+            }
+
+            var defaultFundFromDto = !string.IsNullOrWhiteSpace(SessionUserStateService.DefaultAccountFund)
+                ? SessionUserStateService.DefaultAccountFund
+                : dto.UserAccounts.FirstOrDefault()?.Fund ?? string.Empty;
+
+            // Only persist the selection into session/server when the selection was explicit (user interacted with dropdown).
+            if (explicitSelection && !string.IsNullOrWhiteSpace(passedAccount))
+            {
+                SessionUserStateService.SelectedAccountFund = selectedAccount;
+                SessionUserStateService.DefaultAccountFund = defaultFundFromDto;
+
+                try
+                {
+                    var authState2 = await AuthStateProvider.GetAuthenticationStateAsync();
+                    var currentUser = authState2.User;
+                    var uId = UserIdResolver.ResolveUserId(currentUser, SessionUserStateService.CurrentUserId);
+                    if (UserSelectionService != null && !string.IsNullOrWhiteSpace(uId))
+                    {
+                        UserSelectionService.SetSelectedAccount(uId, selectedAccount);
+                        Logger.LogInformation("[Donations] Persisted server-side selected account for userId={UserId} -> {Account}", uId, selectedAccount);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Logger.LogWarning(ex, "[Donations] Failed to persist server-side selection after explicit selection");
+                }
+            }
+            else
+            {
+                if (string.IsNullOrWhiteSpace(SessionUserStateService.SelectedAccountFund) && !string.IsNullOrWhiteSpace(selectedAccount))
+                {
+                    SessionUserStateService.SelectedAccountFund = selectedAccount;
+                    SessionUserStateService.DefaultAccountFund = defaultFundFromDto;
+
+                    try
+                    {
+                        var authState2 = await AuthStateProvider.GetAuthenticationStateAsync();
+                        var currentUser = authState2.User;
+                        var uId = UserIdResolver.ResolveUserId(currentUser, SessionUserStateService.CurrentUserId);
+                        if (UserSelectionService != null && !string.IsNullOrWhiteSpace(uId))
+                        {
+                            UserSelectionService.SetSelectedAccount(uId, selectedAccount);
+                        }
+                    }
+                    catch { }
+                }
+
+                Logger.LogInformation("[Donations] Not overwriting session on non-explicit load; Session.SelectedAccountFund='{SessionSel}'", SessionUserStateService.SelectedAccountFund);
+                Console.WriteLine($"[Donations] Not overwriting session on non-explicit load; Session.SelectedAccountFund='{SessionUserStateService.SelectedAccountFund}'");
+            }
+
+            selectedDonations = DonationPresentationService.FilterByDateRange(donations, dateRangeState.StartDate, dateRangeState.EndDate);
+            BuildPivot();
+
+            Debug($"After filtering: donations={donations?.Count ?? 0}, selectedDonations={selectedDonations?.Count ?? 0}, dateRange={dateRangeState.StartDate:yyyy-MM-dd}..{dateRangeState.EndDate:yyyy-MM-dd}");
+
+            // Mark that we need to reload the giving grid once the component has rendered and the grid ref is available
+            _needReloadGivingGrid = true;
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error loading donation data: {ex.Message}";
+            Console.WriteLine($"Error in LoadDonationsData: {ex.Message}");
+        }
+        finally
+        {
+            isLoading = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_needReloadGivingGrid && _givingGridRef is not null && currentView == ViewMode.GivingGrid)
+        {
+            try
+            {
+                await _givingGridRef.Reload();
+            }
+            catch { }
+            finally
+            {
+                _needReloadGivingGrid = false;
+            }
+        }
+
+        await base.OnAfterRenderAsync(firstRender);
+    }
+
+    private void OnPresetChanged(object? args)
+    {
+        if (args is DateRangePreset preset)
+        {
+            DateRangeStateService.ApplyPreset(dateRangeState, preset);
+            StateHasChanged();
+        }
+    }
+
+    private void OnDatePickerChanged()
+    {
+        DateRangeStateService.ApplyPendingDates(dateRangeState);
+        StateHasChanged();
+    }
+
+    private async Task OnSubAccountSelection(string value)
+    {
+        selectedSubAccount = value;
+        Debug($"SubAccount selected: '{selectedSubAccount}'");
+        await LoadDonationsData(selectedAccount, selectedSubAccount, explicitSelection: true);
+    }
+
+    private async Task OnAccountDropdownChanged(object? args)
+    {
+        await accountSelection(args?.ToString() ?? string.Empty);
+    }
+
+    public async Task accountSelection(string accountName)
+    {
+        if (string.IsNullOrEmpty(accountName)) return;
+
+        selectedAccount = accountName;
+        SessionUserStateService.SelectedAccountFund = accountName;
+
+        currentAccount = donationData.UserAccounts.FirstOrDefault(a => a.Fund == selectedAccount);
+        await LoadDonationsData(selectedAccount, selectedSubAccount, explicitSelection: true);
+    }
+
+    // ensure user id resolution used when fetching donation data
+    private async Task EnsureDonationDataForSelectedAccount()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        var user = authState.User;
+        var userId = UserIdResolver.ResolveUserId(user, SessionUserStateService.CurrentUserId);
+        // ...use userId when calling services as needed
+    }
+
+    private async Task selectDateRange()
+    {
+        try
+        {
+            DateRangeStateService.ApplyPendingDates(dateRangeState);
+            DateRangeStateService.SaveDateRangeToSessionState(SessionUserStateService, dateRangeState);
+            if (!string.IsNullOrWhiteSpace(userId))
+            {
+                DateRangeSelectionService.SetDateRange(userId, dateRangeState.StartDate, dateRangeState.EndDate, dateRangeState.SelectedPreset.ToString());
+            }
+
+            // Reload data for the new date range instead of only filtering the currently loaded in-memory list.
+            await LoadDonationsData(selectedAccount, selectedSubAccount);
+
+            Debug($"Apply date filter: {dateRangeState.StartDate:yyyy-MM-dd} to {dateRangeState.EndDate:yyyy-MM-dd}; filteredCount={selectedDonations.Count}");
+
+            // Ensure UI updates after loading data. If we're showing the grid, reload it to force the pivot to render.
+            if (currentView == ViewMode.GivingGrid && _givingGridRef is not null)
+            {
+                await _givingGridRef.Reload();
+            }
+            else
+            {
+                await InvokeAsync(StateHasChanged);
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error applying date filter: {ex.Message}";
+            Console.WriteLine($"Error in selectDateRange: {ex.Message}");
+        }
+    }
+
+    private void BuildPivot()
+    {
+        var pivot = DonationPresentationService.BuildPivot(selectedDonations, dateRangeState.StartDate, dateRangeState.EndDate, Localizer["Unknown"]);
+
+        monthColumns.Clear();
+        monthColumns.AddRange(pivot.MonthColumns);
+
+        pivotRows.Clear();
+        pivotRows.AddRange(pivot.Rows);
+
+        monthTotals.Clear();
+        foreach (var kv in pivot.MonthTotals)
+        {
+            monthTotals[kv.Key] = kv.Value;
+        }
+
+        grandTotal = pivot.GrandTotal;
+    }
+
+    private RadzenDataGrid<DonationPivotRowDto>? givingGridRef;
+
+    private void OnGivingGridCellRender(DataGridCellRenderEventArgs<DonationPivotRowDto> args)
+    {
+        if (args.Column?.OrderIndex is int idx && idx >= 1)
+        {
+            var style = "text-align: right !important;";
+            if (args.Attributes.TryGetValue("style", out var existing) && existing is string s && !string.IsNullOrWhiteSpace(s))
+            {
+                args.Attributes["style"] = s.EndsWith(";") ? s + style : s + ";" + style;
+            }
+            else
+            {
+                args.Attributes["style"] = style;
+            }
+        }
+    }
+
+    private string GetEmptyText()
+    {
+        return string.IsNullOrWhiteSpace(selectedAccount)
+            ? Localizer["PleaseSelectAnAccount"]
+            : Localizer["NoDonationsFound"]; 
+    }
+
+    private async Task OnDonorClick(string? donorName)
+    {
+        if (string.IsNullOrWhiteSpace(donorName) || donorName == Localizer["Unknown"] || donorName == Localizer["Anonymous"])
+        {
+            return;
+        }
+
+        try
+        {
+            var donorDonations = selectedDonations
+                .Where(d => string.Equals(d.Donor?.Trim(), donorName?.Trim(), StringComparison.OrdinalIgnoreCase))
+                .ToList();
+
+            if (!donorDonations.Any())
+            {
+                return;
+            }
+
+            var donorTotal = donorDonations.Sum(d => Convert.ToDecimal(d.Amount));
+            var donorLastDate = donorDonations.Max(d => d.Date);
+            var donationCount = donorDonations.Count;
+
+            var mostRecent = donorDonations.OrderByDescending(d => d.Date).First();
+
+            await DialogService.OpenAsync<DonorDetailsDialog>(
+                title: Localizer["ContactInformation"],
+                parameters: new Dictionary<string, object>
+                {
+                    { nameof(DonorDetailsDialog.DonorName), donorName },
+                    { nameof(DonorDetailsDialog.DonorEmail), mostRecent.Email ?? string.Empty },
+                    { nameof(DonorDetailsDialog.DonorPhoneMobile), mostRecent.PhoneMobile ?? string.Empty },
+                    { nameof(DonorDetailsDialog.DonorPhoneFixed), mostRecent.PhoneFixed ?? string.Empty },
+                    { nameof(DonorDetailsDialog.DonorAddress), mostRecent.Address ?? string.Empty },
+                    { nameof(DonorDetailsDialog.DonorCity), mostRecent.City ?? string.Empty },
+                    { nameof(DonorDetailsDialog.DonorState), mostRecent.State ?? string.Empty },
+                    { nameof(DonorDetailsDialog.DonorPostal), mostRecent.PostalCode ?? string.Empty },
+                    { nameof(DonorDetailsDialog.DonorCountry), mostRecent.Country ?? string.Empty }
+                },
+                options: new DialogOptions
+                {
+                    Width = "600px",
+                    Height = "auto",
+                    Resizable = false,
+                    ShowClose = true
+                }
+            );
+        }
+        catch (Exception ex)
+        {
+            Debug($"Error opening donor dialog: {ex.Message}");
+            Console.WriteLine($"Error in OnDonorClick: {ex.Message}");
+        }
+    }
+
+    private List<DateRangePresetOptionDto> GetPresetOptions()
+    {
+        return new List<DateRangePresetOptionDto>
+        {
+            new() { Text = Localizer["AllDates"],         Value = DateRangePreset.AllDates },
+            new() { Text = Localizer["ThisYear"],         Value = DateRangePreset.ThisYear },
+            new() { Text = Localizer["Previous12Months"], Value = DateRangePreset.Previous12Months },
+            new() { Text = Localizer["LastYear"],         Value = DateRangePreset.LastYear },
+            new() { Text = Localizer["ThisMonth"],        Value = DateRangePreset.ThisMonth },
+            new() { Text = Localizer["LastMonth"],        Value = DateRangePreset.LastMonth },
+            new() { Text = Localizer["CustomRange"],      Value = DateRangePreset.Custom }
+        };
+    }
+}

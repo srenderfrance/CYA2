@@ -1,0 +1,927 @@
+﻿@page "/"
+@page "/account-summaries"
+@using Microsoft.AspNetCore.Components.Web
+@using static Microsoft.AspNetCore.Components.Web.RenderMode
+@using Microsoft.AspNetCore.Authorization
+@using Radzen
+@using Radzen.Blazor
+@attribute [Authorize]
+@rendermode InteractiveServer
+@attribute [StreamRendering]
+@using System.Security.Claims
+@using System.Globalization
+@inject AuthenticationStateProvider AuthStateProvider
+@inject IStringLocalizer<Resource> Localizer
+@using Cya2.Application.Interfaces
+@using Cya2.Application.DTOs
+@inject IFinancialDashboardService DashboardService
+@inject ISessionDashboardDtoCacheService SessionDashboardDtoCacheService
+@inject Cya2.Application.Interfaces.ISessionUserStateService SessionUserStateService
+@inject ILogger<Home> Logger
+@inject IJSRuntime JS
+@inject Cya2.Application.Interfaces.IUserIdResolver UserIdResolver
+@inject Cya2.Application.Interfaces.IUserSelectionService UserSelectionService
+@inject Cya2.Application.Interfaces.IDonationService DonationService
+@inject Cya2.Application.Interfaces.ISessionDonationDataCacheService SessionDonationDataCacheService
+@inject Cya2.Application.Interfaces.IUserDateRangeSelectionService DateRangeSelectionService
+@inject Cya2.Application.Interfaces.IExpenseService ExpenseService
+@inject Cya2.Application.Interfaces.IDonorService DonorService
+
+@if (!EmbedMode)
+{
+    <PageTitle>@Localizer["CYAHome"]</PageTitle>
+}
+
+@if (ShowWelcomeHeader)
+{
+    <h1 class="h3">
+        @Localizer["WelcomeUser", userName]
+        @if (isAdminUser)
+        {
+            <span class="badge bg-danger ms-2">@Localizer["AdminMode"]</span>
+        }
+    </h1>
+}
+
+@if (isLoading)
+{
+    <div class="mt-4">
+        <RadzenProgressBar Value="100" ShowValue="false" Mode="ProgressBarMode.Indeterminate" />
+        <p class="text-muted mt-2">@Localizer["Loading"]</p>
+    </div>
+}
+else if (!dashboardData.UserAccounts.Any())
+{
+    <div class="alert alert-info mt-4">
+        <h4>@Localizer["NoAccountFound"]</h4>
+        <p>@Localizer["NoAccountMessage"]</p>
+    </div>
+}
+else
+{
+    <RadzenCard class="mt-4">
+        <RadzenStack Orientation="Orientation.Horizontal" Gap="1rem" JustifyContent="JustifyContent.SpaceBetween" AlignItems="AlignItems.Center">
+            <RadzenStack Orientation="Orientation.Horizontal" Gap="1rem" AlignItems="AlignItems.Center">
+                <RadzenText TextStyle="TextStyle.H5">@Localizer["Account"]</RadzenText>
+
+                <RadzenDropDown TValue="string"
+                                Data="@dashboardData.UserAccounts"
+                                TextProperty="DisplayName"
+                                ValueProperty="Fund"
+                                Value="@selectedAccount"
+                                Change="@OnAccountSelectionAsync"
+                                Placeholder="@Localizer["ChooseAccount"]"
+                                Style="width: 250px;">
+                    <ValueTemplate>
+                        @(dashboardData.UserAccounts.FirstOrDefault(a => a.Fund == selectedAccount)?.DisplayName ?? selectedAccount)
+                    </ValueTemplate>
+                    <Template Context="acct">
+                        @acct.DisplayName
+                    </Template>
+                </RadzenDropDown>
+            </RadzenStack>
+
+            @if (missingGiftDonors.Count > 0)
+            {
+                <RadzenButton Text=@($"Missing Monthly Donations ({missingGiftDonors.Count})")
+                              Icon="warning"
+                              ButtonStyle="ButtonStyle.Danger"
+                              Size="ButtonSize.Small"
+                              Click="@(() => showMissingGiftDialog = !showMissingGiftDialog)" />
+            }
+        </RadzenStack>
+
+        @if (showMissingGiftDialog && missingGiftDonors.Count > 0)
+        {
+            <RadzenCard class="mt-3" Style="border: 1px solid var(--rz-danger); background: var(--rz-base-background-color);">
+                <RadzenStack Orientation="Orientation.Horizontal" JustifyContent="JustifyContent.SpaceBetween" AlignItems="AlignItems.Center" Gap="0.5rem" Class="mb-2">
+                    <RadzenText TextStyle="TextStyle.Subtitle1" Style="font-weight:600;">Missing Monthly Donations — Last 6 Months</RadzenText>
+                    <RadzenButton Icon="close" ButtonStyle="ButtonStyle.Light" Size="ButtonSize.ExtraSmall" Click="@(() => showMissingGiftDialog = false)" />
+                </RadzenStack>
+                <RadzenDataGrid TItem="Cya2.Application.DTOs.DonorSummaryDto"
+                                Data="@missingGiftDonors"
+                                AllowSorting="true"
+                                AllowPaging="false"
+                                Style="width:100%;">
+                    <Columns>
+                        <RadzenDataGridColumn TItem="Cya2.Application.DTOs.DonorSummaryDto" Property="Name" Title="Donor" />
+                        <RadzenDataGridColumn TItem="Cya2.Application.DTOs.DonorSummaryDto" Title="Missing Months">
+                            <Template Context="d">
+                                @string.Join(", ", d.MissingMonths)
+                            </Template>
+                        </RadzenDataGridColumn>
+                    </Columns>
+                </RadzenDataGrid>
+            </RadzenCard>
+        }
+    </RadzenCard>
+
+    @if (dashboardData.HasAccountData)
+    {
+        <RadzenStack Orientation="Orientation.Horizontal" Gap="1rem" Class="mt-4" JustifyContent="JustifyContent.SpaceBetween" Style="overflow-x: auto;">
+            <RadzenStack Orientation="Orientation.Vertical" Style="width: 24%; min-width: 260px;">
+                <RadzenCard Style="height: 100%;">
+                    <RadzenText TextStyle="TextStyle.H5">@Localizer["CurrentMonth"]</RadzenText>
+                    <RadzenText TextStyle="TextStyle.Subtitle2">@dashboardData.CurrentMonth.Period</RadzenText>
+
+                    <RadzenStack Gap="0.5rem" Class="mt-3">
+                        <div class="d-flex justify-content-between">
+                            <RadzenText TextStyle="TextStyle.Body1">@Localizer["Donations"]</RadzenText>
+                            <RadzenText TextStyle="TextStyle.Body1">
+                                <span class="fw-bold">@dashboardData.CurrentMonth.TotalDonations.ToString("C", CultureInfo.CurrentCulture)</span>
+                            </RadzenText>
+                        </div>
+
+                        <hr class="my-2" />
+
+                        <div class="d-flex justify-content-between">
+                            <RadzenText TextStyle="TextStyle.Body1">@Localizer["Expenses"]</RadzenText>
+                            <RadzenText TextStyle="TextStyle.Body1">
+                                <span class="fw-bold">@dashboardData.CurrentMonth.TotalExpenses.ToString("C", CultureInfo.CurrentCulture)</span>
+                            </RadzenText>
+                        </div>
+
+                        <hr class="my-2" />
+
+                        <div class="d-flex justify-content-between">
+                            <RadzenText TextStyle="TextStyle.Body1">@Localizer["Overhead"]</RadzenText>
+                            <RadzenText TextStyle="TextStyle.Body1">
+                                <span class="fw-bold">@dashboardData.CurrentMonth.TotalOverhead.ToString("C", CultureInfo.CurrentCulture)</span>
+                            </RadzenText>
+                        </div>
+
+                        <hr class="my-2" />
+
+                        <div class="d-flex justify-content-between">
+                            <RadzenText TextStyle="TextStyle.Body1">@Localizer["InternalTransfers"]</RadzenText>
+                            <RadzenText TextStyle="TextStyle.Body1">
+                                <span class="fw-bold">@dashboardData.CurrentMonth.InternalTransfers.ToString("C", CultureInfo.CurrentCulture)</span>
+                            </RadzenText>
+                        </div>
+
+                        <hr class="my-2" />
+
+                        <div class="d-flex justify-content-between align-items-center">
+                            <RadzenText TextStyle="TextStyle.Subtitle1">@Localizer["Balance"]</RadzenText>
+                            <RadzenText TextStyle="TextStyle.Subtitle1">
+                                <span class="fw-bold" style="font-size:1.1em;">
+                                    @Math.Abs(dashboardData.CurrentMonth.Balance).ToString("C", CultureInfo.CurrentCulture)
+                                    @(dashboardData.CurrentMonth.Balance < 0 ? $" {Localizer["Deficit"]}" : "")
+                                </span>
+                            </RadzenText>
+                        </div>
+                    </RadzenStack>
+                </RadzenCard>
+            </RadzenStack>
+
+            <RadzenStack Orientation="Orientation.Vertical" Style="width: 24%; min-width: 260px;">
+                <RadzenCard Style="height: 100%;">
+                    <RadzenText TextStyle="TextStyle.H5">@Localizer["PriorMonth"]</RadzenText>
+                    <RadzenText TextStyle="TextStyle.Subtitle2">@dashboardData.PriorMonth.Period</RadzenText>
+
+                    <RadzenStack Gap="0.5rem" Class="mt-3">
+                        <div class="d-flex justify-content-between">
+                            <RadzenText TextStyle="TextStyle.Body1">@Localizer["Donations"]</RadzenText>
+                            <div class="text-end">
+                                <RadzenText TextStyle="TextStyle.Body1">
+                                    <span class="fw-bold">@dashboardData.PriorMonth.TotalDonations.ToString("C", CultureInfo.CurrentCulture)</span>
+                                </RadzenText>
+                            </div>
+                        </div>
+
+                        <hr class="my-2" />
+
+                        <div class="d-flex justify-content-between">
+                            <RadzenText TextStyle="TextStyle.Body1">@Localizer["Expenses"]</RadzenText>
+                            <div class="text-end">
+                                <RadzenText TextStyle="TextStyle.Body1">
+                                    <span class="fw-bold">@dashboardData.PriorMonth.TotalExpenses.ToString("C", CultureInfo.CurrentCulture)</span>
+                                </RadzenText>
+                            </div>
+                        </div>
+
+                        <hr class="my-2" />
+
+                        <div class="d-flex justify-content-between">
+                            <RadzenText TextStyle="TextStyle.Body1">@Localizer["Overhead"]</RadzenText>
+                            <div class="text-end">
+                                <RadzenText TextStyle="TextStyle.Body1">
+                                    <span class="fw-bold">@dashboardData.PriorMonth.TotalOverhead.ToString("C", CultureInfo.CurrentCulture)</span>
+                                </RadzenText>
+                            </div>
+                        </div>
+
+                        <hr class="my-2" />
+
+                        <div class="d-flex justify-content-between">
+                            <RadzenText TextStyle="TextStyle.Body1">@Localizer["InternalTransfers"]</RadzenText>
+                            <div class="text-end">
+                                <RadzenText TextStyle="TextStyle.Body1">
+                                    <span class="fw-bold">@dashboardData.PriorMonth.InternalTransfers.ToString("C", CultureInfo.CurrentCulture)</span>
+                                </RadzenText>
+                            </div>
+                        </div>
+
+                        <hr class="my-2" />
+
+                        <div class="d-flex justify-content-between align-items-center">
+                            <RadzenText TextStyle="TextStyle.Subtitle1">@Localizer["Balance"]</RadzenText>
+                            <div class="text-end">
+                                <RadzenText TextStyle="TextStyle.Subtitle1">
+                                    <span class="fw-bold" style="font-size:1.1em;">
+                                        @Math.Abs(dashboardData.PriorMonth.Balance).ToString("C", CultureInfo.CurrentCulture)
+                                        @(dashboardData.PriorMonth.Balance < 0 ? $" {Localizer["Deficit"]}" : "")
+                                    </span>
+                                </RadzenText>
+                            </div>
+                        </div>
+                    </RadzenStack>
+                </RadzenCard>
+            </RadzenStack>
+
+            <RadzenStack Orientation="Orientation.Vertical" Style="width: 24%; min-width: 260px;">
+                <RadzenCard Style="height: 100%;">
+                    <RadzenText TextStyle="TextStyle.H5">@Localizer["CurrentYear"]</RadzenText>
+                    <RadzenText TextStyle="TextStyle.Subtitle2">@dashboardData.CurrentYear.Period</RadzenText>
+
+                    <RadzenStack Gap="0.5rem" Class="mt-3">
+                        <div class="d-flex justify-content-between">
+                            <RadzenText TextStyle="TextStyle.Body1">@Localizer["Donations"]</RadzenText>
+                            <div class="text-end">
+                                <RadzenText TextStyle="TextStyle.Body1">
+                                    <span class="fw-bold">@dashboardData.CurrentYear.TotalDonations.ToString("C", CultureInfo.CurrentCulture)</span>
+                                </RadzenText>
+                            </div>
+                        </div>
+
+                        <hr class="my-2" />
+
+                        <div class="d-flex justify-content-between">
+                            <RadzenText TextStyle="TextStyle.Body1">@Localizer["Expenses"]</RadzenText>
+                            <div class="text-end">
+                                <RadzenText TextStyle="TextStyle.Body1">
+                                    <span class="fw-bold">@dashboardData.CurrentYear.TotalExpenses.ToString("C", CultureInfo.CurrentCulture)</span>
+                                </RadzenText>
+                            </div>
+                        </div>
+
+                        <hr class="my-2" />
+
+                        <div class="d-flex justify-content-between">
+                            <RadzenText TextStyle="TextStyle.Body1">@Localizer["Overhead"]</RadzenText>
+                            <div class="text-end">
+                                <RadzenText TextStyle="TextStyle.Body1">
+                                    <span class="fw-bold">@dashboardData.CurrentYear.TotalOverhead.ToString("C", CultureInfo.CurrentCulture)</span>
+                                </RadzenText>
+                            </div>
+                        </div>
+
+                        <hr class="my-2" />
+
+                        <div class="d-flex justify-content-between">
+                            <RadzenText TextStyle="TextStyle.Body1">@Localizer["InternalTransfers"]</RadzenText>
+                            <div class="text-end">
+                                <RadzenText TextStyle="TextStyle.Body1">
+                                    <span class="fw-bold">@dashboardData.CurrentYear.InternalTransfers.ToString("C", CultureInfo.CurrentCulture)</span>
+                                </RadzenText>
+                            </div>
+                        </div>
+
+                        <hr class="my-2" />
+
+                        <div class="d-flex justify-content-between align-items-center">
+                            <RadzenText TextStyle="TextStyle.Subtitle1">@Localizer["Balance"]</RadzenText>
+                            <div class="text-end">
+                                <RadzenText TextStyle="TextStyle.Subtitle1">
+                                    <span class="fw-bold" style="font-size:1.1em;">
+                                        @Math.Abs(dashboardData.CurrentYear.Balance).ToString("C", CultureInfo.CurrentCulture)
+                                        @(dashboardData.CurrentYear.Balance < 0 ? $" {Localizer["Deficit"]}" : "")
+                                    </span>
+                                </RadzenText>
+                            </div>
+                        </div>
+                    </RadzenStack>
+                </RadzenCard>
+            </RadzenStack>
+
+            <RadzenStack Orientation="Orientation.Vertical" Style="width: 24%; min-width: 260px;">
+                <RadzenCard Style="height: 100%;">
+                    <RadzenText TextStyle="TextStyle.H5">@Localizer["PriorYear"]</RadzenText>
+                    <RadzenText TextStyle="TextStyle.Subtitle2">@dashboardData.PriorYear.Period</RadzenText>
+
+                    <RadzenStack Gap="0.5rem" Class="mt-3">
+                        <div class="d-flex justify-content-between">
+                            <RadzenText TextStyle="TextStyle.Body1">@Localizer["Donations"]</RadzenText>
+                            <div class="text-end">
+                                <RadzenText TextStyle="TextStyle.Body1">
+                                    <span class="fw-bold">@dashboardData.PriorYear.TotalDonations.ToString("C", CultureInfo.CurrentCulture)</span>
+                                </RadzenText>
+                            </div>
+                        </div>
+
+                        <hr class="my-2" />
+
+                        <div class="d-flex justify-content-between">
+                            <RadzenText TextStyle="TextStyle.Body1">@Localizer["Expenses"]</RadzenText>
+                            <div class="text-end">
+                                <RadzenText TextStyle="TextStyle.Body1">
+                                    <span class="fw-bold">@dashboardData.PriorYear.TotalExpenses.ToString("C", CultureInfo.CurrentCulture)</span>
+                                </RadzenText>
+                            </div>
+                        </div>
+
+                        <hr class="my-2" />
+
+                        <div class="d-flex justify-content-between">
+                            <RadzenText TextStyle="TextStyle.Body1">@Localizer["Overhead"]</RadzenText>
+                            <div class="text-end">
+                                <RadzenText TextStyle="TextStyle.Body1">
+                                    <span class="fw-bold">@dashboardData.PriorYear.TotalOverhead.ToString("C", CultureInfo.CurrentCulture)</span>
+                                </RadzenText>
+                            </div>
+                        </div>
+
+                        <hr class="my-2" />
+
+                        <div class="d-flex justify-content-between">
+                            <RadzenText TextStyle="TextStyle.Body1">@Localizer["InternalTransfers"]</RadzenText>
+                            <div class="text-end">
+                                <RadzenText TextStyle="TextStyle.Body1">
+                                    <span class="fw-bold">@dashboardData.PriorYear.InternalTransfers.ToString("C", CultureInfo.CurrentCulture)</span>
+                                </RadzenText>
+                            </div>
+                        </div>
+
+                        <hr class="my-2" />
+
+                        <div class="d-flex justify-content-between align-items-center">
+                            <RadzenText TextStyle="TextStyle.Subtitle1">@Localizer["Balance"]</RadzenText>
+                            <div class="text-end">
+                                <RadzenText TextStyle="TextStyle.Subtitle1">
+                                    <span class="fw-bold" style="font-size:1.1em;">
+                                        @Math.Abs(dashboardData.PriorYear.Balance).ToString("C", CultureInfo.CurrentCulture)
+                                        @(dashboardData.PriorYear.Balance < 0 ? $" {Localizer["Deficit"]}" : "")
+                                    </span>
+                                </RadzenText>
+                            </div>
+                        </div>
+                    </RadzenStack>
+                </RadzenCard>
+            </RadzenStack>
+        </RadzenStack>
+    }
+}
+
+@code {
+[Parameter] public bool EmbedMode { get; set; }
+[Parameter] public bool ShowWelcomeHeader { get; set; } = true;
+
+private string userName = string.Empty;
+private bool isLoading = true;
+private string selectedAccount = string.Empty;
+private bool isAdminUser;
+
+private FinancialDashboardDto dashboardData = new();
+private string debugMessage = string.Empty;
+private bool debugMessageCopied;
+
+private const int MaxDashboardMemoryCacheItems = 15;
+
+private bool cacheWarmupPending;
+private string cachedUserId = string.Empty;
+private List<string> pendingPrefetchFunds = new();
+
+// Missing gift alert state
+private List<Cya2.Application.DTOs.DonorSummaryDto> missingGiftDonors = new();
+private bool showMissingGiftDialog = false;
+
+    private async Task ComputeMissingGiftAlertsAsync()
+    {
+        try
+        {
+            if (string.IsNullOrWhiteSpace(selectedAccount)) return;
+
+            var now = DateTime.Today;
+            var rangeStart = now.AddMonths(-6);
+            var range = new Cya2.Core.ValueObjects.DateRange(rangeStart, now);
+            var summaries = await DonorService.GetDonorSummariesAsync(selectedAccount, range);
+
+            // Determine the latest donation date in the DB for this account.
+            // Use the cached donation data if available — it already covers a wide range.
+            DateTime? latestDbDate = null;
+            if (!string.IsNullOrWhiteSpace(cachedUserId) &&
+                SessionDonationDataCacheService.TryGetDonationData(cachedUserId, selectedAccount, out var cached) &&
+                cached?.Donations != null && cached.Donations.Count > 0)
+            {
+                latestDbDate = cached.Donations.Max(d => d.Date);
+            }
+
+            // If we can't determine the latest DB date, suppress all alerts.
+            if (latestDbDate == null)
+            {
+                missingGiftDonors = new();
+                return;
+            }
+
+            // Only alert for missing months that fall on or before the month of the latest DB record.
+            // This prevents flagging months that simply haven't been uploaded yet.
+            var dbCurrentMonth = new DateTime(latestDbDate.Value.Year, latestDbDate.Value.Month, 1);
+
+            missingGiftDonors = summaries
+                .Where(d => d.HasMissingGiftAlert &&
+                            d.MissingMonths.Any(m =>
+                            {
+                                // Parse "MMMM yyyy" back to a date and check it is <= dbCurrentMonth.
+                                return DateTime.TryParseExact(m, "MMMM yyyy",
+                                    System.Globalization.CultureInfo.InvariantCulture,
+                                    System.Globalization.DateTimeStyles.None, out var missingDate)
+                                    && missingDate <= dbCurrentMonth;
+                            }))
+                .Select(d => new Cya2.Application.DTOs.DonorSummaryDto
+                {
+                    Name            = d.Name,
+                    Frequency       = d.Frequency,
+                    HasMissingGiftAlert = true,
+                    MissingMonths   = d.MissingMonths
+                        .Where(m =>
+                        {
+                            return DateTime.TryParseExact(m, "MMMM yyyy",
+                                System.Globalization.CultureInfo.InvariantCulture,
+                                System.Globalization.DateTimeStyles.None, out var missingDate)
+                                && missingDate <= dbCurrentMonth;
+                        })
+                        .ToList()
+                })
+                .Where(d => d.MissingMonths.Count > 0)
+                .ToList();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "Home: failed to compute missing gift alerts for {Account}", selectedAccount);
+            missingGiftDonors = new();
+        }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        isLoading = true;
+
+        try
+        {
+            var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+            var user = authState.User;
+
+            if (user.Identity?.IsAuthenticated != true)
+            {
+                return;
+            }
+
+            var authLevel = user.FindFirstValue("AuthLevel") ?? string.Empty;
+            isAdminUser = user.IsInRole("Admin") || string.Equals(authLevel, "Admin", StringComparison.OrdinalIgnoreCase);
+
+            userName = user.FindFirstValue("UserName") ??
+                      user.FindFirstValue(ClaimTypes.GivenName) ??
+                      user.FindFirstValue(ClaimTypes.Name) ??
+                      user.Identity?.Name ??
+                      user.FindFirstValue(ClaimTypes.Email) ??
+                      "User";
+
+            cachedUserId = UserIdResolver.ResolveUserId(user, SessionUserStateService.CurrentUserId);
+
+            if (!string.IsNullOrWhiteSpace(cachedUserId) &&
+                !string.Equals(SessionUserStateService.CurrentUserId, cachedUserId, StringComparison.OrdinalIgnoreCase))
+            {
+                SessionUserStateService.ResetForUser(cachedUserId);
+            }
+            else if (string.IsNullOrWhiteSpace(SessionUserStateService.CurrentUserId))
+            {
+                SessionUserStateService.CurrentUserId = cachedUserId;
+            }
+
+            if (string.IsNullOrWhiteSpace(SessionUserStateService.SelectedAccountFund) &&
+                !string.IsNullOrWhiteSpace(cachedUserId) &&
+                UserSelectionService.TryGetSelectedAccount(cachedUserId, out var hydratedAccount) &&
+                !string.IsNullOrWhiteSpace(hydratedAccount))
+            {
+                SessionUserStateService.SelectedAccountFund = hydratedAccount;
+            }
+
+            if ((!SessionUserStateService.SelectedStartDate.HasValue || !SessionUserStateService.SelectedEndDate.HasValue) &&
+                !string.IsNullOrWhiteSpace(cachedUserId) &&
+                DateRangeSelectionService.TryGetDateRange(cachedUserId, out var hydratedRange))
+            {
+                SessionUserStateService.SelectedStartDate = hydratedRange.StartDate;
+                SessionUserStateService.SelectedEndDate = hydratedRange.EndDate;
+                SessionUserStateService.SelectedDatePreset = string.IsNullOrWhiteSpace(hydratedRange.Preset) ? "ThisMonth" : hydratedRange.Preset;
+            }
+
+            var requestedFund = !string.IsNullOrWhiteSpace(SessionUserStateService.SelectedAccountFund)
+                ? SessionUserStateService.SelectedAccountFund
+                : SessionUserStateService.DefaultAccountFund;
+
+            FinancialDashboardDto requestedCachedDashboard = new();
+            var hasRequestedCache = !string.IsNullOrWhiteSpace(requestedFund) &&
+                                    SessionDashboardDtoCacheService.TryGetDashboard(cachedUserId, requestedFund, out requestedCachedDashboard);
+
+            if (hasRequestedCache)
+            {
+                dashboardData = requestedCachedDashboard;
+                selectedAccount = ResolveSelectedAccount(dashboardData);
+                BuildDebugMessage("session-dto-cache-hit-requested");
+            }
+            else
+            {
+                dashboardData = await DashboardService.GetDashboardDataAsync(requestedFund ?? string.Empty, cachedUserId);
+                selectedAccount = ResolveSelectedAccount(dashboardData);
+                CacheDashboard(selectedAccount, dashboardData, prioritize: true);
+                BuildDebugMessage(string.IsNullOrWhiteSpace(requestedFund) ? "initial-load" : "initial-load-requested-fund");
+            }
+
+            var defaultFundFromDto = dashboardData.UserAccounts.FirstOrDefault(a => a.IsDefault)?.Fund;
+            if (string.IsNullOrWhiteSpace(defaultFundFromDto))
+            {
+                defaultFundFromDto = dashboardData.UserAccounts.FirstOrDefault()?.Fund ?? string.Empty;
+            }
+
+            SessionUserStateService.SelectedAccountFund = selectedAccount;
+            SessionUserStateService.DefaultAccountFund = defaultFundFromDto;
+
+            if (!string.IsNullOrWhiteSpace(cachedUserId) && !string.IsNullOrWhiteSpace(selectedAccount))
+            {
+                try
+                {
+                    UserSelectionService.SetSelectedAccount(cachedUserId, selectedAccount);
+                }
+                catch (Exception ex)
+                {
+                    Logger.LogWarning(ex, "Home: failed to persist initial selected account");
+                }
+            }
+
+            // Prefetch donation DTOs synchronously for selectedAccount and defaultFundFromDto
+            try
+            {
+                var now = DateTime.UtcNow;
+                var startDate = new DateTime(now.Year - 2, 1, 1);
+                var endDate = new DateTime(now.Year, 12, 31);
+
+                // Ensure we have a resolved user id for caching
+                var cacheUserId = string.IsNullOrWhiteSpace(cachedUserId) ? cachedUserId : cachedUserId;
+
+                if (!string.IsNullOrWhiteSpace(cacheUserId))
+                {
+                    if (!string.IsNullOrWhiteSpace(selectedAccount))
+                    {
+                        try
+                        {
+                            if (!SessionDonationDataCacheService.TryGetDonationData(cacheUserId, selectedAccount, out var cachedSelected)
+                                || !CacheCoversRange(cachedSelected, startDate, endDate))
+                            {
+                                var dto = await DonationService.GetDonationDataAsync(selectedAccount, "All", new Cya2.Core.ValueObjects.DateRange(startDate, endDate), cacheUserId);
+                                SessionDonationDataCacheService.SetDonationData(cacheUserId, selectedAccount, dto, prioritize: true);
+                                Logger.LogInformation("Home: preloaded donations cache for selectedAccount={Account}", selectedAccount);
+                            }
+                            else
+                            {
+                                Logger.LogInformation("Home: skipped donation preload for selectedAccount={Account} because cache already covers range", selectedAccount);
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            Logger.LogWarning(ex, "Home: failed to preload donation cache for selectedAccount={Account}", selectedAccount);
+                        }
+
+                        try
+                        {
+                            var uiRange = ResolveActiveDateRange();
+                            _ = await ExpenseService.GetExpenseDataAsync(selectedAccount, uiRange, cacheUserId, isAdminUser);
+                            _ = await DonorService.GetDonorSummariesAsync(selectedAccount, uiRange);
+                            Logger.LogInformation("Home: preloaded expense/donor DTOs for selectedAccount={Account} and range={Start:yyyy-MM-dd}..{End:yyyy-MM-dd}", selectedAccount, uiRange.StartDate, uiRange.EndDate);
+                            await ComputeMissingGiftAlertsAsync();
+                        }
+                        catch (Exception ex)
+                        {
+                            Logger.LogWarning(ex, "Home: failed to preload expense/donor DTOs for selectedAccount={Account}", selectedAccount);
+                        }
+                    }
+
+                    if (!string.IsNullOrWhiteSpace(defaultFundFromDto) && !string.Equals(defaultFundFromDto, selectedAccount, StringComparison.OrdinalIgnoreCase))
+                    {
+                        try
+                        {
+                            if (!SessionDonationDataCacheService.TryGetDonationData(cacheUserId, defaultFundFromDto, out var cachedDefault)
+                                || !CacheCoversRange(cachedDefault, startDate, endDate))
+                            {
+                                var dto2 = await DonationService.GetDonationDataAsync(defaultFundFromDto, "All", new Cya2.Core.ValueObjects.DateRange(startDate, endDate), cacheUserId);
+                                SessionDonationDataCacheService.SetDonationData(cacheUserId, defaultFundFromDto, dto2, prioritize: false);
+                                Logger.LogInformation("Home: preloaded donations cache for defaultAccount={Account}", defaultFundFromDto);
+                            }
+                            else
+                            {
+                                Logger.LogInformation("Home: skipped donation preload for defaultAccount={Account} because cache already covers range", defaultFundFromDto);
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            Logger.LogWarning(ex, "Home: failed to preload donation cache for defaultAccount={Account}", defaultFundFromDto);
+                        }
+
+                        try
+                        {
+                            var uiRange = ResolveActiveDateRange();
+                            _ = await ExpenseService.GetExpenseDataAsync(defaultFundFromDto, uiRange, cacheUserId, isAdminUser);
+                            _ = await DonorService.GetDonorSummariesAsync(defaultFundFromDto, uiRange);
+                            Logger.LogInformation("Home: preloaded expense/donor DTOs for defaultAccount={Account} and range={Start:yyyy-MM-dd}..{End:yyyy-MM-dd}", defaultFundFromDto, uiRange.StartDate, uiRange.EndDate);
+                        }
+                        catch (Exception ex)
+                        {
+                            Logger.LogWarning(ex, "Home: failed to preload expense/donor DTOs for defaultAccount={Account}", defaultFundFromDto);
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.LogWarning(ex, "Home: error during donation prefetching");
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Home.OnInitializedAsync failed");
+            BuildDebugMessage("initial-load-error", ex.Message);
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!cacheWarmupPending || string.IsNullOrWhiteSpace(cachedUserId))
+        {
+            return;
+        }
+
+        cacheWarmupPending = false;
+
+        try
+        {
+            await PrefetchDashboardsAsync(cachedUserId, pendingPrefetchFunds);
+            BuildDebugMessage("prefetch-complete");
+            
+            // Also prefetch donation caches for those funds for a wide date range (current + 2 previous years)
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    var now = DateTime.UtcNow;
+                    var start = new DateTime(now.Year - 2, 1, 1);
+                    var end = new DateTime(now.Year, 12, 31);
+                    foreach (var fund in pendingPrefetchFunds)
+                    {
+                        try
+                        {
+                            if (!SessionDonationDataCacheService.TryGetDonationData(cachedUserId, fund, out var cachedFund)
+                                || !CacheCoversRange(cachedFund, start, end))
+                            {
+                                var dto = await DonationService.GetDonationDataAsync(fund, "All", new Cya2.Core.ValueObjects.DateRange(start, end), cachedUserId);
+                                SessionDonationDataCacheService.SetDonationData(cachedUserId, fund, dto, prioritize: false);
+                            }
+                        }
+                        catch { }
+                    }
+                }
+                catch { }
+            });
+            
+            await InvokeAsync(StateHasChanged);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "Home.OnAfterRenderAsync prefetch failed");
+            BuildDebugMessage("prefetch-error", ex.Message);
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private async Task OnAccountSelectionAsync(object args)
+    {
+        try
+        {
+            var accountName = args?.ToString() ?? string.Empty;
+            if (string.IsNullOrWhiteSpace(accountName) || string.Equals(accountName, selectedAccount, StringComparison.OrdinalIgnoreCase))
+            {
+                return;
+            }
+
+            var hasImmediateCache = SessionDashboardDtoCacheService.TryGetDashboard(cachedUserId, accountName, out var cachedSelection);
+            isLoading = !hasImmediateCache;
+            StateHasChanged();
+
+            selectedAccount = accountName;
+
+            if (hasImmediateCache)
+            {
+                dashboardData = cachedSelection;
+                SessionDashboardDtoCacheService.SetDashboard(cachedUserId, selectedAccount, dashboardData, prioritize: true);
+                Logger.LogInformation("Home.accountSelection: used session DTO cache for {Account}", selectedAccount);
+            }
+            else
+            {
+                var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+                var user = authState.User;
+                var userId = UserIdResolver.ResolveUserId(user, cachedUserId);
+
+                if (string.IsNullOrWhiteSpace(cachedUserId))
+                {
+                    cachedUserId = userId;
+                }
+
+                dashboardData = await DashboardService.GetDashboardDataAsync(selectedAccount, userId);
+                CacheDashboard(selectedAccount, dashboardData, prioritize: true);
+                Logger.LogInformation("Home.accountSelection: fetched dashboard for {Account} from service", selectedAccount);
+
+                // Also preload donation cache for this selected account (wide range: current year + 2 previous years)
+                try
+                {
+                    var now2 = DateTime.UtcNow;
+                    var startPrefetch = new DateTime(now2.Year - 2, 1, 1);
+                    var endPrefetch = new DateTime(now2.Year, 12, 31);
+                    if (!SessionDonationDataCacheService.TryGetDonationData(userId, selectedAccount, out var cachedPrefetch)
+                        || !CacheCoversRange(cachedPrefetch, startPrefetch, endPrefetch))
+                    {
+                        var prefetchDto = await DonationService.GetDonationDataAsync(selectedAccount, "All", new Cya2.Core.ValueObjects.DateRange(startPrefetch, endPrefetch), userId);
+                        SessionDonationDataCacheService.SetDonationData(userId, selectedAccount, prefetchDto, prioritize: true);
+                        Logger.LogInformation("Home.accountSelection: preloaded donation cache for selectedAccount={Account}", selectedAccount);
+                    }
+                    else
+                    {
+                        Logger.LogInformation("Home.accountSelection: skipped donation preload for {Account} because cache already covers range", selectedAccount);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Logger.LogWarning(ex, "Home.accountSelection: failed to preload donation cache for {Account}", selectedAccount);
+                }
+            }
+
+            selectedAccount = ResolveSelectedAccount(dashboardData);
+            SessionUserStateService.SelectedAccountFund = selectedAccount;
+            await ComputeMissingGiftAlertsAsync();
+            try
+            {
+                // Persist server-side selection for initial page loads across circuits
+                var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+                var user = authState.User;
+                // Prefer the cachedUserId computed during initialization to ensure the same key is used everywhere
+                var userId = string.IsNullOrWhiteSpace(cachedUserId)
+                    ? UserIdResolver.ResolveUserId(user, SessionUserStateService.CurrentUserId)
+                    : cachedUserId;
+                Logger.LogInformation("Home.accountSelection: resolved userId='{UserId}' (using cachedUserId when available) before persisting server-side selection", userId);
+                if (UserSelectionService != null && !string.IsNullOrWhiteSpace(userId))
+                {
+                    UserSelectionService.SetSelectedAccount(userId, selectedAccount);
+                    Logger.LogInformation("Home.accountSelection: persisted server-side selection for userId='{UserId}' -> '{Account}'", userId, selectedAccount);
+                }
+                else
+                {
+                    Logger.LogWarning("Home.accountSelection: skipping server-side persist because UserSelectionService is null or userId empty. serviceNull={ServiceNull}, userIdEmpty={UserIdEmpty}", UserSelectionService == null, string.IsNullOrWhiteSpace(userId));
+                }
+            }
+            catch { }
+            BuildDebugMessage("account-selection");
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Home.accountSelection failed");
+            BuildDebugMessage("account-selection-error", ex.Message);
+        }
+        finally
+        {
+            isLoading = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private async Task PrefetchDashboardsAsync(string userId, List<string> accountsToPrefetch)
+    {
+        foreach (var fund in accountsToPrefetch)
+        {
+            try
+            {
+                if (SessionDashboardDtoCacheService.TryGetDashboard(userId, fund, out _))
+                {
+                    continue;
+                }
+
+                var dto = await DashboardService.GetDashboardSummaryDataAsync(fund, userId);
+                CacheDashboard(fund, dto, prioritize: false);
+                Logger.LogInformation("Home.prefetch: fetched summary DTO for {Fund}", fund);
+            }
+            catch (Exception ex)
+            {
+                Logger.LogWarning(ex, "Home.prefetch: failed for {Fund}", fund);
+            }
+        }
+    }
+
+    private void CacheDashboard(string fund, FinancialDashboardDto dto, bool prioritize)
+    {
+        if (string.IsNullOrWhiteSpace(cachedUserId) || string.IsNullOrWhiteSpace(fund) || dto == null)
+        {
+            return;
+        }
+
+        SessionDashboardDtoCacheService.SetDashboard(cachedUserId, fund, dto, prioritize);
+    }
+
+    private string ResolveSelectedAccount(FinancialDashboardDto data)
+    {
+        if (!string.IsNullOrWhiteSpace(data.SelectedAccount))
+        {
+            return data.SelectedAccount;
+        }
+
+        return data.UserAccounts.FirstOrDefault()?.Fund ?? string.Empty;
+    }
+
+    private static bool CacheCoversRange(DonationDataDto dto, DateTime startDate, DateTime endDate)
+    {
+        if (dto == null || dto.CachedStartDate == default || dto.CachedEndDate == default)
+        {
+            return false;
+        }
+
+        return dto.CachedStartDate.Date <= startDate.Date && dto.CachedEndDate.Date >= endDate.Date;
+    }
+
+    private Cya2.Core.ValueObjects.DateRange ResolveActiveDateRange()
+    {
+        if (SessionUserStateService.SelectedStartDate.HasValue && SessionUserStateService.SelectedEndDate.HasValue)
+        {
+            return new Cya2.Core.ValueObjects.DateRange(SessionUserStateService.SelectedStartDate.Value, SessionUserStateService.SelectedEndDate.Value);
+        }
+
+        var now = DateTime.Now;
+        return new Cya2.Core.ValueObjects.DateRange(new DateTime(now.Year, now.Month, 1), now);
+    }
+
+    private void BuildDebugMessage(string source, string? note = null)
+    {
+        try
+        {
+            var sessionFunds = string.IsNullOrWhiteSpace(cachedUserId)
+                ? Array.Empty<string>()
+                : SessionDashboardDtoCacheService.GetFunds(cachedUserId);
+
+            var lines = new List<string>
+            {
+                $"Source={source}",
+                $"UserId={cachedUserId}",
+                $"SelectedAccount={selectedAccount}",
+                $"Dashboard.SelectedAccount={dashboardData.SelectedAccount}",
+                $"HasAccountData={dashboardData.HasAccountData}",
+                $"UserAccounts={dashboardData.UserAccounts?.Count ?? 0}",
+                $"SessionDtoCacheCount={sessionFunds.Count}",
+                $"SessionDtoCacheFunds={string.Join(",", sessionFunds)}",
+                $"CurrentMonth: Donations={dashboardData.CurrentMonth?.TotalDonations:C2}, Expenses={dashboardData.CurrentMonth?.TotalExpenses:C2}, Overhead={dashboardData.CurrentMonth?.TotalOverhead:C2}, InternalTransfers={dashboardData.CurrentMonth?.InternalTransfers:C2}",
+                $"PriorMonth: Donations={dashboardData.PriorMonth?.TotalDonations:C2}, Expenses={dashboardData.PriorMonth?.TotalExpenses:C2}",
+                $"CurrentYear: Donations={dashboardData.CurrentYear?.TotalDonations:C2}, Expenses={dashboardData.CurrentYear?.TotalExpenses:C2}"
+            };
+
+            if (!string.IsNullOrWhiteSpace(note))
+            {
+                lines.Add($"Note={note}");
+            }
+
+            debugMessage = string.Join("\n", lines);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "Home.BuildDebugMessage failed");
+        }
+    }
+
+    private async Task CopyDebugMessageAsync()
+    {
+        if (string.IsNullOrEmpty(debugMessage))
+        {
+            return;
+        }
+
+        try
+        {
+            await JS.InvokeVoidAsync("navigator.clipboard.writeText", debugMessage);
+            debugMessageCopied = true;
+            StateHasChanged();
+            await Task.Delay(1400);
+            debugMessageCopied = false;
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "CopyDebugMessageAsync failed");
+        }
+    }
+}

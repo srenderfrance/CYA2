@@ -1,7 +1,6 @@
 using Cya2.Application.Interfaces;
-using Cya2.Core.Entities;
-using DataLibrary;
-using Microsoft.Extensions.Configuration;
+using Cya2.Core.Interfaces;
+using Cya2.Core.ReadModels;
 
 namespace Cya2.Application.Services;
 
@@ -11,19 +10,21 @@ namespace Cya2.Application.Services;
 /// </summary>
 public class AccountCalculationService : IAccountCalculationService
 {
-    private readonly IDataAccess _dataAccess;
-    private readonly IConfiguration _config;
+    private readonly IExpenseReadRepository _expenseReadRepository;
+    private readonly IDonationReadRepository _donationReadRepository;
 
-    public AccountCalculationService(IDataAccess dataAccess, IConfiguration config)
+    public AccountCalculationService(
+        IExpenseReadRepository expenseReadRepository,
+        IDonationReadRepository donationReadRepository)
     {
-        _dataAccess = dataAccess;
-        _config = config;
+        _expenseReadRepository = expenseReadRepository;
+        _donationReadRepository = donationReadRepository;
     }
 
     /// <summary>
-    /// Calculate balance using database queries - moved from BalanceCalculator.CalculateBalanceFromDatabaseAsync
+    /// Calculate balance using repository reads.
     /// </summary>
-    public async Task<BalanceCalculationResult> CalculateBalanceAsync(Account account, DateTime? startDate = null, DateTime? endDate = null)
+    public async Task<BalanceCalculationResult> CalculateBalanceAsync(UserAccountContextAccount account, DateTime? startDate = null, DateTime? endDate = null)
     {
         if (account == null)
             throw new ArgumentNullException(nameof(account));
@@ -33,102 +34,64 @@ public class AccountCalculationService : IAccountCalculationService
 
         try
         {
-            var connectionString = _config.GetConnectionString("default") ?? string.Empty;
+            var records = await _expenseReadRepository.GetAccountingDataByClassAndDateAsync(
+                account.AccountingClass,
+                actualStartDate,
+                actualEndDate);
 
-            // Sum calculation using the BalanceTest.razor logic
-            string sumSql = @"SELECT COALESCE(SUM(
-                CASE 
-                    WHEN Type IN ('Payroll Check', 'Expense') OR Account LIKE '%Expenses:%' OR Account LIKE '%Payroll:%' OR Account LIKE '%Administration:%' THEN -Amount 
-                    ELSE Amount 
-                END
-            ), 0) FROM AccountingData WHERE (AccountingClass = @AccountingClass OR AccountNumber = @AccountNumber) AND Account != 'Prepaids'";
-
-            if (startDate.HasValue)
-                sumSql += " AND Date >= @StartDate";
-            if (endDate.HasValue)
-                sumSql += " AND Date <= @EndDate";
-
-            var sumVal = await _dataAccess.LoadData<decimal, dynamic>(sumSql, 
-                new { 
-                    AccountingClass = account.AccountingClass, 
-                    AccountNumber = account.AccountNumber, 
-                    StartDate = actualStartDate, 
-                    EndDate = actualEndDate 
-                }, connectionString);
-
-            decimal baseSum = sumVal?.FirstOrDefault() ?? 0.00m;
-            decimal calculatedBalance = baseSum + account.BalanceAdjustment;
-
-            // Load all matching rows for detailed breakdown
-            string entriesSql = @"SELECT Id, AccountingClass, Date, Num, Amount, AccountNumber, Account, Type, DateCreated
-                                 FROM AccountingData
-                                 WHERE (AccountingClass = @AccountingClass OR AccountNumber = @AccountNumber) AND Account != 'Prepaids'";
-
-            if (startDate.HasValue)
-                entriesSql += " AND Date >= @StartDate";
-            if (endDate.HasValue)
-                entriesSql += " AND Date <= @EndDate";
-
-            entriesSql += " ORDER BY Date DESC";
-
-            var entries = await _dataAccess.LoadData<AccountingDataModel, dynamic>(entriesSql, 
-                new { 
-                    AccountingClass = account.AccountingClass, 
-                    AccountNumber = account.AccountNumber, 
-                    StartDate = actualStartDate, 
-                    EndDate = actualEndDate 
-                }, connectionString);
-
-            return CalculateBalanceFromData(entries?.ToList() ?? new List<AccountingDataModel>(), account.BalanceAdjustment);
+            return CalculateBalanceFromData(records, account.BalanceAdjustment);
         }
         catch (Exception ex)
         {
-            throw new Exception($"Error calculating balance from database: {ex.Message}", ex);
+            throw new Exception($"Error calculating balance from repository data: {ex.Message}", ex);
         }
     }
 
     /// <summary>
-    /// Calculate balance using pre-loaded data - moved from BalanceCalculator.CalculateBalanceFromData
+    /// Calculate balance using pre-loaded data.
     /// </summary>
-    public BalanceCalculationResult CalculateBalanceFromData(List<AccountingDataModel> entries, decimal balanceAdjustment = 0.00m, DateTime? startDate = null, DateTime? endDate = null)
+    public BalanceCalculationResult CalculateBalanceFromData(List<AccountingRecord> entries, decimal balanceAdjustment = 0.00m, DateTime? startDate = null, DateTime? endDate = null)
     {
         if (entries == null)
-            entries = new List<AccountingDataModel>();
+            entries = new List<AccountingRecord>();
 
-        // Filter by date range if provided
         if (startDate.HasValue || endDate.HasValue)
         {
-            entries = entries.Where(e => 
+            entries = entries.Where(e =>
                 (!startDate.HasValue || e.Date >= startDate.Value) &&
                 (!endDate.HasValue || e.Date <= endDate.Value)
             ).ToList();
         }
 
-        // Categorize transactions using the BalanceTest.razor logic
-        var expenseTransactions = entries.Where(e => 
-            e.Type == "Payroll Check" || 
-            e.Type == "Expense" || 
-            (e.Account != null && (e.Account.Contains("Expenses:") || e.Account.Contains("Payroll:") || e.Account.Contains("Administration:")))
-        ).ToList();
+        bool IsExpense(AccountingRecord e)
+        {
+            var type = e.Type ?? string.Empty;
+            var accountName = e.Account ?? string.Empty;
+            return type.Equals("Payroll Check", StringComparison.OrdinalIgnoreCase)
+                || type.Equals("Expense", StringComparison.OrdinalIgnoreCase)
+                || accountName.Contains("Expenses:", StringComparison.OrdinalIgnoreCase)
+                || accountName.Contains("Payroll:", StringComparison.OrdinalIgnoreCase)
+                || accountName.Contains("Administration:", StringComparison.OrdinalIgnoreCase);
+        }
 
-        var transferTransactions = entries.Where(e => 
-            e.Account != null && e.Account.Contains("Transfer")
-        ).ToList();
+        bool IsTransfer(AccountingRecord e)
+        {
+            var accountName = e.Account ?? string.Empty;
+            return accountName.Contains("Transfer", StringComparison.OrdinalIgnoreCase);
+        }
 
-        var otherTransactions = entries.Where(e => 
-            !expenseTransactions.Contains(e) && !transferTransactions.Contains(e)
-        ).ToList();
+        var expenseTransactions = entries.Where(IsExpense).ToList();
+        var transferTransactions = entries.Where(IsTransfer).ToList();
+        var otherTransactions = entries.Where(e => !expenseTransactions.Contains(e) && !transferTransactions.Contains(e)).ToList();
 
-        // Calculate totals for each category
         var expenseTotal = expenseTransactions.Sum(e => Convert.ToDecimal(e.Amount));
         var transferTotal = transferTransactions.Sum(e => Convert.ToDecimal(e.Amount));
         var otherTotal = otherTransactions.Sum(e => Convert.ToDecimal(e.Amount));
 
-        // Calculate balance using the BalanceTest.razor logic
-        var calculatedBalance = balanceAdjustment + entries.Sum(e => 
-            (e.Type == "Payroll Check" || e.Type == "Expense" || 
-             (e.Account != null && (e.Account.Contains("Expenses:") || e.Account.Contains("Payroll:") || e.Account.Contains("Administration:")))) 
-            ? -Convert.ToDecimal(e.Amount) : Convert.ToDecimal(e.Amount));
+        var calculatedBalance = balanceAdjustment + entries.Sum(e =>
+            IsExpense(e)
+            ? -Convert.ToDecimal(e.Amount)
+            : Convert.ToDecimal(e.Amount));
 
         return new BalanceCalculationResult
         {
@@ -144,42 +107,36 @@ public class AccountCalculationService : IAccountCalculationService
     }
 
     /// <summary>
-    /// Calculate donation totals and overhead - moved from DonationsTotalsCalculator
+    /// Calculate donation totals and overhead using repository reads.
     /// </summary>
-    public async Task<DonationTotalsResult> CalculateDonationTotalsAsync(Account account, DateTime? startDate = null, DateTime? endDate = null)
+    public async Task<DonationTotalsResult> CalculateDonationTotalsAsync(UserAccountContextAccount account, DateTime? startDate = null, DateTime? endDate = null)
     {
-        if (account == null) 
+        if (account == null)
             throw new ArgumentNullException(nameof(account));
 
-        var connectionString = _config.GetConnectionString("default") ?? string.Empty;
         var start = startDate ?? DateTime.MinValue;
         var end = endDate ?? DateTime.MaxValue;
 
-        // Load primary account donations using Fund (Fund Notes)
-        const string donationsSql = @"SELECT Amount, Date, Fund FROM DonationData WHERE Fund = @Fund AND Date >= @Start AND Date <= @End";
-        var primaryDonations = await _dataAccess.LoadData<DonationLite, dynamic>(
-            donationsSql,
-            new { Fund = account.Fund, Start = start, End = end },
-            connectionString);
+        var subAccounts = await _donationReadRepository.GetSubAccountsByAccountIdAsync(account.AccountId) ?? new List<Cya2.Core.Entities.SubAccount>();
 
-        decimal primaryTotal = primaryDonations?.Sum(d => Convert.ToDecimal(d.Amount)) ?? 0m;
+        var allFunds = new List<string> { account.Fund };
+        allFunds.AddRange(subAccounts.Select(s => s.SubFund));
 
-        // Load subaccounts for this account
-        const string subSql = @"SELECT Id, AccountId, SubFund, Kind FROM SubAccounts WHERE AccountId = @AccountId";
-        var subAccounts = await _dataAccess.LoadData<SubAccountLite, dynamic>(subSql, new { AccountId = account.AccountId }, connectionString) ?? new List<SubAccountLite>();
+        var donations = await _donationReadRepository.GetDonationsByFundsAsync(allFunds);
+        var donationsInRange = donations.Where(d => d.Date >= start && d.Date <= end).ToList();
 
-        // Prepare result structures
+        decimal primaryTotal = donationsInRange
+            .Where(d => string.Equals(d.Fund, account.Fund, StringComparison.OrdinalIgnoreCase))
+            .Sum(d => Convert.ToDecimal(d.Amount));
+
         var separateTotals = new Dictionary<string, decimal>(StringComparer.OrdinalIgnoreCase);
         decimal mergedExtrasTotal = 0m;
 
         foreach (var sub in subAccounts)
         {
-            // For each subfund, read donations by its SubFund reference
-            var subDonations = await _dataAccess.LoadData<DonationLite, dynamic>(
-                donationsSql,
-                new { Fund = sub.SubFund, Start = start, End = end },
-                connectionString);
-            decimal subTotal = subDonations?.Sum(d => Convert.ToDecimal(d.Amount)) ?? 0m;
+            decimal subTotal = donationsInRange
+                .Where(d => string.Equals(d.Fund, sub.SubFund, StringComparison.OrdinalIgnoreCase))
+                .Sum(d => Convert.ToDecimal(d.Amount));
 
             if (string.Equals(sub.Kind, "Merged", StringComparison.OrdinalIgnoreCase))
             {
@@ -191,10 +148,7 @@ public class AccountCalculationService : IAccountCalculationService
             }
         }
 
-        // Total donations counted for primary account view
         decimal totalDonations = primaryTotal + mergedExtrasTotal;
-
-        // Account.Overhead is a percent (e.g., 12 => 12%)
         decimal overheadTotal = CalculateOverheadAmount(account, totalDonations);
 
         return new DonationTotalsResult
@@ -212,28 +166,9 @@ public class AccountCalculationService : IAccountCalculationService
         };
     }
 
-    /// <summary>
-    /// Calculate overhead amount based on account percentage
-    /// </summary>
-    public decimal CalculateOverheadAmount(Account account, decimal donationTotal)
+    public decimal CalculateOverheadAmount(UserAccountContextAccount account, decimal donationTotal)
     {
         if (account == null) return 0m;
         return Math.Round(donationTotal * (account.Overhead / 100m), 2);
-    }
-
-    // Private helper classes for data loading
-    private sealed class DonationLite
-    {
-        public DateTime Date { get; set; }
-        public double Amount { get; set; }
-        public string Fund { get; set; } = string.Empty;
-    }
-
-    private sealed class SubAccountLite
-    {
-        public int Id { get; set; }
-        public int AccountId { get; set; }
-        public string SubFund { get; set; } = string.Empty;
-        public string Kind { get; set; } = string.Empty;
     }
 }

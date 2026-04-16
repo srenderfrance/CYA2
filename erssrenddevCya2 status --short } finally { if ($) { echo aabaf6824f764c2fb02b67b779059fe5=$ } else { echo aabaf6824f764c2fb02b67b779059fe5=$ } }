@@ -1,0 +1,20 @@
+a2a35fb 2026-02-24 11:25:43 +0100 srenderfrance Implemented inegration of originl app to use "Clean Architecture"
+11896cc 2026-02-17 17:34:09 +0100 srenderfrance WIP: Clean Architecture integration - interface conflicts to resolve
+a7981f6 2026-02-16 12:00:41 +0100 srenderfrance Implemented "Seperate" sub accounts.
+25168f1 2026-02-13 23:42:37 +0100 srenderfrance Improved Admin.razor UI and inplemented the display of Seperate Sub Funds in Donations.razor
+67d8399 2026-01-28 22:46:34 +0100 srenderfrance Implemented Donors.razor and fixed a few bugs and random issues in admin.razor as well.
+86f5cc1 2026-01-26 12:19:17 +0100 srenderfrance Added confirmation step to Upload/Update process.
+f4ed6b4 2026-01-23 10:04:56 +0100 srenderfrance Updated the db update process to include a backup.
+8c6d907 2026-01-20 14:13:53 +0100 srenderfrance Updated Donations calculations and UI for Donations.razor.
+d53abe6 2026-01-17 20:47:09 +0100 srenderfrance Improved the UI for Admin.razor
+1198e4b 2026-01-15 14:00:00 +0100 srenderfrance Revamped expense calculations and Expenses.razor UI.
+5e54ea2 2026-01-09 14:36:22 +0100 srenderfrance Finished testing new balance calculations with the new database setup.
+fd2eb02 2025-12-17 23:00:15 +0100 srenderfrance Modified DB models and implemented upload of excel files to update the DB.
+2163998 2025-12-15 23:47:57 +0100 srenderfrance Continued work on droopdowns and tooltips in admin.razor
+3369157 2025-12-10 19:34:50 +0100 srenderfrance Added functiionality to Admin.razor
+f50b7ba 2025-12-03 23:55:03 +0100 srenderfrance Improved UI layout for Donations.razor and the navMenu
+c29d287 2025-12-03 10:58:49 +0100 srenderfrance Fixed some build warnings.
+4126c8c 2025-12-02 22:57:01 +0100 srenderfrance Implemented the Giving Grid in Donations.razor and imporved the layout some.
+65e4fb1 2025-12-01 23:25:10 +0100 srenderfrance Updated Admin Panel and simplified Admin navbar.
+7b8d296 2025-12-01 14:17:27 +0100 srenderfrance Implemented Multi-langugae (Spanish/English) content. And Fixed highlighting bug.
+6923588 2025-11-12 11:42:16 +0100 srenderfrance Implemented Cultures (spanish translation)

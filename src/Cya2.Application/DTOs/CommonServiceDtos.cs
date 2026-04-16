@@ -1,6 +1,13 @@
-using ModelsLibrary;
-
 namespace Cya2.Application.DTOs;
+
+public class AccountOptionDto
+{
+    public int AccountId { get; set; }
+    public string Fund { get; set; } = string.Empty;
+    public string AccountingClass { get; set; } = string.Empty;
+    public string AccountNumber { get; set; } = string.Empty;
+    public decimal Overhead { get; set; }
+}
 
 /// <summary>
 /// Account-related DTOs

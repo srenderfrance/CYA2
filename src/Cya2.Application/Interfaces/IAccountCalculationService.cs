@@ -1,4 +1,4 @@
-using Cya2.Core.Entities;
+using Cya2.Core.ReadModels;
 
 namespace Cya2.Application.Interfaces;
 
@@ -8,24 +8,24 @@ namespace Cya2.Application.Interfaces;
 public interface IAccountCalculationService
 {
     /// <summary>
-    /// Calculate account balance using database queries with transaction categorization
+    /// Calculate account balance using repository queries with transaction categorization
     /// </summary>
-    Task<BalanceCalculationResult> CalculateBalanceAsync(Account account, DateTime? startDate = null, DateTime? endDate = null);
-    
+    Task<BalanceCalculationResult> CalculateBalanceAsync(UserAccountContextAccount account, DateTime? startDate = null, DateTime? endDate = null);
+
     /// <summary>
-    /// Calculate balance using pre-loaded transaction data  
+    /// Calculate balance using pre-loaded transaction data
     /// </summary>
-    BalanceCalculationResult CalculateBalanceFromData(List<AccountingDataModel> entries, decimal balanceAdjustment = 0m, DateTime? startDate = null, DateTime? endDate = null);
-    
+    BalanceCalculationResult CalculateBalanceFromData(List<AccountingRecord> entries, decimal balanceAdjustment = 0m, DateTime? startDate = null, DateTime? endDate = null);
+
     /// <summary>
     /// Calculate donation totals and overhead for account over date range
     /// </summary>
-    Task<DonationTotalsResult> CalculateDonationTotalsAsync(Account account, DateTime? startDate = null, DateTime? endDate = null);
-    
+    Task<DonationTotalsResult> CalculateDonationTotalsAsync(UserAccountContextAccount account, DateTime? startDate = null, DateTime? endDate = null);
+
     /// <summary>
     /// Calculate overhead amount based on donation total and account percentage
     /// </summary>
-    decimal CalculateOverheadAmount(Account account, decimal donationTotal);
+    decimal CalculateOverheadAmount(UserAccountContextAccount account, decimal donationTotal);
 }
 
 /// <summary>
@@ -37,10 +37,10 @@ public class BalanceCalculationResult
     public decimal ExpenseTotal { get; set; }
     public decimal TransferTotal { get; set; }
     public decimal OtherTotal { get; set; }
-    public List<AccountingDataModel> ExpenseTransactions { get; set; } = new();
-    public List<AccountingDataModel> TransferTransactions { get; set; } = new();
-    public List<AccountingDataModel> OtherTransactions { get; set; } = new();
-    public List<AccountingDataModel> AllTransactions { get; set; } = new();
+    public List<AccountingRecord> ExpenseTransactions { get; set; } = new();
+    public List<AccountingRecord> TransferTransactions { get; set; } = new();
+    public List<AccountingRecord> OtherTransactions { get; set; } = new();
+    public List<AccountingRecord> AllTransactions { get; set; } = new();
 }
 
 /// <summary>

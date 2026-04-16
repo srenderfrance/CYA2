@@ -1,5 +1,4 @@
 using Cya2.Core.ValueObjects;
-using ModelsLibrary;
 
 namespace Cya2.Application.DTOs;
 
@@ -19,6 +18,10 @@ public class FinancialDashboardDto
     public FinancialSummaryDto PriorMonth { get; set; } = new();
     public FinancialSummaryDto CurrentYear { get; set; } = new();
     public FinancialSummaryDto PriorYear { get; set; } = new();
+
+    // Embedded donation payloads for initial page load (selected + default account)
+    public DonationDataDto? SelectedAccountDonations { get; set; }
+    public DonationDataDto? DefaultAccountDonations { get; set; }
 }
 
 /// <summary>

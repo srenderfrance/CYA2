@@ -1,8 +1,6 @@
 using Cya2.Application.DTOs;
 using Cya2.Application.Interfaces;
 using Cya2.Core.Entities;
-using DataLibrary;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 
 namespace Cya2.Application.Services;
@@ -13,17 +11,10 @@ namespace Cya2.Application.Services;
 /// </summary>
 public class DonorAnalyticsService : IDonorAnalyticsService
 {
-    private readonly IDataAccess _dataAccess;
-    private readonly IConfiguration _configuration;
     private readonly ILogger<DonorAnalyticsService> _logger;
 
-    public DonorAnalyticsService(
-        IDataAccess dataAccess,
-        IConfiguration configuration,
-        ILogger<DonorAnalyticsService> logger)
+    public DonorAnalyticsService(ILogger<DonorAnalyticsService> logger)
     {
-        _dataAccess = dataAccess;
-        _configuration = configuration;
         _logger = logger;
     }
 
@@ -185,10 +176,5 @@ public class DonorAnalyticsService : IDonorAnalyticsService
             _logger.LogError(ex, "Error segmenting donors for account {AccountFund}", accountFund);
             return new List<DonorSegmentDto>();
         }
-    }
-
-    private string GetConnectionString()
-    {
-        return _configuration.GetConnectionString("default") ?? string.Empty;
     }
 }

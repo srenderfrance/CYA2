@@ -1,5 +1,6 @@
 using Cya2.Application.Interfaces;
 using Cya2.Application.Services;
+using Cya2.Core.Interfaces;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Cya2.Application.Extensions;
@@ -11,7 +12,14 @@ public static class ServiceCollectionExtensions
         // Register core working clean architecture services 
         // Financial dashboard service for Home.razor transformation  
         services.AddScoped<IFinancialDashboardService, FinancialDashboardService>();
-        
+        services.AddScoped<IAccountCalculationService, AccountCalculationService>();
+        services.AddScoped<ISessionAccountDataCacheService, DashboardSessionCacheService>();
+        services.AddSingleton<ISessionDashboardDtoCacheService, SessionDashboardDtoCacheService>();
+        services.AddScoped<ISessionUserStateService, SessionUserStateService>();
+        services.AddScoped<ISessionImportProgressService, SessionImportProgressService>();
+        services.AddScoped<IDateRangeStateService, DateRangeStateService>();
+        services.AddScoped<IUserAccountContextService, UserAccountContextService>();
+
         // Donor analytics service
         services.AddScoped<IDonorAnalyticsService, DonorAnalyticsService>();
         
@@ -23,13 +31,27 @@ public static class ServiceCollectionExtensions
         
         // Expense management services - enabled for Expenses.razor migration
         services.AddScoped<IExpenseService, ExpenseService>();
-        
+        services.AddScoped<IExpensePresentationService, ExpensePresentationService>();
+        services.AddSingleton<ISessionExpenseDataCacheService, SessionExpenseDataCacheService>();
+
         // Donation management services - enabled for Donations.razor migration
         services.AddScoped<IDonationService, DonationService>();
+        services.AddScoped<IDonationPresentationService, DonationPresentationService>();
+        services.AddSingleton<ISessionDonationDataCacheService, SessionDonationDataCacheService>();
+
+        // User settings service - enabled for UserSettings.razor migration
+        services.AddScoped<IUserSettingsService, UserSettingsService>();
+        services.AddScoped<UserManagementService>();
+        services.AddScoped<AdminFundReadService>();
+        services.AddScoped<AdminFundWriteService>();
 
         // Donor management services - enabled for Donors.razor migration
         services.AddScoped<IDonorService, DonorService>();
-        
+        services.AddSingleton<ISessionDonorSummaryCacheService, SessionDonorSummaryCacheService>();
+
+        // Cache invalidation — clears all session caches after import or rollback
+        services.AddSingleton<IImportCacheInvalidator, ImportCacheInvalidator>();
+
         return services;
     }
 }

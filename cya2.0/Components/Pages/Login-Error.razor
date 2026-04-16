@@ -1,0 +1,22 @@
+@page "/login-error"
+@using Microsoft.AspNetCore.Authorization
+@attribute [AllowAnonymous]
+
+<PageTitle>Login Error</PageTitle>
+
+<div class="row justify-content-center mt-5">
+    <div class="col-md-6">
+        <div class="card shadow">
+            <div class="card-header bg-warning text-dark">
+                <h3 class="text-center mb-0">We couldn't process your sign-in</h3>
+            </div>
+            <div class="card-body text-center">
+                <p>Your login attempt could not be completed.</p>
+                <p>Please try signing in again.</p>
+                <a href="/api/login" class="btn btn-primary mt-2">
+                    <i class="bi bi-google me-2"></i> Try sign-in again
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
