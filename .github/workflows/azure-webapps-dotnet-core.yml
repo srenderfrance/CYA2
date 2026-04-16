@@ -54,12 +54,10 @@ jobs:
             ${{ runner.os }}-nuget-
 
       - name: Build with dotnet
-        run: dotnet build cya2.0/cya2.0.sln --configuration Release
+        run: dotnet build Cya2.sln --configuration Release
 
       - name: dotnet publish
-        run: |
-          cd cya2.0
-          dotnet publish --configuration Release --output ./myapp
+        run: dotnet publish cya2.0/cya2.csproj --configuration Release --output cya2.0/myapp
       
       - name: Check publish output
         run: ls -la cya2.0/myapp
