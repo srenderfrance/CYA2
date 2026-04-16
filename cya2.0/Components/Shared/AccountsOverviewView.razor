@@ -1,0 +1,164 @@
+@using Radzen.Blazor
+@using Cya2.Application.Interfaces
+@using Cya2.Application.Services
+@using Cya2.Application.DTOs
+@using Microsoft.AspNetCore.Components.Authorization
+@using System.Security.Claims
+@inject IStringLocalizer<Resource> Localizer
+@inject AuthenticationStateProvider AuthStateProvider
+@inject AdminFundReadService AdminFundReadService
+@inject IFinancialDashboardService FinancialDashboardService
+@inject IJSRuntime JS
+
+<RadzenStack Orientation="Orientation.Vertical" Gap="1rem" Class="rz-p-3" Style="height:100%; overflow:auto;">
+    <RadzenStack Orientation="Orientation.Horizontal"
+                 Gap="1rem"
+                 AlignItems="AlignItems.Center"
+                 JustifyContent="JustifyContent.SpaceBetween">
+        <!-- Left: current view label -->
+        <RadzenText TextStyle="TextStyle.Subtitle1">
+            @(showDonations12m ? Localizer["TotalDonationsLTM"] : Localizer["CurrentBalance"])
+        </RadzenText>
+
+        <!-- Right: actions -->
+        <RadzenStack Orientation="Orientation.Horizontal" Gap="0.5rem" AlignItems="AlignItems.Center">
+            <RadzenButton Text="@Localizer["CopyTable"]"
+                          Icon="content_copy"
+                          ButtonStyle="ButtonStyle.Primary"
+                          Style="background-color: #0a3b6b; border-color: #0a3b6b;"
+                          Click="CopyTableAsync" />
+            <RadzenButton Text="@(showDonations12m ? Localizer["CurrentBalance"] : Localizer["TotalDonationsLTM"])"
+                          ButtonStyle="ButtonStyle.Primary"
+                          Click="@(() => { showDonations12m = !showDonations12m; })" />
+        </RadzenStack>
+    </RadzenStack>
+
+    @if (!string.IsNullOrEmpty(errorMessage))
+    {
+        <RadzenAlert AlertStyle="AlertStyle.Danger" ShowIcon="true" Variant="Variant.Filled">
+            @errorMessage
+        </RadzenAlert>
+    }
+
+    <RadzenCard>
+        <RadzenDataGrid TItem="FundBalanceRow"
+                        Data="@fundBalances"
+                        AllowSorting="true"
+                        AllowFiltering="true"
+                        AllowPaging="false"
+                        EmptyText="@Localizer["NoBalancesFound"]">
+            <Columns>
+                <RadzenDataGridColumn TItem="FundBalanceRow" Property="Fund" Title="@Localizer["Account"]" />
+                @if (!showDonations12m)
+                {
+                    <RadzenDataGridColumn TItem="FundBalanceRow" Property="CurrentBalance" Title="@Localizer["CurrentBalance"]" FormatString="{0:C2}" TextAlign="TextAlign.Right" />
+                }
+                else
+                {
+                    <RadzenDataGridColumn TItem="FundBalanceRow" Property="Last12MonthsDonations" Title="@Localizer["TotalDonationsLTM"]" FormatString="{0:C2}" TextAlign="TextAlign.Right" />
+                }
+            </Columns>
+        </RadzenDataGrid>
+    </RadzenCard>
+    <div class="text-muted mt-2" style="font-size:.85rem">
+        @Localizer["LoadedAccounts"]: @fundBalances.Count
+        @if (!financialsLoaded)
+        {
+            <span class="ms-2">@Localizer["CalculatingDonations"]…</span>
+        }
+    </div>
+</RadzenStack>
+
+@code {
+    private string errorMessage = string.Empty;
+    private List<FundBalanceRow> fundBalances = new();
+    private bool showDonations12m = false; // default to balance view
+    private bool financialsLoaded = false;
+    private string adminUserId = string.Empty;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+            adminUserId = authState.User.FindFirstValue("UserId")
+                       ?? authState.User.FindFirstValue(ClaimTypes.Email)
+                       ?? authState.User.Identity?.Name
+                       ?? string.Empty;
+
+            var accounts = await AdminFundReadService.GetAllAccountsAsync();
+
+            fundBalances = accounts
+                .OrderBy(a => a.Fund)
+                .Select(a => new FundBalanceRow { Fund = a.Fund })
+                .ToList();
+
+            _ = LoadFinancialsAsync(accounts.Select(a => a.Fund).ToList());
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error loading accounts: {ex.Message}";
+        }
+    }
+
+    private async Task LoadFinancialsAsync(List<string> funds)
+    {
+        try
+        {
+            foreach (var fund in funds)
+            {
+                try
+                {
+                    var dashboard = await FinancialDashboardService.GetDashboardSummaryDataAsync(fund, adminUserId);
+                    var row = fundBalances.FirstOrDefault(r => r.Fund == fund);
+                    if (row != null)
+                    {
+                        row.CurrentBalance = dashboard.CurrentYear.Balance;
+                        row.Last12MonthsDonations = dashboard.CurrentYear.TotalDonations;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"Error loading financials for {fund}: {ex.Message}");
+                }
+
+                await InvokeAsync(StateHasChanged);
+            }
+
+            financialsLoaded = true;
+            await InvokeAsync(StateHasChanged);
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error loading financial data: {ex.Message}";
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private async Task CopyTableAsync()
+    {
+        try
+        {
+            var header = showDonations12m ? Localizer["TotalDonationsLTM"] : Localizer["CurrentBalance"];
+            var sb = new System.Text.StringBuilder();
+            sb.AppendLine($"{Localizer["Account"]}\t{header}");
+            foreach (var row in fundBalances)
+            {
+                var value = showDonations12m ? row.Last12MonthsDonations : row.CurrentBalance;
+                sb.AppendLine($"{row.Fund}\t{value}");
+            }
+            await JS.InvokeVoidAsync("navigator.clipboard.writeText", sb.ToString());
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error copying table: {ex.Message}";
+        }
+    }
+
+    private sealed class FundBalanceRow
+    {
+        public string Fund { get; set; } = string.Empty;
+        public decimal CurrentBalance { get; set; }
+        public decimal Last12MonthsDonations { get; set; }
+    }
+}

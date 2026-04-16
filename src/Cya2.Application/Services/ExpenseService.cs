@@ -1,11 +1,10 @@
-using DataLibrary;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Cya2.Application.DTOs;
 using Cya2.Application.Interfaces;
+using Cya2.Core.Interfaces;
+using Cya2.Core.ReadModels;
 using Cya2.Core.ValueObjects;
-using ModelsLibrary;
-using Cya2.Application.Utilities;
+using Cya2.Core.Services;
 
 namespace Cya2.Application.Services;
 
@@ -14,92 +13,38 @@ namespace Cya2.Application.Services;
 /// </summary>
 public class ExpenseService : IExpenseService
 {
-    private readonly IDataAccess _dataAccess;
-    private readonly IConfiguration _configuration;
+    private readonly IExpenseReadRepository _expenseReadRepository;
     private readonly ILogger<ExpenseService> _logger;
+    private readonly IUserAccountContextService _userAccountContextService;
+    private readonly ISessionExpenseDataCacheService _expenseCache;
+    private readonly ExpenseClassificationService _classifier;
 
-    public ExpenseService(IDataAccess dataAccess, IConfiguration configuration, ILogger<ExpenseService> logger)
+    public ExpenseService(
+        IExpenseReadRepository expenseReadRepository,
+        ILogger<ExpenseService> logger,
+        IUserAccountContextService userAccountContextService,
+        ISessionExpenseDataCacheService expenseCache)
     {
-        _dataAccess = dataAccess;
-        _configuration = configuration;
+        _expenseReadRepository = expenseReadRepository;
         _logger = logger;
+        _userAccountContextService = userAccountContextService;
+        _expenseCache = expenseCache;
+        _classifier = new ExpenseClassificationService();
     }
 
-    public async Task<List<Account>> GetUserAccountsAsync(string userId, bool isAdminOrViewer = false)
+    public async Task<List<AccountOptionDto>> GetUserAccountsAsync(string userId, bool isAdminOrViewer = false)
     {
         try
         {
-            if (string.IsNullOrEmpty(userId))
-            {
-                _logger.LogWarning("GetUserAccountsAsync called with empty userId");
-                return new List<Account>();
-            }
-
-            int userIdInt = 0;
-            string authLevel = string.Empty;
-
-            if (!isAdminOrViewer)
-            {
-                if (int.TryParse(userId, out var parsed) && parsed > 0)
-                {
-                    userIdInt = parsed;
-                    const string authByIdSql = "SELECT AuthLevel FROM Users WHERE Id = @UserId";
-                    var authRows = await _dataAccess.LoadData<dynamic, object>(authByIdSql, new { UserId = userIdInt }, GetConnectionString());
-                    authLevel = authRows?.FirstOrDefault()?.AuthLevel as string ?? string.Empty;
-                }
-                else
-                {
-                    const string userByEmailSql = "SELECT Id, AuthLevel FROM Users WHERE Email = @Email";
-                    var userRows = await _dataAccess.LoadData<dynamic, object>(userByEmailSql, new { Email = userId }, GetConnectionString());
-                    var row = userRows?.FirstOrDefault();
-                    userIdInt = row?.Id ?? 0;
-                    authLevel = row?.AuthLevel ?? string.Empty;
-                    _logger.LogInformation("[ExpenseService] Lookup user by email {Email} -> Id={UserId} Auth={AuthLevel}", userId, userIdInt, authLevel);
-                }
-
-                if (userIdInt == 0)
-                {
-                    _logger.LogWarning("Could not resolve user ID for identifier: {UserId}", userId);
-                    return new List<Account>();
-                }
-
-                isAdminOrViewer = string.Equals(authLevel, "Admin", StringComparison.OrdinalIgnoreCase) ||
-                                   string.Equals(authLevel, "Viewer", StringComparison.OrdinalIgnoreCase);
-            }
-            else
-            {
-                _ = int.TryParse(userId, out userIdInt);
-            }
-
-            string sql;
-            object parameters;
-            if (isAdminOrViewer)
-            {
-                sql = @"SELECT AccountId, Fund, AccountingClass, CreatedAt, Overhead, AccountNumber, SoftCredit, BalanceAdjustment
-                        FROM Accounts
-                        ORDER BY Fund";
-                parameters = new { };
-            }
-            else
-            {
-                sql = @"SELECT a.AccountId, a.Fund, a.AccountingClass, a.CreatedAt, a.Overhead,
-                               a.AccountNumber, a.SoftCredit, a.BalanceAdjustment
-                        FROM Accounts a
-                        INNER JOIN AccountsUsers au ON a.AccountId = au.AccountId
-                        WHERE au.UserId = @UserId
-                        ORDER BY a.Fund";
-                parameters = new { UserId = userIdInt };
-            }
-
-            var accounts = await _dataAccess.LoadData<Account, object>(sql, parameters, GetConnectionString());
-            _logger.LogInformation("[ExpenseService] Accounts for user {UserId} (admin/viewer={IsAdminOrViewer}): {Count}", userIdInt, isAdminOrViewer, accounts?.Count() ?? 0);
-            
-            return accounts?.ToList() ?? new List<Account>();
+            var context = await _userAccountContextService.GetContextAsync(userId, isAdminOrViewer);
+            return (context?.Accounts ?? new List<UserAccountContextAccount>())
+                .Select(MapToAccountOptionDto)
+                .ToList();
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error getting user accounts for userId: {UserId}", userId);
-            return new List<Account>();
+            return new List<AccountOptionDto>();
         }
     }
 
@@ -107,28 +52,43 @@ public class ExpenseService : IExpenseService
     {
         try
         {
-            var userAccounts = await GetUserAccountsAsync(userId, isAdminOrViewer);
-            if (!userAccounts.Any())
+            var context = await _userAccountContextService.GetContextAsync(userId, isAdminOrViewer);
+            var contextAccounts = context?.Accounts ?? new List<UserAccountContextAccount>();
+
+            if (context == null || !contextAccounts.Any())
             {
                 _logger.LogWarning("No accounts found for user: {UserId}", userId);
-                return new ExpenseDataDto { UserAccounts = userAccounts };
+                return new ExpenseDataDto
+                {
+                    UserAccounts = contextAccounts.Select(MapToAccountOptionDto).ToList()
+                };
             }
 
-            var selectedAccount = userAccounts.FirstOrDefault(a => a.Fund == accountName) ?? userAccounts.First();
-            var resolvedAccountName = selectedAccount.Fund;
+            var selectedAccount = _userAccountContextService.ResolveSelectedAccount(context, accountName);
+            if (selectedAccount == null)
+            {
+                return new ExpenseDataDto { UserAccounts = contextAccounts.Select(MapToAccountOptionDto).ToList() };
+            }
+
+            if (_expenseCache.TryGetExpenseData(userId, selectedAccount.Fund ?? string.Empty, dateRange.StartDate, dateRange.EndDate, out var cached))
+            {
+                cached.UserAccounts = contextAccounts.Select(MapToAccountOptionDto).ToList();
+                cached.SelectedAccount = selectedAccount.Fund ?? string.Empty;
+                return cached;
+            }
 
             var accountingData = await LoadAccountingDataAsync(selectedAccount, dateRange);
-            
-            var categorized = TransactionCategorizer.CategorizeTransactions(accountingData);
-            _logger.LogInformation("[ExpenseService] Data for account {Account}: expenses={Expenses}, transfers={Transfers}", resolvedAccountName, categorized.ExpenseTransactions.Count, categorized.TransferTransactions.Count);
+
+            var categorized = _classifier.Categorize(accountingData);
+            _logger.LogInformation("[ExpenseService] Data for account {Account}: expenses={Expenses}, transfers={Transfers}", selectedAccount.Fund, categorized.ExpenseTransactions.Count, categorized.TransferTransactions.Count);
 
             var expenseTransactions = categorized.ExpenseTransactions.Select(MapToExpenseTransactionDto).ToList();
             var transferTransactions = categorized.TransferTransactions.Select(MapToExpenseTransactionDto).ToList();
 
-            return new ExpenseDataDto
+            var result = new ExpenseDataDto
             {
-                UserAccounts = userAccounts,
-                SelectedAccount = resolvedAccountName,
+                UserAccounts = contextAccounts.Select(MapToAccountOptionDto).ToList(),
+                SelectedAccount = selectedAccount.Fund,
                 ExpenseTransactions = expenseTransactions,
                 TransferTransactions = transferTransactions,
                 ExpenseTotal = categorized.ExpenseTotal,
@@ -136,11 +96,18 @@ public class ExpenseService : IExpenseService
                 DateRangeStart = dateRange.StartDate,
                 DateRangeEnd = dateRange.EndDate
             };
+
+            _expenseCache.SetExpenseData(userId, selectedAccount.Fund ?? string.Empty, dateRange.StartDate, dateRange.EndDate, result);
+            return result;
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error getting expense data for account: {AccountName}", accountName);
-            return new ExpenseDataDto { UserAccounts = await GetUserAccountsAsync(userId, isAdminOrViewer) };
+            var fallbackAccounts = await GetUserAccountsAsync(userId, isAdminOrViewer);
+            return new ExpenseDataDto
+            {
+                UserAccounts = fallbackAccounts
+            };
         }
     }
 
@@ -148,13 +115,12 @@ public class ExpenseService : IExpenseService
     {
         try
         {
-            var userAccounts = await GetUserAccountsAsync(userId, isAdminOrViewer);
-            if (!userAccounts.Any()) return new List<ExpenseTransactionDto>();
-
-            var selectedAccount = userAccounts.FirstOrDefault(a => a.Fund == accountName) ?? userAccounts.First();
+            var context = await _userAccountContextService.GetContextAsync(userId, isAdminOrViewer);
+            var selectedAccount = context == null ? null : _userAccountContextService.ResolveSelectedAccount(context, accountName);
+            if (selectedAccount == null) return new List<ExpenseTransactionDto>();
 
             var accountingData = await LoadAccountingDataAsync(selectedAccount, dateRange);
-            var categorized = TransactionCategorizer.CategorizeTransactions(accountingData);
+            var categorized = _classifier.Categorize(accountingData);
 
             return categorized.ExpenseTransactions.Select(MapToExpenseTransactionDto).ToList();
         }
@@ -169,13 +135,12 @@ public class ExpenseService : IExpenseService
     {
         try
         {
-            var userAccounts = await GetUserAccountsAsync(userId, isAdminOrViewer);
-            if (!userAccounts.Any()) return new List<ExpenseTransactionDto>();
-
-            var selectedAccount = userAccounts.FirstOrDefault(a => a.Fund == accountName) ?? userAccounts.First();
+            var context = await _userAccountContextService.GetContextAsync(userId, isAdminOrViewer);
+            var selectedAccount = context == null ? null : _userAccountContextService.ResolveSelectedAccount(context, accountName);
+            if (selectedAccount == null) return new List<ExpenseTransactionDto>();
 
             var accountingData = await LoadAccountingDataAsync(selectedAccount, dateRange);
-            var categorized = TransactionCategorizer.CategorizeTransactions(accountingData);
+            var categorized = _classifier.Categorize(accountingData);
 
             return categorized.TransferTransactions.Select(MapToExpenseTransactionDto).ToList();
         }
@@ -190,8 +155,9 @@ public class ExpenseService : IExpenseService
     {
         try
         {
-            var userAccounts = await GetUserAccountsAsync(userId, isAdminOrViewer);
-            if (!userAccounts.Any())
+            var context = await _userAccountContextService.GetContextAsync(userId, isAdminOrViewer);
+            var selectedAccount = context == null ? null : _userAccountContextService.ResolveSelectedAccount(context, accountName);
+            if (selectedAccount == null)
             {
                 return new ExpenseSummaryDto
                 {
@@ -201,10 +167,8 @@ public class ExpenseService : IExpenseService
                 };
             }
 
-            var selectedAccount = userAccounts.FirstOrDefault(a => a.Fund == accountName) ?? userAccounts.First();
-
             var accountingData = await LoadAccountingDataAsync(selectedAccount, dateRange);
-            var categorized = TransactionCategorizer.CategorizeTransactions(accountingData);
+            var categorized = _classifier.Categorize(accountingData);
 
             return new ExpenseSummaryDto
             {
@@ -229,34 +193,25 @@ public class ExpenseService : IExpenseService
         }
     }
 
-    private async Task<List<AccountingDataModel>> LoadAccountingDataAsync(Account account, DateRange dateRange)
+    private async Task<List<AccountingRecord>> LoadAccountingDataAsync(UserAccountContextAccount account, DateRange dateRange)
     {
         try
         {
-            const string sql = @"
-                SELECT Id, AccountingClass, Date, Num, Amount, AccountNumber, Account, Type, DateCreated
-                FROM AccountingData
-                WHERE AccountingClass = @AccountClass
-                  AND Date >= @StartDate 
-                  AND Date <= @EndDate
-                ORDER BY Date DESC";
+            var result = await _expenseReadRepository.GetAccountingDataByClassAndDateAsync(
+                account.AccountingClass,
+                dateRange.StartDate,
+                dateRange.EndDate);
 
-            var result = await _dataAccess.LoadData<AccountingDataModel, object>(sql, new { 
-                AccountClass = account.AccountingClass,
-                StartDate = dateRange.StartDate,
-                EndDate = dateRange.EndDate
-            }, GetConnectionString());
-            
-            return result?.ToList() ?? new List<AccountingDataModel>();
+            return result;
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error loading accounting data for account: {AccountName}", account.Fund);
-            return new List<AccountingDataModel>();
+            return new List<AccountingRecord>();
         }
     }
 
-    private static ExpenseTransactionDto MapToExpenseTransactionDto(AccountingDataModel model)
+    private static ExpenseTransactionDto MapToExpenseTransactionDto(AccountingRecord model)
     {
         return new ExpenseTransactionDto
         {
@@ -271,8 +226,15 @@ public class ExpenseService : IExpenseService
         };
     }
 
-    private string GetConnectionString()
+    private static AccountOptionDto MapToAccountOptionDto(UserAccountContextAccount account)
     {
-        return _configuration.GetConnectionString("default") ?? string.Empty;
+        return new AccountOptionDto
+        {
+            AccountId = account.AccountId,
+            Fund = account.Fund ?? string.Empty,
+            AccountingClass = account.AccountingClass ?? string.Empty,
+            AccountNumber = account.AccountNumber ?? string.Empty,
+            Overhead = Convert.ToDecimal(account.Overhead)
+        };
     }
 }

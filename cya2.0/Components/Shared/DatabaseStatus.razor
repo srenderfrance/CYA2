@@ -1,0 +1,189 @@
+@using static Microsoft.AspNetCore.Components.Web.RenderMode
+@using Microsoft.AspNetCore.Components.Authorization
+@inject NavigationManager NavigationManager
+@inject IJSRuntime JSRuntime
+@inject IDatabaseAvailabilityMonitor DbMonitorService
+@inject IConfiguration Configuration
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@rendermode InteractiveServer
+@implements IDisposable
+
+@if (!IsConnected && IsVisible && ShouldShowPopup)
+{
+    <div class="database-error @(IsVisible ? "visible" : "hidden")">
+        <div class="alert alert-danger d-flex align-items-center">
+            <i class="bi bi-exclamation-triangle-fill me-2"></i>
+            <div>
+                <strong>Database Connection Error</strong>
+                <p class="mb-0">@LastError</p>
+                <div class="mt-2">
+                    <button class="btn btn-sm btn-outline-danger me-2" @onclick="RetryConnection">Retry Connection</button>
+                    <button class="btn btn-sm btn-outline-secondary" @onclick="DismissError">Dismiss</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private bool IsConnected = true;
+    private string LastError = "";
+    private bool IsVisible = true;
+    private bool ShouldShowPopup = false;
+
+    private int _reconnectAttempts = 0;
+
+    protected override void OnInitialized()
+    {
+        try
+        {
+            IsConnected = DbMonitorService.IsConnected;
+            LastError = DbMonitorService.LastError;
+            DbMonitorService.ConnectionStatusChanged += OnConnectionStatusChanged;
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"Error initializing DatabaseStatus component: {ex.Message}");
+            IsConnected = false;
+            LastError = "Error initializing component";
+        }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        await UpdatePopupVisibilityAsync();
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        await UpdatePopupVisibilityAsync();
+    }
+
+    private async Task UpdatePopupVisibilityAsync()
+    {
+        try
+        {
+            var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+            var isAuthenticated = authState.User.Identity?.IsAuthenticated == true;
+            var path = NavigationManager.ToBaseRelativePath(NavigationManager.Uri).ToLowerInvariant();
+            var isErrorRoute = path.StartsWith("database-error") ||
+                               path.StartsWith("not-authorized") ||
+                               path.StartsWith("login-error") ||
+                               path.StartsWith("logged-out");
+
+            ShouldShowPopup = isAuthenticated && !isErrorRoute;
+        }
+        catch
+        {
+            ShouldShowPopup = false;
+        }
+    }
+
+    private void OnConnectionStatusChanged(object sender, bool isConnected)
+    {
+        try
+        {
+            IsConnected = isConnected;
+            LastError = DbMonitorService.LastError;
+            IsVisible = !isConnected;
+
+            InvokeAsync(async () =>
+            {
+                await UpdatePopupVisibilityAsync();
+                StateHasChanged();
+            }).ContinueWith(t =>
+            {
+                if (t.IsFaulted)
+                    Console.Error.WriteLine($"UI update error: {t.Exception?.Message}");
+            });
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"Error in connection status handler: {ex.Message}");
+        }
+    }
+
+    private async Task RetryConnection()
+    {
+        try
+        {
+            _reconnectAttempts++;
+
+            var cs = Configuration.GetConnectionString("default") ?? string.Empty;
+            string host = "localhost";
+            int port = 3306;
+            foreach (var part in cs.Split(';'))
+            {
+                if (part.StartsWith("server=", StringComparison.OrdinalIgnoreCase) ||
+                    part.StartsWith("host=", StringComparison.OrdinalIgnoreCase))
+                    host = part[(part.IndexOf('=') + 1)..].Trim();
+                else if (part.StartsWith("port=", StringComparison.OrdinalIgnoreCase))
+                    int.TryParse(part[(part.IndexOf('=') + 1)..].Trim(), out port);
+            }
+
+            IsConnected = GlobalSettings.CheckDatabaseTcpConnection(host, port, 2000);
+
+            if (IsConnected)
+            {
+                _reconnectAttempts = 0;
+                IsVisible = false;
+                DbMonitorService.Resume();
+            }
+            else
+            {
+                LastError = "Could not reach database server.";
+                if (_reconnectAttempts >= 3)
+                {
+                    NavigationManager.NavigateTo("/database-error", true);
+                    return;
+                }
+            }
+
+            await InvokeAsync(StateHasChanged);
+        }
+        catch (Exception ex)
+        {
+            IsConnected = false;
+            LastError = $"Retry failed: {ex.Message}";
+            _reconnectAttempts++;
+            if (_reconnectAttempts >= 3)
+            {
+                NavigationManager.NavigateTo("/database-error", true);
+                return;
+            }
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private void DismissError()
+    {
+        IsVisible = false;
+        StateHasChanged();
+    }
+
+    public void Dispose()
+    {
+        try { DbMonitorService.ConnectionStatusChanged -= OnConnectionStatusChanged; }
+        catch { }
+    }
+}
+
+<style>
+    .database-error {
+        position: fixed;
+        bottom: 20px;
+        right: 20px;
+        max-width: 400px;
+        z-index: 1050;
+        transition: opacity 0.5s ease;
+    }
+
+    .database-error.hidden {
+        opacity: 0;
+        pointer-events: none;
+    }
+
+    .database-error.visible {
+        opacity: 1;
+    }
+</style>

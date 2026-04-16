@@ -1,0 +1,327 @@
+@page "/settings"
+@using Microsoft.AspNetCore.Components.Authorization
+@using System.Security.Claims
+@using static Microsoft.AspNetCore.Components.Web.RenderMode
+@using Cya2.Application.Interfaces
+@using Cya2.Application.DTOs
+@using Cya2.Shared.Utilities
+@inject AuthenticationStateProvider AuthStateProvider
+@inject Cya2.Application.Interfaces.IUserSettingsService UserSettingsService
+@inject NavigationManager NavigationManager
+@inject ISessionUserStateService SessionUserStateService
+@inject Cya2.Application.Interfaces.IUserIdResolver UserIdResolver
+@rendermode InteractiveServer
+@inject IStringLocalizer<Resource> Localizer
+@inject IJSRuntime JS
+
+<PageTitle>@Localizer["UserSettings"]</PageTitle>
+
+<div class="container mt-4">
+    <RadzenCard>
+        <RadzenText TextStyle="TextStyle.H3">@Localizer["SettingsAndPreferences"]</RadzenText>
+
+        @if (!string.IsNullOrEmpty(errorMessage))
+        {
+            <RadzenAlert AlertStyle="AlertStyle.Danger" ShowIcon="true" Variant="Variant.Filled" Class="mt-3 mb-3">
+                @Localizer[errorMessage]
+            </RadzenAlert>
+        }
+
+        @if (!string.IsNullOrEmpty(successMessage))
+        {
+            <RadzenAlert AlertStyle="AlertStyle.Success" ShowIcon="true" Variant="Variant.Filled" Class="mt-3 mb-3">
+                @Localizer[successMessage]
+            </RadzenAlert>
+        }
+
+        <!-- Use RadzenStack with Horizontal orientation instead of Bootstrap row/col -->
+        <RadzenStack Orientation="Orientation.Horizontal" Gap="2rem" Class="mt-4">
+            <!-- Default Account Column -->
+            <RadzenStack Orientation="Orientation.Vertical" Gap="1rem" Style="width: 48%;">
+                <RadzenCard>
+                    <RadzenStack Gap="1rem">
+                        <RadzenText TextStyle="TextStyle.H5">@Localizer["DefaultAccount"]</RadzenText>
+                        
+                        <RadzenText TextStyle="TextStyle.Body2">
+                            @Localizer["CurrentDefault"]: <strong>@GetAccountDisplayName(currentDefaultAccountId)</strong>
+                        </RadzenText>
+                        
+                        <RadzenDropDown TValue="string"
+                                        Data="@userAccounts"
+                                        TextProperty="Fund"
+                                        ValueProperty="AccountingClass"
+                                        @bind-Value="selectedAccountingClass"
+                                        Placeholder="@Localizer["SelectDefaultAccount"]"
+                                        Style="width: 100%;"
+                                        Disabled="@(userAccounts == null || userAccounts.Count == 0)">
+                            <ValueTemplate>
+                                @{ var sel = userAccounts.FirstOrDefault(a => a.AccountingClass == selectedAccountingClass); }
+                                @DisplayFormatter.FormatFundDisplay(sel?.Fund)
+                            </ValueTemplate>
+                            <Template Context="acct">
+                                @DisplayFormatter.FormatFundDisplay(acct.Fund)
+                            </Template>
+                        </RadzenDropDown>
+                        
+                        <RadzenButton Text="@Localizer["UpdateAccount"]"
+                                      Click="SaveAccountSetting"
+                                      ButtonStyle="ButtonStyle.Primary"
+                                      Size="ButtonSize.Medium"
+                                      Style="width: fit-content;"
+                                      Disabled="@(isSavingAccount || !HasAccountChanges())" />
+                    </RadzenStack>
+                </RadzenCard>
+            </RadzenStack>
+            
+            <!-- Language Preference Column -->
+            <RadzenStack Orientation="Orientation.Vertical" Gap="1rem" Style="width: 48%;">
+                <RadzenCard>
+                    <RadzenStack Gap="1rem">
+                        <RadzenText TextStyle="TextStyle.H5">@Localizer["LanguagePreference"]</RadzenText>
+                        
+                        <RadzenText TextStyle="TextStyle.Body2">
+                            @Localizer["CurrentLanguage"]: <strong>@GetLanguageDisplayName(currentLanguage)</strong>
+                        </RadzenText>
+                        
+                        <RadzenDropDown TValue="string"
+                                        Data="@languageOptions"
+                                        TextProperty="Text"
+                                        ValueProperty="Value"
+                                        @bind-Value="selectedLanguage"
+                                        Style="width: 100%;" />
+                        
+                        <RadzenButton Text="@Localizer["UpdateLanguage"]"
+                                      Click="SaveLanguageSetting"
+                                      ButtonStyle="ButtonStyle.Primary"
+                                      Size="ButtonSize.Medium"
+                                      Style="width: fit-content;"
+                                      Disabled="@(isSavingLanguage || !HasLanguageChanges())" />
+                    </RadzenStack>
+                </RadzenCard>
+            </RadzenStack>
+        </RadzenStack>
+    </RadzenCard>
+</div>
+
+@code {
+    private int userId;
+    private int? currentDefaultAccountId;
+    private List<AccountOptionDto> userAccounts = new();
+    private List<LanguageOption> languageOptions = new()
+    {
+        new LanguageOption { Value = "en-US", Text = "English" },
+        new LanguageOption { Value = "es-US", Text = "Spanish" }
+    };
+    private string errorMessage = string.Empty;
+    private string successMessage = string.Empty;
+    private bool isSavingAccount = false;
+    private bool isSavingLanguage = false;
+    private string currentLanguage = "en-US";
+    private string selectedAccountingClass = string.Empty;
+    private string selectedLanguage = "en-US";
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadUserData();
+    }
+
+    private async Task LoadUserData()
+    {
+        try
+        {
+            errorMessage = string.Empty;
+            successMessage = string.Empty;
+
+            var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+            var user = authState.User;
+
+            if (user.Identity?.IsAuthenticated != true)
+            {
+                NavigationManager.NavigateTo("/", true);
+                return;
+            }
+
+            var authLevel = user.FindFirstValue("AuthLevel") ?? string.Empty;
+            var isAdminOnlyHint = user.IsInRole("Admin") || string.Equals(authLevel, "Admin", StringComparison.OrdinalIgnoreCase);
+
+            var userIdentifier = UserIdResolver.ResolveUserId(user, SessionUserStateService.CurrentUserId);
+            SessionUserStateService.ResetForUser(userIdentifier);
+
+            if (string.IsNullOrWhiteSpace(userIdentifier))
+            {
+                errorMessage = "UnableToFindUserInformation";
+                return;
+            }
+
+            var settings = await UserSettingsService.GetUserSettingsAsync(userIdentifier, isAdminOnlyHint);
+            if (settings == null)
+            {
+                errorMessage = "UnableToLoadUserSettings";
+                return;
+            }
+
+            userId = settings.UserId;
+            currentDefaultAccountId = settings.DefaultAccountId;
+            currentLanguage = string.IsNullOrWhiteSpace(settings.Language) ? "en-US" : settings.Language;
+            selectedLanguage = currentLanguage;
+            userAccounts = settings.UserAccounts ?? new List<AccountOptionDto>();
+
+            if (currentDefaultAccountId.HasValue)
+            {
+                var defaultAccount = userAccounts.FirstOrDefault(a => a.AccountId == currentDefaultAccountId.Value);
+                if (defaultAccount != null)
+                {
+                    selectedAccountingClass = defaultAccount.AccountingClass;
+                    SessionUserStateService.DefaultAccountFund = defaultAccount.Fund;
+                    if (string.IsNullOrWhiteSpace(SessionUserStateService.SelectedAccountFund))
+                    {
+                        SessionUserStateService.SelectedAccountFund = defaultAccount.Fund;
+                    }
+                }
+                else
+                {
+                    errorMessage = "DefaultAccountNoLongerAccessible";
+                    currentDefaultAccountId = null;
+                    selectedAccountingClass = string.Empty;
+                }
+            }
+
+            if (userAccounts.Count == 0)
+            {
+                errorMessage = "NoAccountsAccessibleContactAdmin";
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"{Localizer["ErrorLoadingUserData"]} {ex.Message}";
+        }
+    }
+
+    private bool HasAccountChanges()
+    {
+        var currentAccountingClass = userAccounts
+            .FirstOrDefault(a => a.AccountId == currentDefaultAccountId)?.AccountingClass ?? string.Empty;
+
+        return selectedAccountingClass != currentAccountingClass;
+    }
+
+    private bool HasLanguageChanges() => selectedLanguage != currentLanguage;
+
+    private async Task SaveAccountSetting()
+    {
+        try
+        {
+            isSavingAccount = true;
+            errorMessage = string.Empty;
+            successMessage = string.Empty;
+
+            int? newAccountId = null;
+            string? newAccountName = null;
+
+            if (!string.IsNullOrEmpty(selectedAccountingClass))
+            {
+                var selectedAccountObj = userAccounts.FirstOrDefault(a => a.AccountingClass == selectedAccountingClass);
+                if (selectedAccountObj != null)
+                {
+                    newAccountId = selectedAccountObj.AccountId;
+                    newAccountName = selectedAccountObj.Fund;
+                }
+            }
+
+            if (newAccountId == currentDefaultAccountId)
+            {
+                successMessage = "DefaultAccountNoChange";
+                return;
+            }
+
+            var updated = await UserSettingsService.UpdateDefaultAccountAsync(userId, newAccountId);
+
+            if (updated)
+            {
+                SessionUserStateService.DefaultAccountFund = newAccountName ?? string.Empty;
+                SessionUserStateService.SelectedAccountFund = newAccountName ?? string.Empty;
+                successMessage = "DefaultAccountUpdatedImmediate";
+                currentDefaultAccountId = newAccountId;
+            }
+            else
+            {
+                errorMessage = "DefaultAccountUpdateFailed";
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"{Localizer["ErrorSavingAccountSetting"]} {ex.Message}";
+        }
+        finally
+        {
+            isSavingAccount = false;
+        }
+    }
+
+    private async Task SaveLanguageSetting()
+    {
+        try
+        {
+            isSavingLanguage = true;
+            errorMessage = string.Empty;
+            successMessage = string.Empty;
+
+            var langToSave = selectedLanguage == "es-US" ? "es-US" : "en-US";
+
+            if (langToSave == currentLanguage)
+            {
+                successMessage = Localizer["NoLanguageChange"];
+                return;
+            }
+
+            var updated = await UserSettingsService.UpdateLanguageAsync(userId, langToSave);
+
+            if (updated)
+            {
+                await JS.InvokeVoidAsync("blazorCulture.set", langToSave);
+                currentLanguage = langToSave;
+                successMessage = Localizer["LanguageUpdated"];
+                NavigationManager.NavigateTo(NavigationManager.Uri, forceLoad: true);
+            }
+            else
+            {
+                errorMessage = Localizer["LanguageUpdateFailed"];
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"{Localizer["ErrorSavingLanguage"]} {ex.Message}";
+        }
+        finally
+        {
+            isSavingLanguage = false;
+        }
+    }
+
+    private string GetLanguageDisplayName(string code)
+    {
+        var language = languageOptions.FirstOrDefault(l => l.Value == code);
+        return language?.Text ?? code;
+    }
+
+    private string GetAccountDisplayName(int? accountId)
+    {
+        if (!accountId.HasValue)
+            return Localizer["None"];
+
+        var account = userAccounts.FirstOrDefault(a => a.AccountId == accountId.Value);
+        return DisplayFormatter.FormatFundDisplay(account?.Fund);
+    }
+
+    // Helper to centralize user id resolution for this component
+    private string ResolveUserId(ClaimsPrincipal user)
+    {
+        return UserIdResolver.ResolveUserId(user, SessionUserStateService.CurrentUserId);
+    }
+
+    private class LanguageOption
+    {
+        public string Value { get; set; } = string.Empty;
+        public string Text { get; set; } = string.Empty;
+    }
+}

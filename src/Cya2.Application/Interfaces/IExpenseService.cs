@@ -1,6 +1,5 @@
 using Cya2.Application.DTOs;
 using Cya2.Core.ValueObjects;
-using ModelsLibrary;
 
 namespace Cya2.Application.Interfaces;
 
@@ -9,7 +8,7 @@ namespace Cya2.Application.Interfaces;
 /// </summary>
 public interface IExpenseService
 {
-    Task<List<Account>> GetUserAccountsAsync(string userId, bool isAdminOrViewer = false);
+    Task<List<AccountOptionDto>> GetUserAccountsAsync(string userId, bool isAdminOrViewer = false);
     Task<ExpenseDataDto> GetExpenseDataAsync(string accountName, DateRange dateRange, string userId, bool isAdminOrViewer = false);
     Task<List<ExpenseTransactionDto>> GetExpenseTransactionsAsync(string accountName, DateRange dateRange, string userId, bool isAdminOrViewer = false);
     Task<List<ExpenseTransactionDto>> GetTransferTransactionsAsync(string accountName, DateRange dateRange, string userId, bool isAdminOrViewer = false);

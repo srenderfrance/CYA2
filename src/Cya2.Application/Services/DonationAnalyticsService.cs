@@ -1,6 +1,5 @@
 using Cya2.Application.Interfaces;
 using Cya2.Core.Entities;
-using DataLibrary;
 
 namespace Cya2.Application.Services;
 
@@ -10,11 +9,8 @@ namespace Cya2.Application.Services;
 /// </summary>
 public class DonationAnalyticsService : IDonationAnalyticsService
 {
-    private readonly IDataAccess _dataAccess;
-
-    public DonationAnalyticsService(IDataAccess dataAccess)
+    public DonationAnalyticsService()
     {
-        _dataAccess = dataAccess;
     }
 
     /// <summary>

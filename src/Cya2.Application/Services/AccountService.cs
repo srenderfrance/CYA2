@@ -1,22 +1,19 @@
-using DataLibrary;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Cya2.Application.DTOs;
 using Cya2.Application.Interfaces;
+using Cya2.Core.Interfaces;
 using Cya2.Core.ValueObjects;
 
 namespace Cya2.Application.Services;
 
 public class AccountService : IAccountService
 {
-    private readonly IDataAccess _dataAccess;
-    private readonly IConfiguration _configuration;
+    private readonly IAccountRepository _accountRepository;
     private readonly ILogger<AccountService> _logger;
 
-    public AccountService(IDataAccess dataAccess, IConfiguration configuration, ILogger<AccountService> logger)
+    public AccountService(IAccountRepository accountRepository, ILogger<AccountService> logger)
     {
-        _dataAccess = dataAccess;
-        _configuration = configuration;
+        _accountRepository = accountRepository;
         _logger = logger;
     }
 
@@ -24,22 +21,16 @@ public class AccountService : IAccountService
     {
         try
         {
-            const string sql = @"SELECT a.Fund, a.AccountingClass, a.BalanceAdjustment, a.CreatedAt as LastActivity
-                                 FROM Accounts a
-                                 INNER JOIN AccountsUsers au ON a.AccountId = au.AccountId
-                                 WHERE au.UserId = @UserId
-                                 ORDER BY a.Fund";
+            var accounts = await _accountRepository.GetByUserIdAsync(userId);
 
-            var accounts = await _dataAccess.LoadData<dynamic, object>(sql, new { UserId = userId }, GetConnectionString());
-
-            return accounts?.Select(a => new AccountSummaryDto
+            return accounts.Select(a => new AccountSummaryDto
             {
-                Fund = a.Fund?.ToString() ?? string.Empty,
-                AccountingClass = a.AccountingClass?.ToString() ?? string.Empty,
-                DisplayName = a.Fund?.ToString() ?? string.Empty,
-                CurrentBalance = Convert.ToDecimal(a.BalanceAdjustment ?? 0),
-                LastActivity = a.LastActivity ?? DateTime.MinValue
-            }).ToList() ?? new List<AccountSummaryDto>();
+                Fund = a.Fund,
+                AccountingClass = a.AccountingClass,
+                DisplayName = a.Fund,
+                CurrentBalance = a.BalanceAdjustment,
+                LastActivity = a.CreatedAt
+            }).ToList();
         }
         catch (Exception ex)
         {
@@ -52,23 +43,17 @@ public class AccountService : IAccountService
     {
         try
         {
-            const string sql = @"SELECT Fund, AccountingClass, AccountNumber, BalanceAdjustment, Overhead, SoftCredit
-                                 FROM Accounts
-                                 WHERE Fund = @AccountName";
-
-            var accounts = await _dataAccess.LoadData<dynamic, object>(sql, new { AccountName = accountName }, GetConnectionString());
-            var account = accounts?.FirstOrDefault();
-
+            var account = await _accountRepository.GetByFundAsync(accountName);
             if (account == null) return null;
 
             return new AccountDetailDto
             {
-                Fund = account.Fund?.ToString() ?? string.Empty,
-                AccountingClass = account.AccountingClass?.ToString() ?? string.Empty,
-                AccountNumber = account.AccountNumber?.ToString() ?? string.Empty,
-                BalanceAdjustment = Convert.ToDecimal(account.BalanceAdjustment ?? 0),
-                Overhead = Convert.ToDecimal(account.Overhead ?? 0),
-                SoftCredit = account.SoftCredit?.ToString() ?? string.Empty
+                Fund = account.Fund,
+                AccountingClass = account.AccountingClass,
+                AccountNumber = account.AccountNumber,
+                BalanceAdjustment = account.BalanceAdjustment,
+                Overhead = account.Overhead,
+                SoftCredit = account.SoftCredit
             };
         }
         catch (Exception ex)
@@ -106,10 +91,5 @@ public class AccountService : IAccountService
     {
         var dateRange = new DateRange(DateTime.MinValue, asOfDate);
         return await GetAccountBalanceAsync(accountName, dateRange);
-    }
-
-    private string GetConnectionString()
-    {
-        return _configuration.GetConnectionString("default") ?? string.Empty;
     }
 }

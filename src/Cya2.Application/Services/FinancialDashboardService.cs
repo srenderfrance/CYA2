@@ -1,73 +1,140 @@
 using Cya2.Application.DTOs;
 using Cya2.Application.Interfaces;
-using DataLibrary; // Main application's IDataAccess
-using Microsoft.Extensions.Configuration;
+using Cya2.Core.Interfaces;
 using Microsoft.Extensions.Logging;
-using ModelsLibrary; // Main application's models
-using UtilityClassLibrary; // External utility library
-using System.Security.Claims;
 
 namespace Cya2.Application.Services;
 
-/// <summary>
-/// Clean architecture service for financial dashboard operations
-/// Provides abstraction for Home.razor component
-/// </summary>
 public class FinancialDashboardService : IFinancialDashboardService
 {
-    private readonly IDataAccess _dataAccess;
-    private readonly IConfiguration _configuration;
     private readonly ILogger<FinancialDashboardService> _logger;
+    private readonly IAccountCalculationService _accountCalculationService;
+    private readonly ISessionAccountDataCacheService _sessionAccountDataCache;
+    private readonly IUserAccountContextService _userAccountContextService;
+    private readonly IFinancialDashboardReadRepository _financialDashboardReadRepository;
+    private readonly IDonationService _donationService;
 
     public FinancialDashboardService(
-        IDataAccess dataAccess, 
-        IConfiguration configuration, 
-        ILogger<FinancialDashboardService> logger)
+        ILogger<FinancialDashboardService> logger,
+        IAccountCalculationService accountCalculationService,
+        ISessionAccountDataCacheService sessionAccountDataCache,
+        IUserAccountContextService userAccountContextService,
+        IFinancialDashboardReadRepository financialDashboardReadRepository,
+        IDonationService donationService)
     {
-        _dataAccess = dataAccess;
-        _configuration = configuration;
         _logger = logger;
+        _accountCalculationService = accountCalculationService;
+        _sessionAccountDataCache = sessionAccountDataCache;
+        _userAccountContextService = userAccountContextService;
+        _financialDashboardReadRepository = financialDashboardReadRepository;
+        _donationService = donationService;
     }
 
     public async Task<FinancialDashboardDto> GetDashboardDataAsync(string accountFund, string userId)
     {
+        return await GetDashboardDataInternalAsync(accountFund, userId, useSessionAccountDataCache: true);
+    }
+
+    public async Task<FinancialDashboardDto> GetDashboardSummaryDataAsync(string accountFund, string userId)
+    {
+        return await GetDashboardDataInternalAsync(accountFund, userId, useSessionAccountDataCache: false);
+    }
+
+    private async Task<FinancialDashboardDto> GetDashboardDataInternalAsync(string accountFund, string userId, bool useSessionAccountDataCache)
+    {
         try
         {
-            _logger.LogInformation("Getting dashboard data for account {AccountFund} and user {UserId}", accountFund, userId);
-
             var dashboard = new FinancialDashboardDto();
+            var userContext = await _userAccountContextService.GetContextAsync(userId);
+            if (userContext == null)
+            {
+                _logger.LogWarning("Dashboard user context could not be resolved for user identifier '{UserId}'", userId);
+                return dashboard;
+            }
 
-            // For MVP: Load user accounts directly
-            dashboard.UserAccounts = await GetUserAccountsAsync(userId);
-            
+            var accounts = userContext.Accounts;
+            dashboard.UserAccounts = accounts
+                .Select(a => new UserAccountDto
+                {
+                    AccountId = a.AccountId,
+                    Fund = a.Fund ?? string.Empty,
+                    DisplayName = a.Fund ?? string.Empty,
+                    AccountingClass = a.AccountingClass ?? string.Empty,
+                    AccountNumber = a.AccountNumber ?? string.Empty,
+                    Overhead = Convert.ToDecimal(a.Overhead),
+                    IsDefault = userContext.DefaultAccountId.HasValue && a.AccountId == userContext.DefaultAccountId.Value
+                })
+                .ToList();
+
             if (!dashboard.UserAccounts.Any())
             {
-                _logger.LogWarning("No accounts found for user {UserId}", userId);
+                _logger.LogWarning("No dashboard accounts found for user '{UserId}'", userId);
                 return dashboard;
             }
 
-            // Set selected account or default
-            var selectedAccount = !string.IsNullOrEmpty(accountFund) 
-                ? dashboard.UserAccounts.FirstOrDefault(a => a.Fund == accountFund)
-                : dashboard.UserAccounts.FirstOrDefault(a => a.IsDefault) ?? dashboard.UserAccounts.First();
-
-            if (selectedAccount == null)
+            var selectedContextAccount = _userAccountContextService.ResolveSelectedAccount(userContext, accountFund);
+            if (selectedContextAccount == null)
             {
-                _logger.LogWarning("Selected account {AccountFund} not found for user {UserId}", accountFund, userId);
                 return dashboard;
             }
 
-            dashboard.SelectedAccount = selectedAccount.Fund;
+            dashboard.SelectedAccount = selectedContextAccount.Fund ?? string.Empty;
             dashboard.HasAccountData = true;
 
-            // Calculate financial summaries using direct database access for MVP
-            await CalculateFinancialSummariesAsync(dashboard, selectedAccount);
+            // Embed full-range donation payloads for selected and default accounts so client receives them on initial load
+            try
+            {
+                var now = DateTime.UtcNow;
+                var start = new DateTime(now.Year - 2, 1, 1);
+                var end = new DateTime(now.Year, 12, 31);
+
+                if (!string.IsNullOrWhiteSpace(dashboard.SelectedAccount))
+                {
+                    try
+                    {
+                        var selDto = await _donationService.GetDonationDataAsync(dashboard.SelectedAccount, "All", new Core.ValueObjects.DateRange(start, end), userId);
+                        dashboard.SelectedAccountDonations = selDto;
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "Failed to preload donations for selected account {Account}", dashboard.SelectedAccount);
+                    }
+                }
+
+                var defaultAcc = dashboard.UserAccounts.FirstOrDefault(a => a.IsDefault)?.Fund;
+                if (!string.IsNullOrWhiteSpace(defaultAcc) && !string.Equals(defaultAcc, dashboard.SelectedAccount, StringComparison.OrdinalIgnoreCase))
+                {
+                    try
+                    {
+                        var defDto = await _donationService.GetDonationDataAsync(defaultAcc, "All", new Core.ValueObjects.DateRange(start, end), userId);
+                        dashboard.DefaultAccountDonations = defDto;
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "Failed to preload donations for default account {Account}", defaultAcc);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Error preloading embedded donation payloads for dashboard");
+            }
+
+            if (useSessionAccountDataCache)
+            {
+                await PopulateSummariesFromSessionCacheAsync(dashboard, selectedContextAccount, userContext.DefaultAccountId == selectedContextAccount.AccountId);
+                _sessionAccountDataCache.LogCacheStatus();
+            }
+            else
+            {
+                await PopulateSummariesDirectAsync(dashboard, selectedContextAccount);
+            }
 
             return dashboard;
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error getting dashboard data for account {AccountFund}", accountFund);
+            _logger.LogError(ex, "Error getting dashboard data for account '{AccountFund}'", accountFund);
             return new FinancialDashboardDto();
         }
     }
@@ -76,231 +143,166 @@ public class FinancialDashboardService : IFinancialDashboardService
     {
         try
         {
-            const string sql = @"
-                SELECT a.AccountId, a.Fund, a.AccountingClass, a.AccountNumber, a.Overhead,
-                       CASE WHEN au.AccountId IS NOT NULL THEN 1 ELSE 0 END as HasAccess
-                FROM Accounts a
-                LEFT JOIN AccountsUsers au ON a.AccountId = au.AccountId 
-                LEFT JOIN Users u ON au.UserId = u.Id
-                WHERE u.Email = @UserEmail OR u.GoogleId = @UserId
-                ORDER BY a.Fund";
-
-            var accounts = await _dataAccess.LoadData<dynamic, dynamic>(
-                sql, 
-                new { UserEmail = userId, UserId = userId }, 
-                GetConnectionString());
-
-            var result = new List<UserAccountDto>();
-            bool isFirst = true;
-
-            foreach (var account in accounts ?? new List<dynamic>())
+            var userContext = await _userAccountContextService.GetContextAsync(userId);
+            if (userContext == null)
             {
-                result.Add(new UserAccountDto
-                {
-                    AccountId = account.AccountId,
-                    Fund = account.Fund?.ToString() ?? "",
-                    DisplayName = account.Fund?.ToString() ?? "", // Simple display for MVP
-                    AccountingClass = account.AccountingClass?.ToString() ?? "",
-                    AccountNumber = account.AccountNumber?.ToString() ?? "",
-                    Overhead = Convert.ToDecimal(account.Overhead ?? 0),
-                    IsDefault = isFirst // First account is default
-                });
-                isFirst = false;
+                return new List<UserAccountDto>();
             }
 
-            return result;
+            return userContext.Accounts.Select(a => new UserAccountDto
+            {
+                AccountId = a.AccountId,
+                Fund = a.Fund ?? string.Empty,
+                DisplayName = a.Fund ?? string.Empty,
+                AccountingClass = a.AccountingClass ?? string.Empty,
+                AccountNumber = a.AccountNumber ?? string.Empty,
+                Overhead = Convert.ToDecimal(a.Overhead),
+                IsDefault = userContext.DefaultAccountId.HasValue && a.AccountId == userContext.DefaultAccountId.Value
+            }).ToList();
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error getting user accounts for {UserId}", userId);
+            _logger.LogError(ex, "Error getting user accounts for '{UserId}'", userId);
             return new List<UserAccountDto>();
         }
     }
 
     public async Task<bool> ValidateAccountAccessAsync(string accountFund, string userId)
     {
-        try
-        {
-            var userAccounts = await GetUserAccountsAsync(userId);
-            return userAccounts.Any(a => a.Fund.Equals(accountFund, StringComparison.OrdinalIgnoreCase));
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error validating account access for {AccountFund} and user {UserId}", accountFund, userId);
-            return false;
-        }
+        var userAccounts = await GetUserAccountsAsync(userId);
+        return userAccounts.Any(a => a.Fund.Equals(accountFund, StringComparison.OrdinalIgnoreCase));
     }
 
-    private async Task CalculateFinancialSummariesAsync(FinancialDashboardDto dashboard, UserAccountDto selectedAccount)
+    private async Task PopulateSummariesFromSessionCacheAsync(FinancialDashboardDto dashboard, UserAccountContextAccount selectedAccount, bool isDefaultAccount)
     {
-        try
-        {
-            var now = DateTime.Now;
+        var now = DateTime.Now;
+        var currentMonthStart = new DateTime(now.Year, now.Month, 1);
+        var currentMonthEnd = currentMonthStart.AddMonths(1).AddDays(-1);
+        var priorMonthStart = currentMonthStart.AddMonths(-1);
+        var priorMonthEnd = currentMonthStart.AddDays(-1);
+        var currentYearStart = new DateTime(now.Year, 1, 1);
+        var currentYearEnd = new DateTime(now.Year, now.Month, DateTime.DaysInMonth(now.Year, now.Month));
+        var priorYearStart = new DateTime(now.Year - 1, 1, 1);
+        var priorYearEnd = new DateTime(now.Year - 1, 12, 31);
 
-            // Load donation and accounting data for the selected account
-            var donationData = await LoadDonationDataAsync(selectedAccount.Fund);
-            var accountingData = await LoadAccountingDataAsync(selectedAccount.Fund);
+        var windowStart = new DateTime(now.Year - 1, 1, 1);
+        var windowEnd = new DateTime(now.Year, 12, 31);
 
-            if (!donationData.Any() && !accountingData.Any())
-            {
-                _logger.LogWarning("No financial data found for account {Fund}", selectedAccount.Fund);
-                SetEmptyFinancialSummaries(dashboard, now);
-                return;
-            }
+        var cachedData = await _sessionAccountDataCache.GetOrLoadAccountDataAsync(selectedAccount, windowStart, windowEnd, isDefaultAccount);
 
-            // Calculate date ranges
-            var currentMonthStart = new DateTime(now.Year, now.Month, 1);
-            var currentMonthEnd = currentMonthStart.AddMonths(1).AddDays(-1);
-            var priorMonthStart = currentMonthStart.AddMonths(-1);
-            var priorMonthEnd = currentMonthStart.AddDays(-1);
-            var currentYearStart = new DateTime(now.Year, 1, 1);
-            var currentYearEnd = new DateTime(now.Year, now.Month, DateTime.DaysInMonth(now.Year, now.Month));
-            var priorYearStart = new DateTime(now.Year - 1, 1, 1);
-            var priorYearEnd = new DateTime(now.Year - 1, 12, 31);
+        dashboard.CurrentMonth = BuildSummaryFromCache(selectedAccount, cachedData, currentMonthStart, currentMonthEnd, now.ToString("MMMM yyyy"));
+        dashboard.PriorMonth = BuildSummaryFromCache(selectedAccount, cachedData, priorMonthStart, priorMonthEnd, now.AddMonths(-1).ToString("MMMM yyyy"));
+        dashboard.CurrentYear = BuildSummaryFromCache(selectedAccount, cachedData, currentYearStart, currentYearEnd, now.ToString("yyyy"));
+        dashboard.PriorYear = BuildSummaryFromCache(selectedAccount, cachedData, priorYearStart, priorYearEnd, (now.Year - 1).ToString());
 
-            // Calculate summaries for each period
-            dashboard.CurrentMonth = await CalculatePeriodSummaryAsync(donationData, accountingData, currentMonthStart, currentMonthEnd, now.ToString("MMMM yyyy"));
-            dashboard.PriorMonth = await CalculatePeriodSummaryAsync(donationData, accountingData, priorMonthStart, priorMonthEnd, now.AddMonths(-1).ToString("MMMM yyyy"));
-            dashboard.CurrentYear = await CalculatePeriodSummaryAsync(donationData, accountingData, currentYearStart, currentYearEnd, now.ToString("yyyy"));
-            dashboard.PriorYear = await CalculatePeriodSummaryAsync(donationData, accountingData, priorYearStart, priorYearEnd, (now.Year - 1).ToString());
-
-            // Calculate averages for year summaries
-            int monthsInCurrentYear = Math.Min(now.Month, 12);
-            if (monthsInCurrentYear > 0)
-            {
-                dashboard.CurrentYear.AvgMonthlyDonations = dashboard.CurrentYear.TotalDonations / monthsInCurrentYear;
-                dashboard.CurrentYear.AvgMonthlyExpenses = dashboard.CurrentYear.TotalExpenses / monthsInCurrentYear;
-            }
-
-            dashboard.PriorYear.AvgMonthlyDonations = dashboard.PriorYear.TotalDonations / 12;
-            dashboard.PriorYear.AvgMonthlyExpenses = dashboard.PriorYear.TotalExpenses / 12;
-
-            // Calculate balances from accounting data
-            dashboard.CurrentMonth.Balance = CalculateBalance(accountingData, currentMonthEnd);
-            dashboard.PriorMonth.Balance = CalculateBalance(accountingData, priorMonthEnd);
-            dashboard.CurrentYear.Balance = CalculateBalance(accountingData, currentYearEnd);
-            dashboard.PriorYear.Balance = CalculateBalance(accountingData, priorYearEnd);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error calculating financial summaries for account {AccountFund}", selectedAccount.Fund);
-            SetEmptyFinancialSummaries(dashboard, DateTime.Now);
-        }
+        SetYearAverages(dashboard, now);
     }
 
-    private async Task<FinancialSummaryDto> CalculatePeriodSummaryAsync(
-        List<DonationsDataModel> donationData, 
-        List<AccountingDataModel> accountingData, 
-        DateTime startDate, 
-        DateTime endDate, 
-        string period)
+    private async Task PopulateSummariesDirectAsync(FinancialDashboardDto dashboard, UserAccountContextAccount selectedAccount)
+    {
+        var now = DateTime.Now;
+        var currentMonthStart = new DateTime(now.Year, now.Month, 1);
+        var currentMonthEnd = currentMonthStart.AddMonths(1).AddDays(-1);
+        var priorMonthStart = currentMonthStart.AddMonths(-1);
+        var priorMonthEnd = currentMonthStart.AddDays(-1);
+        var currentYearStart = new DateTime(now.Year, 1, 1);
+        var currentYearEnd = new DateTime(now.Year, now.Month, DateTime.DaysInMonth(now.Year, now.Month));
+        var priorYearStart = new DateTime(now.Year - 1, 1, 1);
+        var priorYearEnd = new DateTime(now.Year - 1, 12, 31);
+
+        dashboard.CurrentMonth = await BuildSummaryFromAggregatesAsync(selectedAccount, currentMonthStart, currentMonthEnd, now.ToString("MMMM yyyy"));
+        dashboard.PriorMonth = await BuildSummaryFromAggregatesAsync(selectedAccount, priorMonthStart, priorMonthEnd, now.AddMonths(-1).ToString("MMMM yyyy"));
+        dashboard.CurrentYear = await BuildSummaryFromAggregatesAsync(selectedAccount, currentYearStart, currentYearEnd, now.ToString("yyyy"));
+        dashboard.PriorYear = await BuildSummaryFromAggregatesAsync(selectedAccount, priorYearStart, priorYearEnd, (now.Year - 1).ToString());
+
+        SetYearAverages(dashboard, now);
+    }
+
+    private async Task<FinancialSummaryDto> BuildSummaryFromAggregatesAsync(UserAccountContextAccount account, DateTime startDate, DateTime endDate, string period)
+    {
+        var repositoryAccount = ToCoreAccount(account);
+        var donationTotal = await _financialDashboardReadRepository.GetDonationTotalAsync(repositoryAccount, startDate, endDate);
+        var expenseTotal = await _financialDashboardReadRepository.GetExpenseTotalAsync(repositoryAccount, startDate, endDate);
+        var transferTotal = await _financialDashboardReadRepository.GetTransferTotalAsync(repositoryAccount, startDate, endDate);
+        var balance = await _financialDashboardReadRepository.GetBalanceAsOfAsync(repositoryAccount, endDate);
+
+        return new FinancialSummaryDto
+        {
+            Period = period,
+            TotalDonations = donationTotal,
+            TotalOverhead = _accountCalculationService.CalculateOverheadAmount(account, donationTotal),
+            TotalExpenses = expenseTotal,
+            InternalTransfers = transferTotal,
+            Balance = balance
+        };
+    }
+
+    private static Cya2.Core.Entities.Account ToCoreAccount(UserAccountContextAccount account)
+    {
+        return new Cya2.Core.Entities.Account
+        {
+            AccountId = account.AccountId,
+            Fund = account.Fund ?? string.Empty,
+            AccountingClass = account.AccountingClass ?? string.Empty,
+            AccountNumber = account.AccountNumber ?? string.Empty,
+            CreatedAt = account.CreatedAt,
+            Overhead = Convert.ToDecimal(account.Overhead),
+            SoftCredit = account.SoftCredit ?? string.Empty,
+            BalanceAdjustment = account.BalanceAdjustment,
+            OtherFunds = account.OtherFunds
+        };
+    }
+
+    private FinancialSummaryDto BuildSummaryFromCache(UserAccountContextAccount account, DashboardAccountCacheData cachedData, DateTime startDate, DateTime endDate, string period)
     {
         var summary = new FinancialSummaryDto { Period = period };
 
-        // Calculate donations for period
-        var periodDonations = donationData.Where(d => d.Date >= startDate && d.Date <= endDate);
-        summary.TotalDonations = periodDonations.Sum(d => (decimal)d.Amount);
+        var periodDonations = cachedData.DonationData
+            .Where(d => d.Date >= startDate && d.Date <= endDate)
+            .Sum(d => Convert.ToDecimal(d.Amount));
 
-        // Calculate expenses and transfers from accounting data
-        var periodAccounting = accountingData.Where(a => a.Date >= startDate && a.Date <= endDate);
-        
-        foreach (var transaction in periodAccounting)
-        {
-            var amount = (decimal)transaction.Amount;
-            if (amount < 0) // Expenses are typically negative
-            {
-                if (IsTransfer(transaction))
-                {
-                    summary.InternalTransfers += Math.Abs(amount);
-                }
-                else if (IsOverhead(transaction))
-                {
-                    summary.TotalOverhead += Math.Abs(amount);
-                }
-                else
-                {
-                    summary.TotalExpenses += Math.Abs(amount);
-                }
-            }
-        }
+        var periodBalance = _accountCalculationService.CalculateBalanceFromData(
+            cachedData.AccountingData,
+            account.BalanceAdjustment,
+            startDate,
+            endDate);
+
+        var asOfBalance = _accountCalculationService.CalculateBalanceFromData(
+            cachedData.AccountingData,
+            account.BalanceAdjustment,
+            cachedData.WindowStart,
+            endDate);
+
+        var expenseTotalAbs = periodBalance.ExpenseTransactions.Sum(e => Math.Abs(Convert.ToDecimal(e.Amount)));
+        var transferTotalAbs = periodBalance.TransferTransactions.Sum(e => Math.Abs(Convert.ToDecimal(e.Amount)));
+
+        summary.TotalDonations = periodDonations;
+        summary.TotalOverhead = _accountCalculationService.CalculateOverheadAmount(account, periodDonations);
+        summary.TotalExpenses = expenseTotalAbs;
+        summary.InternalTransfers = transferTotalAbs;
+        summary.Balance = asOfBalance.TotalBalance;
+
+        _logger.LogInformation(
+            "Dashboard summary [{Period}] Fund={Fund} Donations={Donations} Expenses={Expenses} Transfers={Transfers} Balance={Balance} AccountingRows={AccountingRows} ExpenseRows={ExpenseRows} TransferRows={TransferRows}",
+            period,
+            account.Fund,
+            summary.TotalDonations,
+            summary.TotalExpenses,
+            summary.InternalTransfers,
+            summary.Balance,
+            cachedData.AccountingData.Count,
+            periodBalance.ExpenseTransactions.Count,
+            periodBalance.TransferTransactions.Count);
 
         return summary;
     }
 
-    private async Task<List<DonationsDataModel>> LoadDonationDataAsync(string fund)
+    private static void SetYearAverages(FinancialDashboardDto dashboard, DateTime now)
     {
-        try
-        {
-            const string sql = "SELECT * FROM DonationData WHERE Fund = @Fund ORDER BY Date";
-            var data = await _dataAccess.LoadData<DonationsDataModel, dynamic>(
-                sql, 
-                new { Fund = fund }, 
-                GetConnectionString());
-            return data?.ToList() ?? new List<DonationsDataModel>();
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error loading donation data for fund {Fund}", fund);
-            return new List<DonationsDataModel>();
-        }
-    }
-
-    private async Task<List<AccountingDataModel>> LoadAccountingDataAsync(string fund)
-    {
-        try
-        {
-            const string sql = "SELECT * FROM AccountingData WHERE AccountingClass = @AccountingClass ORDER BY Date";
-            var data = await _dataAccess.LoadData<AccountingDataModel, dynamic>(
-                sql, 
-                new { AccountingClass = fund }, 
-                GetConnectionString());
-            return data?.ToList() ?? new List<AccountingDataModel>();
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error loading accounting data for fund {Fund}", fund);
-            return new List<AccountingDataModel>();
-        }
-    }
-
-    private decimal CalculateBalance(List<AccountingDataModel> accountingData, DateTime asOfDate)
-    {
-        return accountingData
-            .Where(t => t.Date <= asOfDate)
-            .Sum(t => (decimal)t.Amount);
-    }
-
-    private bool IsTransfer(AccountingDataModel transaction)
-    {
-        // Simple heuristic - check if account or type indicates transfer
-        var type = transaction.Type?.ToLower() ?? "";
-        var account = transaction.Account?.ToLower() ?? "";
-        
-        return type.Contains("transfer") || 
-               account.Contains("transfer") ||
-               type.Contains("internal");
-    }
-
-    private bool IsOverhead(AccountingDataModel transaction)
-    {
-        // Simple heuristic - check if transaction is overhead-related
-        var account = transaction.Account?.ToLower() ?? "";
-        
-        return account.Contains("overhead") || 
-               account.Contains("admin") ||
-               account.Contains("management");
-    }
-
-    private void SetEmptyFinancialSummaries(FinancialDashboardDto dashboard, DateTime now)
-    {
-        dashboard.CurrentMonth = new FinancialSummaryDto { Period = now.ToString("MMMM yyyy") };
-        dashboard.PriorMonth = new FinancialSummaryDto { Period = now.AddMonths(-1).ToString("MMMM yyyy") };
-        dashboard.CurrentYear = new FinancialSummaryDto { Period = now.ToString("yyyy") };
-        dashboard.PriorYear = new FinancialSummaryDto { Period = (now.Year - 1).ToString() };
-    }
-
-    private string GetConnectionString()
-    {
-        return _configuration.GetConnectionString("default") ?? string.Empty;
+        var monthsElapsed = Math.Max(1, now.Month);
+        dashboard.CurrentYear.AvgMonthlyDonations = Math.Round(dashboard.CurrentYear.TotalDonations / monthsElapsed, 2);
+        dashboard.CurrentYear.AvgMonthlyExpenses = Math.Round(dashboard.CurrentYear.TotalExpenses / monthsElapsed, 2);
+        dashboard.PriorYear.AvgMonthlyDonations = Math.Round(dashboard.PriorYear.TotalDonations / 12m, 2);
+        dashboard.PriorYear.AvgMonthlyExpenses = Math.Round(dashboard.PriorYear.TotalExpenses / 12m, 2);
     }
 }

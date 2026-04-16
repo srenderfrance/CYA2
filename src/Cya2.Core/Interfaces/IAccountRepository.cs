@@ -6,6 +6,7 @@ public interface IAccountRepository : IRepository<Account>
 {
     Task<Account?> GetByFundCodeAsync(string fundCode);
     Task<Account?> GetByFundAsync(string fund);
+    Task<Account?> GetByAccountNumberAsync(string accountNumber);
     Task<List<Account>> GetByUserIdAsync(string userId);
     Task<bool> ValidateUserAccessAsync(string userId, string fund);
     Task<bool> ExistsAsync(string fundCode);

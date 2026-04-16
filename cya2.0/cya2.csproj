@@ -1,0 +1,47 @@
+﻿<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>cya2</RootNamespace>
+    <AssemblyName>cya2</AssemblyName>
+    <UserSecretsId>b0afc62a-8a85-4a86-a8e1-fca2b94c7ef7</UserSecretsId>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Dapper" Version="2.1.72" />
+    <PackageReference Include="EPPlus" Version="8.5.0" />
+    <PackageReference Include="Microsoft.AspNetCore.Authentication.Google" Version="8.0.16" />
+    <PackageReference Include="MySql.Data" Version="9.6.0" />
+    <PackageReference Include="Radzen.Blazor" Version="9.1.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Clean Architecture Project References - now under repository `src` folder (one level up) -->
+    <ProjectReference Include="..\src\Cya2.Core\Cya2.Core.csproj" />
+    <ProjectReference Include="..\src\Cya2.Application\Cya2.Application.csproj" />
+    <ProjectReference Include="..\src\Cya2.Shared\Cya2.Shared.csproj" />
+    <ProjectReference Include="..\src\Cya2.Infrastructure\Cya2.Infrastructure.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Update="Components\Shared\LanguageResources\Resource.en-US.resx">
+      <LogicalName>cya2.Components.Shared.LanguageResources.Resource.en-US.resources</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Update="Components\Shared\LanguageResources\Resource.es-US.resx">
+      <LogicalName>cya2.Components.Shared.LanguageResources.Resource.es-US.resources</LogicalName>
+    </EmbeddedResource>
+  </ItemGroup>
+
+  <ItemGroup>
+    <Folder Include="Infrastructure\Repositories\" />
+    <Folder Include="Services\" />
+    <Folder Include="src\Cya2.Application\Services\" />
+    <Folder Include="UtilityClasses\" />
+  </ItemGroup>
+
+</Project>

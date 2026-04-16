@@ -6,5 +6,11 @@ namespace Cya2.Application.Interfaces;
 
 public interface IDonationService
 {
-    Task<DonationDataDto> GetDonationDataAsync(string accountName, string? subAccountSelection, DateRange dateRange, string userId, bool isAdminOrViewer = false);
+    Task<DonationDataDto> GetDonationDataAsync(
+        string accountName,
+        string? subAccountSelection,
+        DateRange dateRange,
+        string userId,
+        bool isAdminOrViewer = false,
+        bool forceRefresh = false);
 }

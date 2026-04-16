@@ -1,0 +1,605 @@
+@page "/expenses"
+@using static Microsoft.AspNetCore.Components.Web.RenderMode
+@using Cya2.Shared.Utilities
+@using Radzen
+@using Radzen.Blazor
+@using Microsoft.AspNetCore.Components.Authorization
+@using System.Security.Claims
+@using Cya2.Application.DTOs
+@using Cya2.Application.Interfaces
+@using Cya2.Core.ValueObjects
+@inject AuthenticationStateProvider AuthStateProvider
+@inject IExpenseService ExpenseService
+@inject Cya2.Application.Interfaces.ISessionUserStateService SessionUserStateService
+@inject IDateRangeStateService DateRangeStateService
+@inject Cya2.Application.Interfaces.IUserIdResolver UserIdResolver
+@inject Cya2.Application.Interfaces.IUserSelectionService UserSelectionService
+@inject Cya2.Application.Interfaces.IUserDateRangeSelectionService DateRangeSelectionService
+
+@rendermode InteractiveServer
+@attribute [StreamRendering]
+@inject IStringLocalizer<Resource> Localizer
+
+<PageTitle>@Localizer["Expenses"]</PageTitle>
+
+<style>
+    /* Target the column and its header */
+    .rz-data-grid .amount-column-fix .rz-column-header,
+    .rz-data-grid th.amount-column-fix {
+        text-align: right;
+        padding-right: 8px;
+    }
+    
+    .rz-data-grid .amount-column-fix .rz-column-title {
+        text-align: right;
+        padding-right: 8px;
+        justify-content: flex-end;
+        display: flex;
+        width: 100%;
+    }
+
+    /* Narrow and center the expense grids */
+    .narrow-expense-grid {
+        max-width: 100%;
+        margin: 0 auto;
+    }
+
+    /* Increase the font size for better readability */
+    .txt-h5 {
+        font-size: 1.5rem; /* Example: H5 size */
+        font-weight: 600;
+    }
+
+    .txt-subtitle1 {
+        font-size: 1.125rem; /* Example: Subtitle1 size */
+        font-weight: 500;
+    }
+
+    /* Ensure header titles line up with right-aligned cell content for Amount (first) and Date (last) */
+    .narrow-expense-grid th:nth-child(1) .rz-column-title,
+    .narrow-expense-grid td:nth-child(1) {
+        text-align: right !important;
+        padding-right: 8px !important;
+        box-sizing: border-box;
+    }
+
+    .narrow-expense-grid th:last-child .rz-column-title,
+    .narrow-expense-grid td:last-child {
+        text-align: right !important;
+        padding-right: 8px !important;
+        box-sizing: border-box;
+    }
+</style>
+
+<RadzenStack Orientation="Orientation.Vertical" Gap="15px" Class="rz-p-4">
+
+    <!-- Top two control sections: date range on left, account + toggle on right -->
+    <RadzenStack Orientation="Orientation.Horizontal"
+                 Gap="2rem"
+                 JustifyContent="JustifyContent.SpaceBetween"
+                 AlignItems="AlignItems.Start"
+                 Style="width:100%;">
+
+        <!-- Left side: Date Range controls -->
+        <RadzenStack Orientation="Orientation.Vertical" Gap="0.4rem" Style="flex:1;">
+
+            <!-- Date Range section (match Donations/Donors layout: label above, controls in a single horizontal row) -->
+            <RadzenText TextStyle="TextStyle.Subtitle1">@Localizer["DateRange"]</RadzenText>
+            <RadzenStack Orientation="Orientation.Horizontal" Gap="0.5rem" AlignItems="AlignItems.Center" Wrap="FlexWrap.Wrap">
+                <RadzenLabel Text="@Localizer["StartDate"]" />
+                <RadzenDatePicker @bind-Value="@dateRangeState.PendingStartDate" DateFormat="MM/dd/yyyy" Style="max-width:130px"
+                                  Change="@OnDatePickerChanged" />
+
+                <RadzenLabel Text="@Localizer["EndDate"]" />
+                <RadzenDatePicker @bind-Value="@dateRangeState.PendingEndDate" DateFormat="MM/dd/yyyy" Style="max-width:130px"
+                                  Change="@OnDatePickerChanged" />
+
+                <!-- Preset dropdown -->
+                <RadzenDropDown TValue="Cya2.Application.DTOs.DateRangePreset"
+                                Data="@presetOptions"
+                                TextProperty="Text"
+                                ValueProperty="Value"
+                                @bind-Value="@dateRangeState.SelectedPreset"
+                                Change="@OnPresetChanged"
+                                Style="width: 180px;">
+                    <ValueTemplate>
+                        <span style="display:flex;align-items:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding-right:1.75rem;width:100%;">
+                            @(presetOptions.FirstOrDefault(o => o.Value == dateRangeState.SelectedPreset)?.Text ?? "")
+                        </span>
+                    </ValueTemplate>
+                    <Template Context="opt">
+                        <span style="display:flex;align-items:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;width:100%;">
+                            @opt.Text
+                        </span>
+                    </Template>
+                </RadzenDropDown>
+
+                <RadzenButton Text="@Localizer["ApplyFilter"]"
+                              Icon="filter_alt"
+                              Click="@(async () => await ApplyDateFilter())"
+                              Size="ButtonSize.Small"
+                              ButtonStyle="ButtonStyle.Primary" />
+            </RadzenStack>
+        </RadzenStack>
+
+        <!-- Right side: Account selector and Information toggle (kept on right) -->
+        <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.End" Gap="1rem">
+            <RadzenStack Orientation="Orientation.Vertical" Gap="0.4rem">
+                <RadzenText TextStyle="TextStyle.Subtitle1">@Localizer["Account"]</RadzenText>
+                <RadzenDropDown TValue="string"
+                            Data="@((expenseData.UserAccounts ?? new List<AccountOptionDto>()))"
+                            TextProperty="Fund"
+                            ValueProperty="Fund"
+                            @bind-Value="selectedAccount"
+                            Change="@(async args => await AccountSelection(args?.ToString()))"
+                            Placeholder="@Localizer["ChooseAccount"]"
+                            Style="width: 200px;">
+                    <ValueTemplate>
+                        @DisplayFormatter.FormatFundDisplay(selectedAccount)
+                    </ValueTemplate>
+                    <Template Context="acct">
+                        @DisplayFormatter.FormatFundDisplay(acct.Fund)
+                    </Template>
+                </RadzenDropDown>
+            </RadzenStack>
+
+            <RadzenToggleButton Value="useMinimalView"
+                                ValueChanged="@(async (bool v) => await OnViewModeChange(v))"
+                                Text="@(useMinimalView ? Localizer["ShowMoreDetail"] : Localizer["ShowLessDetail"])"
+                                ButtonStyle="ButtonStyle.Primary"
+                                ToggleButtonStyle="ButtonStyle.Primary"
+                                Style="background-color: #0a3b6b; border-color: #0a3b6b; color: white; max-width: 200px;" />
+        </RadzenStack>
+    </RadzenStack>
+
+    <!-- Summary cards and grids layout -->
+    <RadzenStack Orientation="Orientation.Horizontal" Gap="2rem" AlignItems="AlignItems.Start">
+        <!-- Summary cards (left side) - fixed width to match Donors narrow column (~28%) -->
+        <div style="flex:0 0 28%; min-width:260px;">
+            <RadzenCard Style="width:100%; margin-top: 0.5rem; background-color: #f8f9fa;">
+                <RadzenStack Orientation="Orientation.Vertical" Gap="1rem">
+                    <RadzenText TextStyle="TextStyle.Subtitle1" Style="font-weight: bold;">@Localizer["SummaryOfTransactions"]</RadzenText>
+                    <RadzenText TextStyle="TextStyle.Body2" Style="color: #666;">@GetDateRangeDisplay()</RadzenText>
+                    <RadzenStack Orientation="Orientation.Vertical" Gap="0.25rem">
+                        <RadzenText TextStyle="TextStyle.Subtitle1" Style="font-weight: bold;">@Localizer["TotalTransfers"]</RadzenText>
+                        <RadzenText TextStyle="TextStyle.Subtitle1" Style="font-weight: bold; color: black;">@transferTotal.ToString("C2")</RadzenText>
+                    </RadzenStack>
+                    
+                    <RadzenStack Orientation="Orientation.Vertical" Gap="0.25rem">
+                        <RadzenText TextStyle="TextStyle.Subtitle1" Style="font-weight: bold;">@Localizer["TotalExpenses"]</RadzenText>
+                        <RadzenText TextStyle="TextStyle.Subtitle1" Style="font-weight: bold; color: black;">@expenseTotal.ToString("C2")</RadzenText>
+                    </RadzenStack>
+                </RadzenStack>
+            </RadzenCard>
+        </div>
+
+        <!-- Grids and messages (right side) -->
+        <RadzenStack Orientation="Orientation.Vertical" Gap="1rem" Style="flex: 1;">
+            @if (!string.IsNullOrEmpty(errorMessage))
+            {
+                <RadzenAlert AlertStyle="AlertStyle.Danger" ShowIcon="true" Variant="Variant.Filled" Class="mt-3">
+                    @errorMessage
+                </RadzenAlert>
+            }
+
+            @if (isLoading)
+            {
+                <div class="mt-3">
+                    <RadzenProgressBar Value="100" ShowValue="false" Mode="ProgressBarMode.Indeterminate" />
+                    <p class="text-muted mt-1">@Localizer["Loading"]</p>
+                </div>
+            }
+
+            <!-- Transfer Transactions Grid -->
+            @if (expenseData.TransferTransactions.Any())
+            {
+                <RadzenCard Class="rz-mt-2 narrow-expense-grid">
+                    <RadzenStack Orientation="Orientation.Horizontal" JustifyContent="JustifyContent.SpaceBetween">
+                        <RadzenText TextStyle="TextStyle.Subtitle1" Style="font-weight:bold; padding-bottom: 8px;">@Localizer["InternalTransfers"]</RadzenText>
+                    </RadzenStack>
+
+                    <RadzenDataGrid Data="@expenseData.TransferTransactions" 
+                                    TItem="ExpenseTransactionDto" 
+                                    Dense="true" 
+                                    ShowPagingSummary="false" 
+                                    AllowPaging="false"
+                                    AllowColumnResize="true"
+                                    AllowColumnReorder="false">
+                        <Columns>
+                            @RenderTransferColumns()
+                        </Columns>
+                    </RadzenDataGrid>
+                </RadzenCard>
+            }
+
+            <!-- Expense Transactions Grid -->
+            @if (expenseData.ExpenseTransactions.Any())
+            {
+                <RadzenCard Class="rz-mt-2 narrow-expense-grid">
+                    <RadzenStack Orientation="Orientation.Horizontal" JustifyContent="JustifyContent.SpaceBetween">
+                        <RadzenText TextStyle="TextStyle.Subtitle1" Style="font-weight:bold; padding-bottom: 8px;">@Localizer["Expenses"]</RadzenText>
+                    </RadzenStack>
+
+                    <RadzenDataGrid Data="@expenseData.ExpenseTransactions" 
+                                    TItem="ExpenseTransactionDto" 
+                                    Dense="true" 
+                                    ShowPagingSummary="false" 
+                                    AllowPaging="false"
+                                    AllowColumnResize="true"
+                                    AllowColumnReorder="false">
+                        <Columns>
+                            @RenderExpenseColumns()
+                        </Columns>
+                    </RadzenDataGrid>
+                </RadzenCard>
+            }
+
+            @if (!expenseData.TransferTransactions.Any() && !expenseData.ExpenseTransactions.Any() && !string.IsNullOrEmpty(selectedAccount) && selectedAccount != "No Account Selected" && !isLoading)
+            {
+                <RadzenAlert AlertStyle="AlertStyle.Info" ShowIcon="true" Variant="Variant.Filled">
+                    @Localizer["NoExpensesFound"]
+                </RadzenAlert>
+            }
+            else if (string.IsNullOrWhiteSpace(selectedAccount))
+            {
+                <RadzenAlert AlertStyle="AlertStyle.Info" ShowIcon="true" Variant="Variant.Filled">
+                    @Localizer["PleaseSelectAnAccount"]
+                </RadzenAlert>
+            }
+        </RadzenStack> <!-- End grids stack -->
+    </RadzenStack> <!-- End main horizontal layout -->
+
+</RadzenStack> <!-- End main vertical stack -->
+
+@code {
+    private ExpenseDataDto expenseData = new();
+    private string errorMessage = string.Empty;
+    private string selectedAccount = string.Empty;
+    private bool isLoading = false;
+    private string userId = string.Empty;
+
+    private decimal expenseTotal = 0.00m;
+    private decimal transferTotal = 0.00m;
+
+    private Cya2.Application.DTOs.DateRangeStateDto dateRangeState = new();
+    private List<Cya2.Application.DTOs.DateRangePresetOptionDto> presetOptions = new();
+
+    private bool useMinimalView = true;
+    private bool refreshTransferGrid = false;
+    private bool refreshExpenseGrid = false;
+    private bool canAccessAllAccounts = false;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+            var user = authState.User;
+
+            userId = UserIdResolver.ResolveUserId(user, SessionUserStateService.CurrentUserId);
+
+            Console.WriteLine($"[Expenses] OnInitializedAsync: resolved userId='{userId}', Session.SelectedAccountFund='{SessionUserStateService.SelectedAccountFund}', Session.DefaultAccountFund='{SessionUserStateService.DefaultAccountFund}'");
+
+            var authLevel = user.FindFirstValue("AuthLevel") ?? string.Empty;
+            var isAdminOrViewer = user.IsInRole("Admin") ||
+                                  string.Equals(authLevel, "Admin", StringComparison.OrdinalIgnoreCase) ||
+                                  string.Equals(authLevel, "Viewer", StringComparison.OrdinalIgnoreCase);
+            canAccessAllAccounts = isAdminOrViewer;
+
+            // Only reset session state when the resolved userId changes
+            var resolvedUserId = UserIdResolver.ResolveUserId(user, SessionUserStateService.CurrentUserId);
+            if (SessionUserStateService.CurrentUserId != resolvedUserId)
+            {
+                SessionUserStateService.ResetForUser(resolvedUserId);
+            }
+
+            if (string.IsNullOrWhiteSpace(SessionUserStateService.SelectedAccountFund)
+                && !string.IsNullOrWhiteSpace(userId)
+                && UserSelectionService.TryGetSelectedAccount(userId, out var hydratedAccount)
+                && !string.IsNullOrWhiteSpace(hydratedAccount))
+            {
+                SessionUserStateService.SelectedAccountFund = hydratedAccount;
+            }
+
+            if ((!SessionUserStateService.SelectedStartDate.HasValue || !SessionUserStateService.SelectedEndDate.HasValue)
+                && !string.IsNullOrWhiteSpace(userId)
+                && DateRangeSelectionService.TryGetDateRange(userId, out var hydratedRange))
+            {
+                SessionUserStateService.SelectedStartDate = hydratedRange.StartDate;
+                SessionUserStateService.SelectedEndDate = hydratedRange.EndDate;
+                SessionUserStateService.SelectedDatePreset = string.IsNullOrWhiteSpace(hydratedRange.Preset) ? "ThisMonth" : hydratedRange.Preset;
+            }
+
+            presetOptions = GetPresetOptions();
+            dateRangeState = DateRangeStateService.InitializeDateRange(SessionUserStateService);
+
+            selectedAccount = !string.IsNullOrEmpty(SessionUserStateService.SelectedAccountFund)
+                ? SessionUserStateService.SelectedAccountFund
+                : SessionUserStateService.DefaultAccountFund;
+
+            // If selectedAccount is empty, we intend the service to use server/session defaults and not to set the client session automatically.
+            var passedAccount = selectedAccount;
+            expenseData = await ExpenseService.GetExpenseDataAsync(passedAccount ?? string.Empty, new DateRange(dateRangeState.StartDate, dateRangeState.EndDate), userId, isAdminOrViewer);
+
+            // Update selected account and AppState
+            if (!string.IsNullOrEmpty(expenseData.SelectedAccount))
+            {
+                selectedAccount = expenseData.SelectedAccount;
+            }
+            else if (string.IsNullOrEmpty(selectedAccount) && expenseData.UserAccounts.Any())
+            {
+                selectedAccount = expenseData.UserAccounts.First().Fund;
+            }
+
+            var defaultFundFromDto = !string.IsNullOrWhiteSpace(SessionUserStateService.DefaultAccountFund)
+                ? SessionUserStateService.DefaultAccountFund
+                : expenseData.UserAccounts.FirstOrDefault()?.Fund ?? string.Empty;
+
+            // Only overwrite session state if the caller passed a non-empty account parameter (explicit selection)
+            if (!string.IsNullOrWhiteSpace(passedAccount))
+            {
+                SessionUserStateService.SelectedAccountFund = selectedAccount;
+                SessionUserStateService.DefaultAccountFund = defaultFundFromDto;
+                if (!string.IsNullOrWhiteSpace(userId) && !string.IsNullOrWhiteSpace(selectedAccount))
+                {
+                    UserSelectionService.SetSelectedAccount(userId, selectedAccount);
+                }
+            }
+            else
+            {
+                // If the session is empty, persist the server-selected account so subsequent navigations are stable
+                if (string.IsNullOrWhiteSpace(SessionUserStateService.SelectedAccountFund) && !string.IsNullOrWhiteSpace(expenseData.SelectedAccount))
+                {
+                    Console.WriteLine($"[Expenses] Persisting server-selected account: '{expenseData.SelectedAccount}'");
+                    SessionUserStateService.SelectedAccountFund = expenseData.SelectedAccount;
+                    if (!string.IsNullOrWhiteSpace(userId))
+                    {
+                        UserSelectionService.SetSelectedAccount(userId, expenseData.SelectedAccount);
+                    }
+                    if (string.IsNullOrWhiteSpace(SessionUserStateService.DefaultAccountFund))
+                    {
+                        SessionUserStateService.DefaultAccountFund = defaultFundFromDto;
+                    }
+                }
+            }
+
+            // Totals
+            expenseTotal = expenseData.ExpenseTotal;
+            transferTotal = expenseData.TransferTotal;
+
+            Console.WriteLine($"[Expenses] userId={userId}, accounts={expenseData.UserAccounts?.Count ?? 0}, selected={selectedAccount}, expenses={expenseData.ExpenseTransactions?.Count ?? 0}, transfers={expenseData.TransferTransactions?.Count ?? 0}");
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error initializing data: {ex.Message}";
+            isLoading = false;
+        }
+    }
+
+    private List<Cya2.Application.DTOs.DateRangePresetOptionDto> GetPresetOptions()
+    {
+        return new List<Cya2.Application.DTOs.DateRangePresetOptionDto>
+        {
+            new() { Text = Localizer["AllDates"],         Value = Cya2.Application.DTOs.DateRangePreset.AllDates },
+            new() { Text = Localizer["ThisYear"],         Value = Cya2.Application.DTOs.DateRangePreset.ThisYear },
+            new() { Text = Localizer["Previous12Months"], Value = Cya2.Application.DTOs.DateRangePreset.Previous12Months },
+            new() { Text = Localizer["LastYear"],         Value = Cya2.Application.DTOs.DateRangePreset.LastYear },
+            new() { Text = Localizer["ThisMonth"],        Value = Cya2.Application.DTOs.DateRangePreset.ThisMonth },
+            new() { Text = Localizer["LastMonth"],        Value = Cya2.Application.DTOs.DateRangePreset.LastMonth },
+            new() { Text = Localizer["CustomRange"],      Value = Cya2.Application.DTOs.DateRangePreset.Custom }
+        };
+    }
+
+    private void OnPresetChanged(object? args)
+    {
+        if (args is Cya2.Application.DTOs.DateRangePreset preset)
+        {
+            DateRangeStateService.ApplyPreset(dateRangeState, preset);
+            _ = ApplyDateFilter();
+        }
+    }
+
+    private void OnDatePickerChanged()
+    {
+        DateRangeStateService.ApplyPendingDates(dateRangeState);
+        StateHasChanged();
+    }
+
+    private async Task ApplyDateFilter()
+    {
+        try
+        {
+            DateRangeStateService.ApplyPendingDates(dateRangeState);
+            DateRangeStateService.SaveDateRangeToSessionState(SessionUserStateService, dateRangeState);
+            if (!string.IsNullOrWhiteSpace(userId))
+            {
+                DateRangeSelectionService.SetDateRange(userId, dateRangeState.StartDate, dateRangeState.EndDate, dateRangeState.SelectedPreset.ToString());
+            }
+            await LoadExpenseData(canAccessAllAccounts);
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error applying date filter: {ex.Message}";
+            isLoading = false;
+        }
+    }
+ 
+    private async Task LoadExpenseData(bool isAdminOrViewer)
+    {
+        if (string.IsNullOrWhiteSpace(userId))
+        {
+            errorMessage = Localizer["UserNotAuthenticated"];
+            return;
+        }
+
+        try
+        {
+            isLoading = true;
+            errorMessage = string.Empty;
+            StateHasChanged();
+
+            var dateRange = new DateRange(dateRangeState.StartDate, dateRangeState.EndDate);
+            expenseData = await ExpenseService.GetExpenseDataAsync(selectedAccount ?? string.Empty, dateRange, userId, isAdminOrViewer);
+
+            // Update selected account and AppState
+            if (!string.IsNullOrEmpty(expenseData.SelectedAccount))
+            {
+                selectedAccount = expenseData.SelectedAccount;
+            }
+            else if (string.IsNullOrEmpty(selectedAccount) && expenseData.UserAccounts.Any())
+            {
+                selectedAccount = expenseData.UserAccounts.First().Fund;
+            }
+
+            var defaultFundFromDto = !string.IsNullOrWhiteSpace(SessionUserStateService.DefaultAccountFund)
+                ? SessionUserStateService.DefaultAccountFund
+                : expenseData.UserAccounts.FirstOrDefault()?.Fund ?? string.Empty;
+
+            // Only overwrite session state if the caller passed a non-empty account parameter (explicit selection)
+            if (!string.IsNullOrWhiteSpace(selectedAccount))
+            {
+                SessionUserStateService.SelectedAccountFund = selectedAccount;
+                SessionUserStateService.DefaultAccountFund = defaultFundFromDto;
+                UserSelectionService.SetSelectedAccount(userId, selectedAccount);
+            }
+
+            // Totals
+            expenseTotal = expenseData.ExpenseTotal;
+            transferTotal = expenseData.TransferTotal;
+
+            Console.WriteLine($"[Expenses] userId={userId}, accounts={expenseData.UserAccounts?.Count ?? 0}, selected={selectedAccount}, expenses={expenseData.ExpenseTransactions?.Count ?? 0}, transfers={expenseData.TransferTransactions?.Count ?? 0}");
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error loading expense data: {ex.Message}";
+        }
+        finally
+        {
+            isLoading = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private async Task AccountSelection(string? accountName)
+    {
+        if (string.IsNullOrWhiteSpace(accountName)) return;
+
+        selectedAccount = accountName;
+        SessionUserStateService.SelectedAccountFund = accountName;
+        if (!string.IsNullOrWhiteSpace(userId))
+        {
+            UserSelectionService.SetSelectedAccount(userId, accountName);
+        }
+        await LoadExpenseData(canAccessAllAccounts);
+    }
+
+    private RenderFragment RenderTransferColumns()
+    {
+        return __builder =>
+        {
+            if (refreshTransferGrid)
+            {
+                refreshTransferGrid = false;
+                <text></text>
+            }
+            else
+            {
+                <text>
+                    <!-- Amount on the far left -->
+                    <RadzenDataGridColumn TItem="ExpenseTransactionDto" Property="Amount" Title="@Localizer["Amount"]" FormatString="{0:C2}" Width="120px" TextAlign="TextAlign.Right">
+                        <HeaderTemplate>
+                            <div style="display:flex;justify-content:flex-end;padding-right:8px;box-sizing:border-box;width:100%;">@Localizer["Amount"]</div>
+                        </HeaderTemplate>
+                        <Template Context="row">
+                            <div style="display:flex;justify-content:flex-end;padding-right:8px;box-sizing:border-box;width:100%;">@row.Amount.ToString("C2")</div>
+                        </Template>
+                    </RadzenDataGridColumn>
+
+                    @if (!useMinimalView)
+                    {
+                        <RadzenDataGridColumn TItem="ExpenseTransactionDto" Property="Num" Title="@Localizer["RefNum"]" Width="80px" />
+                    }
+
+                    <RadzenDataGridColumn TItem="ExpenseTransactionDto" Property="Account" Title="@Localizer["Description"]" />
+
+                    <!-- Date on the far right -->
+                    <RadzenDataGridColumn TItem="ExpenseTransactionDto" Property="Date" Title="@Localizer["Date"]" FormatString="{0:yyyy-MM-dd}" Width="110px" TextAlign="TextAlign.Right">
+                        <HeaderTemplate>
+                            <div style="display:flex;justify-content:flex-end;padding-right:8px;box-sizing:border-box;width:100%;">@Localizer["Date"]</div>
+                        </HeaderTemplate>
+                        <Template Context="row">
+                            <div style="display:flex;justify-content:flex-end;padding-right:8px;box-sizing:border-box;width:100%;">@row.Date.ToString("yyyy-MM-dd")</div>
+                        </Template>
+                    </RadzenDataGridColumn>
+                </text>
+            }
+        };
+    }
+
+    private RenderFragment RenderExpenseColumns()
+    {
+        return __builder =>
+        {
+            if (refreshExpenseGrid)
+            {
+                refreshExpenseGrid = false;
+                <text></text>
+            }
+            else
+            {
+                <text>
+                    <!-- Amount on the far left -->
+                    <RadzenDataGridColumn TItem="ExpenseTransactionDto" Property="Amount" Title="@Localizer["Amount"]" FormatString="{0:C2}" Width="120px" TextAlign="TextAlign.Right">
+                        <HeaderTemplate>
+                            <div style="display:flex;justify-content:flex-end;padding-right:8px;box-sizing:border-box;width:100%;">@Localizer["Amount"]</div>
+                        </HeaderTemplate>
+                        <Template Context="row">
+                            <div style="display:flex;justify-content:flex-end;padding-right:8px;box-sizing:border-box;width:100%;">@row.Amount.ToString("C2")</div>
+                        </Template>
+                    </RadzenDataGridColumn>
+
+                    @if (!useMinimalView)
+                    {
+                        <RadzenDataGridColumn TItem="ExpenseTransactionDto" Property="Num" Title="@Localizer["RefNum"]" Width="80px" />
+                    }
+
+                    <RadzenDataGridColumn TItem="ExpenseTransactionDto" Property="Account" Title="@Localizer["Description"]" />
+
+                    <!-- Date on the far right -->
+                    <RadzenDataGridColumn TItem="ExpenseTransactionDto" Property="Date" Title="@Localizer["Date"]" FormatString="{0:yyyy-MM-dd}" Width="110px" TextAlign="TextAlign.Right">
+                        <HeaderTemplate>
+                            <div style="display:flex;justify-content:flex-end;padding-right:8px;box-sizing:border-box;width:100%;">@Localizer["Date"]</div>
+                        </HeaderTemplate>
+                        <Template Context="row">
+                            <div style="display:flex;justify-content:flex-end;padding-right:8px;box-sizing:border-box;width:100%;">@row.Date.ToString("yyyy-MM-dd")</div>
+                        </Template>
+                    </RadzenDataGridColumn>
+                </text>
+            }
+        };
+    }
+
+    private async Task OnViewModeChange(bool newValue)
+    {
+        useMinimalView = newValue;
+        refreshTransferGrid = true;
+        refreshExpenseGrid = true;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private string GetDateRangeDisplay()
+    {
+        try
+        {
+            var startDate = dateRangeState.StartDate;
+            var endDate = dateRangeState.EndDate;
+            var startFormatted = startDate.ToString("MMM d, yyyy");
+            var endFormatted = endDate.ToString("MMM d, yyyy");
+            return startDate.Date == endDate.Date ? startFormatted : $"{startFormatted} - {endFormatted}";
+        }
+        catch
+        {
+            return Localizer["DateRange"];
+        }
+    }
+}

@@ -15,16 +15,15 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Cya2.Core\Cya2.Core.csproj" />
-    <!-- Fixed project references - main application libraries are at repository root -->
-    <ProjectReference Include="..\..\DataLibrary\DataLibrary.csproj" />
-    <ProjectReference Include="..\..\ModelsLibrary\ModelsLibrary.csproj" />
-    <ProjectReference Include="..\..\UtilityClassLibrary\UtilityClassLibrary.csproj" />
-    <ProjectReference Include="..\..\UserDataLibrary\UserDataLibrary.csproj" />
   </ItemGroup>
 
   <ItemGroup>
     <Compile Remove="Interfaces\ICommonServices.cs" />
     <Compile Remove="Interfaces\IApplicationServices.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Folder Include="Utilities\" />
   </ItemGroup>
 
 </Project>
