@@ -47,7 +47,10 @@ public sealed class RollbackRepository : IRollbackRepository
             if (tableExists == 0) return Array.Empty<BackupSummary>();
 
             var sql = $@"
-                SELECT CAST(BackupId AS CHAR(36)) AS BackupId, BackupAt, COUNT(*) AS RecordCount
+                SELECT CAST(BackupId AS CHAR(36)) AS BackupId,
+                       BackupAt,
+                       COUNT(*) AS RecordCount,
+                       MAX(Date) AS MostRecentDataDate
                 FROM `{tableName}`
                 WHERE Pinned = 0
                 GROUP BY BackupId, BackupAt

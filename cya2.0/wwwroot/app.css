@@ -47,55 +47,7 @@ html {
     color-scheme: light;
 }
 
-/* If Radzen defines scrollbar variables, neutralize them */
-:root {
-    --rz-scrollbar-thumb-background-color: #c1c1c1;
-    --rz-scrollbar-track-background-color: #f1f1f1;
-}
-
-/* Firefox: explicitly set grey scrollbars (Radzen may set `scrollbar-color`) */
-html, body, .rz-body, .rz, .rz-layout {
-    scrollbar-color: #c1c1c1 #f1f1f1 !important;
-    scrollbar-width: auto;
-}
-
-/* Chromium/WebKit: apply grey scrollbars to the actual scrolling roots/containers */
-html::-webkit-scrollbar,
-body::-webkit-scrollbar,
-.rz-body::-webkit-scrollbar,
-.rz::-webkit-scrollbar,
-.rz-layout::-webkit-scrollbar {
-    width: 12px;
-    height: 12px;
-}
-
-html::-webkit-scrollbar-track,
-body::-webkit-scrollbar-track,
-.rz-body::-webkit-scrollbar-track,
-.rz::-webkit-scrollbar-track,
-.rz-layout::-webkit-scrollbar-track {
-    background: #f1f1f1 !important;
-}
-
-html::-webkit-scrollbar-thumb,
-body::-webkit-scrollbar-thumb,
-.rz-body::-webkit-scrollbar-thumb,
-.rz::-webkit-scrollbar-thumb,
-.rz-layout::-webkit-scrollbar-thumb {
-    background: #c1c1c1 !important;
-    border-radius: 8px;
-    border: 3px solid #f1f1f1;
-}
-
-html::-webkit-scrollbar-thumb:hover,
-body::-webkit-scrollbar-thumb:hover,
-.rz-body::-webkit-scrollbar-thumb:hover,
-.rz::-webkit-scrollbar-thumb:hover,
-.rz-layout::-webkit-scrollbar-thumb:hover {
-    background: #a8a8a8 !important;
-}
-
-/* Bootstrap classes - but our custom overrides for dropdowns come after Bootstrap */
+/* Bootstrap classes
 .px-4 { 
     padding-left: 1.5rem; 
     padding-right: 1.5rem; 
@@ -143,97 +95,6 @@ body::-webkit-scrollbar-thumb:hover,
     border-color: #f5c6cb; 
 }
 
-/* 
- * Radzen Dropdown Positioning Fixes 
- * These work with the JavaScript dynamic positioning
- */
-.rz-dropdown-panel {
-    /* Don't set position here - let JavaScript handle it dynamically */
-    z-index: 9999 !important; /* Ensure it's above Bootstrap components */
-    max-height: 500px !important;
-    /* Let Radzen handle its own scrolling - no override */
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15) !important;
-    border: 1px solid #ddd !important;
-    background: white !important;
-    /* Smooth transitions when repositioning */
-    transition: top 0.1s ease, left 0.1s ease;
-    /* Ensure dropdown panels don't get clipped */
-    overflow: visible !important;
-}
-
-/* Force proper stacking context for dropdown containers */
-.rz-dropdown {
-    position: relative !important;
-    z-index: 1 !important;
-}
-
-/* When dropdown is open, ensure proper layering */
-.rz-dropdown.rz-state-focused,
-.rz-dropdown:focus-within {
-    z-index: 9998 !important;
-}
-
-/* Prevent Bootstrap from interfering with Radzen dropdown positioning */
-.rz-dropdown * {
-    box-sizing: border-box !important;
-}
-
-.rz-dropdown-items-wrapper {
-    max-height: 500px !important;
-    overflow-y: auto !important;
-}
-
-/* 
- * Radzen Tooltip Positioning Fixes 
- * These work with the JavaScript dynamic positioning
- */
-.rz-tooltip {
-    /* Let Radzen handle the positioning wrapper - only add our scroll fix */
-    position: fixed !important;
-    z-index: 10000 !important; /* Higher than dropdown panels */
-    /* CRITICAL: Prevent tooltip from interfering with mouse events */
-    pointer-events: none !important;
-    /* Ensure tooltips are never clipped */
-    overflow: visible !important;
-}
-
-/* Override any hiding that might be applied */
-.rz-tooltip[style*="visibility: visible"] {
-    visibility: visible !important;
-    opacity: 1 !important;
-}
-
-/* Tooltip arrow styling */
-.rz-tooltip-arrow {
-    border-color: #dc3545 !important;
-}
-
-/* Style the actual content container - this is where Radzen expects styling */
-.rz-tooltip-content {
-    /* Override Radzen's default styling with red theme to match delete button */
-    background: #dc3545 !important; /* Bootstrap danger red - matches delete button */
-    color: white !important;
-    box-shadow: 0 2px 8px rgba(220, 53, 69, 0.3) !important; /* Red tinted shadow */
-    border: 1px solid #b02a37 !important; /* Darker red border */
-    padding: 8px 12px !important; /* Reduced from 12px 16px for tighter spacing */
-    border-radius: 4px !important;
-    font-size: 0.875rem !important;
-    /* Fix text display */
-    white-space: normal !important; /* Allow text wrapping - override Radzen's nowrap */
-    min-width: 150px !important;
-    max-width: 90vw !important;
-    word-wrap: break-word !important;
-    /* Perfect vertical centering */
-    display: flex !important;
-    align-items: center !important;
-    justify-content: center !important;
-    text-align: center !important;
-    line-height: 1.2 !important; /* Slightly more than 1 for better readability */
-    min-height: 28px !important; /* Reduced from 32px for more compact tooltip */
-    /* Also prevent content from interfering with mouse events */
-    pointer-events: none !important;
-}
-
 /* Links and buttons */
 a, .btn-link {
     color: #006bb7;
@@ -260,6 +121,35 @@ a, .btn-link {
     --rz-primary-lighter: rgba(96 188 181, 0.1);
     --rz-success: #0a3b6b;
     --rz-danger: #910813;
+    /* Scrollbar thumb — Radzen reads --rz-scrollbar-color (defaults to --rz-secondary) */
+    --rz-scrollbar-color: #0a3b6b;
+    /* Checkbox checked state — Radzen reads --rz-checkbox-checked-background-color (defaults to --rz-secondary) */
+    --rz-checkbox-checked-background-color: #0a3b6b;
+    --rz-checkbox-checked-hover-background-color: #072a47;
+    /* DataGrid selected row */
+    --rz-grid-selected-background-color: #0a3b6b;
+    --rz-grid-selected-color: #ffffff;
+    /* Dropdown selected item */
+    --rz-dropdown-item-selected-background-color: #0a3b6b;
+    --rz-dropdown-item-selected-color: #ffffff;
+    --rz-dropdown-item-selected-hover-background-color: #072a47;
+    --rz-dropdown-item-selected-hover-color: #ffffff;
+    /* Dropdown/grid hover (unselected) */
+    --rz-dropdown-item-hover-background-color: #dce6f0;
+    --rz-dropdown-item-hover-color: #0a3b6b;
+    --rz-grid-hover-background-color: rgba(10, 59, 107, 0.08);
+    --rz-grid-hover-color: inherit;
+    /* Alert info boxes ("no data found", "please select account") → dark blue */
+    --rz-info: #0a3b6b;
+    --rz-on-info: #ffffff;
+    /* Progress bar fill → aqua */
+    --rz-progressbar-value-background-color: #60bcb5;
+}
+
+/* Text selection highlight */
+::selection {
+    background-color: #0a3b6b;
+    color: #ffffff;
 }
 
 /* Ensure RadzenUpload choose button still uses primary color */
@@ -274,4 +164,35 @@ a, .btn-link {
     background-color: var(--rz-primary) !important;
     border-color: var(--rz-primary) !important;
     color: #fff !important;
+}
+
+/* ------------------------------------------------------------
+   Typography helpers (used across multiple pages)
+   ------------------------------------------------------------ */
+.txt-h5 {
+    font-size: 1.5rem;
+    font-weight: 600;
+}
+
+.txt-subtitle1 {
+    font-size: 1.125rem;
+    font-weight: 500;
+}
+
+/* ------------------------------------------------------------
+   Expense grid layout (moved from Expenses.razor <style> block)
+   ------------------------------------------------------------ */
+.narrow-expense-grid {
+    max-width: 100%;
+    margin: 0 auto;
+}
+
+/* ------------------------------------------------------------
+   Donor search row (moved from Donors.razor <style> block)
+   ------------------------------------------------------------ */
+.donor-search-row {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+    flex-wrap: wrap;
 }

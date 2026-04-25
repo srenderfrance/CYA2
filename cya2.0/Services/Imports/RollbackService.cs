@@ -345,13 +345,25 @@ namespace cya2.Services.Imports
                 var donationBackups = await _rollbackRepository.GetAvailableDonationBackupsAsync();
                 info.DonationBackupsAvailable = donationBackups.Any();
                 info.LatestDonationBackup = donationBackups.Any()
-                    ? new BackupInfo { BackupId = donationBackups[0].BackupId, BackupAt = donationBackups[0].BackupAt, RecordCount = donationBackups[0].RecordCount }
+                    ? new BackupInfo
+                    {
+                        BackupId = donationBackups[0].BackupId,
+                        BackupAt = donationBackups[0].BackupAt,
+                        RecordCount = donationBackups[0].RecordCount,
+                        MostRecentDataDate = donationBackups[0].MostRecentDataDate
+                    }
                     : null;
 
                 var accountingBackups = await _rollbackRepository.GetAvailableAccountingBackupsAsync();
                 info.AccountingBackupsAvailable = accountingBackups.Any();
                 info.LatestAccountingBackup = accountingBackups.Any()
-                    ? new BackupInfo { BackupId = accountingBackups[0].BackupId, BackupAt = accountingBackups[0].BackupAt, RecordCount = accountingBackups[0].RecordCount }
+                    ? new BackupInfo
+                    {
+                        BackupId = accountingBackups[0].BackupId,
+                        BackupAt = accountingBackups[0].BackupAt,
+                        RecordCount = accountingBackups[0].RecordCount,
+                        MostRecentDataDate = accountingBackups[0].MostRecentDataDate
+                    }
                     : null;
 
                 info.CanRollback = info.DonationBackupsAvailable || info.AccountingBackupsAvailable;

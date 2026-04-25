@@ -1,5 +1,7 @@
 @using cya2.Services.Imports
+@using System.IO
 @inject DialogService DialogService
+@inject IStringLocalizer<Resource> Localizer
 
 <RadzenCard Style="padding: 1.5rem; min-width: 400px; max-width: 520px;">
     <RadzenStack Orientation="Orientation.Vertical" Gap="1rem">
@@ -8,7 +10,12 @@
         <RadzenStack Orientation="Orientation.Vertical" Gap="0.5rem" Style="background-color:#f8f9fa; padding:0.75rem; border-radius:4px;">
             <div><b>File name:</b> @Preview?.FileName</div>
             <div><b>Size:</b> @(Preview == null ? "" : FormatSize(Preview.FileSizeBytes))</div>
-            <div><b>Format:</b> @Preview?.ContentType</div>
+            @if (Preview != null && !IsLikelyExcelFile(Preview))
+            {
+                <div style="color:#910813; font-weight:600;">
+                    @Localizer["UploadInvalidExcelFormatMessage"]
+                </div>
+            }
         </RadzenStack>
 
         <RadzenText TextStyle="TextStyle.Body2">
@@ -17,7 +24,10 @@
 
         <RadzenStack Orientation="Orientation.Horizontal" JustifyContent="JustifyContent.End" Gap="0.75rem">
             <RadzenButton Text="Cancel" ButtonStyle="ButtonStyle.Light" Click="@(() => DialogService.Close(false))" />
-            <RadzenButton Text="Confirm" ButtonStyle="ButtonStyle.Primary" Click="@(() => DialogService.Close(true))" />
+            <RadzenButton Text="Confirm"
+                          ButtonStyle="ButtonStyle.Primary"
+                          Click="@(() => DialogService.Close(true))"
+                          Disabled="@(Preview == null || !IsLikelyExcelFile(Preview))" />
         </RadzenStack>
     </RadzenStack>
 </RadzenCard>
@@ -34,5 +44,19 @@
         if (mb < 1024) return $"{mb:F1} MB";
         double gb = mb / 1024d;
         return $"{gb:F1} GB";
+    }
+
+    private static bool IsLikelyExcelFile(FilePreviewResult preview)
+    {
+        var ext = Path.GetExtension(preview.FileName ?? string.Empty);
+        var hasXlsxExtension = string.Equals(ext, ".xlsx", StringComparison.OrdinalIgnoreCase);
+
+        var ct = (preview.ContentType ?? string.Empty).Trim();
+        var knownExcelType = string.Equals(ct, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", StringComparison.OrdinalIgnoreCase)
+                             || string.Equals(ct, "application/vnd.ms-excel", StringComparison.OrdinalIgnoreCase)
+                             || string.Equals(ct, "application/octet-stream", StringComparison.OrdinalIgnoreCase)
+                             || string.IsNullOrWhiteSpace(ct);
+
+        return hasXlsxExtension && knownExcelType;
     }
 }

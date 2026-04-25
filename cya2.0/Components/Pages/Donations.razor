@@ -34,19 +34,16 @@
 
 <style>
     /* Stronger overrides to beat Radzen defaults */
-    .giving-grid-wrapper { overflow-x: auto; display: inline-block, vertical-align: top; }
+    .giving-grid-wrapper { overflow-x: auto; width: 100%; }
 
-    /* Ensure the RadzenCard containing the grid shrink-wraps its content */
+    /* Ensure the RadzenCard containing the grid fills width and clips overflow to the wrapper */
     .giving-grid-card,
     .giving-grid-card.rz-card {
-        display: inline-block !important;
-        width: auto !important;
-        vertical-align: top !important;
+        display: block !important;
+        width: 100% !important;
         padding: 0.5rem !important; /* keep card padding consistent */
         box-sizing: border-box !important;
-        align-self: flex-start !important; /* prevent stretching in flex containers */
-        flex: 0 0 auto !important; /* don't grow or shrink to fill the flex row/column */
-        max-width: none !important;
+        overflow: hidden !important;
     }
 
     /* Also force the grid container itself to size to content */
@@ -143,6 +140,7 @@
                  Gap="2rem"
                  JustifyContent="JustifyContent.SpaceBetween"
                  AlignItems="AlignItems.Start"
+                 Wrap="FlexWrap.Wrap"
                  Style="width:100%;">
 
         <RadzenStack Orientation="Orientation.Vertical" Gap="0.4rem" Style="flex:1;">
@@ -151,14 +149,9 @@
                          Gap="0.5rem"
                          AlignItems="AlignItems.Center"
                          Wrap="FlexWrap.Wrap">
-                <RadzenLabel Text="@Localizer["StartDate"]" />
-                <RadzenDatePicker @bind-Value="@dateRangeState.PendingStartDate" DateFormat="MM/dd/yyyy" Style="max-width:130px"
-                                  Change="@OnDatePickerChanged" />
-                <RadzenLabel Text="@Localizer["EndDate"]" />
-                <RadzenDatePicker @bind-Value="@dateRangeState.PendingEndDate" DateFormat="MM/dd/yyyy" Style="max-width:130px"
-                                  Change="@OnDatePickerChanged" />
-
-                <!-- Preset dropdown -->
+                <div style="display:flex;align-items:center;gap:0.5rem;">
+                    <RadzenLabel Text="@Localizer["CommonRanges"]" />
+                    <!-- Preset dropdown -->
                 <RadzenDropDown TValue="DateRangePreset"
                                 Data="@presetOptions"
                                 TextProperty="Text"
@@ -177,7 +170,19 @@
                         </span>
                     </Template>
                 </RadzenDropDown>
-
+                </div>
+                <div style="display:flex;align-items:center;gap:0.5rem;flex-wrap:nowrap;">
+                <div style="display:flex;align-items:center;gap:0.5rem;">
+                    <RadzenLabel Text="@Localizer["StartDate"]" />
+                    <RadzenDatePicker @bind-Value="@dateRangeState.PendingStartDate" DateFormat="MM/dd/yyyy" Style="max-width:130px"
+                                      Change="@OnDatePickerChanged" />
+                </div>
+                <div style="display:flex;align-items:center;gap:0.5rem;">
+                    <RadzenLabel Text="@Localizer["EndDate"]" />
+                    <RadzenDatePicker @bind-Value="@dateRangeState.PendingEndDate" DateFormat="MM/dd/yyyy" Style="max-width:130px"
+                                      Change="@OnDatePickerChanged" />
+                </div>
+                </div>
                 <RadzenButton Text="@Localizer["ApplyFilter"]"
                               Icon="filter_alt"
                               Click="@selectDateRange"
@@ -202,7 +207,7 @@
                     </span>
                 </ValueTemplate>
                 <Template Context="acct">
-                    <span style="display:flex;align-items:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;width=100%;">
+                    <span style="display:flex;align-items:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;width:100%;">
                         @DisplayFormatter.FormatFundDisplay(acct.Fund)
                     </span>
                 </Template>
@@ -226,7 +231,7 @@
                             </span>
                         </ValueTemplate>
                         <Template Context="option">
-                            <span style="display:flex;align-items:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;width=100%;">
+                            <span style="display:flex;align-items:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;width:100%;">
                                 @option.DisplayText
                             </span>
                         </Template>
@@ -346,48 +351,44 @@
         else if (currentView == ViewMode.DonationList)
         {
             <!-- Summary cards and list layout -->
-            <RadzenStack Orientation="Orientation.Horizontal" Gap="2rem" AlignItems="AlignItems.Start">
-                <!-- Summary card (left side) - fixed width at 20% -->
-                <div style="flex:0 0 20%; min-width:260px;">
+            <div class="donation-list-layout">
+                <div class="donation-summary-col">
                     <DonationSummaryCard Donations="@selectedDonations" 
                                          StartDate="@dateRangeState.StartDate" 
                                          EndDate="@dateRangeState.EndDate" />
                 </div>
 
-                <!-- Donation list (right side) -->
-                <div style="flex: 1;">
-                    <RadzenCard>
-                        <RadzenDataGrid Data="@selectedDonations"
-                                        TItem="DonationRowDto"
-                                        AllowFiltering="true"
-                                        AllowColumnResize="true"
-                                        AllowSorting="true"
-                                        AllowPaging="false"
-                                        FilterMode="FilterMode.Advanced"
-                                        EmptyText="@GetEmptyText()"
-                                        Class="donation-list">
-                            <Columns>
-                                <RadzenDataGridColumn TItem="DonationRowDto" Property="Date" Title="@(Localizer["Date"])" FormatString="{0:MM/dd/yyyy}" />
-                                <RadzenDataGridColumn TItem="DonationRowDto" Property="Donor" Title="@(Localizer["Donor"])">
-                                    <Template Context="donation">
-                                        <span class="donor-cell" @onclick="@(() => OnDonorClick(donation.Donor))">@donation.Donor</span>
-                                    </Template>
-                                </RadzenDataGridColumn>
-                                <RadzenDataGridColumn TItem="DonationRowDto" Property="Amount" Title="@(Localizer["Amount"])" FormatString="{0:C2}" />
-                                <RadzenDataGridColumn TItem="DonationRowDto" Property="TransactionType" Title="@(Localizer["TransactionType"])" />
-                                <RadzenDataGridColumn TItem="DonationRowDto" Property="Frequency" Title="@(Localizer["Frequency"])">
-                                    <Template Context="donation">
-                                        @if (!string.IsNullOrEmpty(donation.Frequency))
-                                        {
-                                            <span>@donation.Frequency</span>
-                                        }
-                                    </Template>
-                                </RadzenDataGridColumn>
-                            </Columns>
-                        </RadzenDataGrid>
-                    </RadzenCard>
+                <div class="donation-grid-col" style="margin-top: 0.5rem;">
+                    <RadzenDataGrid Data="@selectedDonations"
+                                    TItem="DonationRowDto"
+                                    AllowFiltering="true"
+                                    AllowColumnResize="true"
+                                    AllowSorting="true"
+                                    AllowPaging="false"
+                                    FilterMode="FilterMode.Advanced"
+                                    EmptyText="@GetEmptyText()"
+                                    Class="donation-list">
+                        <Columns>
+                            <RadzenDataGridColumn TItem="DonationRowDto" Property="Date" Title="@(Localizer["Date"])" FormatString="{0:MM/dd/yyyy}" Width="110px" />
+                            <RadzenDataGridColumn TItem="DonationRowDto" Property="Donor" Title="@(Localizer["Donor"])" Width="200px">
+                                <Template Context="donation">
+                                    <span class="donor-cell" @onclick="@(() => OnDonorClick(donation.Donor))">@donation.Donor</span>
+                                </Template>
+                            </RadzenDataGridColumn>
+                            <RadzenDataGridColumn TItem="DonationRowDto" Property="Amount" Title="@(Localizer["Amount"])" FormatString="{0:C2}" Width="90px" />
+                            <RadzenDataGridColumn TItem="DonationRowDto" Property="TransactionType" Title="@(Localizer["TransactionType"])" Width="110px" />
+                            <RadzenDataGridColumn TItem="DonationRowDto" Property="Frequency" Title="@(Localizer["Frequency"])" Width="100px">
+                                <Template Context="donation">
+                                    @if (!string.IsNullOrEmpty(donation.Frequency))
+                                    {
+                                        <span>@donation.Frequency</span>
+                                    }
+                                </Template>
+                            </RadzenDataGridColumn>
+                        </Columns>
+                    </RadzenDataGrid>
                 </div>
-            </RadzenStack>
+            </div>
         }
         else
         {
@@ -795,7 +796,10 @@
         if (args is DateRangePreset preset)
         {
             DateRangeStateService.ApplyPreset(dateRangeState, preset);
-            StateHasChanged();
+            if (preset != DateRangePreset.Custom)
+                _ = selectDateRange();
+            else
+                StateHasChanged();
         }
     }
 
@@ -972,7 +976,6 @@
     {
         return new List<DateRangePresetOptionDto>
         {
-            new() { Text = Localizer["AllDates"],         Value = DateRangePreset.AllDates },
             new() { Text = Localizer["ThisYear"],         Value = DateRangePreset.ThisYear },
             new() { Text = Localizer["Previous12Months"], Value = DateRangePreset.Previous12Months },
             new() { Text = Localizer["LastYear"],         Value = DateRangePreset.LastYear },

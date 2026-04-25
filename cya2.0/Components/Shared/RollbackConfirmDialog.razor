@@ -1,0 +1,23 @@
+@using cya2.Components.Shared
+@inject DialogService DialogService
+@inject IStringLocalizer<Resource> Localizer
+
+<RadzenStack Orientation="Orientation.Vertical" Gap="1.5rem" Style="padding: 0.5rem;">
+
+    <RadzenText TextStyle="TextStyle.Body1">@Message</RadzenText>
+
+    <RadzenStack Orientation="Orientation.Horizontal" JustifyContent="JustifyContent.End" Gap="1rem">
+        <RadzenButton Text="@Localizer["Cancel"]"
+                      ButtonStyle="ButtonStyle.Light"
+                      Click="@(() => DialogService.Close(false))" />
+        <RadzenButton Text="@Localizer["Confirm"]"
+                      ButtonStyle="ButtonStyle.Danger"
+                      Icon="play_arrow"
+                      Click="@(() => DialogService.Close(true))" />
+    </RadzenStack>
+
+</RadzenStack>
+
+@code {
+    [Parameter] public string Message { get; set; } = string.Empty;
+}

@@ -1,6 +1,7 @@
 @page "/admin"
 @using Microsoft.AspNetCore.Authorization
 @using static Microsoft.AspNetCore.Components.Web.RenderMode
+@using cya2.Components.Shared
 @attribute [Authorize(Roles = "Admin")]
 @inject Cya2.Application.Interfaces.ISessionUserStateService SessionUserStateService
 @inject Cya2.Application.Interfaces.ISessionImportProgressService SessionImportProgressService
@@ -52,14 +53,14 @@
             <!-- NOTE: No size limit for now. TODO: enforce a sensible max file size. -->
             <div style="display:flex; align-items:center; gap:0.5rem;">
                 <InputFile id="donationFileInput" style="display:none" OnChange="OnDonationInputFileChange" accept=".xlsx" />
-                <label for="donationFileInput" class="rz-button rz-button-primary" style="background-color:var(--rz-primary); border-color:var(--rz-primary); color: white; cursor: pointer; display:inline-flex; align-items:center; gap:0.5rem; padding:0 0.75rem; border-radius:4px; height:38px; font-size:14px;font-weight:600;">
+                <label for="donationFileInput" class="rz-button rz-button-primary" style="background-color:#0a3b6b; border-color:#0a3b6b; color: white; cursor: pointer; display:inline-flex; align-items:center; gap:0.5rem; padding:0 0.75rem; border-radius:4px; height:38px; font-size:14px;font-weight:600;">
                     @Localizer["UploadDonationData"]
                 </label>
             </div>
 
             <div style="display:flex; align-items:center; gap:0.5rem;">
                 <InputFile id="accountingFileInput" style="display:none" OnChange="OnAccountingInputFileChange" accept=".xlsx" />
-                <label for="accountingFileInput" class="rz-button rz-button-primary" style="background-color:var(--rz-primary); border-color:var(--rz-primary); color: white; cursor: pointer; display:inline-flex; align-items:center; gap:0.5rem; padding:0 0.75rem; border-radius:4px; height:38px; font-size:14px;font-weight:600;">
+                <label for="accountingFileInput" class="rz-button rz-button-primary" style="background-color:#0a3b6b; border-color:#0a3b6b; color: white; cursor: pointer; display:inline-flex; align-items:center; gap:0.5rem; padding:0 0.75rem; border-radius:4px; height:38px; font-size:14px;font-weight:600;">
                     @Localizer["UploadAccountingData"]
                 </label>
             </div>
@@ -498,9 +499,9 @@
                         <RadzenStack Orientation="Orientation.Vertical" Gap="0.75rem">
                             <RadzenRadioButtonList @bind-Value="rollbackTarget" Orientation="Orientation.Vertical" Gap="0.75rem">
                                 <Items>
-                                    <RadzenRadioButtonListItem Text="@GetLocalizedString("RollbackDonations", "Rollback Donation Data Only")" Value='"donations"' />
-                                    <RadzenRadioButtonListItem Text="@GetLocalizedString("RollbackAccounting", "Rollback Accounting Data Only")" Value='"accounting"' />
-                                    <RadzenRadioButtonListItem Text="@GetLocalizedString("RollbackBoth", "Rollback Both Donation and Accounting Data")" Value='"both"' />
+                                    <RadzenRadioButtonListItem Text="@GetRollbackOptionText("donations")" Value='"donations"' />
+                                    <RadzenRadioButtonListItem Text="@GetRollbackOptionText("accounting")" Value='"accounting"' />
+                                    <RadzenRadioButtonListItem Text="@GetRollbackOptionText("both")" Value='"both"' />
                                 </Items>
                             </RadzenRadioButtonList>
                         </RadzenStack>
@@ -532,19 +533,13 @@
                                       ButtonStyle="ButtonStyle.Danger" 
                                       Icon="play_arrow"
                                       Click="@(async () => await ExecuteRollbackWithConfirm())" 
-                                      Disabled="@(string.IsNullOrEmpty(rollbackTarget) || !string.IsNullOrEmpty(rollbackStatus))"
-                                      Style="background-color: #dc3545; border-color: #dc3545; color: white;" />
+                                      Disabled="@(string.IsNullOrEmpty(rollbackTarget) || !string.IsNullOrEmpty(rollbackStatus))" />
                     </RadzenStack>
                 </RadzenStack>
             </RadzenCard>
         </div>
     }
 
-    <!-- Radzen hosts inside the Admin interactive island -->
-    <RadzenDialog />
-    <RadzenNotification />
-    <RadzenContextMenu />
-    <RadzenTooltip />
 </RadzenStack>
 
 @code {
@@ -872,6 +867,7 @@
         private string rollbackTarget = string.Empty; // "donations", "accounting", "both"
         private string rollbackStatus = string.Empty;
         private string rollbackError = string.Empty;
+        private RollbackAvailabilityInfo? rollbackAvailability;
 
         // Sub-account properties
         private List<SubAccount> subAccounts = new List<SubAccount>();
@@ -1780,9 +1776,11 @@
                 rollbackError = string.Empty;
                 rollbackStatus = string.Empty;
                 rollbackTarget = string.Empty;
+                rollbackAvailability = null;
                 
                 // Check what backups are available
                 var availability = await RollbackService.GetRollbackAvailabilityAsync();
+                rollbackAvailability = availability;
                 
                 if (!availability.CanRollback)
                 {
@@ -1809,6 +1807,33 @@
             }
         }
 
+        private string GetRollbackOptionText(string target)
+        {
+            if (rollbackAvailability == null)
+            {
+                return target switch
+                {
+                    "donations" => GetLocalizedString("RollbackDonations", "Donation Data"),
+                    "accounting" => GetLocalizedString("RollbackAccounting", "Accounting Data"),
+                    "both" => GetLocalizedString("RollbackBoth", "Rollback Both Donation and Accounting Data"),
+                    _ => target
+                };
+            }
+
+            string FormatBackupInfo(BackupInfo? info)
+                => info == null
+                    ? GetLocalizedString("NoBackupAvailable", "No backup available")
+                    : $"backup: {info.BackupAt:yyyy-MM-dd HH:mm}, data through: {(info.MostRecentDataDate.HasValue ? info.MostRecentDataDate.Value.ToString("yyyy-MM-dd") : "n/a")} ({info.RecordCount:N0} rows)";
+
+            return target switch
+            {
+                "donations" => $"{GetLocalizedString("RollbackDonations", "Donation Data")} - {FormatBackupInfo(rollbackAvailability.LatestDonationBackup)}",
+                "accounting" => $"{GetLocalizedString("RollbackAccounting", "Accounting Data")} - {FormatBackupInfo(rollbackAvailability.LatestAccountingBackup)}",
+                "both" => GetLocalizedString("RollbackBoth", "Rollback Both Donation and Accounting Data"),
+                _ => target
+            };
+        }
+
         private async Task ExecuteRollbackWithConfirm()
         {
             try
@@ -1822,8 +1847,8 @@
 
                 var targetText = rollbackTarget switch
                 {
-                    "donations" => GetLocalizedString("RollbackDonations", "Rollback Donation Data Only"),
-                    "accounting" => GetLocalizedString("RollbackAccounting", "Rollback Accounting Data Only"),
+                    "donations" => GetLocalizedString("RollbackDonations", "Donation Data"),
+                    "accounting" => GetLocalizedString("RollbackAccounting", "Accounting Data"),
                     "both" => GetLocalizedString("RollbackBoth", "Rollback Both Donation and Accounting Data"),
                     _ => rollbackTarget
                 };
@@ -1840,7 +1865,10 @@
                     await Task.Yield();
                 }
 
-                var confirmed = await DialogService.Confirm(message, title);
+                var confirmed = await DialogService.OpenAsync<RollbackConfirmDialog>(
+                    GetLocalizedString("ConfirmRollback", "Confirm Rollback"),
+                    new Dictionary<string, object> { { "Message", message } },
+                    new DialogOptions { Width = "420px", CloseDialogOnOverlayClick = false });
 
                 // Restore the rollback overlay
                 if (wasDialogShowing)

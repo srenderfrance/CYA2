@@ -210,6 +210,9 @@
   <data name="EndBalance" xml:space="preserve">
     <value>Saldo Final</value>
   </data>
+  <data name="CommonRanges" xml:space="preserve">
+    <value>Rangos Comunes</value>
+  </data>
   <data name="EndDate" xml:space="preserve">
     <value>Fecha Final</value>
   </data>
@@ -510,6 +513,9 @@
   <data name="AllDates" xml:space="preserve">
     <value>Todas las Fechas</value>
   </data>
+  <data name="AllDonors" xml:space="preserve">
+    <value>Todos los Donantes</value>
+  </data>
   <data name="NoDonorSelected" xml:space="preserve">
     <value>No se ha seleccionado ningún donante.</value>
   </data>
@@ -605,5 +611,14 @@
   </data>
   <data name="CreateNewFund" xml:space="preserve">
     <value>Crear Nuevo Fondo</value>
+  </data>
+  <data name="ConfirmUpload" xml:space="preserve">
+    <value>Confirmar Carga</value>
+  </data>
+  <data name="UploadInProgress" xml:space="preserve">
+    <value>Carga en Curso</value>
+  </data>
+  <data name="UploadInvalidExcelFormatMessage" xml:space="preserve">
+    <value>El archivo seleccionado no tiene el formato correcto. El archivo debe ser un archivo de Excel con extensión .xlsx.</value>
   </data>
 </root>

@@ -1,68 +1,91 @@
 ﻿@using System.Security.Claims
+@using static Microsoft.AspNetCore.Components.Web.RenderMode
 @inject NavigationManager NavigationManager
 @inject AuthenticationStateProvider AuthStateProvider
 @inject IStringLocalizer<Resource> Localizer
+@rendermode InteractiveServer
 
-<nav class="nav-container d-flex justify-content-between align-items-center">
-    <!-- Left: Admin Panel (only for Admin) -->
-    <div class="nav-left d-flex align-items-center">
-        <AuthorizeView Roles="Admin">
-            <Authorized>
-                <div class="nav-item px-4">
-                    <NavLink class="nav-link" href="/admin" Match="NavLinkMatch.All" style="margin:0 3px;">
-                        <span class="bi bi-shield-lock-nav-menu"></span> @Localizer["AdminPanel"]
-                    </NavLink>
-                </div>
-            </Authorized>
-            <NotAuthorized>
-                <div class="nav-item px-4">
-                    <NavLink class="nav-link" href="/" Match="NavLinkMatch.All" style="margin:0 3px;">
-                        <span class="bi bi-house-door-fill-nav-menu"></span> @Localizer["CYAHome"]
-                    </NavLink>
-                </div>
-            </NotAuthorized>
-        </AuthorizeView>
+<nav class="nav-container">
+
+    <!-- Mobile-only: brand name + hamburger button -->
+    <div class="nav-topbar">
+        <span class="nav-brand">CYA</span>
+        <button class="nav-hamburger" @onclick="ToggleMenu" aria-label="Menu" aria-expanded="@menuOpen">
+            <span class="@(menuOpen ? "ham-open" : "")"></span>
+            <span class="@(menuOpen ? "ham-open" : "")"></span>
+            <span class="@(menuOpen ? "ham-open" : "")"></span>
+        </button>
     </div>
 
-    <!-- Center: Main navigation links -->
-    <div class="nav-center d-flex navbar-group justify-content-center flex-grow-1">
-        <div class="nav-item px-5 nav-link-block">
-            <NavLink class="nav-link" href="/donations" style="margin:0 3px;">
-                <span class="bi bi-list-nested-nav-menu"></span> @Localizer["Donations"]
-            </NavLink>
-        </div>
-        <div class="nav-item px-5 nav-link-block">
-            <NavLink class="nav-link" href="/expenses" style="margin:0 3px;">
-                <span class="bi bi-list-nested-nav-menu"></span> @Localizer["Expenses"]
-            </NavLink>
-        </div>
-        <div class="nav-item px-5 nav-link-block">
-            <NavLink class="nav-link" href="/donors" style="margin:0 3px;">
-                <span class="bi bi-list-nested-nav-menu"></span> @Localizer["Donors"]
-            </NavLink>
-        </div>
-    </div>
+    <!-- All nav links — full row on desktop, collapsible on mobile -->
+    <div class="nav-links @(menuOpen ? "nav-open" : "")">
 
-    <!-- Right: User Settings + Logout -->
-    <div class="nav-right d-flex align-items-center">
-        <div class="nav-item px-5 nav-link-block">
-            <NavLink class="nav-link" href="/settings" style="margin:0 3px;">
-                <span class="bi bi-gear-fill-nav-menu"></span> @Localizer["Settings"]
-            </NavLink>
+        <!-- Left: Admin or Home -->
+        <div class="nav-section nav-left">
+            <AuthorizeView Roles="Admin">
+                <Authorized>
+                    <div class="nav-item">
+                        <NavLink class="nav-link" href="/admin" Match="NavLinkMatch.All" @onclick="CloseMenu">
+                            <span class="bi bi-shield-lock-nav-menu"></span> @Localizer["AdminPanel"]
+                        </NavLink>
+                    </div>
+                </Authorized>
+                <NotAuthorized>
+                    <div class="nav-item">
+                        <NavLink class="nav-link" href="/" Match="NavLinkMatch.All" @onclick="CloseMenu">
+                            <span class="bi bi-house-door-fill-nav-menu"></span> @Localizer["CYAHome"]
+                        </NavLink>
+                    </div>
+                </NotAuthorized>
+            </AuthorizeView>
         </div>
-        <div class="nav-item px-4">
-            <a href="/logout" class="nav-link" style="margin:0 3px;">
-                <span class="bi bi-box-arrow-right-nav-menu"></span> @Localizer["Logout"]
-            </a>
+
+        <!-- Centre: Main navigation links -->
+        <div class="nav-section nav-center">
+            <div class="nav-item">
+                <NavLink class="nav-link" href="/donations" @onclick="CloseMenu">
+                    <span class="bi bi-list-nested-nav-menu"></span> @Localizer["Donations"]
+                </NavLink>
+            </div>
+            <div class="nav-item">
+                <NavLink class="nav-link" href="/expenses" @onclick="CloseMenu">
+                    <span class="bi bi-list-nested-nav-menu"></span> @Localizer["Expenses"]
+                </NavLink>
+            </div>
+            <div class="nav-item">
+                <NavLink class="nav-link" href="/donors" @onclick="CloseMenu">
+                    <span class="bi bi-list-nested-nav-menu"></span> @Localizer["Donors"]
+                </NavLink>
+            </div>
         </div>
+
+        <!-- Right: Settings + Logout -->
+        <div class="nav-section nav-right">
+            <div class="nav-item">
+                <NavLink class="nav-link" href="/settings" @onclick="CloseMenu">
+                    <span class="bi bi-gear-fill-nav-menu"></span> @Localizer["Settings"]
+                </NavLink>
+            </div>
+            <div class="nav-item">
+                <a href="/logout" class="nav-link" @onclick="CloseMenu">
+                    <span class="bi bi-box-arrow-right-nav-menu"></span> @Localizer["Logout"]
+                </a>
+            </div>
+        </div>
+
     </div>
 </nav>
 
 @code {
+    private bool menuOpen = false;
+
+    private void ToggleMenu() => menuOpen = !menuOpen;
+    private void CloseMenu() => menuOpen = false;
+
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         if (!firstRender) return;
-        
+
         var authState = await AuthStateProvider.GetAuthenticationStateAsync();
         if (authState.User.IsInRole("Admin") && NavigationManager.Uri.EndsWith("/"))
         {

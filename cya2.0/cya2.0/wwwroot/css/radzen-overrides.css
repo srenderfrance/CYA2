@@ -1,0 +1,169 @@
+/*
+ * ============================================================
+ * RADZEN COMPONENT OVERRIDES
+ * ============================================================
+ * Loaded from MainLayout.razor BEFORE app.css so that app.css
+ * can build on top of these if needed.
+ *
+ * Load order in MainLayout.razor:
+ *   1. Radzen default-base.css
+ *   2. Radzen default.css
+ *   3. Bootstrap 5
+ *   4. css/radzen-overrides.css   <- this file
+ *   5. app.css
+ *   6. css/responsive.css
+ *   7. cya2.styles.css            (scoped component CSS, generated)
+ * ============================================================
+ */
+
+/* ------------------------------------------------------------
+   1. RADZEN CSS CUSTOM PROPERTY TOKENS
+      --rz-scrollbar-color is the variable Radzen actually reads (default.css line 23518).
+      --rz-scrollbar-thumb-background-color is NOT used by Radzen.
+   ------------------------------------------------------------ */
+:root {
+    --rz-scrollbar-color: #0a3b6b;           /* Radzen's real thumb variable */
+    --rz-scrollbar-background-color: #f1f1f1;
+}
+
+/* ------------------------------------------------------------
+   2. SCROLLBAR COLOURS
+      Firefox: scrollbar-color on html covers the page scrollbar.
+      WebKit: target * so every overflow div (not just rz-layout)
+      gets the dark-blue thumb.
+   ------------------------------------------------------------ */
+html {
+    scrollbar-color: #0a3b6b #f1f1f1;
+    scrollbar-width: auto;
+}
+
+*::-webkit-scrollbar {
+    width: 12px;
+    height: 12px;
+}
+
+*::-webkit-scrollbar-track {
+    background: #f1f1f1;
+}
+
+*::-webkit-scrollbar-thumb {
+    background: #0a3b6b !important;
+    border-radius: 8px;
+    border: 3px solid #f1f1f1;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+    background: #072a47 !important;
+}
+
+/* ------------------------------------------------------------
+   3. RADZEN DROPDOWN
+      JS handles dynamic positioning; we only fix z-index,
+      shadow, and overflow clipping here.
+   ------------------------------------------------------------ */
+.rz-dropdown-panel {
+    z-index: 9999 !important;
+    max-height: 500px !important;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15) !important;
+    border: 1px solid #ddd !important;
+    background: white !important;
+    transition: top 0.1s ease, left 0.1s ease;
+    overflow: visible !important;
+}
+
+.rz-dropdown {
+    position: relative !important;
+    z-index: 1 !important;
+}
+
+.rz-dropdown.rz-state-focused,
+.rz-dropdown:focus-within {
+    z-index: 9998 !important;
+}
+
+.rz-dropdown * {
+    box-sizing: border-box !important;
+}
+
+.rz-dropdown-items-wrapper {
+    max-height: 500px !important;
+    overflow-y: auto !important;
+}
+
+/* ------------------------------------------------------------
+   4. RADZEN TOOLTIP
+      Position fixed so it escapes any overflow:hidden parent.
+   ------------------------------------------------------------ */
+.rz-tooltip {
+    position: fixed !important;
+    z-index: 10000 !important;
+    pointer-events: none !important;
+    overflow: visible !important;
+}
+
+.rz-tooltip[style*="visibility: visible"] {
+    visibility: visible !important;
+    opacity: 1 !important;
+}
+
+.rz-tooltip-arrow {
+    border-color: #dc3545 !important;
+}
+
+.rz-tooltip-content {
+    background: #dc3545 !important;
+    color: white !important;
+    box-shadow: 0 2px 8px rgba(220, 53, 69, 0.3) !important;
+    border: 1px solid #b02a37 !important;
+    padding: 8px 12px !important;
+    border-radius: 4px !important;
+    font-size: 0.875rem !important;
+    white-space: normal !important;
+    min-width: 150px !important;
+    max-width: 90vw !important;
+    word-wrap: break-word !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    text-align: center !important;
+    line-height: 1.2 !important;
+    min-height: 28px !important;
+    pointer-events: none !important;
+}
+
+/* ------------------------------------------------------------
+   5. RADZEN DATA GRID — amount column alignment
+      (.amount-column-fix is applied via RadzenDataGridColumn
+      HeaderCssClass on the Expenses page.)
+   ------------------------------------------------------------ */
+.rz-data-grid .amount-column-fix .rz-column-header,
+.rz-data-grid th.amount-column-fix {
+    text-align: right;
+    padding-right: 8px;
+}
+
+.rz-data-grid .amount-column-fix .rz-column-title {
+    text-align: right;
+    padding-right: 8px;
+    justify-content: flex-end;
+    display: flex;
+    width: 100%;
+}
+
+/* ------------------------------------------------------------
+   6. EXPENSE GRID — inner table cell alignment
+      (.narrow-expense-grid wraps the expense RadzenDataGrid.)
+   ------------------------------------------------------------ */
+.narrow-expense-grid th:nth-child(1) .rz-column-title,
+.narrow-expense-grid td:nth-child(1) {
+    text-align: right !important;
+    padding-right: 8px !important;
+    box-sizing: border-box;
+}
+
+.narrow-expense-grid th:last-child .rz-column-title,
+.narrow-expense-grid td:last-child {
+    text-align: right !important;
+    padding-right: 8px !important;
+    box-sizing: border-box;
+}

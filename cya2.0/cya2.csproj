@@ -38,6 +38,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Folder Include="cya2.0\Components\Shared\" />
     <Folder Include="Infrastructure\Repositories\" />
     <Folder Include="Services\" />
     <Folder Include="src\Cya2.Application\Services\" />
