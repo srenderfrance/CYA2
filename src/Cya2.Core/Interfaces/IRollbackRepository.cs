@@ -5,6 +5,7 @@ public sealed class BackupSummary
     public string BackupId { get; set; } = string.Empty;
     public DateTime BackupAt { get; set; }
     public int RecordCount { get; set; }
+    public DateTime? MostRecentDataDate { get; set; }
 }
 
 /// <summary>

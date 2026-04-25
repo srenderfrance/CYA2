@@ -22,62 +22,14 @@
 
 <PageTitle>@Localizer["Expenses"]</PageTitle>
 
-<style>
-    /* Target the column and its header */
-    .rz-data-grid .amount-column-fix .rz-column-header,
-    .rz-data-grid th.amount-column-fix {
-        text-align: right;
-        padding-right: 8px;
-    }
-    
-    .rz-data-grid .amount-column-fix .rz-column-title {
-        text-align: right;
-        padding-right: 8px;
-        justify-content: flex-end;
-        display: flex;
-        width: 100%;
-    }
-
-    /* Narrow and center the expense grids */
-    .narrow-expense-grid {
-        max-width: 100%;
-        margin: 0 auto;
-    }
-
-    /* Increase the font size for better readability */
-    .txt-h5 {
-        font-size: 1.5rem; /* Example: H5 size */
-        font-weight: 600;
-    }
-
-    .txt-subtitle1 {
-        font-size: 1.125rem; /* Example: Subtitle1 size */
-        font-weight: 500;
-    }
-
-    /* Ensure header titles line up with right-aligned cell content for Amount (first) and Date (last) */
-    .narrow-expense-grid th:nth-child(1) .rz-column-title,
-    .narrow-expense-grid td:nth-child(1) {
-        text-align: right !important;
-        padding-right: 8px !important;
-        box-sizing: border-box;
-    }
-
-    .narrow-expense-grid th:last-child .rz-column-title,
-    .narrow-expense-grid td:last-child {
-        text-align: right !important;
-        padding-right: 8px !important;
-        box-sizing: border-box;
-    }
-</style>
-
-<RadzenStack Orientation="Orientation.Vertical" Gap="15px" Class="rz-p-4">
+<RadzenStack Orientation="Orientation.Vertical" Gap="15px" Class="rz-p-4" Style="padding-top:0.5rem;">
 
     <!-- Top two control sections: date range on left, account + toggle on right -->
     <RadzenStack Orientation="Orientation.Horizontal"
                  Gap="2rem"
                  JustifyContent="JustifyContent.SpaceBetween"
                  AlignItems="AlignItems.Start"
+                 Wrap="FlexWrap.Wrap"
                  Style="width:100%;">
 
         <!-- Left side: Date Range controls -->
@@ -86,15 +38,9 @@
             <!-- Date Range section (match Donations/Donors layout: label above, controls in a single horizontal row) -->
             <RadzenText TextStyle="TextStyle.Subtitle1">@Localizer["DateRange"]</RadzenText>
             <RadzenStack Orientation="Orientation.Horizontal" Gap="0.5rem" AlignItems="AlignItems.Center" Wrap="FlexWrap.Wrap">
-                <RadzenLabel Text="@Localizer["StartDate"]" />
-                <RadzenDatePicker @bind-Value="@dateRangeState.PendingStartDate" DateFormat="MM/dd/yyyy" Style="max-width:130px"
-                                  Change="@OnDatePickerChanged" />
-
-                <RadzenLabel Text="@Localizer["EndDate"]" />
-                <RadzenDatePicker @bind-Value="@dateRangeState.PendingEndDate" DateFormat="MM/dd/yyyy" Style="max-width:130px"
-                                  Change="@OnDatePickerChanged" />
-
-                <!-- Preset dropdown -->
+                <div style="display:flex;align-items:center;gap:0.5rem;">
+                    <RadzenLabel Text="@Localizer["CommonRanges"]" />
+                    <!-- Preset dropdown -->
                 <RadzenDropDown TValue="Cya2.Application.DTOs.DateRangePreset"
                                 Data="@presetOptions"
                                 TextProperty="Text"
@@ -113,7 +59,19 @@
                         </span>
                     </Template>
                 </RadzenDropDown>
-
+                </div>
+                <div style="display:flex;align-items:center;gap:0.5rem;flex-wrap:nowrap;">
+                <div style="display:flex;align-items:center;gap:0.5rem;">
+                    <RadzenLabel Text="@Localizer["StartDate"]" />
+                    <RadzenDatePicker @bind-Value="@dateRangeState.PendingStartDate" DateFormat="MM/dd/yyyy" Style="max-width:130px"
+                                      Change="@OnDatePickerChanged" />
+                </div>
+                <div style="display:flex;align-items:center;gap:0.5rem;">
+                    <RadzenLabel Text="@Localizer["EndDate"]" />
+                    <RadzenDatePicker @bind-Value="@dateRangeState.PendingEndDate" DateFormat="MM/dd/yyyy" Style="max-width:130px"
+                                      Change="@OnDatePickerChanged" />
+                </div>
+                </div>
                 <RadzenButton Text="@Localizer["ApplyFilter"]"
                               Icon="filter_alt"
                               Click="@(async () => await ApplyDateFilter())"
@@ -153,9 +111,9 @@
     </RadzenStack>
 
     <!-- Summary cards and grids layout -->
-    <RadzenStack Orientation="Orientation.Horizontal" Gap="2rem" AlignItems="AlignItems.Start">
-        <!-- Summary cards (left side) - fixed width to match Donors narrow column (~28%) -->
-        <div style="flex:0 0 28%; min-width:260px;">
+    <div class="page-two-col-layout">
+        <!-- Summary cards (left side) -->
+        <div class="page-summary-col">
             <RadzenCard Style="width:100%; margin-top: 0.5rem; background-color: #f8f9fa;">
                 <RadzenStack Orientation="Orientation.Vertical" Gap="1rem">
                     <RadzenText TextStyle="TextStyle.Subtitle1" Style="font-weight: bold;">@Localizer["SummaryOfTransactions"]</RadzenText>
@@ -174,7 +132,7 @@
         </div>
 
         <!-- Grids and messages (right side) -->
-        <RadzenStack Orientation="Orientation.Vertical" Gap="1rem" Style="flex: 1;">
+        <div class="page-grid-col">
             @if (!string.IsNullOrEmpty(errorMessage))
             {
                 <RadzenAlert AlertStyle="AlertStyle.Danger" ShowIcon="true" Variant="Variant.Filled" Class="mt-3">
@@ -246,8 +204,8 @@
                     @Localizer["PleaseSelectAnAccount"]
                 </RadzenAlert>
             }
-        </RadzenStack> <!-- End grids stack -->
-    </RadzenStack> <!-- End main horizontal layout -->
+        </div> <!-- End grids col -->
+    </div> <!-- End main two-col layout -->
 
 </RadzenStack> <!-- End main vertical stack -->
 
@@ -380,7 +338,6 @@
     {
         return new List<Cya2.Application.DTOs.DateRangePresetOptionDto>
         {
-            new() { Text = Localizer["AllDates"],         Value = Cya2.Application.DTOs.DateRangePreset.AllDates },
             new() { Text = Localizer["ThisYear"],         Value = Cya2.Application.DTOs.DateRangePreset.ThisYear },
             new() { Text = Localizer["Previous12Months"], Value = Cya2.Application.DTOs.DateRangePreset.Previous12Months },
             new() { Text = Localizer["LastYear"],         Value = Cya2.Application.DTOs.DateRangePreset.LastYear },

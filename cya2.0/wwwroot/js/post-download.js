@@ -19,3 +19,14 @@ window.postJsonAndDownload = function (url, jsonPayload) {
         console.error('postJsonAndDownload error', err);
     }
 };
+
+// Scrolls to the top of the page if the element (by id) is not fully visible in the viewport.
+window.scrollToIfHidden = function (elementId) {
+    const el = document.getElementById(elementId);
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    const inView = rect.top >= 0 && rect.bottom <= window.innerHeight;
+    if (!inView) {
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+};

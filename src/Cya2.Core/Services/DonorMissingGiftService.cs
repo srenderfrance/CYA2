@@ -40,10 +40,9 @@ public class DonorMissingGiftService
             return alerts;
 
         var sorted = history.OrderBy(g => g.Date).ToList();
-        var frequencyService = new DonorFrequencyService();
-
-        // Build set of months that are covered (either by a gift or catch-up).
-        var coveredMonths = BuildCoveredMonths(sorted, frequencyService);
+        // Build set of months that are covered (either by a gift, catch-up, or pre-payment).
+        // Uses month-level totals so split gifts in the same month are evaluated together.
+        var coveredMonths = BuildCoveredMonths(sorted);
 
         // Check each month in the alert window.
         for (var i = 1; i <= AlertWindowMonths; i++)
@@ -82,29 +81,86 @@ public class DonorMissingGiftService
 
     // ── Private helpers ────────────────────────────────────────────────────────
 
-    private static HashSet<DateTime> BuildCoveredMonths(
-        List<DonorGiftRecord> sorted,
-        DonorFrequencyService frequencyService)
+    private static HashSet<DateTime> BuildCoveredMonths(List<DonorGiftRecord> sorted)
     {
         var covered = new HashSet<DateTime>();
 
-        foreach (var gift in sorted)
-        {
-            // Each gift covers its own month.
-            var giftMonth = new DateTime(gift.Date.Year, gift.Date.Month, 1);
-            covered.Add(giftMonth);
+        var monthlyTotals = sorted
+            .GroupBy(g => new DateTime(g.Date.Year, g.Date.Month, 1))
+            .OrderBy(g => g.Key)
+            .ToDictionary(g => g.Key, g => g.Sum(x => x.Amount));
 
-            // If it is a catch-up, absorb additional prior months.
-            var (isCatchUp, monthsCovered) = frequencyService.DetectCatchUp(gift, sorted);
-            if (isCatchUp && monthsCovered > 1)
+        var giftMonths = monthlyTotals.Keys
+            .OrderBy(m => m)
+            .ToList();
+
+        // Every month with at least one gift is covered.
+        foreach (var month in giftMonths)
+            covered.Add(month);
+
+        // Evaluate each month-to-month gap and absorb missed months from either side:
+        // - catch-up at the later month
+        // - pre-payment at the earlier month
+        for (var i = 0; i < giftMonths.Count - 1; i++)
+        {
+            var monthA = giftMonths[i];
+            var monthB = giftMonths[i + 1];
+            var gapSize = MonthsBetween(monthA, monthB) - 1;
+            if (gapSize <= 0) continue;
+
+            var amountAtA = monthlyTotals[monthA];
+            var amountAtB = monthlyTotals[monthB];
+
+            var priorToB = giftMonths
+                .Where(m => m < monthB)
+                .Select(m => monthlyTotals[m])
+                .ToList();
+
+            var afterA = giftMonths
+                .Where(m => m > monthA)
+                .Select(m => monthlyTotals[m])
+                .ToList();
+
+            var catchUpAbsorbed = 0;
+            if (priorToB.Count > 0)
             {
-                for (var m = 1; m < monthsCovered; m++)
+                var avgPriorToB = priorToB.Average();
+                if (avgPriorToB > 0)
                 {
-                    covered.Add(giftMonth.AddMonths(-m));
+                    var monthsCoveredByCatchUp = (int)Math.Round((double)(amountAtB / avgPriorToB));
+                    catchUpAbsorbed = Math.Min(gapSize, Math.Max(0, monthsCoveredByCatchUp - 1));
                 }
+            }
+
+            var prePayAbsorbed = 0;
+            if (afterA.Count > 0)
+            {
+                var avgAfterA = afterA.Average();
+                if (avgAfterA > 0)
+                {
+                    var monthsCoveredByPrePay = (int)Math.Round((double)(amountAtA / avgAfterA));
+                    prePayAbsorbed = Math.Min(gapSize, Math.Max(0, monthsCoveredByPrePay - 1));
+                }
+            }
+
+            // Prefer whichever side explains the gap better and mark those months covered.
+            if (prePayAbsorbed >= catchUpAbsorbed && prePayAbsorbed > 0)
+            {
+                for (var m = 1; m <= prePayAbsorbed; m++)
+                    covered.Add(monthA.AddMonths(m));
+            }
+            else if (catchUpAbsorbed > 0)
+            {
+                for (var m = 1; m <= catchUpAbsorbed; m++)
+                    covered.Add(monthB.AddMonths(-m));
             }
         }
 
         return covered;
+    }
+
+    private static int MonthsBetween(DateTime from, DateTime to)
+    {
+        return Math.Abs(((to.Year - from.Year) * 12) + to.Month - from.Month);
     }
 }

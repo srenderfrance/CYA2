@@ -90,6 +90,23 @@ namespace Cya2.Application.Services
             return await GetDonorSummariesAsync(funds, dateRange);
         }
 
+
+        public async Task<List<DonorSummaryDto>> GetAllDonorSummariesAsync(IEnumerable<string> fundNames)
+        {
+            var funds = NormalizeFunds(fundNames);
+            if (!funds.Any()) return new List<DonorSummaryDto>();
+            var donations = await _donationReadRepository.GetDonationsByFundsAsync(funds);
+            _lastQuery = "GetDonationsByFunds (all donors)";
+            return BuildDonorSummaries(donations).OrderByDescending(d => d.Total).ThenBy(d => d.Name).ToList();
+        }
+
+        public async Task<List<DonorSummaryDto>> GetAllDonorSummariesAsync(int accountId, string accountFund)
+        {
+            var subAccounts = await _donationReadRepository.GetSubAccountsByAccountIdAsync(accountId);
+            var funds = new List<string> { accountFund };
+            funds.AddRange(subAccounts.Select(s => s.SubFund));
+            return await GetAllDonorSummariesAsync(funds);
+        }
         public async Task<DonorDetailDto?> GetDonorDetailAsync(string donorName, string accountFund)
         {
             var donations = await _donationReadRepository.GetDonationsByFundsAndDonorAsync(new[] { accountFund }, donorName);

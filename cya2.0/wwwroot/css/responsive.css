@@ -1,0 +1,72 @@
+/*
+ /*
+ * ============================================================
+ * RESPONSIVE UTILITIES
+ * ============================================================
+ * Load order: after app.css, before cya2.styles.css
+ * ============================================================
+ */
+
+/* ------------------------------------------------------------
+   Donors / Expenses — shared two-column layout
+   Same CSS-Grid pattern as donation-list-layout.
+   Left column: summary/search card (fixed 260px).
+   Right column: data grid (fills remaining space, min 500px).
+   Stacks to single column before the right col needs to scroll.
+   ------------------------------------------------------------ */
+.page-two-col-layout {
+    display: grid;
+    grid-template-columns: 300px minmax(400px, 1fr);
+    gap: 1.5rem;
+    align-items: start;
+    width: 100%;
+}
+
+@media (max-width: 840px) {
+    .page-two-col-layout {
+        grid-template-columns: 1fr;
+    }
+}
+
+.page-summary-col {
+    min-width: 0;
+    max-width: 320px;
+}
+
+.page-grid-col {
+    min-width: 0;
+    overflow-x: auto;
+}
+
+
+   /* ------------------------------------------------------------
+      CSS Grid gives deterministic column placement — no flex
+   alignment quirks. Summary card gets a fixed 260px track;
+   the data grid fills the rest (1fr, min 620px so columns
+   always fit without scrolling in side-by-side mode).
+   Below 992px the layout collapses to a single column so the
+   grid never has to scroll before stacking.
+   ------------------------------------------------------------ */
+.donation-list-layout {
+    display: grid;
+    grid-template-columns: 260px minmax(620px, 1fr);
+    gap: 2rem;
+    align-items: start;
+    width: 100%;
+}
+
+@media (max-width: 992px) {
+    .donation-list-layout {
+        grid-template-columns: 1fr;
+    }
+}
+
+.donation-summary-col {
+    min-width: 0;
+    max-width: 300px;
+}
+
+.donation-grid-col {
+    min-width: 0;
+    overflow-x: auto;
+}

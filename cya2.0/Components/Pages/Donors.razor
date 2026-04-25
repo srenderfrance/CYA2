@@ -30,16 +30,15 @@
 
 <PageTitle>@Localizer["Donors"]</PageTitle>
 
-<style>
-    .donor-search-row { display:flex; gap:0.5rem; align-items:center; flex-wrap:wrap; }
-</style>
+@implements IDisposable
 
-<RadzenStack Orientation="Orientation.Vertical" Gap="15px" Class="rz-p-4">
+<RadzenStack Orientation="Orientation.Vertical" Gap="15px" Class="rz-p-4" Style="padding-top:0.5rem;">
 
     <RadzenStack Orientation="Orientation.Horizontal"
                  Gap="2rem"
                  JustifyContent="JustifyContent.SpaceBetween"
                  AlignItems="AlignItems.Start"
+                 Wrap="FlexWrap.Wrap"
                  Style="width:100%;">
 
         <RadzenStack Orientation="Orientation.Vertical" Gap="0.4rem" Style="flex:1;">
@@ -48,14 +47,9 @@
                          Gap="0.5rem"
                          AlignItems="AlignItems.Center"
                          Wrap="FlexWrap.Wrap">
-                <RadzenLabel Text="@Localizer["StartDate"]" />
-                <RadzenDatePicker @bind-Value="@dateRangeState.PendingStartDate" DateFormat="MM/dd/yyyy" Style="max-width:130px"
-                                  Change="@OnDatePickerChanged" />
-                <RadzenLabel Text="@Localizer["EndDate"]" />
-                <RadzenDatePicker @bind-Value="@dateRangeState.PendingEndDate" DateFormat="MM/dd/yyyy" Style="max-width:130px"
-                                  Change="@OnDatePickerChanged" />
-
-                <RadzenDropDown TValue="Cya2.Application.DTOs.DateRangePreset"
+                <div style="display:flex;align-items:center;gap:0.5rem;">
+                    <RadzenLabel Text="@Localizer["CommonRanges"]" />
+                    <RadzenDropDown TValue="Cya2.Application.DTOs.DateRangePreset"
                                 Data="@presetOptions"
                                 TextProperty="Text"
                                 ValueProperty="Value"
@@ -73,7 +67,19 @@
                         </span>
                     </Template>
                 </RadzenDropDown>
-
+                </div>
+                <div style="display:flex;align-items:center;gap:0.5rem;flex-wrap:nowrap;">
+                <div style="display:flex;align-items:center;gap:0.5rem;">
+                    <RadzenLabel Text="@Localizer["StartDate"]" />
+                    <RadzenDatePicker @bind-Value="@dateRangeState.PendingStartDate" DateFormat="MM/dd/yyyy" Style="max-width:130px"
+                                      Change="@OnDatePickerChanged" />
+                </div>
+                <div style="display:flex;align-items:center;gap:0.5rem;">
+                    <RadzenLabel Text="@Localizer["EndDate"]" />
+                    <RadzenDatePicker @bind-Value="@dateRangeState.PendingEndDate" DateFormat="MM/dd/yyyy" Style="max-width:130px"
+                                      Change="@OnDatePickerChanged" />
+                </div>
+                </div>
                 <RadzenButton Text="@Localizer["ApplyFilter"]"
                               Icon="filter_alt"
                               Click="@selectDateRange"
@@ -108,10 +114,10 @@
     </RadzenStack>
 
     <!-- Left column: donor details and search. Right column: donors list -->
-    <RadzenStack Orientation="Orientation.Horizontal" Gap="1.5rem" Class="rz-mt-3" Style="width:100%;">
+    <div class="page-two-col-layout rz-mt-3">
 
         <!-- Left narrow column: search and selected donor details -->
-        <div style="flex:0 0 28%; min-width:260px;">
+        <div class="page-summary-col">
             <div class="donor-search-row" style="margin-bottom:0.75rem;">
                 <div id="donorAutoCompleteContainer">
                     <RadzenAutoComplete TValue="string"
@@ -125,7 +131,7 @@
                 <RadzenButton Text="Clear" Click="@(()=> ClearDonorSelection())" ButtonStyle="ButtonStyle.Light" Style="margin-left:0.5rem;" />
             </div>
 
-            <RadzenCard Style="padding:0.75rem;">
+            <RadzenCard id="donor-info-card" Style="padding:0.75rem;">
                 <div style="display:grid; grid-template-columns: 1fr; row-gap:6px; align-items:start;">
                     <div style="text-align:right; margin-bottom:0.5rem;">
                         <RadzenButton Icon="content_copy" Size="ButtonSize.Small" ButtonStyle="ButtonStyle.Light" Click="@(async () => await CopySelectedDonor())" Style="margin-bottom:0.25rem;" Text="@Localizer["Copy"]" />
@@ -146,7 +152,7 @@
         </div>
 
         <!-- Right flexible column: donors list -->
-        <div style="flex:1 1 0;">
+        <div class="page-grid-col">
             <RadzenCard Style="padding:0.5rem; margin-top:0.75rem;">
                 <RadzenText TextStyle="TextStyle.Subtitle1">@Localizer["SelectedDonors"]</RadzenText>
 
@@ -161,17 +167,17 @@
                         <div style="display:flex; gap:0.5rem; align-items:center;">
                             <RadzenCheckBox @bind-Value="showTotal" /> <span>@Localizer["AmountGiven"]</span>
                         </div>
-                        <div style="display:flex; gap:0.5rem; align-items-center;">
+                        <div style="display:flex; gap:0.5rem; align-items:center;">
                             <RadzenCheckBox @bind-Value="showEmail" /> <span>@Localizer["Email"]</span>
                         </div>
-                        <div style="display:flex; gap:0.5rem; align-items-center;">
+                        <div style="display:flex; gap:0.5rem; align-items:center;">
                             <RadzenCheckBox @bind-Value="showPhone" /> <span>@Localizer["Phone"]</span>
                         </div>
-                        <div style="display:flex; gap:0.5rem; align-items-center;">
+                        <div style="display:flex; gap:0.5rem; align-items:center;">
                             <RadzenCheckBox @bind-Value="showAddress" /> <span>@Localizer["Address"]</span>
                         </div>
                     </div>
-                    <div style="display:flex; gap:0.5rem; align-items-center;">
+                    <div style="display:flex; gap:0.5rem; align-items:center;">
                         <RadzenButton Icon="content_copy" Size="ButtonSize.Small" ButtonStyle="ButtonStyle.Light" Click="@(async () => await CopyDonorsInRange())" Style="margin-bottom:0.25rem;">@Localizer["Copy"]</RadzenButton>
                         <RadzenButton Icon="download" Size="ButtonSize.Small" ButtonStyle="ButtonStyle.Primary" Click="@(async () => await DownloadDonorsExcel())" Style="margin-bottom:0.25rem;">@Localizer["DownloadExcel"]</RadzenButton>
                     </div>
@@ -204,7 +210,7 @@
             </RadzenCard>
         </div>
 
-    </RadzenStack>
+    </div>
 
 </RadzenStack>
 
@@ -415,35 +421,41 @@
         donorsInRange = new List<DonorSummaryDto>();
         try
         {
-            var range = new DateRange(dateRangeState.StartDate, dateRangeState.EndDate);
+            Logger.LogInformation("[Donors] BuildDonorsInRange start: account='{Account}', preset='{Preset}'", account?.Fund, dateRangeState.SelectedPreset);
 
-            Logger.LogInformation("[Donors] BuildDonorsInRange start: account='{Account}', userSessionSelected='{SessionSel}', default='{SessionDef}'", account?.Fund, SessionUserStateService.SelectedAccountFund, SessionUserStateService.DefaultAccountFund);
-            Console.WriteLine($"[Donors] BuildDonorsInRange start: account='{account?.Fund}', Session.SelectedAccountFund='{SessionUserStateService.SelectedAccountFund}', Session.DefaultAccountFund='{SessionUserStateService.DefaultAccountFund}'");
-
-            if (showSubAccountDropdown && selectedSubAccount != "All")
+            if (dateRangeState.SelectedPreset == Cya2.Application.DTOs.DateRangePreset.AllDates)
             {
-                var funds = await ResolveFundNamesAsync(account, selectedSubAccount);
-                // When calling service with explicit funds, pass the specific fund string(s). This is an explicit selection.
-                donorsInRange = await DonorService.GetDonorSummariesAsync(funds, range);
+                // No date filter — query all donations for the account
+                if (showSubAccountDropdown && selectedSubAccount != "All")
+                {
+                    var funds = await ResolveFundNamesAsync(account, selectedSubAccount);
+                    donorsInRange = await DonorService.GetAllDonorSummariesAsync(funds);
+                }
+                else
+                {
+                    donorsInRange = await DonorService.GetAllDonorSummariesAsync(account.AccountId, account.Fund);
+                }
             }
             else
             {
-                // We passed an explicit account here (account.Fund). Call service and get summaries directly.
-                donorsInRange = await DonorService.GetDonorSummariesForAccountAsync(account.AccountId, account.Fund, range);
-                Logger.LogInformation("[Donors] Service returned {Count} donors for account '{Account}'", donorsInRange.Count, account.Fund);
-                Console.WriteLine($"[Donors] Service returned {donorsInRange.Count} donors for account '{account.Fund}'");
-                // Update session only because the caller passed an explicit account selection
-                SessionUserStateService.SelectedAccountFund = account.Fund;
-                if (!string.IsNullOrWhiteSpace(userId))
-                {
-                    UserSelectionService.SetSelectedAccount(userId, account.Fund);
-                }
-                Logger.LogInformation("[Donors] Session updated SelectedAccountFund='{Account}'", account.Fund);
-                Console.WriteLine($"[Donors] Session updated SelectedAccountFund='{account.Fund}'");
-             }
+                var range = new DateRange(dateRangeState.StartDate, dateRangeState.EndDate);
 
-            Logger.LogInformation("Loaded {Count} donors for account '{Fund}' ({Start:d} to {End:d})",
-                donorsInRange.Count, account.Fund, dateRangeState.StartDate, dateRangeState.EndDate);
+                if (showSubAccountDropdown && selectedSubAccount != "All")
+                {
+                    var funds = await ResolveFundNamesAsync(account, selectedSubAccount);
+                    donorsInRange = await DonorService.GetDonorSummariesAsync(funds, range);
+                }
+                else
+                {
+                    donorsInRange = await DonorService.GetDonorSummariesForAccountAsync(account.AccountId, account.Fund, range);
+                }
+            }
+
+            SessionUserStateService.SelectedAccountFund = account.Fund;
+            if (!string.IsNullOrWhiteSpace(userId))
+                UserSelectionService.SetSelectedAccount(userId, account.Fund);
+
+            Logger.LogInformation("Loaded {Count} donors for account '{Fund}'", donorsInRange.Count, account.Fund);
         }
         catch (Exception ex)
         {
@@ -479,6 +491,7 @@
         }
 
         await InvokeAsync(StateHasChanged);
+        await JS.InvokeVoidAsync("scrollToIfHidden", "donor-info-card");
     }
 
     private async Task OnAutocompleteChanged(object? args)
@@ -522,7 +535,10 @@
         if (args is Cya2.Application.DTOs.DateRangePreset preset)
         {
             DateRangeStateService.ApplyPreset(dateRangeState, preset);
-            StateHasChanged();
+            if (preset != Cya2.Application.DTOs.DateRangePreset.Custom)
+                _ = selectDateRange();
+            else
+                StateHasChanged();
         }
     }
 
@@ -554,6 +570,15 @@
 
     private async Task selectDateRange()
     {
+        if (dateRangeState.SelectedPreset == Cya2.Application.DTOs.DateRangePreset.AllDates)
+        {
+            // All Donors uses a no-date-filter DB query — don't touch shared date range state.
+            if (currentAccount != null)
+                await BuildDonorsInRange(currentAccount);
+            await InvokeAsync(StateHasChanged);
+            return;
+        }
+
         DateRangeStateService.ApplyPendingDates(dateRangeState);
         DateRangeStateService.SaveDateRangeToSessionState(SessionUserStateService, dateRangeState);
         if (!string.IsNullOrWhiteSpace(userId))
@@ -565,11 +590,13 @@
         await InvokeAsync(StateHasChanged);
     }
 
+    public void Dispose() { }
+
     private List<Cya2.Application.DTOs.DateRangePresetOptionDto> GetPresetOptions()
     {
         return new List<Cya2.Application.DTOs.DateRangePresetOptionDto>
         {
-            new() { Text = Localizer["AllDates"],         Value = Cya2.Application.DTOs.DateRangePreset.AllDates },
+            new() { Text = Localizer["AllDonors"],       Value = Cya2.Application.DTOs.DateRangePreset.AllDates },
             new() { Text = Localizer["ThisYear"],         Value = Cya2.Application.DTOs.DateRangePreset.ThisYear },
             new() { Text = Localizer["Previous12Months"], Value = Cya2.Application.DTOs.DateRangePreset.Previous12Months },
             new() { Text = Localizer["LastYear"],         Value = Cya2.Application.DTOs.DateRangePreset.LastYear },

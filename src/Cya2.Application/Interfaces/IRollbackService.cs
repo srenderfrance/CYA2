@@ -33,5 +33,6 @@ namespace Cya2.Application.Interfaces
         public string BackupId { get; set; } = string.Empty;
         public DateTime BackupAt { get; set; }
         public int RecordCount { get; set; }
+    public DateTime? MostRecentDataDate { get; set; }
     }
 }

@@ -131,6 +131,8 @@ public class DonorFrequencyService
         return (monthsCovered > 1, monthsCovered);
     }
 
+    public (bool IsPrePayment, int MonthsCovered) DetectPrePayment(DonorGiftRecord gift, IReadOnlyList<DonorGiftRecord> history) { if (gift == null || history == null || history.Count < 2) return (false, 1); var sub = history.Where(g => g.Date > gift.Date).OrderBy(g => g.Date).ToList(); var refs = sub.Count > 0 ? sub : history.Where(g => g.Date < gift.Date).OrderBy(g => g.Date).ToList(); if (!refs.Any()) return (false, 1); var avg = refs.Average(g => g.Amount); if (avg <= 0) return (false, 1); var mc = (int)Math.Round((double)(gift.Amount / avg)); mc = Math.Max(1, mc); return (mc > 1, mc); }
+
     // ── Private classification helpers ────────────────────────────────────────
 
     private bool IsMonthly(List<DonorGiftRecord> sorted)
@@ -163,17 +165,32 @@ public class DonorFrequencyService
         if (totalMonthsSpan < 2)
             return false;
 
-        // Account for catch-up donations absorbing missed months.
-        var absorbedMissedMonths = 0;
-        foreach (var gift in giftsInWindow)
+        // For each gap between consecutive gift months, check whether it is absorbed
+        // by a catch-up payment (large gift AFTER the gap) or a pre-payment (large gift
+        // BEFORE the gap). Credit whichever is larger; never exceed the actual gap size.
+        var totalAbsorbed = 0;
+        for (var i = 0; i < giftMonths.Count - 1; i++)
         {
-            var (isCatchUp, monthsCovered) = DetectCatchUp(gift, sorted);
-            if (isCatchUp)
-                absorbedMissedMonths += monthsCovered - 1; // -1 because the gift itself counts for 1
+            var monthA = giftMonths[i];
+            var monthB = giftMonths[i + 1];
+            var gapSize = MonthsBetween(monthA, monthB) - 1;
+            if (gapSize <= 0) continue;
+
+            var amountAtB = giftsInWindow.Where(g => g.Date.Year == monthB.Year && g.Date.Month == monthB.Month).Sum(g => g.Amount);
+            var priorToB = giftsInWindow.Where(g => !(g.Date.Year == monthB.Year && g.Date.Month == monthB.Month) && g.Date < monthB).ToList();
+            var catchUpAbsorbed = 0;
+            if (priorToB.Count > 0) { var avgPB = priorToB.Average(g => g.Amount); if (avgPB > 0) { var cu = (int)Math.Round((double)(amountAtB / avgPB)); catchUpAbsorbed = Math.Min(gapSize, Math.Max(0, cu - 1)); } }
+
+            var amountAtA = giftsInWindow.Where(g => g.Date.Year == monthA.Year && g.Date.Month == monthA.Month).Sum(g => g.Amount);
+            var afterA = giftsInWindow.Where(g => !(g.Date.Year == monthA.Year && g.Date.Month == monthA.Month) && g.Date > monthA).ToList();
+            var prePayAbsorbed = 0;
+            if (afterA.Count > 0) { var avgAA = afterA.Average(g => g.Amount); if (avgAA > 0) { var pp = (int)Math.Round((double)(amountAtA / avgAA)); prePayAbsorbed = Math.Min(gapSize, Math.Max(0, pp - 1)); } }
+
+            totalAbsorbed += Math.Min(gapSize, Math.Max(catchUpAbsorbed, prePayAbsorbed));
         }
 
-        var actualGiftMonthCount = giftMonths.Count + absorbedMissedMonths;
-        var missedMonths = Math.Max(0, totalMonthsSpan - actualGiftMonthCount);
+        var effectiveMonthCount = giftMonths.Count + totalAbsorbed;
+        var missedMonths = Math.Max(0, totalMonthsSpan - effectiveMonthCount);
         var missedRatio = (double)missedMonths / totalMonthsSpan;
 
         return missedRatio <= MissedMonthTolerancePercent;
