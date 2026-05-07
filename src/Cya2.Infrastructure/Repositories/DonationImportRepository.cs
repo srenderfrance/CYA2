@@ -4,6 +4,7 @@ using Cya2.Core.DTOs;
 using Cya2.Core.Enums;
 using Cya2.Core.Interfaces;
 using Cya2.Core.ReadModels;
+using Cya2.Core.Services;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using MySql.Data.MySqlClient;
@@ -103,6 +104,122 @@ public sealed class DonationImportRepository : IDonationImportRepository
         {
             _logger.LogError(ex, "Donation backup/delete failed");
             _progress.UpdateStep(progressId, "Database Backup", $"Failed: {ex.Message}");
+            throw;
+        }
+    }
+
+    public async Task<int> RecategorizeAllDonationsAsync(CancellationToken ct)
+    {
+        _dbGuard.ThrowIfUnavailable();
+
+        await using var conn = new MySqlConnection(ConnStr);
+        await conn.OpenAsync(ct);
+        await using var tx = await conn.BeginTransactionAsync(ct);
+
+        try
+        {
+            var loadCmd = conn.CreateCommand();
+            loadCmd.Transaction = tx;
+            loadCmd.CommandTimeout = 300;
+            loadCmd.CommandText = @"
+SELECT Id, AccountName, Fund, Date, Amount
+FROM DonationData
+ORDER BY AccountName, Fund, Date, Id";
+
+            var records = new List<(int Id, string AccountName, string Fund, DateTime Date, decimal Amount)>();
+            await using (var reader = await loadCmd.ExecuteReaderAsync(ct))
+            {
+                while (await reader.ReadAsync(ct))
+                {
+                    var id = reader.GetInt32(reader.GetOrdinal("Id"));
+                    var accountName = reader.IsDBNull(reader.GetOrdinal("AccountName")) ? string.Empty : reader.GetString(reader.GetOrdinal("AccountName"));
+                    var fund = reader.IsDBNull(reader.GetOrdinal("Fund")) ? string.Empty : reader.GetString(reader.GetOrdinal("Fund"));
+                    var date = reader.GetDateTime(reader.GetOrdinal("Date"));
+                    var amount = Convert.ToDecimal(reader.GetDouble(reader.GetOrdinal("Amount")));
+                    records.Add((id, accountName, fund, date, amount));
+                }
+            }
+
+            var frequencyService = new DonorFrequencyService();
+            var updates = new List<(int Id, int Frequency)>();
+
+            // Recategorize the ENTIRE table.
+            // For rows with missing identifiers, use safe fallback grouping keys so no row is skipped.
+            // - Missing AccountName -> isolate by row Id (prevents unrelated blanks from being mixed)
+            // - Missing Fund -> group under a shared sentinel for that donor
+            var groups = records
+                .GroupBy(r => new
+                {
+                    AccountNameKey = string.IsNullOrWhiteSpace(r.AccountName)
+                        ? $"__ROW__{r.Id}"
+                        : r.AccountName.Trim().ToUpperInvariant(),
+                    FundKey = string.IsNullOrWhiteSpace(r.Fund)
+                        ? "__NO_FUND__"
+                        : r.Fund.Trim().ToUpperInvariant()
+                });
+
+            foreach (var group in groups)
+            {
+                var sorted = group.OrderBy(g => g.Date).ThenBy(g => g.Id).ToList();
+                var history = sorted
+                    .Select(g => new DonorGiftRecord { Date = g.Date, Amount = g.Amount })
+                    .ToList();
+
+                for (int i = 0; i < sorted.Count; i++)
+                {
+                    var gift = history[i];
+                    var classification = frequencyService.ClassifyGift(gift, history);
+                    var freq = classification.Frequency == DonorFrequency.None
+                        ? DonorFrequency.OneTime
+                        : classification.Frequency;
+                    updates.Add((sorted[i].Id, (int)freq));
+                }
+            }
+
+            // Ensure every row in DonationData is included in the recategorization set.
+            var allIds = records.Select(r => r.Id).OrderBy(i => i).ToList();
+            var updateIds = updates.Select(u => u.Id).OrderBy(i => i).ToList();
+            if (allIds.Count != updateIds.Count)
+            {
+                throw new InvalidOperationException($"Recategorization did not cover entire table. Rows={allIds.Count}, categorized={updateIds.Count}.");
+            }
+
+            var updateCmd = conn.CreateCommand();
+            updateCmd.Transaction = tx;
+            updateCmd.CommandTimeout = 300;
+            updateCmd.CommandText = "UPDATE DonationData SET Frequency = @freq WHERE Id = @id";
+            updateCmd.Parameters.Add(new MySqlParameter("@freq", MySqlDbType.Int32));
+            updateCmd.Parameters.Add(new MySqlParameter("@id", MySqlDbType.Int32));
+
+            int updated = 0;
+            foreach (var u in updates)
+            {
+                updateCmd.Parameters["@freq"].Value = u.Frequency;
+                updateCmd.Parameters["@id"].Value = u.Id;
+                updated += await updateCmd.ExecuteNonQueryAsync(ct);
+            }
+
+            // Hard validation: no NULL or out-of-range values after recategorization.
+            var validateCmd = conn.CreateCommand();
+            validateCmd.Transaction = tx;
+            validateCmd.CommandTimeout = 120;
+            validateCmd.CommandText = @"
+SELECT COUNT(*)
+FROM DonationData
+WHERE Frequency IS NULL OR Frequency NOT IN (1,2,3,4)";
+            var invalidCount = Convert.ToInt32(await validateCmd.ExecuteScalarAsync(ct));
+            if (invalidCount > 0)
+            {
+                throw new InvalidOperationException($"Recategorization left {invalidCount} invalid Frequency rows.");
+            }
+
+            await tx.CommitAsync(ct);
+            _logger.LogInformation("Recategorized all donations. Rows updated={Rows}", updated);
+            return updated;
+        }
+        catch
+        {
+            await tx.RollbackAsync(ct);
             throw;
         }
     }
@@ -442,5 +559,44 @@ public sealed class DonationImportRepository : IDonationImportRepository
         }
 
         return results;
+    }
+
+    public async Task<(int donationDataUpdated, int donationBackupUpdated)> NormalizeExistingDonorNamesAsync(CancellationToken ct)
+    {
+        _dbGuard.ThrowIfUnavailable();
+
+        await using var conn = new MySqlConnection(ConnStr);
+        await conn.OpenAsync(ct);
+        await using var tx = await conn.BeginTransactionAsync(ct);
+
+        try
+        {
+            int RunUpdate(string tableName)
+            {
+                using var cmd = conn.CreateCommand();
+                cmd.Transaction = tx;
+                cmd.CommandTimeout = 120;
+                cmd.CommandText = $@"
+UPDATE `{tableName}`
+SET AccountName = TRIM(CONCAT(TRIM(SUBSTRING_INDEX(AccountName, ',', -1)), ' ', TRIM(SUBSTRING_INDEX(AccountName, ',', 1))))
+WHERE AccountName IS NOT NULL
+  AND TRIM(AccountName) <> ''
+  AND AccountName <> 'Anonymous'
+  AND (LENGTH(AccountName) - LENGTH(REPLACE(AccountName, ',', ''))) = 1;";
+                return cmd.ExecuteNonQuery();
+            }
+
+            var dataUpdated = RunUpdate("DonationData");
+            var backupUpdated = RunUpdate("DonationDataBackup");
+
+            await tx.CommitAsync(ct);
+            _logger.LogInformation("Normalized donor names. DonationData={DonationRows}, DonationDataBackup={BackupRows}", dataUpdated, backupUpdated);
+            return (dataUpdated, backupUpdated);
+        }
+        catch
+        {
+            await tx.RollbackAsync(ct);
+            throw;
+        }
     }
 }

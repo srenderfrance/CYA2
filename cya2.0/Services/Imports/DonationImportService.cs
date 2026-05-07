@@ -101,15 +101,15 @@ namespace cya2.Services.Imports
             return await ImportAsync(ms, ct);
         }
 
-        public async Task<ImportResult> StartImportFromPreviewAsync(string previewId, string progressId)
+        public Task<ImportResult> StartImportFromPreviewAsync(string previewId, string progressId)
         {
             var result = new ImportResult();
             var pId = string.IsNullOrWhiteSpace(progressId) ? Guid.NewGuid().ToString("N") : progressId;
             _progressService.Start(pId, "Donations");
             result.ProgressId = pId;
 
-            if (string.IsNullOrWhiteSpace(previewId)) { result.Errors.Add("PreviewId is required"); _progressService.SetStatus(pId, "PreviewId is required"); return result; }
-            if (!_previews.TryRemove(previewId, out var entry)) { result.Errors.Add("Preview session expired. Please upload the file again."); _progressService.SetStatus(pId, "Preview session expired"); return result; }
+            if (string.IsNullOrWhiteSpace(previewId)) { result.Errors.Add("PreviewId is required"); _progressService.SetStatus(pId, "PreviewId is required"); return Task.FromResult(result); }
+            if (!_previews.TryRemove(previewId, out var entry)) { result.Errors.Add("Preview session expired. Please upload the file again."); _progressService.SetStatus(pId, "Preview session expired"); return Task.FromResult(result); }
 
             var data = entry.Data;
             _ = Task.Run(async () =>
@@ -118,7 +118,30 @@ namespace cya2.Services.Imports
                 catch (Exception ex) { _progressService.SetStatus(pId, $"Error: {ex.Message}"); _logger.LogError(ex, "Background donation import failed for preview {PreviewId}", previewId); }
             });
 
-            return result;
+            return Task.FromResult(result);
+        }
+
+        public async Task<DonorNameNormalizationResult> NormalizeExistingDonorNamesAsync(CancellationToken ct)
+        {
+            var (donationDataUpdated, donationBackupUpdated) = await _repository.NormalizeExistingDonorNamesAsync(ct);
+            _cacheInvalidator.InvalidateAll();
+
+            return new DonorNameNormalizationResult
+            {
+                DonationDataRowsUpdated = donationDataUpdated,
+                DonationDataBackupRowsUpdated = donationBackupUpdated
+            };
+        }
+
+        public async Task<DonationRecategorizationResult> RecategorizeAllDonationsAsync(CancellationToken ct)
+        {
+            var updated = await _repository.RecategorizeAllDonationsAsync(ct);
+            _cacheInvalidator.InvalidateAll();
+
+            return new DonationRecategorizationResult
+            {
+                DonationDataRowsUpdated = updated
+            };
         }
 
         private async Task<ImportResult> ProcessAsync(Stream file, CancellationToken ct, string progressId)
@@ -183,7 +206,7 @@ namespace cya2.Services.Imports
                 allRows.Add(new DonationImportRowDto
                 {
                     Date          = date,
-                    AccountName   = isAnon ? "Anonymous" : (name ?? string.Empty),
+                    AccountName   = isAnon ? "Anonymous" : NormalizeDonorName(name),
                     PaymentMethod = ws.Cells[r, map["Gift Payment Type"]]?.Text?.Trim() ?? string.Empty,
                     GiftType      = ws.Cells[r, map["Gift Type"]]?.Text?.Trim() ?? string.Empty,
                     Amount        = amount,
@@ -336,6 +359,42 @@ namespace cya2.Services.Imports
                 if (!string.IsNullOrWhiteSpace(h) && !map.ContainsKey(h)) map[h] = c;
             }
             return map;
+        }
+
+        private static string NormalizeDonorName(string? rawName)
+        {
+            if (string.IsNullOrWhiteSpace(rawName))
+                return string.Empty;
+
+            var normalized = string.Join(" ", rawName
+                .Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
+
+            // Convert "LastName, FirstName" (or "LastName, First Middle") to "FirstName LastName"
+            // so donor names are stored consistently.
+            if (normalized.Contains(','))
+            {
+                var parts = normalized
+                    .Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)
+                    .ToList();
+
+                if (parts.Count >= 2)
+                {
+                    var lastName = parts[0];
+                    var firstNamePart = parts[1];
+                    var trailingParts = parts.Count > 2
+                        ? string.Join(' ', parts.Skip(2))
+                        : string.Empty;
+
+                    var reordered = string.IsNullOrWhiteSpace(trailingParts)
+                        ? $"{firstNamePart} {lastName}"
+                        : $"{firstNamePart} {lastName} {trailingParts}";
+
+                    return string.Join(" ", reordered
+                        .Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
+                }
+            }
+
+            return normalized;
         }
     }
 }

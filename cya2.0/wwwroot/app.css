@@ -196,3 +196,54 @@ a, .btn-link {
     align-items: center;
     flex-wrap: wrap;
 }
+
+/* ------------------------------------------------------------
+   Date range toolbar box (Donations/Donors/Expenses)
+   ------------------------------------------------------------ */
+.date-range-toolbar-box {
+    border: 1px solid #d9dee5;
+    border-radius: 6px;
+    padding: 0.5rem;
+    background-color: #f8f9fa;
+    width: fit-content;
+    max-width: 100%;
+    overflow: hidden;
+}
+
+.date-range-apply-group {
+    border: 1px solid #d9dee5;
+    border-radius: 6px;
+    padding: 0.35rem 0.5rem;
+    background-color: #f8f9fa;
+    max-width: 100%;
+}
+
+/* Shared account selector sizing (Donations/Donors/Expenses/Home) */
+.account-selector-box {
+    width: min(420px, 100%);
+    max-width: 100%;
+    box-sizing: border-box;
+}
+
+.account-selector-dropdown {
+    width: min(420px, 100%) !important;
+    min-width: 0;
+}
+
+.account-selector-dropdown-inline {
+    flex: 1;
+    min-width: 0;
+    width: auto;
+}
+
+/* Expenses view toggle should stay same green in both states */
+.expenses-view-toggle.rz-button,
+.expenses-view-toggle.rz-button:hover,
+.expenses-view-toggle.rz-button.rz-state-active,
+.expenses-view-toggle.rz-button.rz-state-active:hover,
+.expenses-view-toggle.rz-button.rz-primary,
+.expenses-view-toggle.rz-button.rz-primary:hover {
+    background-color: var(--rz-primary) !important;
+    border-color: var(--rz-primary) !important;
+    color: #ffffff !important;
+}

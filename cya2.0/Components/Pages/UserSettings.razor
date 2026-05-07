@@ -55,7 +55,7 @@
                                         Style="width: 100%;"
                                         Disabled="@(userAccounts == null || userAccounts.Count == 0)">
                             <ValueTemplate>
-                                @{ var sel = userAccounts.FirstOrDefault(a => a.AccountingClass == selectedAccountingClass); }
+                                @{ var sel = (userAccounts ?? Enumerable.Empty<AccountOptionDto>()).FirstOrDefault(a => a.AccountingClass == selectedAccountingClass); }
                                 @DisplayFormatter.FormatFundDisplay(sel?.Fund)
                             </ValueTemplate>
                             <Template Context="acct">

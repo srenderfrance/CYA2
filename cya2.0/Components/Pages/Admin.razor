@@ -20,7 +20,6 @@
 @inject TooltipService tooltipService
 @using System.Text.Json
 @using cya2.Services.Imports
-@using cya2.Components.Shared
 @using Cya2.Application.Interfaces
 @inject IRollbackService RollbackService
 @inject IAccountingImportService AccountingImportService
@@ -70,6 +69,11 @@
                           ButtonStyle="ButtonStyle.Danger"
                           Icon="history"
                           Click="@(async () => await OpenRollbackDialog())" />
+
+            @* <RadzenButton Text="@GetLocalizedString("RecategorizeDonations", "Recategorize Donations")"
+                          ButtonStyle="ButtonStyle.Light"
+                          Icon="cleaning_services"
+                          Click="@(async () => await RecategorizeAllDonations())" /> *@
        </RadzenStack>
     </RadzenStack>
 
@@ -308,7 +312,7 @@
                     <RadzenButton 
                         Text="@Localizer["DeleteAccount"]" 
                         ButtonStyle="ButtonStyle.Danger" 
-                        Click="@(() => { fundToDelete = selectedFund ?? string.Empty; showDeleteFundConfirmation = true; })"
+                        Click="@(async () => await ConfirmDeleteFund(selectedFund ?? string.Empty))"
                         Disabled="@(string.IsNullOrEmpty(selectedFund) || IsAddNewAccountSelected)"
                         Style="width: fit-content;" />
                 </div>
@@ -468,7 +472,7 @@
                 <RadzenButton 
                     Text="@Localizer["DeleteUser"]" 
                     ButtonStyle="ButtonStyle.Danger" 
-                    Click="@(() => { userToDelete = staffMember ?? string.Empty; showDeleteConfirmation = true; })"
+                    Click="@(async () => await ConfirmDelete(staffMember ?? string.Empty))"
                     Disabled="@(string.IsNullOrEmpty(staffMember) || IsAddNewSelected)"
                     Style="width: fit-content;" />
             </div>
@@ -486,16 +490,12 @@
                         <RadzenText TextStyle="TextStyle.H6" Style="margin: 0; color: #212529;">@GetLocalizedString("RollbackLastUpdate", "Rollback Last Update")</RadzenText>
                     </RadzenStack>
 
-                    <RadzenText TextStyle="TextStyle.Body1" Style="color: #666; margin: 0;">
-                        @GetLocalizedString("RollbackDescription", "Select which data to rollback to the last backup. This will restore the data to its state before the most recent import.")
+                    <RadzenText TextStyle="TextStyle.Body1" Style="color: #212529; margin: 0; font-weight: 700;">
+                        @GetLocalizedString("RollbackDescription", "Select which data table or tables to rollback. This will undue the last upload to any selected table.")
                     </RadzenText>
 
                     <!-- Rollback Options -->
                     <RadzenStack Orientation="Orientation.Vertical" Gap="1rem" Style="padding: 1rem; background-color: #f8f9fa; border-radius: 6px;">
-                        <RadzenText TextStyle="TextStyle.Subtitle2" Style="font-weight: bold; color: #212529; margin: 0;">
-                            @GetLocalizedString("SelectRollbackTarget", "Select Rollback Target:")
-                        </RadzenText>
-
                         <RadzenStack Orientation="Orientation.Vertical" Gap="0.75rem">
                             <RadzenRadioButtonList @bind-Value="rollbackTarget" Orientation="Orientation.Vertical" Gap="0.75rem">
                                 <Items>
@@ -549,7 +549,6 @@
         }
 
         private string? currentProgressId;
-        private bool uploadDialogOpen;
 
         private async Task OnDonationPreviewComplete(UploadCompleteEventArgs args)
         {
@@ -600,7 +599,7 @@
                 // Show confirmation dialog
                 var confirmed = await DialogService.OpenAsync<UploadConfirmationDialog>(
                     title: Localizer["ConfirmUpload"],
-                    parameters: new Dictionary<string, object> { { "Preview", preview } },
+                    parameters: new Dictionary<string, object?> { { "Preview", preview } },
                     options: new DialogOptions { Width = "520px", Height = "auto", Resizable = false, ShowClose = true });
 
                 if (confirmed is bool b && b)
@@ -640,10 +639,8 @@
                 DialogService.Open<UploadProgressDialog>(
                     title: Localizer["UploadInProgress"],
                     // Do not pass ProgressId here - the dialog will pick it up from SessionImportProgressService.ImportProgressIdChanged
-                    parameters: new Dictionary<string, object>(),
+                    parameters: new Dictionary<string, object?>(),
                     options: new DialogOptions { Width = "800px", Height = "auto", Resizable = false, ShowClose = false });
-                uploadDialogOpen = true;
-
                 // Let the UI render the dialog and let the dialog component initialize and start polling
                 await InvokeAsync(StateHasChanged);
 
@@ -817,8 +814,6 @@
         // Fund properties
         private string? errorMessage;
 
-        private bool showDeleteConfirmation = false;
-        private string userToDelete = string.Empty;
 
         // Fund management properties
         private string? selectedFund;
@@ -848,8 +843,6 @@
 
         private string fundUpdateError = string.Empty;
         private string fundUpdateSuccess = string.Empty;
-        private bool showDeleteFundConfirmation = false;
-        private string fundToDelete = string.Empty;
 
         // New UI-only state for fund creation toggle and subfund inputs
         private bool createSubFund = false;
@@ -1240,78 +1233,25 @@
             }
         }
 
-        private async Task DeleteStaffMember()
+        private async Task ConfirmDelete(string userName)
         {
             try
             {
-                _logger.LogInformation("DeleteStaffMember called for user: {User}", staffMember);
-
-                if (string.IsNullOrEmpty(staffMember) || IsAddNewSelected)
-                {
-                    staffUpdateError = "Please select a user to delete";
-                    StateHasChanged();
+                if (string.IsNullOrWhiteSpace(userName))
                     return;
-                }
 
-                var result = await DialogService.Confirm(
-                    "Are you sure you want to delete this User?",
-                    "Delete Confirmation");
+                var message = string.Format(GetLocalizedString("ConfirmDeleteUserMessage", "Are you sure you want to delete user '{0}'?"), userName);
+                var confirmed = await DialogService.OpenAsync<RollbackConfirmDialog>(
+                    GetLocalizedString("DeleteUser", "Delete User"),
+                    new Dictionary<string, object?> { { "Message", message } },
+                    new DialogOptions { Width = "420px", CloseDialogOnOverlayClick = false });
 
-                if (result != true)
-                {
-                    _logger.LogInformation("User cancelled deletion");
+                if (confirmed != true)
                     return;
-                }
 
-                var selectedUser = staff.FirstOrDefault(u => u.Name == userToDelete);
-                if (selectedUser == null)
-                {
-                    staffUpdateError = "Selected user not found";
-                    StateHasChanged();
-                    return;
-                }
+                _logger.LogInformation("Confirming deletion of user: {User}", userName);
 
-                var op = await UserManagementService.DeleteAdminUserAsync(selectedUser.Id);
-                if (op.IsSuccess)
-                {
-                    _logger.LogInformation("Successfully deleted user {UserId}", selectedUser.Id);
-                    staffUpdateSuccess = op.Message;
-
-                    staffMember = string.Empty;
-                    selectedStaff = string.Empty;
-                    selectedStaffEmail = string.Empty;
-                    selectedStaffAuthLevel = string.Empty;
-                    newName = string.Empty;
-                    newEmail = string.Empty;
-                    newAuthLevel = string.Empty;
-                    userAccounts.Clear();
-
-                    await LoadAllStaff();
-                }
-                else
-                {
-                    _logger.LogWarning("Failed to delete user {UserId}: {Message}", selectedUser.Id, op.Message);
-                    staffUpdateError = op.Message;
-                }
-
-                StateHasChanged();
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error in DeleteStaffMember");
-                staffUpdateError = $"Error: {ex.Message}";
-                StateHasChanged();
-            }
-        }
-
-        private async Task ConfirmDelete()
-        {
-            try
-            {
-                showDeleteConfirmation = false;
-                _logger.LogInformation("Confirming deletion of user: {User}", userToDelete);
-
-                var selectedUser = staff.FirstOrDefault(u => u.Name == userToDelete);
+                var selectedUser = staff.FirstOrDefault(u => u.Name == userName);
                 if (selectedUser == null)
                 {
                     staffUpdateError = "Selected user not found";
@@ -1352,14 +1292,23 @@
             }
         }
 
-        private async Task ConfirmDeleteFund()
+        private async Task ConfirmDeleteFund(string fundName)
         {
             try
             {
-                showDeleteFundConfirmation = false;
-                if (string.IsNullOrWhiteSpace(fundToDelete)) return;
+                if (string.IsNullOrWhiteSpace(fundName))
+                    return;
 
-                var account = allFunds.FirstOrDefault(a => a.Fund == fundToDelete);
+                var message = string.Format(GetLocalizedString("ConfirmDeleteFundMessage", "Are you sure you want to delete account '{0}'?"), fundName);
+                var confirmed = await DialogService.OpenAsync<RollbackConfirmDialog>(
+                    GetLocalizedString("DeleteAccount", "Delete Account"),
+                    new Dictionary<string, object?> { { "Message", message } },
+                    new DialogOptions { Width = "420px", CloseDialogOnOverlayClick = false });
+
+                if (confirmed != true)
+                    return;
+
+                var account = allFunds.FirstOrDefault(a => a.Fund == fundName);
                 if (account == null) return;
 
                 var op = await AdminFundWriteService.DeleteFundAsync(account.AccountId);
@@ -1823,7 +1772,7 @@
             string FormatBackupInfo(BackupInfo? info)
                 => info == null
                     ? GetLocalizedString("NoBackupAvailable", "No backup available")
-                    : $"backup: {info.BackupAt:yyyy-MM-dd HH:mm}, data through: {(info.MostRecentDataDate.HasValue ? info.MostRecentDataDate.Value.ToString("yyyy-MM-dd") : "n/a")} ({info.RecordCount:N0} rows)";
+                    : $"{info.BackupAt:yyyy-MM-dd HH:mm}, data through: {(info.MostRecentDataDate.HasValue ? info.MostRecentDataDate.Value.ToString("yyyy-MM-dd") : "n/a")} ({info.RecordCount:N0} rows)";
 
             return target switch
             {
@@ -1832,6 +1781,45 @@
                 "both" => GetLocalizedString("RollbackBoth", "Rollback Both Donation and Accounting Data"),
                 _ => target
             };
+        }
+
+        private async Task RecategorizeAllDonations()
+        {
+            try
+            {
+                var title = GetLocalizedString("RecategorizeDonations", "Recategorize Donations");
+                var message = GetLocalizedString(
+                    "RecategorizeDonationsConfirmMessage",
+                    "This will recategorize all DonationData rows (Monthly, Yearly, Sporadic, One-time) using current classification rules. Continue?");
+
+                var confirmed = await DialogService.OpenAsync<RollbackConfirmDialog>(
+                    title,
+                    new Dictionary<string, object?> { { "Message", message } },
+                    new DialogOptions { Width = "520px", CloseDialogOnOverlayClick = false });
+
+                if (confirmed != true)
+                    return;
+
+                var result = await DonationImportService.RecategorizeAllDonationsAsync(CancellationToken.None);
+
+                NotificationService.Notify(new NotificationMessage
+                {
+                    Severity = NotificationSeverity.Success,
+                    Summary = GetLocalizedString("RecategorizeDonations", "Recategorize Donations"),
+                    Detail = $"DonationData rows recategorized: {result.DonationDataRowsUpdated:N0}.",
+                    Duration = 7000
+                });
+            }
+            catch (Exception ex)
+            {
+                NotificationService.Notify(new NotificationMessage
+                {
+                    Severity = NotificationSeverity.Error,
+                    Summary = GetLocalizedString("RecategorizeDonations", "Recategorize Donations"),
+                    Detail = ex.Message,
+                    Duration = 7000
+                });
+            }
         }
 
         private async Task ExecuteRollbackWithConfirm()
@@ -1867,7 +1855,7 @@
 
                 var confirmed = await DialogService.OpenAsync<RollbackConfirmDialog>(
                     GetLocalizedString("ConfirmRollback", "Confirm Rollback"),
-                    new Dictionary<string, object> { { "Message", message } },
+                    new Dictionary<string, object?> { { "Message", message } },
                     new DialogOptions { Width = "420px", CloseDialogOnOverlayClick = false });
 
                 // Restore the rollback overlay

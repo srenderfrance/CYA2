@@ -144,12 +144,11 @@
                  Style="width:100%;">
 
         <RadzenStack Orientation="Orientation.Vertical" Gap="0.4rem" Style="flex:1;">
-            <RadzenText TextStyle="TextStyle.Subtitle1">@Localizer["DateRange"]</RadzenText>
             <RadzenStack Orientation="Orientation.Horizontal"
                          Gap="0.5rem"
                          AlignItems="AlignItems.Center"
                          Wrap="FlexWrap.Wrap">
-                <div style="display:flex;align-items:center;gap:0.5rem;">
+                <div class="date-range-toolbar-box" style="display:flex;align-items:center;gap:0.5rem;">
                     <RadzenLabel Text="@Localizer["CommonRanges"]" />
                     <!-- Preset dropdown -->
                 <RadzenDropDown TValue="DateRangePreset"
@@ -171,73 +170,79 @@
                     </Template>
                 </RadzenDropDown>
                 </div>
-                <div style="display:flex;align-items:center;gap:0.5rem;flex-wrap:nowrap;">
-                <div style="display:flex;align-items:center;gap:0.5rem;">
-                    <RadzenLabel Text="@Localizer["StartDate"]" />
-                    <RadzenDatePicker @bind-Value="@dateRangeState.PendingStartDate" DateFormat="MM/dd/yyyy" Style="max-width:130px"
-                                      Change="@OnDatePickerChanged" />
+                <div class="date-range-apply-group" style="display:flex;align-items:center;gap:0.5rem;flex-wrap:wrap;">
+                    <div style="display:flex;align-items:center;gap:0.5rem;flex-wrap:nowrap;">
+                    <div style="display:flex;align-items:center;gap:0.5rem;">
+                        <RadzenLabel Text="@Localizer["StartDate"]" />
+                        <RadzenDatePicker @bind-Value="@dateRangeState.PendingStartDate" DateFormat="MM/dd/yyyy" Style="max-width:130px"
+                                          Change="@OnDatePickerChanged" />
+                    </div>
+                    <div style="display:flex;align-items:center;gap:0.5rem;">
+                        <RadzenLabel Text="@Localizer["EndDate"]" />
+                        <RadzenDatePicker @bind-Value="@dateRangeState.PendingEndDate" DateFormat="MM/dd/yyyy" Style="max-width:130px"
+                                          Change="@OnDatePickerChanged" />
+                    </div>
+                    </div>
+                    <RadzenButton Text="@Localizer["Apply"]"
+                                  Click="@selectDateRange"
+                                  Size="ButtonSize.Small"
+                                  Style="height: 38px;"
+                                  ButtonStyle="ButtonStyle.Primary" />
                 </div>
-                <div style="display:flex;align-items:center;gap:0.5rem;">
-                    <RadzenLabel Text="@Localizer["EndDate"]" />
-                    <RadzenDatePicker @bind-Value="@dateRangeState.PendingEndDate" DateFormat="MM/dd/yyyy" Style="max-width:130px"
-                                      Change="@OnDatePickerChanged" />
-                </div>
-                </div>
-                <RadzenButton Text="@Localizer["ApplyFilter"]"
-                              Icon="filter_alt"
-                              Click="@selectDateRange"
-                              Size="ButtonSize.Small"
-                              ButtonStyle="ButtonStyle.Primary" />
             </RadzenStack>
         </RadzenStack>
 
         <RadzenStack Orientation="Orientation.Vertical" Gap="0.4rem" Style="flex:1; max-width:300px;">
-            <RadzenText TextStyle="TextStyle.Subtitle1">@Localizer["Account"]</RadzenText>
-            <RadzenDropDown TValue="string"
-                            Data="@donationData.UserAccounts"
-                            TextProperty="Fund"
-                            ValueProperty="Fund"
-                            Value="@selectedAccount"
-                            Change="@OnAccountDropdownChanged"
-                            Placeholder="@Localizer["ChooseAccount"]"
-                            Style="width: 300px;">
-                <ValueTemplate>
-                    <span style="display:flex;align-items:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding-right:1.75rem;width:100%;">
-                        @DisplayFormatter.FormatFundDisplay(selectedAccount)
-                    </span>
-                </ValueTemplate>
-                <Template Context="acct">
-                    <span style="display:flex;align-items:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;width:100%;">
-                        @DisplayFormatter.FormatFundDisplay(acct.Fund)
-                    </span>
-                </Template>
-            </RadzenDropDown>
-
-            <!-- SubAccount dropdown - only shown for accounts with Separate sub accounts -->
-            @if (showSubAccountDropdown && subAccountOptions.Any())
-            {
-                <RadzenStack Orientation="Orientation.Vertical" Gap="0.2rem" Style="margin-top: 0.5rem;">
-                    <RadzenText TextStyle="TextStyle.Body2" Style="color: #666; font-size: 0.9rem;">Sub Account</RadzenText>
+            <div class="date-range-toolbar-box" style="width:360px; max-width:100%; box-sizing:border-box;">
+                <div style="display:flex;align-items:center;gap:0.5rem;flex-wrap:nowrap;">
+                    <RadzenLabel Text="@Localizer["Account"]" />
                     <RadzenDropDown TValue="string"
-                                    Data="@subAccountOptions"
-                                    TextProperty="DisplayText" 
-                                    ValueProperty="Value"
-                                    @bind-Value="selectedSubAccount"
-                                    Change="@(args => OnSubAccountSelection(args?.ToString() ?? string.Empty))"
-                                    Style="width: 300px;">
-                        <ValueTemplate>
-                            <span style="display:flex;align-items:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding-right:1.75rem;width:100%;">
-                                @(subAccountOptions.FirstOrDefault(o => o.Value == selectedSubAccount)?.DisplayText ?? "")
-                            </span>
-                        </ValueTemplate>
-                        <Template Context="option">
-                            <span style="display:flex;align-items:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;width:100%;">
-                                @option.DisplayText
-                            </span>
-                        </Template>
+                                Data="@donationData.UserAccounts"
+                                TextProperty="Fund"
+                                ValueProperty="Fund"
+                                Value="@selectedAccount"
+                                Change="@OnAccountDropdownChanged"
+                                Placeholder="@Localizer["ChooseAccount"]"
+                                Style="flex:1; min-width:0; width:auto;">
+                    <ValueTemplate>
+                        <span style="display:flex;align-items:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding-right:1.75rem;width:100%;">
+                            @DisplayFormatter.FormatFundDisplay(selectedAccount)
+                        </span>
+                    </ValueTemplate>
+                    <Template Context="acct">
+                        <span style="display:flex;align-items:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;width:100%;">
+                            @DisplayFormatter.FormatFundDisplay(acct.Fund)
+                        </span>
+                    </Template>
                     </RadzenDropDown>
-                </RadzenStack>
-            }
+                </div>
+
+                <!-- SubAccount dropdown - only shown for accounts with Separate sub accounts -->
+                @if (showSubAccountDropdown && subAccountOptions.Any())
+                {
+                    <RadzenStack Orientation="Orientation.Vertical" Gap="0.2rem" Style="margin-top: 0.5rem;">
+                        <RadzenText TextStyle="TextStyle.Body2" Style="color: #666; font-size: 0.9rem;">Sub Account</RadzenText>
+                        <RadzenDropDown TValue="string"
+                                        Data="@subAccountOptions"
+                                        TextProperty="DisplayText" 
+                                        ValueProperty="Value"
+                                        @bind-Value="selectedSubAccount"
+                                        Change="@(args => OnSubAccountSelection(args?.ToString() ?? string.Empty))"
+                                Class="account-selector-dropdown-inline">
+                            <ValueTemplate>
+                                <span style="display:flex;align-items:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding-right:1.75rem;width:100%;">
+                                    @(subAccountOptions.FirstOrDefault(o => o.Value == selectedSubAccount)?.DisplayText ?? "")
+                                </span>
+                            </ValueTemplate>
+                            <Template Context="option">
+                                <span style="display:flex;align-items:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;width:100%;">
+                                    @option.DisplayText
+                                </span>
+                            </Template>
+                        </RadzenDropDown>
+                    </RadzenStack>
+                }
+            </div>
         </RadzenStack>
     </RadzenStack>
 
@@ -413,8 +418,6 @@
     private string errorMessage = string.Empty;
     private bool isLoading = true;
     private AccountOptionDto? currentAccount = null;
-    private bool showDebug = true;
-    private List<string> debugLogs = new();
     private List<string> lastRawDonationFunds = new();
 
     // SubAccount support
@@ -426,7 +429,6 @@
     private void Debug(string message)
     {
         var line = $"[{DateTime.Now:HH:mm:ss}] {message}";
-        debugLogs.Add(line);
         Console.WriteLine($"DONATIONS DEBUG: {line}");
     }
 
@@ -643,7 +645,6 @@
 
             // Remember what we explicitly passed to the service so we only overwrite session when caller provided an explicit account
             var passedAccount = accountName;
-            var usedSessionPreferred = false;
 
             // If caller did not explicitly select an account, prefer the session-selected account (middleware may have populated it).
             // Also treat a non-explicit call where passedAccount equals the session value as session-preferred.
@@ -652,27 +653,26 @@
                 if (string.IsNullOrWhiteSpace(passedAccount) && !string.IsNullOrWhiteSpace(SessionUserStateService.SelectedAccountFund))
                 {
                     passedAccount = SessionUserStateService.SelectedAccountFund;
-                    usedSessionPreferred = true;
                     Logger.LogInformation("[Donations] Using session-selected account when calling service: {Account}", passedAccount);
                     Console.WriteLine($"[Donations] Using session-selected account when calling service: {passedAccount}");
                 }
-                else if (!string.IsNullOrWhiteSpace(passedAccount) && string.Equals(passedAccount, SessionUserStateService.SelectedAccountFund, StringComparison.OrdinalIgnoreCase))
-                {
-                    // Caller supplied the same value that's already in session, treat as session-preferred so we don't overwrite.
-                    usedSessionPreferred = true;
-                }
             }
 
-             var dto = await DonationService.GetDonationDataAsync(
+            var dto = await DonationService.GetDonationDataAsync(
                 passedAccount ?? string.Empty,
                 subAccountValue,
                 new DateRange(dateRangeState.StartDate, dateRangeState.EndDate),
                 userId,
                 isAdminOrViewer,
-                forceRefresh: false);
+                forceRefresh: false) ?? new DonationDataDto();
 
-            Logger.LogInformation("[Donations] Service returned SelectedAccount='{SelectedAccount}', UserAccounts={Count}", dto?.SelectedAccount, dto?.UserAccounts?.Count ?? 0);
-            Console.WriteLine($"[Donations] Service returned SelectedAccount='{dto?.SelectedAccount}', UserAccountsCount={dto?.UserAccounts?.Count ?? 0}");
+            Logger.LogInformation("[Donations] Service returned SelectedAccount='{SelectedAccount}', UserAccounts={Count}", dto.SelectedAccount, dto.UserAccounts?.Count ?? 0);
+            Console.WriteLine($"[Donations] Service returned SelectedAccount='{dto.SelectedAccount}', UserAccountsCount={dto.UserAccounts?.Count ?? 0}");
+
+            var dtoUserAccounts = dto.UserAccounts ?? new List<AccountOptionDto>();
+            var dtoDonations = dto.Donations ?? new List<DonationRowDto>();
+            dto.UserAccounts = dtoUserAccounts;
+            dto.Donations = dtoDonations;
 
             donationData = dto;
 
@@ -682,30 +682,30 @@
             {
                 selectedAccount = dto.SelectedAccount;
             }
-            else if (string.IsNullOrWhiteSpace(selectedAccount) && dto.UserAccounts.Count > 0)
+            else if (string.IsNullOrWhiteSpace(selectedAccount) && dtoUserAccounts.Count > 0)
             {
                 // If we had no session/middleware value, fall back to the first available account from the service (UI-only, not persisted).
-                selectedAccount = dto.UserAccounts.First().Fund;
+                selectedAccount = dtoUserAccounts.First().Fund;
             }
              selectedSubAccount = dto.SelectedSubAccount;
              showSubAccountDropdown = dto.ShowSubAccountDropdown;
              subAccountOptions = dto.SubAccountOptions;
              currentFundNamesForSelection = dto.FundNamesForSelection;
              lastRawDonationFunds = dto.RawDonationFunds;
-            currentAccount = dto.UserAccounts.FirstOrDefault(a => a.Fund == selectedAccount);
-            donations = dto.Donations;
+            currentAccount = dtoUserAccounts.FirstOrDefault(a => a.Fund == selectedAccount);
+            donations = dtoDonations;
 
             Debug($"Service returned donations total={dto.Donations?.Count ?? 0}; currentAccount='{currentAccount?.Fund}'");
 
-            if (string.IsNullOrWhiteSpace(selectedAccount) && dto.UserAccounts.Count > 0)
+            if (string.IsNullOrWhiteSpace(selectedAccount) && dtoUserAccounts.Count > 0)
             {
                 // choose a sensible UI fallback but do NOT persist it to session or to server
-                selectedAccount = dto.UserAccounts.First().Fund;
+                selectedAccount = dtoUserAccounts.First().Fund;
             }
 
             var defaultFundFromDto = !string.IsNullOrWhiteSpace(SessionUserStateService.DefaultAccountFund)
                 ? SessionUserStateService.DefaultAccountFund
-                : dto.UserAccounts.FirstOrDefault()?.Fund ?? string.Empty;
+                : dtoUserAccounts.FirstOrDefault()?.Fund ?? string.Empty;
 
             // Only persist the selection into session/server when the selection was explicit (user interacted with dropdown).
             if (explicitSelection && !string.IsNullOrWhiteSpace(passedAccount))
@@ -893,8 +893,6 @@
         grandTotal = pivot.GrandTotal;
     }
 
-    private RadzenDataGrid<DonationPivotRowDto>? givingGridRef;
-
     private void OnGivingGridCellRender(DataGridCellRenderEventArgs<DonationPivotRowDto> args)
     {
         if (args.Column?.OrderIndex is int idx && idx >= 1)
@@ -944,7 +942,7 @@
 
             await DialogService.OpenAsync<DonorDetailsDialog>(
                 title: Localizer["ContactInformation"],
-                parameters: new Dictionary<string, object>
+                    parameters: new Dictionary<string, object?>
                 {
                     { nameof(DonorDetailsDialog.DonorName), donorName },
                     { nameof(DonorDetailsDialog.DonorEmail), mostRecent.Email ?? string.Empty },

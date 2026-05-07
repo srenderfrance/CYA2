@@ -126,7 +126,7 @@
         Close();
     }
 
-    private async Task OnKeyDown(KeyboardEventArgs e)
+    private void OnKeyDown(KeyboardEventArgs e)
     {
         if (e.Key == "Escape") Close();
         if (e.Key == "Enter") Toggle();
