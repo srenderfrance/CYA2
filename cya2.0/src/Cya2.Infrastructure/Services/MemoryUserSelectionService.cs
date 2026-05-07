@@ -43,7 +43,8 @@ namespace Cya2.Infrastructure.Services
                 return false;
             }
             var key = UserKey(userId);
-            var found = _cache.TryGetValue(key, out account);
+            var found = _cache.TryGetValue<string?>(key, out var cachedAccount);
+            account = cachedAccount ?? string.Empty;
             _logger.LogInformation("MemoryUserSelectionService: TryGet for {UserId} -> found={Found}, account='{Account}'", userId, found, account);
             return found;
         }

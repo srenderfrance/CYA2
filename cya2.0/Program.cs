@@ -268,6 +268,7 @@ if (hasValidGoogleConfig)
                     identity.AddClaim(new Claim("UserId", user.Id.ToString()));
                     identity.AddClaim(new Claim("UserName", user.Name ?? string.Empty));
 
+                    context.Properties ??= new AuthenticationProperties();
                     context.Properties.RedirectUri = user.AuthLevel == "Admin" ? "/admin" : "/";
                 }
                 catch (InvalidOperationException ex) when (ex.Message.Contains("Database is currently unavailable", StringComparison.OrdinalIgnoreCase))
@@ -296,7 +297,8 @@ if (hasValidGoogleConfig)
             },
             OnCreatingTicket = context =>
             {
-                if (context.Properties?.RedirectUri == null)
+                context.Properties ??= new AuthenticationProperties();
+                if (context.Properties.RedirectUri == null)
                     context.Properties.RedirectUri = "/";
                 return Task.CompletedTask;
             }

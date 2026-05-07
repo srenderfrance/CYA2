@@ -42,12 +42,11 @@
                  Style="width:100%;">
 
         <RadzenStack Orientation="Orientation.Vertical" Gap="0.4rem" Style="flex:1;">
-            <RadzenText TextStyle="TextStyle.Subtitle1">@Localizer["DateRange"]</RadzenText>
             <RadzenStack Orientation="Orientation.Horizontal"
                          Gap="0.5rem"
                          AlignItems="AlignItems.Center"
                          Wrap="FlexWrap.Wrap">
-                <div style="display:flex;align-items:center;gap:0.5rem;">
+                <div class="date-range-toolbar-box" style="display:flex;align-items:center;gap:0.5rem;">
                     <RadzenLabel Text="@Localizer["CommonRanges"]" />
                     <RadzenDropDown TValue="Cya2.Application.DTOs.DateRangePreset"
                                 Data="@presetOptions"
@@ -68,47 +67,53 @@
                     </Template>
                 </RadzenDropDown>
                 </div>
-                <div style="display:flex;align-items:center;gap:0.5rem;flex-wrap:nowrap;">
-                <div style="display:flex;align-items:center;gap:0.5rem;">
-                    <RadzenLabel Text="@Localizer["StartDate"]" />
-                    <RadzenDatePicker @bind-Value="@dateRangeState.PendingStartDate" DateFormat="MM/dd/yyyy" Style="max-width:130px"
-                                      Change="@OnDatePickerChanged" />
+                <div class="date-range-apply-group" style="display:flex;align-items:center;gap:0.5rem;flex-wrap:wrap;">
+                    <div style="display:flex;align-items:center;gap:0.5rem;flex-wrap:nowrap;">
+                    <div style="display:flex;align-items:center;gap:0.5rem;">
+                        <RadzenLabel Text="@Localizer["StartDate"]" />
+                        <RadzenDatePicker @bind-Value="@dateRangeState.PendingStartDate" DateFormat="MM/dd/yyyy" Style="max-width:130px"
+                                          Change="@OnDatePickerChanged" />
+                    </div>
+                    <div style="display:flex;align-items:center;gap:0.5rem;">
+                        <RadzenLabel Text="@Localizer["EndDate"]" />
+                        <RadzenDatePicker @bind-Value="@dateRangeState.PendingEndDate" DateFormat="MM/dd/yyyy" Style="max-width:130px"
+                                          Change="@OnDatePickerChanged" />
+                    </div>
+                    </div>
+                    <RadzenButton Text="@Localizer["Apply"]"
+                                  Click="@selectDateRange"
+                                  Size="ButtonSize.Small"
+                                  Style="height: 38px;"
+                                  ButtonStyle="ButtonStyle.Primary" />
                 </div>
-                <div style="display:flex;align-items:center;gap:0.5rem;">
-                    <RadzenLabel Text="@Localizer["EndDate"]" />
-                    <RadzenDatePicker @bind-Value="@dateRangeState.PendingEndDate" DateFormat="MM/dd/yyyy" Style="max-width:130px"
-                                      Change="@OnDatePickerChanged" />
-                </div>
-                </div>
-                <RadzenButton Text="@Localizer["ApplyFilter"]"
-                              Icon="filter_alt"
-                              Click="@selectDateRange"
-                              Size="ButtonSize.Small"
-                              ButtonStyle="ButtonStyle.Primary" />
             </RadzenStack>
         </RadzenStack>
 
         <RadzenStack Orientation="Orientation.Vertical" Gap="0.4rem" Style="flex:1; max-width:300px;">
-            <RadzenText TextStyle="TextStyle.Subtitle1">@Localizer["Account"]</RadzenText>
-            <RadzenDropDown TValue="string"
-                            Data="@userAccounts"
-                            TextProperty="Fund"
-                            ValueProperty="Fund"
-                            @bind-Value="selectedAccount"
-                            Change="@(async (args) => await accountSelection(args?.ToString() ?? string.Empty))"
-                            Placeholder="@Localizer["ChooseAccount"]"
-                            Style="width: 300px;">
-                <ValueTemplate>
-                    <span style="display:flex;align-items:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding-right:1.75rem;width:100%;">
-                        @DisplayFormatter.FormatFundDisplay(selectedAccount)
-                    </span>
-                </ValueTemplate>
-                <Template Context="acct">
-                    <span style="display:flex;align-items:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;width:100%;">
-                        @DisplayFormatter.FormatFundDisplay(acct.Fund)
-                    </span>
-                </Template>
-            </RadzenDropDown>
+            <div class="date-range-toolbar-box account-selector-box">
+                <div style="display:flex;align-items:center;gap:0.5rem;flex-wrap:nowrap;">
+                    <RadzenLabel Text="@Localizer["Account"]" />
+                    <RadzenDropDown TValue="string"
+                                Data="@userAccounts"
+                                TextProperty="Fund"
+                                ValueProperty="Fund"
+                                @bind-Value="selectedAccount"
+                                Change="@(async (args) => await accountSelection(args?.ToString() ?? string.Empty))"
+                                Placeholder="@Localizer["ChooseAccount"]"
+                                Class="account-selector-dropdown-inline">
+                    <ValueTemplate>
+                        <span style="display:flex;align-items:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding-right:1.75rem;width:100%;">
+                            @DisplayFormatter.FormatFundDisplay(selectedAccount)
+                        </span>
+                    </ValueTemplate>
+                    <Template Context="acct">
+                        <span style="display:flex;align-items:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;width:100%;">
+                            @DisplayFormatter.FormatFundDisplay(acct.Fund)
+                        </span>
+                    </Template>
+                    </RadzenDropDown>
+                </div>
+            </div>
         </RadzenStack>
 
     </RadzenStack>
@@ -126,7 +131,7 @@
                                         Placeholder="@Localizer["SearchDonors"]"
                                         Change="@OnAutocompleteChanged"
                                         Style="width:100%;"
-                                        KeyDown="@OnSearchKeyDown" />
+                                        @onkeydown="OnSearchKeyDown" />
                 </div>
                 <RadzenButton Text="Clear" Click="@(()=> ClearDonorSelection())" ButtonStyle="ButtonStyle.Light" Style="margin-left:0.5rem;" />
             </div>
@@ -416,24 +421,29 @@
         }
     }
 
-    private async Task BuildDonorsInRange(AccountOptionDto account)
+    private async Task BuildDonorsInRange(AccountOptionDto? account)
     {
         donorsInRange = new List<DonorSummaryDto>();
+        if (account is not { } currentAccount)
+        {
+            Logger.LogWarning("[Donors] BuildDonorsInRange called with null account");
+            return;
+        }
         try
         {
-            Logger.LogInformation("[Donors] BuildDonorsInRange start: account='{Account}', preset='{Preset}'", account?.Fund, dateRangeState.SelectedPreset);
+            Logger.LogInformation("[Donors] BuildDonorsInRange start: account='{Account}', preset='{Preset}'", currentAccount.Fund, dateRangeState.SelectedPreset);
 
             if (dateRangeState.SelectedPreset == Cya2.Application.DTOs.DateRangePreset.AllDates)
             {
                 // No date filter — query all donations for the account
                 if (showSubAccountDropdown && selectedSubAccount != "All")
                 {
-                    var funds = await ResolveFundNamesAsync(account, selectedSubAccount);
+                    var funds = await ResolveFundNamesAsync(currentAccount, selectedSubAccount);
                     donorsInRange = await DonorService.GetAllDonorSummariesAsync(funds);
                 }
                 else
                 {
-                    donorsInRange = await DonorService.GetAllDonorSummariesAsync(account.AccountId, account.Fund);
+                    donorsInRange = await DonorService.GetAllDonorSummariesAsync(currentAccount.AccountId, currentAccount.Fund);
                 }
             }
             else
@@ -442,20 +452,20 @@
 
                 if (showSubAccountDropdown && selectedSubAccount != "All")
                 {
-                    var funds = await ResolveFundNamesAsync(account, selectedSubAccount);
+                    var funds = await ResolveFundNamesAsync(currentAccount, selectedSubAccount);
                     donorsInRange = await DonorService.GetDonorSummariesAsync(funds, range);
                 }
                 else
                 {
-                    donorsInRange = await DonorService.GetDonorSummariesForAccountAsync(account.AccountId, account.Fund, range);
+                    donorsInRange = await DonorService.GetDonorSummariesForAccountAsync(currentAccount.AccountId, currentAccount.Fund, range);
                 }
             }
 
-            SessionUserStateService.SelectedAccountFund = account.Fund;
+            SessionUserStateService.SelectedAccountFund = currentAccount.Fund;
             if (!string.IsNullOrWhiteSpace(userId))
-                UserSelectionService.SetSelectedAccount(userId, account.Fund);
+                UserSelectionService.SetSelectedAccount(userId, currentAccount.Fund);
 
-            Logger.LogInformation("Loaded {Count} donors for account '{Fund}'", donorsInRange.Count, account.Fund);
+            Logger.LogInformation("Loaded {Count} donors for account '{Fund}'", donorsInRange.Count, currentAccount.Fund);
         }
         catch (Exception ex)
         {

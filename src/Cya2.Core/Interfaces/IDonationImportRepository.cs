@@ -25,4 +25,18 @@ public interface IDonationImportRepository
         DateTime beforeDate,
         int maxPerDonor,
         CancellationToken ct);
+
+    /// <summary>
+    /// One-time maintenance: normalize donor names currently stored as "Last, First"
+    /// to "First Last" in DonationData and DonationDataBackup.
+    /// Returns rows updated in each table.
+    /// </summary>
+    Task<(int donationDataUpdated, int donationBackupUpdated)> NormalizeExistingDonorNamesAsync(CancellationToken ct);
+
+    /// <summary>
+    /// One-time maintenance: recategorize Frequency for all rows in DonationData
+    /// based on full donor+fund history.
+    /// Returns number of rows updated.
+    /// </summary>
+    Task<int> RecategorizeAllDonationsAsync(CancellationToken ct);
 }

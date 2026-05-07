@@ -20,6 +20,17 @@ namespace cya2.Services.Imports
         public string ImportType { get; set; } = string.Empty;
     }
 
+    public sealed class DonorNameNormalizationResult
+    {
+        public int DonationDataRowsUpdated { get; set; }
+        public int DonationDataBackupRowsUpdated { get; set; }
+    }
+
+    public sealed class DonationRecategorizationResult
+    {
+        public int DonationDataRowsUpdated { get; set; }
+    }
+
     public interface IAccountingImportService
     {
         Task<ImportResult> ImportAsync(Stream file, CancellationToken ct);
@@ -42,5 +53,11 @@ namespace cya2.Services.Imports
         Task<ImportResult> ImportFromPreviewAsync(string previewId, CancellationToken ct);
         // Start import from an existing preview and run processing in background, returning ProgressId immediately
         Task<ImportResult> StartImportFromPreviewAsync(string previewId, string progressId);
+
+        // One-time maintenance operation
+        Task<DonorNameNormalizationResult> NormalizeExistingDonorNamesAsync(CancellationToken ct);
+
+        // One-time maintenance operation
+        Task<DonationRecategorizationResult> RecategorizeAllDonationsAsync(CancellationToken ct);
     }
 }

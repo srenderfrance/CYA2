@@ -30,10 +30,12 @@ public class DonationService : IDonationService
     {
         var sw = Stopwatch.StartNew();
         var result = new DonationDataDto();
+        var normalizedSubSelection = string.IsNullOrWhiteSpace(subAccountSelection) ? "All" : subAccountSelection;
+        var bypassSubAccountCache = !string.Equals(normalizedSubSelection, "All", StringComparison.OrdinalIgnoreCase);
 
         try
         {
-            if (!forceRefresh && !string.IsNullOrWhiteSpace(userId) && !string.IsNullOrWhiteSpace(accountName) && _donationCache != null)
+            if (!forceRefresh && !bypassSubAccountCache && !string.IsNullOrWhiteSpace(userId) && !string.IsNullOrWhiteSpace(accountName) && _donationCache != null)
             {
                 if (_donationCache.TryGetDonationData(userId, accountName, out var directCached) &&
                     CacheCoversRequestedRange(directCached, dateRange))
@@ -83,7 +85,60 @@ public class DonationService : IDonationService
                 result.SelectedAccount = result.UserAccounts.First().Fund;
             }
 
-            result.SelectedSubAccount = subAccountSelection ?? "All";
+            result.SelectedSubAccount = normalizedSubSelection;
+
+            // Build sub-account options for the selected account when Separate sub-accounts exist.
+            var separateSubAccounts = new List<Cya2.Core.Entities.SubAccount>();
+            if (selected != null)
+            {
+                var allSubAccounts = await _donationReadRepository.GetSubAccountsByAccountIdAsync(selected.AccountId);
+                separateSubAccounts = allSubAccounts
+                    .Where(sa => string.Equals(sa.Kind, "Separate", StringComparison.OrdinalIgnoreCase) && !string.IsNullOrWhiteSpace(sa.SubFund))
+                    .ToList();
+
+                result.ShowSubAccountDropdown = separateSubAccounts.Any();
+                result.SubAccountOptions = new List<SubAccountOptionDto>();
+
+                if (result.ShowSubAccountDropdown)
+                {
+                    result.SubAccountOptions.Add(new SubAccountOptionDto { Value = "All", DisplayText = "All", IsAll = true });
+                    result.SubAccountOptions.Add(new SubAccountOptionDto
+                    {
+                        Value = "Primary",
+                        DisplayText = selected.Fund,
+                        IsPrimary = true,
+                        SubFund = selected.Fund
+                    });
+
+                    foreach (var sa in separateSubAccounts)
+                    {
+                        result.SubAccountOptions.Add(new SubAccountOptionDto
+                        {
+                            Value = $"Sub_{sa.Id}",
+                            DisplayText = sa.SubFund,
+                            SubAccountId = sa.Id,
+                            SubFund = sa.SubFund
+                        });
+                    }
+
+                    // If caller passed an invalid sub selection, normalize to All.
+                    if (!result.SubAccountOptions.Any(o => string.Equals(o.Value, result.SelectedSubAccount, StringComparison.OrdinalIgnoreCase)))
+                    {
+                        result.SelectedSubAccount = "All";
+                    }
+                }
+                else
+                {
+                    result.SelectedSubAccount = "All";
+                    result.SubAccountOptions = new List<SubAccountOptionDto>();
+                }
+            }
+            else
+            {
+                result.ShowSubAccountDropdown = false;
+                result.SubAccountOptions = new List<SubAccountOptionDto>();
+                result.SelectedSubAccount = "All";
+            }
 
             // Determine which funds to query. If caller passed an explicit accountName use that; otherwise use user's accounts
             var fundsToQuery = new List<string>();
@@ -100,7 +155,7 @@ public class DonationService : IDonationService
             fundsToQuery = fundsToQuery.Where(f => !string.IsNullOrWhiteSpace(f)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
 
             // If we have a cache and caller requested a single fund, try cache first (this covers initial load where Home may have pre-cached)
-            if (!forceRefresh && !string.IsNullOrWhiteSpace(result.SelectedAccount) && _donationCache != null)
+            if (!forceRefresh && !bypassSubAccountCache && !string.IsNullOrWhiteSpace(result.SelectedAccount) && _donationCache != null)
             {
                 if (_donationCache.TryGetDonationData(userId, result.SelectedAccount, out var cached) &&
                     CacheCoversRequestedRange(cached, dateRange))
@@ -124,12 +179,44 @@ public class DonationService : IDonationService
             var donationRecords = new List<Cya2.Core.ReadModels.DonationRecord>();
             if (selected != null && !string.IsNullOrWhiteSpace(selected.Fund))
             {
-                donationRecords = (await _donationReadRepository.GetDonationsByAccountAndDateRangeAsync(
-                        selected.AccountId,
-                        selected.Fund,
-                        dateRange.StartDate,
-                        dateRange.EndDate))
-                    ?? new List<Cya2.Core.ReadModels.DonationRecord>();
+                if (result.ShowSubAccountDropdown)
+                {
+                    var fundsForSelection = new List<string>();
+                    if (string.Equals(result.SelectedSubAccount, "Primary", StringComparison.OrdinalIgnoreCase))
+                    {
+                        fundsForSelection.Add(selected.Fund);
+                    }
+                    else if (string.Equals(result.SelectedSubAccount, "All", StringComparison.OrdinalIgnoreCase))
+                    {
+                        fundsForSelection.Add(selected.Fund);
+                        fundsForSelection.AddRange(separateSubAccounts.Select(sa => sa.SubFund));
+                    }
+                    else if (result.SelectedSubAccount.StartsWith("Sub_", StringComparison.OrdinalIgnoreCase) &&
+                             int.TryParse(result.SelectedSubAccount[4..], out var subId))
+                    {
+                        var chosen = separateSubAccounts.FirstOrDefault(sa => sa.Id == subId);
+                        if (chosen != null)
+                            fundsForSelection.Add(chosen.SubFund);
+                    }
+
+                    if (fundsForSelection.Count == 0)
+                        fundsForSelection.Add(selected.Fund);
+
+                    donationRecords = (await _donationReadRepository.GetDonationsByFundsAndDateRangeAsync(
+                            fundsForSelection.Distinct(StringComparer.OrdinalIgnoreCase),
+                            dateRange.StartDate,
+                            dateRange.EndDate))
+                        ?? new List<Cya2.Core.ReadModels.DonationRecord>();
+                }
+                else
+                {
+                    donationRecords = (await _donationReadRepository.GetDonationsByAccountAndDateRangeAsync(
+                            selected.AccountId,
+                            selected.Fund,
+                            dateRange.StartDate,
+                            dateRange.EndDate))
+                        ?? new List<Cya2.Core.ReadModels.DonationRecord>();
+                }
             }
             else if (fundsToQuery.Count > 0)
             {
@@ -173,15 +260,11 @@ public class DonationService : IDonationService
             result.FundNamesForSelection = donationRecords.Select(r => r.Fund).Where(f => !string.IsNullOrWhiteSpace(f)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
             result.RawDonationFunds = donationRecords.Select(r => r.Fund).Where(f => !string.IsNullOrWhiteSpace(f)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
 
-            // No sub-account support yet; leave defaults
-            result.ShowSubAccountDropdown = false;
-            result.SubAccountOptions = new List<SubAccountOptionDto>();
-
             result.CachedStartDate = dateRange.StartDate;
             result.CachedEndDate = dateRange.EndDate;
 
             // Store into cache for quick reuse (cache by selectedAccount) - prefer prioritize when explicit account requested
-            if (!string.IsNullOrWhiteSpace(result.SelectedAccount) && _donationCache != null)
+            if (!bypassSubAccountCache && !string.IsNullOrWhiteSpace(result.SelectedAccount) && _donationCache != null)
             {
                 _donationCache.SetDonationData(userId, result.SelectedAccount, result, prioritize: !string.IsNullOrWhiteSpace(accountName));
             }
@@ -211,9 +294,9 @@ public class DonationService : IDonationService
     private static string GetFrequencyLabel(Cya2.Core.Enums.DonorFrequency? frequency) => frequency switch
     {
         Cya2.Core.Enums.DonorFrequency.OneTime  => "One-time",
+        Cya2.Core.Enums.DonorFrequency.Sporadic => "Sporadic",
         Cya2.Core.Enums.DonorFrequency.Monthly  => "Monthly",
         Cya2.Core.Enums.DonorFrequency.Yearly   => "Yearly",
-        Cya2.Core.Enums.DonorFrequency.Sporadic => "Sporadic",
         _                                        => string.Empty
     };
 }

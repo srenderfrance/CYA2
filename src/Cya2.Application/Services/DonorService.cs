@@ -192,7 +192,14 @@ namespace Cya2.Application.Services
                 .Where(d => !string.IsNullOrWhiteSpace(d.AccountName))
                 .GroupBy(d => d.AccountName!, StringComparer.OrdinalIgnoreCase);
 
-            var today = DateTime.Today;
+            // Use the latest available donation date in the loaded dataset as the
+            // freshness anchor for missing-gift checks. This prevents false
+            // "missing" alerts when the database is not current for the next month.
+            // Example: if data only goes through April, do not mark April as missing
+            // just because there are no May rows yet.
+            var dataFreshThrough = donations.Any()
+                ? donations.Max(d => d.Date).Date
+                : DateTime.Today;
 
             foreach (var g in groups)
             {
@@ -218,7 +225,7 @@ namespace Cya2.Application.Services
 
                 // Detect missing gift alerts for monthly donors.
                 var missingAlerts = frequency == DonorFrequency.Monthly
-                    ? _missingGiftService.GetMissingGiftAlerts(g.Key, giftHistory, today)
+                    ? _missingGiftService.GetMissingGiftAlerts(g.Key, giftHistory, dataFreshThrough)
                     : new List<Cya2.Core.Services.MissingGiftAlert>();
 
                 yield return new DonorSummaryDto

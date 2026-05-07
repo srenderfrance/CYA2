@@ -36,9 +36,8 @@
         <RadzenStack Orientation="Orientation.Vertical" Gap="0.4rem" Style="flex:1;">
 
             <!-- Date Range section (match Donations/Donors layout: label above, controls in a single horizontal row) -->
-            <RadzenText TextStyle="TextStyle.Subtitle1">@Localizer["DateRange"]</RadzenText>
             <RadzenStack Orientation="Orientation.Horizontal" Gap="0.5rem" AlignItems="AlignItems.Center" Wrap="FlexWrap.Wrap">
-                <div style="display:flex;align-items:center;gap:0.5rem;">
+                <div class="date-range-toolbar-box" style="display:flex;align-items:center;gap:0.5rem;">
                     <RadzenLabel Text="@Localizer["CommonRanges"]" />
                     <!-- Preset dropdown -->
                 <RadzenDropDown TValue="Cya2.Application.DTOs.DateRangePreset"
@@ -60,53 +59,52 @@
                     </Template>
                 </RadzenDropDown>
                 </div>
-                <div style="display:flex;align-items:center;gap:0.5rem;flex-wrap:nowrap;">
-                <div style="display:flex;align-items:center;gap:0.5rem;">
-                    <RadzenLabel Text="@Localizer["StartDate"]" />
-                    <RadzenDatePicker @bind-Value="@dateRangeState.PendingStartDate" DateFormat="MM/dd/yyyy" Style="max-width:130px"
-                                      Change="@OnDatePickerChanged" />
+                <div class="date-range-apply-group" style="display:flex;align-items:center;gap:0.5rem;flex-wrap:wrap;">
+                    <div style="display:flex;align-items:center;gap:0.5rem;flex-wrap:nowrap;">
+                    <div style="display:flex;align-items:center;gap:0.5rem;">
+                        <RadzenLabel Text="@Localizer["StartDate"]" />
+                        <RadzenDatePicker @bind-Value="@dateRangeState.PendingStartDate" DateFormat="MM/dd/yyyy" Style="max-width:130px"
+                                          Change="@OnDatePickerChanged" />
+                    </div>
+                    <div style="display:flex;align-items:center;gap:0.5rem;">
+                        <RadzenLabel Text="@Localizer["EndDate"]" />
+                        <RadzenDatePicker @bind-Value="@dateRangeState.PendingEndDate" DateFormat="MM/dd/yyyy" Style="max-width:130px"
+                                          Change="@OnDatePickerChanged" />
+                    </div>
+                    </div>
+                    <RadzenButton Text="@Localizer["Apply"]"
+                                  Click="@(async () => await ApplyDateFilter())"
+                                  Size="ButtonSize.Small"
+                                  Style="height: 38px;"
+                                  ButtonStyle="ButtonStyle.Primary" />
                 </div>
-                <div style="display:flex;align-items:center;gap:0.5rem;">
-                    <RadzenLabel Text="@Localizer["EndDate"]" />
-                    <RadzenDatePicker @bind-Value="@dateRangeState.PendingEndDate" DateFormat="MM/dd/yyyy" Style="max-width:130px"
-                                      Change="@OnDatePickerChanged" />
-                </div>
-                </div>
-                <RadzenButton Text="@Localizer["ApplyFilter"]"
-                              Icon="filter_alt"
-                              Click="@(async () => await ApplyDateFilter())"
-                              Size="ButtonSize.Small"
-                              ButtonStyle="ButtonStyle.Primary" />
             </RadzenStack>
         </RadzenStack>
 
-        <!-- Right side: Account selector and Information toggle (kept on right) -->
+        <!-- Right side: Account selector -->
         <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.End" Gap="1rem">
             <RadzenStack Orientation="Orientation.Vertical" Gap="0.4rem">
-                <RadzenText TextStyle="TextStyle.Subtitle1">@Localizer["Account"]</RadzenText>
-                <RadzenDropDown TValue="string"
-                            Data="@((expenseData.UserAccounts ?? new List<AccountOptionDto>()))"
-                            TextProperty="Fund"
-                            ValueProperty="Fund"
-                            @bind-Value="selectedAccount"
-                            Change="@(async args => await AccountSelection(args?.ToString()))"
-                            Placeholder="@Localizer["ChooseAccount"]"
-                            Style="width: 200px;">
-                    <ValueTemplate>
-                        @DisplayFormatter.FormatFundDisplay(selectedAccount)
-                    </ValueTemplate>
-                    <Template Context="acct">
-                        @DisplayFormatter.FormatFundDisplay(acct.Fund)
-                    </Template>
-                </RadzenDropDown>
+                <div class="date-range-toolbar-box account-selector-box">
+                    <div style="display:flex;align-items:center;gap:0.5rem;flex-wrap:nowrap;">
+                        <RadzenLabel Text="@Localizer["Account"]" />
+                        <RadzenDropDown TValue="string"
+                                Data="@((expenseData.UserAccounts ?? new List<AccountOptionDto>()))"
+                                TextProperty="Fund"
+                                ValueProperty="Fund"
+                                @bind-Value="selectedAccount"
+                                Change="@(async args => await AccountSelection(args?.ToString()))"
+                                Placeholder="@Localizer["ChooseAccount"]"
+                                Class="account-selector-dropdown-inline">
+                        <ValueTemplate>
+                            @DisplayFormatter.FormatFundDisplay(selectedAccount)
+                        </ValueTemplate>
+                        <Template Context="acct">
+                            @DisplayFormatter.FormatFundDisplay(acct.Fund)
+                        </Template>
+                        </RadzenDropDown>
+                    </div>
+                </div>
             </RadzenStack>
-
-            <RadzenToggleButton Value="useMinimalView"
-                                ValueChanged="@(async (bool v) => await OnViewModeChange(v))"
-                                Text="@(useMinimalView ? Localizer["ShowMoreDetail"] : Localizer["ShowLessDetail"])"
-                                ButtonStyle="ButtonStyle.Primary"
-                                ToggleButtonStyle="ButtonStyle.Primary"
-                                Style="background-color: #0a3b6b; border-color: #0a3b6b; color: white; max-width: 200px;" />
         </RadzenStack>
     </RadzenStack>
 
@@ -133,6 +131,15 @@
 
         <!-- Grids and messages (right side) -->
         <div class="page-grid-col">
+            <div class="date-range-toolbar-box" style="width: fit-content; margin-top: 0.5rem; margin-bottom: 0.5rem;">
+                <RadzenToggleButton Value="useMinimalView"
+                                    ValueChanged="@(async (bool v) => await OnViewModeChange(v))"
+                                    Text="@(useMinimalView ? Localizer["ShowMoreDetail"] : Localizer["ShowLessDetail"])"
+                                    ButtonStyle="ButtonStyle.Primary"
+                                    ToggleButtonStyle="ButtonStyle.Primary"
+                                    Class="expenses-view-toggle"
+                                    Style="max-width: 220px;" />
+
             @if (!string.IsNullOrEmpty(errorMessage))
             {
                 <RadzenAlert AlertStyle="AlertStyle.Danger" ShowIcon="true" Variant="Variant.Filled" Class="mt-3">
@@ -191,6 +198,8 @@
                     </RadzenDataGrid>
                 </RadzenCard>
             }
+
+            </div>
 
             @if (!expenseData.TransferTransactions.Any() && !expenseData.ExpenseTransactions.Any() && !string.IsNullOrEmpty(selectedAccount) && selectedAccount != "No Account Selected" && !isLoading)
             {

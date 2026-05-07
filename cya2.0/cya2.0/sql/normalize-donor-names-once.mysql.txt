@@ -1,0 +1,77 @@
+-- Scope:
+--   - DonationData
+--   - DonationDataBackup (optional but recommended, so rollback snapshots are consistent)
+--
+-- Safety rules:
+--   - Only updates rows with exactly ONE comma in AccountName
+--   - Skips NULL/empty names and "Anonymous"
+--   - Leaves already normalized names untouched
+--
+-- Tested for MySQL 8.x (uses REGEXP_REPLACE).
+
+START TRANSACTION;
+
+-- Preview counts before applying
+SELECT 'DonationData rows to update' AS Label, COUNT(*) AS RowsToUpdate
+FROM DonationData
+WHERE AccountName IS NOT NULL
+  AND TRIM(AccountName) <> ''
+  AND AccountName <> 'Anonymous'
+  AND (LENGTH(AccountName) - LENGTH(REPLACE(AccountName, ',', ''))) = 1;
+
+SELECT 'DonationDataBackup rows to update' AS Label, COUNT(*) AS RowsToUpdate
+FROM DonationDataBackup
+WHERE AccountName IS NOT NULL
+  AND TRIM(AccountName) <> ''
+  AND AccountName <> 'Anonymous'
+  AND (LENGTH(AccountName) - LENGTH(REPLACE(AccountName, ',', ''))) = 1;
+
+-- Normalize DonationData
+UPDATE DonationData
+SET AccountName = TRIM(
+    REGEXP_REPLACE(
+        CONCAT(
+            TRIM(SUBSTRING_INDEX(AccountName, ',', -1)),
+            ' ',
+            TRIM(SUBSTRING_INDEX(AccountName, ',', 1))
+        ),
+        '[[:space:]]+',
+        ' '
+    )
+)
+WHERE AccountName IS NOT NULL
+  AND TRIM(AccountName) <> ''
+  AND AccountName <> 'Anonymous'
+  AND (LENGTH(AccountName) - LENGTH(REPLACE(AccountName, ',', ''))) = 1;
+
+SELECT ROW_COUNT() AS DonationDataRowsUpdated;
+
+-- Normalize DonationDataBackup (recommended)
+UPDATE DonationDataBackup
+SET AccountName = TRIM(
+    REGEXP_REPLACE(
+        CONCAT(
+            TRIM(SUBSTRING_INDEX(AccountName, ',', -1)),
+            ' ',
+            TRIM(SUBSTRING_INDEX(AccountName, ',', 1))
+        ),
+        '[[:space:]]+',
+        ' '
+    )
+)
+WHERE AccountName IS NOT NULL
+  AND TRIM(AccountName) <> ''
+  AND AccountName <> 'Anonymous'
+  AND (LENGTH(AccountName) - LENGTH(REPLACE(AccountName, ',', ''))) = 1;
+
+SELECT ROW_COUNT() AS DonationDataBackupRowsUpdated;
+
+COMMIT;
+
+-- Optional quick sanity check
+SELECT AccountName, COUNT(*) AS Cnt
+FROM DonationData
+WHERE AccountName LIKE '%,%'
+GROUP BY AccountName
+ORDER BY Cnt DESC
+LIMIT 25;

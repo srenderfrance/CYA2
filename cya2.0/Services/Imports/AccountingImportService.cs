@@ -91,15 +91,15 @@ namespace cya2.Services.Imports
             return await ImportAsync(ms, ct);
         }
 
-        public async Task<ImportResult> StartImportFromPreviewAsync(string previewId, string progressId)
+        public Task<ImportResult> StartImportFromPreviewAsync(string previewId, string progressId)
         {
             var result = new ImportResult();
             var pId = string.IsNullOrWhiteSpace(progressId) ? Guid.NewGuid().ToString("N") : progressId;
             _progressService.Start(pId, "Accounting");
             result.ProgressId = pId;
 
-            if (string.IsNullOrWhiteSpace(previewId)) { result.Errors.Add("PreviewId is required"); _progressService.SetStatus(pId, "PreviewId is required"); return result; }
-            if (!_previews.TryRemove(previewId, out var entry)) { result.Errors.Add("Preview session expired. Please upload the file again."); _progressService.SetStatus(pId, "Preview session expired"); return result; }
+            if (string.IsNullOrWhiteSpace(previewId)) { result.Errors.Add("PreviewId is required"); _progressService.SetStatus(pId, "PreviewId is required"); return Task.FromResult(result); }
+            if (!_previews.TryRemove(previewId, out var entry)) { result.Errors.Add("Preview session expired. Please upload the file again."); _progressService.SetStatus(pId, "Preview session expired"); return Task.FromResult(result); }
 
             var data = entry.Data;
             _ = Task.Run(async () =>
@@ -108,7 +108,7 @@ namespace cya2.Services.Imports
                 catch (Exception ex) { _progressService.SetStatus(pId, $"Error: {ex.Message}"); _logger.LogError(ex, "Background accounting import failed for preview {PreviewId}", previewId); }
             });
 
-            return result;
+            return Task.FromResult(result);
         }
 
         private async Task<ImportResult> ProcessAsync(Stream file, CancellationToken ct, string progressId)

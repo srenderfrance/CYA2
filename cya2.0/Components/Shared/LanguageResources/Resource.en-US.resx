@@ -135,6 +135,9 @@
   <data name="ApplyFilter" xml:space="preserve">
     <value>Apply Filter</value>
   </data>
+  <data name="Apply" xml:space="preserve">
+    <value>Apply</value>
+  </data>
   <data name="AppName" xml:space="preserve">
     <value>CYA Application</value>
   </data>
@@ -472,7 +475,7 @@
     <value>Show More Detail</value>
   </data>
   <data name="ShowLessDetail" xml:space="preserve">
-    <value>Sow Less Detail</value>
+    <value>Show Less Detail</value>
   </data>
   <data name="Logout" xml:space="preserve">
     <value>Logout</value>
@@ -620,5 +623,17 @@
   </data>
   <data name="UploadInvalidExcelFormatMessage" xml:space="preserve">
     <value>The selected file is not the correct format. The file must be an Excel file with a .xlsx extension.</value>
+  </data>
+  <data name="NormalizeDonorNames" xml:space="preserve">
+    <value>Normalize Donor Names</value>
+  </data>
+  <data name="NormalizeDonorNamesConfirmMessage" xml:space="preserve">
+    <value>This will normalize donor names in DonationData and DonationDataBackup from 'Last, First' to 'First Last'. Continue?</value>
+  </data>
+  <data name="RecategorizeDonations" xml:space="preserve">
+    <value>Recategorize Donations</value>
+  </data>
+  <data name="RecategorizeDonationsConfirmMessage" xml:space="preserve">
+    <value>This will recategorize all DonationData rows (Monthly, Yearly, Sporadic, One-time) using current classification rules. Continue?</value>
   </data>
 </root>
