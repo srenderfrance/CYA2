@@ -236,6 +236,75 @@ a, .btn-link {
     width: auto;
 }
 
+/* ------------------------------------------------------------
+   Radzen dialog visual style (match rollback dialog look)
+   ------------------------------------------------------------ */
+.rz-dialog {
+    border-radius: 8px !important;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3) !important;
+    overflow: hidden;
+    border: 0 !important;
+}
+
+.rz-dialog .rz-dialog-titlebar {
+    border-top-left-radius: 8px;
+    border-top-right-radius: 8px;
+}
+
+.rz-dialog .rz-dialog-content {
+    border-bottom-left-radius: 8px;
+    border-bottom-right-radius: 8px;
+}
+
+/* ------------------------------------------------------------
+   Radzen dialogs mobile behavior
+   ------------------------------------------------------------ */
+@media (max-width: 768px) {
+    .rz-dialog-wrapper {
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        padding: 0.5rem !important;
+    }
+
+    .rz-dialog {
+        position: relative !important;
+        top: auto !important;
+        left: auto !important;
+        transform: none !important;
+        width: 96vw !important;
+        max-width: 96vw !important;
+        max-height: 90vh !important;
+        margin: 0 !important;
+    }
+
+    .rz-dialog-content {
+        max-height: calc(90vh - 52px) !important;
+        overflow: auto !important;
+        padding: 0.75rem !important;
+    }
+
+    .rz-dialog-titlebar {
+        padding: 0.6rem 0.75rem !important;
+    }
+
+    .rz-dialog-title {
+        white-space: normal !important;
+        word-break: break-word;
+    }
+}
+
+/* Donors grid: keep readable column widths on narrow screens */
+.donors-grid-scroll {
+    width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+}
+
+.donors-data-grid {
+    min-width: 760px;
+}
+
 /* Expenses view toggle should stay same green in both states */
 .expenses-view-toggle.rz-button,
 .expenses-view-toggle.rz-button:hover,

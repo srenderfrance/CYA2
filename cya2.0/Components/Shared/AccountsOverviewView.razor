@@ -10,25 +10,22 @@
 @inject IFinancialDashboardService FinancialDashboardService
 @inject IJSRuntime JS
 
-<RadzenStack Orientation="Orientation.Vertical" Gap="1rem" Class="rz-p-3" Style="height:100%; overflow:auto;">
+<RadzenStack Orientation="Orientation.Vertical" Gap="1rem" Class="rz-p-3 accounts-overview-root" Style="overflow:auto;">
     <RadzenStack Orientation="Orientation.Horizontal"
                  Gap="1rem"
                  AlignItems="AlignItems.Center"
-                 JustifyContent="JustifyContent.SpaceBetween">
+                 JustifyContent="JustifyContent.SpaceBetween"
+                 Class="accounts-overview-toolbar">
         <!-- Left: current view label -->
         <RadzenText TextStyle="TextStyle.Subtitle1">
             @(showDonations12m ? Localizer["TotalDonationsLTM"] : Localizer["CurrentBalance"])
         </RadzenText>
 
         <!-- Right: actions -->
-        <RadzenStack Orientation="Orientation.Horizontal" Gap="0.5rem" AlignItems="AlignItems.Center">
-            <RadzenButton Text="@Localizer["CopyTable"]"
-                          Icon="content_copy"
-                          ButtonStyle="ButtonStyle.Primary"
-                          Style="background-color: #0a3b6b; border-color: #0a3b6b;"
-                          Click="CopyTableAsync" />
+        <RadzenStack Orientation="Orientation.Horizontal" Gap="0.5rem" AlignItems="AlignItems.Center" Class="accounts-overview-actions">
             <RadzenButton Text="@(showDonations12m ? Localizer["CurrentBalance"] : Localizer["TotalDonationsLTM"])"
                           ButtonStyle="ButtonStyle.Primary"
+                          Class="accounts-overview-btn"
                           Click="@(() => { showDonations12m = !showDonations12m; })" />
         </RadzenStack>
     </RadzenStack>
@@ -60,14 +57,76 @@
             </Columns>
         </RadzenDataGrid>
     </RadzenCard>
-    <div class="text-muted mt-2" style="font-size:.85rem">
-        @Localizer["LoadedAccounts"]: @fundBalances.Count
-        @if (!financialsLoaded)
-        {
-            <span class="ms-2">@Localizer["CalculatingDonations"]…</span>
-        }
+    <div class="text-muted mt-2 accounts-overview-footer" style="font-size:.85rem">
+        <div>
+            @if (!financialsLoaded)
+            {
+                <span>@Localizer["CalculatingDonations"]…</span>
+            }
+        </div>
+        <div class="accounts-overview-footer-actions">
+            <RadzenButton Text="@Localizer["CopyTable"]"
+                          Icon="content_copy"
+                          ButtonStyle="ButtonStyle.Primary"
+                          Class="accounts-overview-btn"
+                          Style="background-color: #0a3b6b; border-color: #0a3b6b;"
+                          Click="CopyTableAsync" />
+        </div>
     </div>
 </RadzenStack>
+
+<style>
+    .accounts-overview-root {
+        max-height: 100%;
+    }
+
+    .accounts-overview-footer {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.75rem;
+    }
+
+    .accounts-overview-footer-actions {
+        margin-left: auto;
+        display: flex;
+        justify-content: flex-end;
+    }
+
+    @@media (max-width: 768px) {
+        .accounts-overview-toolbar {
+            flex-direction: column !important;
+            align-items: stretch !important;
+            gap: 0.5rem !important;
+        }
+
+        .accounts-overview-actions {
+            width: 100%;
+            flex-direction: column !important;
+            align-items: stretch !important;
+            gap: 0.5rem !important;
+        }
+
+        .accounts-overview-btn {
+            width: 100%;
+            justify-content: center;
+            white-space: normal;
+            text-align: center;
+            height: auto;
+            line-height: 1.2;
+        }
+
+        .accounts-overview-footer {
+            flex-wrap: wrap;
+            align-items: center;
+        }
+
+        .accounts-overview-footer-actions {
+            margin-left: auto;
+            width: auto;
+        }
+    }
+</style>
 
 @code {
     private string errorMessage = string.Empty;

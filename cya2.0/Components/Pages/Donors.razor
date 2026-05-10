@@ -188,30 +188,32 @@
                     </div>
                 </div>
 
-                <RadzenDataGrid TItem="DonorSummaryDto" Data="@donorsInRange" Style="width:100%;" RowSelect="@(async (args) => await OnDonorRowSelect(args))">
+                <div class="donors-grid-scroll">
+                <RadzenDataGrid TItem="DonorSummaryDto" Data="@donorsInRange" Class="donors-data-grid" Style="width:100%;" RowSelect="@(async (args) => await OnDonorRowSelect(args))">
                     <Columns>
-                        <RadzenDataGridColumn TItem="DonorSummaryDto" Property="Name" Title="@Localizer["Donor"]" />
+                        <RadzenDataGridColumn TItem="DonorSummaryDto" Property="Name" Title="@Localizer["Donor"]" Width="220px" />
                         @if (showEmail)
                         {
-                            <RadzenDataGridColumn TItem="DonorSummaryDto" Property="Email" Title="@Localizer["Email"]" />
+                            <RadzenDataGridColumn TItem="DonorSummaryDto" Property="Email" Title="@Localizer["Email"]" Width="260px" />
                         }
                         @if (showPhone)
                         {
-                            <RadzenDataGridColumn TItem="DonorSummaryDto" Property="PhoneSummary" Title="@Localizer["Phone"]" />
+                            <RadzenDataGridColumn TItem="DonorSummaryDto" Property="PhoneSummary" Title="@Localizer["Phone"]" Width="180px" />
                         }
                         @if (showAddress)
                         {
-                            <RadzenDataGridColumn TItem="DonorSummaryDto" Property="AddressSummary" Title="@Localizer["Address"]" />
+                            <RadzenDataGridColumn TItem="DonorSummaryDto" Property="AddressSummary" Title="@Localizer["Address"]" Width="300px" />
                         }
                         @if (showTotal)
                         {
-                            <RadzenDataGridColumn TItem="DonorSummaryDto" Property="Total" Title="@Localizer["TotalGiven"]" FormatString="{0:C2}" />
+                            <RadzenDataGridColumn TItem="DonorSummaryDto" Property="Total" Title="@Localizer["TotalGiven"]" FormatString="{0:C2}" Width="140px" />
                         }
-                        <RadzenDataGridColumn TItem="DonorSummaryDto" Title="@Localizer["Frequency"]">
+                        <RadzenDataGridColumn TItem="DonorSummaryDto" Title="@Localizer["Frequency"]" Width="130px">
                             <Template Context="d">@GetFrequencyLabel(d.Frequency)</Template>
                         </RadzenDataGridColumn>
                     </Columns>
                 </RadzenDataGrid>
+                </div>
             </RadzenCard>
         </div>
 

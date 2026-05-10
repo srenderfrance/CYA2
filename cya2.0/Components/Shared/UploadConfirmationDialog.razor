@@ -3,7 +3,7 @@
 @inject DialogService DialogService
 @inject IStringLocalizer<Resource> Localizer
 
-<RadzenCard Style="padding: 1.5rem; min-width: 400px; max-width: 520px;">
+<RadzenCard Class="upload-confirm-dialog-card" Style="padding: 1rem; width:100%; max-width:100%; box-sizing:border-box;">
     <RadzenStack Orientation="Orientation.Vertical" Gap="1rem">
         <RadzenText TextStyle="TextStyle.H6">Confirm File Upload</RadzenText>
 
@@ -22,7 +22,7 @@
             This file will be used to update the database. Are you sure this is the correct file?
         </RadzenText>
 
-        <RadzenStack Orientation="Orientation.Horizontal" JustifyContent="JustifyContent.End" Gap="0.75rem">
+        <RadzenStack Orientation="Orientation.Horizontal" JustifyContent="JustifyContent.End" Gap="0.75rem" Class="upload-confirm-actions">
             <RadzenButton Text="Cancel" ButtonStyle="ButtonStyle.Light" Click="@(() => DialogService.Close(false))" />
             <RadzenButton Text="Confirm"
                           ButtonStyle="ButtonStyle.Primary"
@@ -31,6 +31,26 @@
         </RadzenStack>
     </RadzenStack>
 </RadzenCard>
+
+<style>
+    .upload-confirm-dialog-card {
+        min-width: 0 !important;
+    }
+
+    @@media (max-width: 768px) {
+        .upload-confirm-actions {
+            flex-direction: column !important;
+            align-items: stretch !important;
+        }
+
+        .upload-confirm-actions .rz-button {
+            width: 100%;
+            justify-content: center;
+            white-space: normal;
+            text-align: center;
+        }
+    }
+</style>
 
 @code {
     [Parameter] public FilePreviewResult? Preview { get; set; }

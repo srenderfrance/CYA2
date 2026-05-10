@@ -126,7 +126,7 @@
     }
 }
 
-<div style="padding:1rem; min-width: 420px;">
+<div class="upload-progress-dialog-root" style="padding:0.75rem; width:100%; min-width:0; box-sizing:border-box; overflow-x:hidden;">
     <RadzenStack Orientation="Orientation.Vertical" Gap="0.75rem">
         <RadzenText TextStyle="TextStyle.Subtitle2">@GetDialogTitle()</RadzenText>
         
@@ -135,7 +135,7 @@
             @if (_p.ExpectedRows > 0 && _p.Steps.Any(s => s.Name == "Data Import" && s.IsActive))
             {
                 <RadzenProgressBar Value="@Percent" Max="100" ShowValue="true" />
-                <div style="display: flex; justify-content: space-between; font-size: 0.9em; margin-top: 0.5rem;">
+                <div class="upload-progress-metrics" style="display: flex; justify-content: space-between; font-size: 0.9em; margin-top: 0.5rem;">
                     <span>@GetLocalizedString("Rows", "Rows"): @_p.TotalRows / @_p.ExpectedRows</span>
                     <span>@GetLocalizedString("Inserted", "Inserted"): @_p.InsertedRows</span>
                     <span>@GetLocalizedString("Failed", "Failed"): @_p.FailedRows</span>
@@ -286,7 +286,7 @@
         </div>
         
         @* Action buttons *@
-        <div style="display:flex; justify-content:flex-end; padding-top: .5rem;">
+        <div class="upload-progress-actions" style="display:flex; justify-content:flex-end; padding-top: .5rem;">
             @if (_p.IsComplete)
             {
                 <RadzenButton Text="@GetLocalizedString("Done", "Done")" ButtonStyle="ButtonStyle.Success" Click="@(() => DialogService.Close(true))" />
@@ -298,6 +298,30 @@
         </div>
     </RadzenStack>
 </div>
+
+<style>
+    .upload-progress-dialog-root {
+        min-width: 0 !important;
+    }
+
+    @@media (max-width: 768px) {
+        .upload-progress-metrics {
+            flex-wrap: wrap;
+            gap: 0.25rem 0.75rem;
+        }
+
+        .upload-progress-actions {
+            justify-content: stretch;
+        }
+
+        .upload-progress-actions .rz-button {
+            width: 100%;
+            justify-content: center;
+            white-space: normal;
+            text-align: center;
+        }
+    }
+</style>
 
 @code {
     private ImportStepDto? GetStep(string stepName)

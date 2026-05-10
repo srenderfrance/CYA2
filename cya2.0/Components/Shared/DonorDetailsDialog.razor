@@ -4,7 +4,7 @@
 @inject IStringLocalizer<Resource> Localizer
 @inject IJSRuntime JS
 
-<RadzenCard Style="padding: 1.5rem; min-width: 500px; max-width: 600px;">
+<RadzenCard Class="donor-details-dialog-card" Style="padding: 1rem; min-width: 0; max-width: 100%; box-sizing: border-box;">
     <RadzenStack Orientation="Orientation.Vertical" Gap="1rem">
         <!-- Use the shared DonorInfoDisplay component for contact information only -->
         <DonorInfoDisplay DonorName="@DonorName"
@@ -28,6 +28,18 @@
         </div>
     </RadzenStack>
 </RadzenCard>
+
+<style>
+    .donor-details-dialog-card {
+        width: 100%;
+    }
+
+    @@media (max-width: 640px) {
+        .donor-details-dialog-card {
+            padding: 0.75rem !important;
+        }
+    }
+</style>
 
 @code {
     [Parameter] public string DonorName { get; set; } = string.Empty;
