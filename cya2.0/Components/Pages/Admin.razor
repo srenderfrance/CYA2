@@ -33,9 +33,16 @@
 
 <RadzenStack Orientation="Orientation.Vertical" Gap="1rem" Class="rz-pt-0 rz-px-4 rz-pb-4">
     <!-- Top row: accounts buttons on the left, upload buttons on the right -->
-    <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" JustifyContent="JustifyContent.SpaceBetween" Gap="1rem" Class="rz-mb-3">
+    <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" JustifyContent="JustifyContent.SpaceBetween" Gap="1rem" Class="rz-mb-3 admin-top-row">
+        <RadzenButton Icon="menu"
+                      ButtonStyle="ButtonStyle.Light"
+                      Class="admin-toolbar-toggle"
+                      Click="@(() => showAdminToolbarButtons = !showAdminToolbarButtons)"
+                      title="Toggle admin actions" />
+
+        <div class="admin-top-actions @(showAdminToolbarButtons ? "expanded" : "collapsed")">
         <!-- Left group: existing account dialogs -->
-        <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="1rem">
+        <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="1rem" Class="admin-top-left">
             <RadzenButton Text="@Localizer["AccountsOverview"]"
                           ButtonStyle="ButtonStyle.Primary"
                           Style="background-color: #0a3b6b; border-color: #0a3b6b;"
@@ -48,7 +55,7 @@
         </RadzenStack>
 
         <!-- Right group: upload controls -->
-        <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="0.75rem">
+        <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="0.75rem" Class="admin-top-right">
             <!-- NOTE: No size limit for now. TODO: enforce a sensible max file size. -->
             <div style="display:flex; align-items:center; gap:0.5rem;">
                 <InputFile id="donationFileInput" style="display:none" OnChange="OnDonationInputFileChange" accept=".xlsx" />
@@ -68,13 +75,15 @@
             <RadzenButton Text="@Localizer["RollbackLastUpdate"]"
                           ButtonStyle="ButtonStyle.Danger"
                           Icon="history"
+                          Class="admin-rollback-btn"
                           Click="@(async () => await OpenRollbackDialog())" />
 
             @* <RadzenButton Text="@GetLocalizedString("RecategorizeDonations", "Recategorize Donations")"
                           ButtonStyle="ButtonStyle.Light"
                           Icon="cleaning_services"
                           Click="@(async () => await RecategorizeAllDonations())" /> *@
-       </RadzenStack>
+        </RadzenStack>
+        </div>
     </RadzenStack>
 
     <!-- CSS Grid container for equal width cards -->
@@ -85,11 +94,11 @@
                 <RadzenText TextStyle="TextStyle.H5" Style="font-weight: 800; color: #1f2937;">@Localizer["ManageFundraisingAccounts"]</RadzenText>
             </RadzenStack>
 
-            <div style="width:100%; max-width:900px;">
+            <div class="admin-form-shell" style="width:100%; max-width:900px;">
                 <RadzenStack Orientation="Orientation.Vertical" Gap="0.75rem">
                     <!-- Toggle row (no special bottom margin so it matches other rows) -->
-                    <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="2rem">
-                        <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="0.5rem" Style="width: 220px;">
+                    <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="2rem" Class="admin-form-row admin-form-first-row">
+                        <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="0.5rem" Style="width: 220px;" Class="admin-form-label">
                             <RadzenText TextStyle="TextStyle.Subtitle2" Class="admin-label" Style="font-weight: bold;">@(createSubFund ? Localizer["CreateSecondaryFund"] : Localizer["CreatePrimaryFund"])</RadzenText>
                         </RadzenStack>
                         <div style="flex: 1; display:flex; align-items:center;">
@@ -100,8 +109,8 @@
                     @if (!createSubFund)
                     {
                         <!-- Fundraising Account selector -->
-                        <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="2rem">
-                            <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="0.5rem" Style="width:220px;">
+                        <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="2rem" Class="admin-form-row">
+                            <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="0.5rem" Style="width:220px;" Class="admin-form-label">
                                 <RadzenText TextStyle="TextStyle.Subtitle2" Class="admin-label" Style="font-weight: bold; margin:0;">@Localizer["FundraisingAccount"]</RadzenText>
                             </RadzenStack>
                             <RadzenFormField Variant="Variant.Outlined" Style="flex: 1;">
@@ -116,8 +125,8 @@
                         </RadzenStack>
 
                         <!-- Fund Number -->
-                        <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="2rem">
-                            <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="0.5rem" Style="width: 220px;">
+                        <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="2rem" Class="admin-form-row">
+                            <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="0.5rem" Style="width: 220px;" Class="admin-form-label">
                                 <RadzenText TextStyle="TextStyle.Subtitle2" Class="admin-label" Style="font-weight: bold;">@Localizer["AccountNumber"]</RadzenText>
                                 <i @ref="accountNumberIcon" class="bi bi-exclamation-circle" style="cursor: help; color: #dc3545;" 
                                    @onmouseenter="@(() => ShowAccountNumberTooltip(accountNumberIcon))"
@@ -129,8 +138,8 @@
                         </RadzenStack>
 
                         <!-- Fund Name -->
-                        <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="2rem">
-                            <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="0.5rem" Style="width: 220px;">
+                        <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="2rem" Class="admin-form-row">
+                            <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="0.5rem" Style="width: 220px;" Class="admin-form-label">
                                 <RadzenText TextStyle="TextStyle.Subtitle2" Class="admin-label" Style="font-weight: bold;">@Localizer["Fund"]</RadzenText>
                                 <i @ref="fundIcon" class="bi bi-exclamation-circle" style="cursor: help; color: #dc3545;" 
                                    @onmouseenter="@(() => ShowFundTooltip(fundIcon))"
@@ -142,8 +151,8 @@
                         </RadzenStack>
 
                         <!-- Account Reference -->
-                        <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="2rem">
-                            <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="0.5rem" Style="width: 220px;">
+                        <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="2rem" Class="admin-form-row">
+                            <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="0.5rem" Style="width: 220px;" Class="admin-form-label">
                                 <RadzenText TextStyle="TextStyle.Subtitle2" Class="admin-label" Style="font-weight: bold;">@Localizer["Class"]</RadzenText>
                                 <i @ref="classIcon" class="bi bi-exclamation-circle" style="cursor: help; color: #dc3545;" 
                                    @onmouseenter="@(() => ShowClassTooltip(classIcon))"
@@ -155,7 +164,7 @@
                         </RadzenStack>
 
                         <!-- Overhead (stored as whole-number percent, e.g. 12.00 => 12%) -->
-                        <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="2rem">
+                        <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="2rem" Class="admin-form-row">
                             <RadzenText TextStyle="TextStyle.Subtitle2" Class="admin-label" Style="font-weight: bold; width: 220px;">@Localizer["Overhead"]</RadzenText>
                             <RadzenFormField Variant="Variant.Outlined" Style="flex: 1;">
                                 <RadzenNumeric TValue="decimal?"
@@ -167,7 +176,7 @@
                         </RadzenStack>
 
                         <!-- Soft Credit -->
-                        <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="2rem">
+                        <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="2rem" Class="admin-form-row">
                             <RadzenText TextStyle="TextStyle.Subtitle2" Class="admin-label" Style="font-weight: bold; width: 220px;">@Localizer["SoftCredit"]</RadzenText>
                             <RadzenFormField Variant="Variant.Outlined" Style="flex: 1;">
                                 <RadzenTextBox @bind-Value="@softCredit" Placeholder="@Localizer["SoftCredit"]" />
@@ -175,7 +184,7 @@
                         </RadzenStack>
 
                         <!-- Balance Adjustment -->
-                        <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="2rem">
+                        <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="2rem" Class="admin-form-row">
                             <RadzenText TextStyle="TextStyle.Subtitle2" Class="admin-label" Style="font-weight: bold; width: 220px;">@Localizer["BalanceAdjustment"]</RadzenText>
                             <RadzenFormField Variant="Variant.Outlined" Style="flex: 1;">
                                 <RadzenNumeric TValue="decimal?" @bind-Value="@balanceAdjustment" Placeholder="0.00" Format="C" />
@@ -183,7 +192,7 @@
                         </RadzenStack>
 
                         <!-- Has Secondary Fund indicator -->
-                        <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="2rem">
+                        <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="2rem" Class="admin-form-row">
                             <RadzenText TextStyle="TextStyle.Subtitle2" Class="admin-label" Style="font-weight: bold; width: 220px;">@Localizer["HasSecondaryFund"]</RadzenText>
                             <div style="flex: 1; display: flex; align-items: center; padding: 0.5rem;">
                                 @if (HasSecondaryFunds)
@@ -203,7 +212,7 @@
                         <RadzenStack Orientation="Orientation.Vertical" Gap="0.75rem">
                             <!-- Existing Secondary Funds selector + editor -->
                             <RadzenStack Orientation="Orientation.Vertical" Gap="1rem">
-                                <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="2rem">
+                                <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="2rem" Class="admin-form-row">
                                     <RadzenText TextStyle="TextStyle.Subtitle2" Class="admin-label" Style="font-weight: bold; width: 220px;">@Localizer["SecondaryFunds"]</RadzenText>
                                     <RadzenFormField Variant="Variant.Outlined" Style="flex: 1;">
                                         <CustomDropdown TItem="SubAccount" TValue="int"
@@ -218,7 +227,7 @@
 
                                 <!-- Principle Fund Selection -->
                                 <RadzenStack Orientation="Orientation.Vertical" Gap="1rem">
-                                    <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="2rem">
+                                    <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="2rem" Class="admin-form-row">
                                         <RadzenText TextStyle="TextStyle.Subtitle2" Class="admin-label" Style="font-weight: bold; width: 220px;">@Localizer["PrimaryAccount"]</RadzenText>
                                         <RadzenFormField Variant="Variant.Outlined" Style="flex: 1;">
                                             <CustomDropdown TItem="Account" TValue="int"
@@ -243,7 +252,7 @@
                             </RadzenStack>
 
                              <!-- Sub Fund Name -->
-                             <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="2rem">
+                             <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="2rem" Class="admin-form-row">
                                  <RadzenText TextStyle="TextStyle.Subtitle2" Class="admin-label" Style="font-weight: bold; width: 220px;">@Localizer["Fund"]</RadzenText>
                                  <RadzenFormField Variant="Variant.Outlined" Style="flex: 1;">
                                     <RadzenTextBox @bind-Value="subAccountNameEdit" Placeholder="@Localizer["Fund"]" />
@@ -251,7 +260,7 @@
                              </RadzenStack>
 
                              <!-- Type (Kind) -->
-                             <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="2rem">
+                             <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="2rem" Class="admin-form-row">
                                  <RadzenText TextStyle="TextStyle.Subtitle2" Class="admin-label" Style="font-weight: bold; width: 220px;">@Localizer["Type"]</RadzenText>
                                  <RadzenFormField Variant="Variant.Outlined" Style="flex: 1;">
                                      <div style="width:100%;">
@@ -294,27 +303,27 @@
             @if (!createSubFund)
             {
                 <!-- Primary Account Management Buttons -->
-                <div class="admin-fund-actions">
+                <div class="admin-fund-actions admin-action-row">
                     <RadzenButton 
                         Text="@Localizer["UpdateAccount"]" 
                         ButtonStyle="ButtonStyle.Primary" 
+                        Class="admin-action-btn"
                         Click="UpdateFund" 
-                        Disabled="@(string.IsNullOrEmpty(selectedFund) || IsAddNewAccountSelected)"
-                        Style="margin-right: 1rem;" />
+                        Disabled="@(string.IsNullOrEmpty(selectedFund) || IsAddNewAccountSelected)" />
                         
                     <RadzenButton 
                         Text="@Localizer["AddNewAccount"]" 
                         ButtonStyle="ButtonStyle.Primary" 
+                        Class="admin-action-btn"
                         Click="@(async () => await AddNewFund())" 
-                        Disabled="@(!IsAddNewAccountSelected)"
-                        Style="margin-right: 1rem;" />
+                        Disabled="@(!IsAddNewAccountSelected)" />
                         
                     <RadzenButton 
                         Text="@Localizer["DeleteAccount"]" 
                         ButtonStyle="ButtonStyle.Danger" 
+                        Class="admin-action-btn"
                         Click="@(async () => await ConfirmDeleteFund(selectedFund ?? string.Empty))"
-                        Disabled="@(string.IsNullOrEmpty(selectedFund) || IsAddNewAccountSelected)"
-                        Style="width: fit-content;" />
+                        Disabled="@(string.IsNullOrEmpty(selectedFund) || IsAddNewAccountSelected)" />
                 </div>
             }
         </RadzenCard>
@@ -325,9 +334,9 @@
                 <RadzenText TextStyle="TextStyle.H5" Style="font-weight: 800; color: #1f2937;">@Localizer["ManageUsers"]</RadzenText>
             </RadzenStack>
 
-            <RadzenStack Orientation="Orientation.Horizontal" Gap="2rem" Class="rz-mb-2">
+            <RadzenStack Orientation="Orientation.Horizontal" Gap="2rem" Class="rz-mb-2 admin-users-row">
                 <!-- User + Name group -->
-                <RadzenStack Orientation="Orientation.Vertical" Gap="1rem" Style="width: 20%;">
+                <RadzenStack Orientation="Orientation.Vertical" Gap="1rem" Style="width: 20%;" Class="admin-user-col">
                     <div style="border:1px solid #e0e0e0; border-radius:6px; padding:0.75rem; background:#fff;">
                         <RadzenStack Orientation="Orientation.Vertical" Gap="0.75rem">
                             <RadzenText TextStyle="TextStyle.Subtitle2" Style="font-weight: bold; margin:0;">@Localizer["Name"]</RadzenText>
@@ -346,7 +355,7 @@
                 </RadzenStack>
                 
                 <!-- Email group  -->
-                <RadzenStack Orientation="Orientation.Vertical" Gap="1rem" Style="width: 20%;">
+                <RadzenStack Orientation="Orientation.Vertical" Gap="1rem" Style="width: 20%;" Class="admin-user-col">
                     <div style="border:1px solid #e0e0e0; border-radius:6px; padding:0.75rem; background:#fff;">
                         <RadzenStack Orientation="Orientation.Vertical" Gap="0.75rem">
                             <RadzenText TextStyle="TextStyle.Subtitle2" Style="font-weight: bold; margin:0;">@Localizer["Email"]</RadzenText>
@@ -359,7 +368,7 @@
                 </RadzenStack>
 
                 <!-- Authorization Level group -->
-                <RadzenStack Orientation="Orientation.Vertical" Gap="1rem" Style="width: 20%;">
+                <RadzenStack Orientation="Orientation.Vertical" Gap="1rem" Style="width: 20%;" Class="admin-user-col">
                     <div style="border:1px solid #e0e0e0; border-radius:6px; padding:0.75rem; background:#fff;">
                         <RadzenStack Orientation="Orientation.Vertical" Gap="0.75rem">
                             <RadzenText TextStyle="TextStyle.Subtitle2" Style="font-weight: bold; margin:0;">@Localizer["AuthLevel"]</RadzenText>
@@ -374,7 +383,7 @@
                 </RadzenStack>
                 
                 <!-- Fund Access dropdowns group -->
-                <RadzenStack Orientation="Orientation.Vertical" Gap="1rem" Style="width: 20%;">
+                <RadzenStack Orientation="Orientation.Vertical" Gap="1rem" Style="width: 20%;" Class="admin-user-col">
                     <div style="border:1px solid #e0e0e0; border-radius:6px; padding:0.75rem; background:#fff;">
                         <RadzenStack Orientation="Orientation.Vertical" Gap="0.75rem">
                             <RadzenText TextStyle="TextStyle.Subtitle2" Style="font-weight: bold; margin:0;">@Localizer["FundAccess"]</RadzenText>
@@ -389,7 +398,7 @@
                 </RadzenStack>
                 
                 <!-- Accessible Funds display group -->
-                <RadzenStack Orientation="Orientation.Vertical" Gap="1rem" Style="width: 20%;">
+                <RadzenStack Orientation="Orientation.Vertical" Gap="1rem" Style="width: 20%;" Class="admin-user-col">
                     <div style="border:1px solid #e0e0e0; border-radius:6px; padding:0.75rem; background:#fff;">
                         <RadzenStack Orientation="Orientation.Vertical" Gap="0.5rem">
                             <RadzenText TextStyle="TextStyle.Subtitle2" Style="font-weight: bold; margin:0;">@Localizer["CurrentFundAccess"]</RadzenText>
@@ -454,27 +463,27 @@
             }
             
             <!-- Update and Add buttons -->
-            <div style="margin-top: 1rem;">
+            <div class="admin-action-row" style="margin-top: 1rem;">
                 <RadzenButton 
                     Text="@Localizer["UpdateUser"]" 
                     ButtonStyle="ButtonStyle.Primary" 
+                    Class="admin-action-btn"
                     Click="UpdateStaffMember" 
-                    Disabled="@(string.IsNullOrEmpty(staffMember) || IsAddNewSelected)"
-                    Style="margin-right: 1rem;" />
+                    Disabled="@(string.IsNullOrEmpty(staffMember) || IsAddNewSelected)" />
                     
                 <RadzenButton 
                     Text="@Localizer["AddNewUser"]" 
                     ButtonStyle="ButtonStyle.Primary" 
+                    Class="admin-action-btn"
                     Click="@(async () => await AddNewStaffMember())" 
-                    Disabled="@(!IsAddNewSelected)"
-                    Style="margin-right: 1rem;" />
+                    Disabled="@(!IsAddNewSelected)" />
                     
                 <RadzenButton 
                     Text="@Localizer["DeleteUser"]" 
                     ButtonStyle="ButtonStyle.Danger" 
+                    Class="admin-action-btn"
                     Click="@(async () => await ConfirmDelete(staffMember ?? string.Empty))"
-                    Disabled="@(string.IsNullOrEmpty(staffMember) || IsAddNewSelected)"
-                    Style="width: fit-content;" />
+                    Disabled="@(string.IsNullOrEmpty(staffMember) || IsAddNewSelected)" />
             </div>
         </RadzenCard>
     </div>
@@ -483,7 +492,7 @@
     @if (showRollbackDialog)
     {
         <div style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 10000; display: flex; align-items: center; justify-content: center;">
-            <RadzenCard Style="min-width: 500px; max-width: 600px; padding: 2rem; background: white; border-radius: 8px; box-shadow: 0 4px 20px rgba(0,0,0,0.3);">
+            <RadzenCard Class="admin-rollback-dialog" Style="width:min(96vw, 600px); min-width:0; max-width:96vw; padding: 1rem; background: white; border-radius: 8px; box-shadow: 0 4px 20px rgba(0,0,0,0.3); box-sizing:border-box;">
                 <RadzenStack Orientation="Orientation.Vertical" Gap="1.5rem">
                     <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="1rem">
                         <i class="bi bi-clock-history" style="font-size: 1.5rem; color: #dc3545;"></i>
@@ -600,7 +609,7 @@
                 var confirmed = await DialogService.OpenAsync<UploadConfirmationDialog>(
                     title: Localizer["ConfirmUpload"],
                     parameters: new Dictionary<string, object?> { { "Preview", preview } },
-                    options: new DialogOptions { Width = "520px", Height = "auto", Resizable = false, ShowClose = true });
+                    options: BuildAdminDialogOptions(width: "520px", height: "auto", resizable: false, showClose: true));
 
                 if (confirmed is bool b && b)
                 {
@@ -640,7 +649,7 @@
                     title: Localizer["UploadInProgress"],
                     // Do not pass ProgressId here - the dialog will pick it up from SessionImportProgressService.ImportProgressIdChanged
                     parameters: new Dictionary<string, object?>(),
-                    options: new DialogOptions { Width = "800px", Height = "auto", Resizable = false, ShowClose = false });
+                    options: BuildAdminDialogOptions(width: "800px", height: "auto", resizable: false, showClose: false));
                 // Let the UI render the dialog and let the dialog component initialize and start polling
                 await InvokeAsync(StateHasChanged);
 
@@ -857,6 +866,7 @@
 
         // Rollback functionality placeholders
         private bool showRollbackDialog = false;
+        private bool showAdminToolbarButtons = false;
         private string rollbackTarget = string.Empty; // "donations", "accounting", "both"
         private string rollbackStatus = string.Empty;
         private string rollbackError = string.Empty;
@@ -1244,7 +1254,7 @@
                 var confirmed = await DialogService.OpenAsync<RollbackConfirmDialog>(
                     GetLocalizedString("DeleteUser", "Delete User"),
                     new Dictionary<string, object?> { { "Message", message } },
-                    new DialogOptions { Width = "420px", CloseDialogOnOverlayClick = false });
+                    BuildAdminDialogOptions(width: "420px", closeDialogOnOverlayClick: false));
 
                 if (confirmed != true)
                     return;
@@ -1303,7 +1313,7 @@
                 var confirmed = await DialogService.OpenAsync<RollbackConfirmDialog>(
                     GetLocalizedString("DeleteAccount", "Delete Account"),
                     new Dictionary<string, object?> { { "Message", message } },
-                    new DialogOptions { Width = "420px", CloseDialogOnOverlayClick = false });
+                    BuildAdminDialogOptions(width: "420px", closeDialogOnOverlayClick: false));
 
                 if (confirmed != true)
                     return;
@@ -1642,32 +1652,35 @@
             }
         }
 
+        private static DialogOptions BuildAdminDialogOptions(
+            string width,
+            string height = "auto",
+            bool resizable = false,
+            bool showClose = true,
+            bool closeDialogOnOverlayClick = true)
+            => new DialogOptions
+            {
+                Width = width,
+                Height = height,
+                Resizable = resizable,
+                ShowClose = showClose,
+                Draggable = false,
+                CloseDialogOnOverlayClick = closeDialogOnOverlayClick,
+                Style = "max-width:96vw; max-height:90vh;"
+            };
+
         private async Task OpenAccountsOverviewDialog()
         {
             await DialogService.OpenAsync<AccountsOverviewView>(
                 title: Localizer["AccountsOverview"],
-                options: new DialogOptions
-                {
-                    Width = "90vw",
-                    Height = "85vh",
-                    Resizable = true,
-                    Draggable = false,
-                    Style = "position:fixed; top:50%; left:50%; transform:translate(-50%,-50%); max-width:none;"
-                });
+                options: BuildAdminDialogOptions(width: "90vw", height: "auto", resizable: true, showClose: true));
         }
 
         private async Task OpenAccountSummariesDialog()
         {
             await DialogService.OpenAsync<AccountSummariesView>(
                 title: Localizer["AccountSummaries"],
-                options: new DialogOptions
-                {
-                    Width = "90vw",
-                    Height = "90vh",
-                    Resizable = true,
-                    Draggable = false,
-                    Style = "position:fixed; top:50%; left:50%; transform:translate(-50%,-50%); max-width:none;"
-                });
+                options: BuildAdminDialogOptions(width: "90vw", height: "auto", resizable: true, showClose: true));
         }
 
         // Tooltip methods
@@ -1795,7 +1808,7 @@
                 var confirmed = await DialogService.OpenAsync<RollbackConfirmDialog>(
                     title,
                     new Dictionary<string, object?> { { "Message", message } },
-                    new DialogOptions { Width = "520px", CloseDialogOnOverlayClick = false });
+                    BuildAdminDialogOptions(width: "520px", closeDialogOnOverlayClick: false));
 
                 if (confirmed != true)
                     return;
@@ -1856,7 +1869,7 @@
                 var confirmed = await DialogService.OpenAsync<RollbackConfirmDialog>(
                     GetLocalizedString("ConfirmRollback", "Confirm Rollback"),
                     new Dictionary<string, object?> { { "Message", message } },
-                    new DialogOptions { Width = "420px", CloseDialogOnOverlayClick = false });
+                    BuildAdminDialogOptions(width: "420px", closeDialogOnOverlayClick: false));
 
                 // Restore the rollback overlay
                 if (wasDialogShowing)
@@ -2118,9 +2131,90 @@
             width: 100%;
         }
 
+        .admin-top-row {
+            align-items: center !important;
+        }
+
+        .admin-top-actions {
+            display: flex;
+            width: 100%;
+            flex: 1 1 auto;
+            justify-content: space-between;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .admin-top-left,
+        .admin-top-right {
+            flex-wrap: nowrap;
+        }
+
+        .admin-toolbar-toggle {
+            display: none;
+            min-width: 38px;
+            height: 38px;
+        }
+
+        .admin-rollback-btn {
+            flex: 0 0 auto;
+            white-space: nowrap;
+        }
+
+        .admin-form-shell {
+            width: 100%;
+            max-width: 900px;
+        }
+
+        .admin-form-row {
+            width: 100%;
+            gap: 0.75rem !important;
+        }
+
+        .admin-form-first-row {
+            margin-top: 0.75rem;
+        }
+
+        .admin-form-label {
+            width: 180px;
+            min-width: 180px;
+        }
+
+        .admin-form-row .rz-form-field {
+            flex: 1 1 auto;
+            min-width: 260px;
+        }
+
+        .admin-users-row {
+            flex-wrap: wrap !important;
+        }
+
+        .admin-user-col {
+            min-width: 260px;
+            flex: 1 1 260px;
+            max-width: none !important;
+            width: auto !important;
+        }
+
+        .admin-rollback-dialog {
+            width: min(96vw, 600px);
+            max-width: 96vw;
+        }
+
         /* Increase spacing above the fundraising action buttons */
         .admin-fund-actions {
             margin-top: 3rem;
+        }
+
+        .admin-action-row {
+            display: flex;
+            gap: 1rem;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+
+        .admin-action-btn {
+            width: 170px;
+            justify-content: center;
         }
 
         /* Increase label text size across the admin page */
@@ -2178,5 +2272,187 @@
 
         .boolean-indicator-text {
             display: none !important; /* Hide the Yes/No text labels */
+        }
+
+        @@media (max-width: 992px) {
+            .admin-form-label,
+            .admin-label[style*="width: 220px"] {
+                width: 100% !important;
+                min-width: 0;
+            }
+
+            .admin-form-row {
+                flex-direction: column !important;
+                align-items: stretch !important;
+                gap: 0.4rem !important;
+            }
+
+            .admin-form-row > .rz-form-field,
+            .admin-form-row > div,
+            .admin-form-row .rz-form-field {
+                width: 100% !important;
+                min-width: 0 !important;
+                flex: 0 0 auto !important;
+            }
+
+            .admin-form-row .custom-dropdown,
+            .admin-form-row .custom-dropdown-toggle,
+            .admin-form-row .rz-textbox,
+            .admin-form-row .rz-inputtext,
+            .admin-form-row .rz-numeric,
+            .admin-form-row .rz-dropdown,
+            .admin-form-row .rz-autocomplete {
+                width: 100% !important;
+                min-width: 0 !important;
+            }
+
+            .admin-form-row .custom-dropdown {
+                min-width: 0 !important;
+                display: block !important;
+            }
+
+            .admin-users-row {
+                flex-direction: column !important;
+                align-items: stretch !important;
+                gap: 0.75rem !important;
+            }
+
+            .admin-user-col {
+                width: 100% !important;
+                min-width: 0 !important;
+                flex: 1 1 100% !important;
+            }
+        }
+
+        @@media (max-width: 768px) {
+            .admin-top-row {
+                gap: 0.75rem !important;
+                justify-content: flex-start !important;
+                align-items: flex-start !important;
+                flex-wrap: wrap;
+            }
+
+            .admin-toolbar-toggle {
+                display: inline-flex;
+            }
+
+            .admin-top-actions {
+                display: none;
+                width: 100%;
+                flex-direction: column !important;
+                align-items: stretch;
+                gap: 0.5rem;
+            }
+
+            .admin-top-actions.expanded {
+                display: flex;
+            }
+
+            .admin-top-left,
+            .admin-top-right {
+                width: 100%;
+                flex-direction: column !important;
+                align-items: stretch !important;
+                gap: 0.5rem !important;
+            }
+
+            .admin-top-right > div {
+                width: 100%;
+            }
+
+            .admin-top-left .rz-button,
+            .admin-top-right .rz-button,
+            .admin-top-right label.rz-button,
+            .admin-top-right .admin-rollback-btn {
+                width: 100% !important;
+                flex: 1 1 100% !important;
+                justify-content: center;
+                white-space: nowrap;
+                overflow: hidden;
+                text-overflow: ellipsis;
+            }
+
+            .admin-fund-actions {
+                margin-top: 1.25rem;
+                display: grid;
+                gap: 0.5rem;
+            }
+
+            .admin-fund-actions .rz-button {
+                width: 100%;
+                margin-right: 0 !important;
+            }
+
+            .admin-action-row {
+                display: grid;
+                gap: 0.5rem;
+            }
+
+            .admin-action-btn {
+                width: 100% !important;
+            }
+
+            .admin-form-row {
+                flex-direction: column !important;
+                align-items: stretch !important;
+                gap: 0.35rem !important;
+            }
+
+            .admin-form-label,
+            .admin-label[style*="width: 220px"] {
+                width: 100% !important;
+                min-width: 0;
+            }
+
+            .admin-form-row .rz-form-field,
+            .admin-form-row .rz-textbox,
+            .admin-form-row .rz-numeric,
+            .admin-form-row .rz-dropdown,
+            .admin-form-row .rz-autocomplete {
+                width: 100% !important;
+                min-width: 0;
+            }
+
+            .admin-form-row .custom-dropdown {
+                min-width: 0 !important;
+                display: block !important;
+            }
+
+            .admin-user-col {
+                flex: 1 1 100%;
+                min-width: 0;
+                width: 100% !important;
+            }
+
+            .admin-rollback-dialog {
+                width: 96vw;
+                max-width: 96vw;
+                padding: 0.75rem !important;
+            }
+        }
+
+        @@media (max-width: 520px) {
+            .admin-form-row {
+                flex-direction: column !important;
+                align-items: stretch !important;
+                gap: 0.35rem !important;
+            }
+
+            .admin-form-label,
+            .admin-label[style*="width: 220px"] {
+                width: 100% !important;
+                min-width: 0;
+            }
+
+            .admin-users-row {
+                flex-direction: column !important;
+                align-items: stretch !important;
+            }
+
+            .admin-user-col {
+                width: 100% !important;
+                min-width: 0 !important;
+                flex: 1 1 100% !important;
+            }
         }
     </style>
