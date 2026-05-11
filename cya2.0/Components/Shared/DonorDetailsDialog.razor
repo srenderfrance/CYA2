@@ -16,10 +16,11 @@
                          DonorState="@DonorState"
                          DonorPostal="@DonorPostal"
                          DonorCountry="@DonorCountry"
+                         AdditionalStyling="background-color:#f8f9fa; padding:0.75rem; border-radius:6px; row-gap:6px;"
                          AllowTextSelection="true" />
 
         <!-- Copy button moved to the bottom right -->
-        <div style="display: flex; justify-content: flex-end; margin-top: 0.5rem;">
+        <div class="donor-details-dialog-actions" style="display: flex; justify-content: flex-end; margin-top: 0.5rem;">
             <RadzenButton Icon="content_copy" 
                           Size="ButtonSize.Small" 
                           ButtonStyle="ButtonStyle.Light" 
@@ -37,6 +38,31 @@
     @@media (max-width: 640px) {
         .donor-details-dialog-card {
             padding: 0.75rem !important;
+        }
+    }
+
+    @@media (max-height: 520px) and (orientation: landscape) {
+        .donor-details-dialog-card {
+            padding: 0.5rem !important;
+        }
+
+        .donor-details-dialog-card .rz-stack {
+            gap: 0.5rem !important;
+        }
+
+        .donor-details-dialog-actions {
+            margin-top: 0 !important;
+        }
+
+        .donor-details-dialog-actions .rz-button {
+            height: 30px;
+            min-height: 30px;
+            padding: 0 0.5rem;
+            font-size: 0.8rem;
+        }
+
+        .donor-details-dialog-actions .rz-button .rz-button-text {
+            display: none;
         }
     }
 </style>

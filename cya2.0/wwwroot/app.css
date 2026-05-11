@@ -292,6 +292,53 @@ a, .btn-link {
         white-space: normal !important;
         word-break: break-word;
     }
+
+    .date-range-start-end-row {
+        flex-direction: column !important;
+        align-items: stretch !important;
+        width: 100%;
+        gap: 0.4rem !important;
+    }
+
+    .date-range-start-end-row > div {
+        width: 100%;
+        justify-content: space-between;
+    }
+
+    /* Radzen DatePicker popup: force viewport-fit on narrow screens */
+    .rz-datepicker-popup,
+    .rz-popup.rz-datepicker-popup,
+    .rz-popup .rz-datepicker,
+    .rz-popup .rz-calendar {
+        position: fixed !important;
+        left: 2vw !important;
+        right: 2vw !important;
+        width: auto !important;
+        max-width: 96vw !important;
+        box-sizing: border-box !important;
+        overflow: hidden !important;
+        background-color: #ffffff !important;
+        opacity: 1 !important;
+        z-index: 11000 !important;
+        border: 1px solid #d9dee5 !important;
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2) !important;
+    }
+
+    .rz-datepicker-popup .rz-calendar,
+    .rz-popup.rz-datepicker-popup .rz-calendar,
+    .rz-popup .rz-calendar {
+        width: 100% !important;
+        max-width: 100% !important;
+        background-color: #ffffff !important;
+        opacity: 1 !important;
+    }
+
+    .rz-datepicker-popup table,
+    .rz-popup.rz-datepicker-popup table,
+    .rz-popup .rz-calendar table {
+        width: 100% !important;
+        table-layout: fixed;
+    }
 }
 
 /* Donors grid: keep readable column widths on narrow screens */
@@ -315,4 +362,17 @@ a, .btn-link {
     background-color: var(--rz-primary) !important;
     border-color: var(--rz-primary) !important;
     color: #ffffff !important;
+}
+
+@media (max-width: 768px) {
+    .expenses-account-row {
+        flex-wrap: wrap !important;
+        align-items: stretch !important;
+    }
+
+    .expenses-account-row .rz-dropdown {
+        width: 100% !important;
+        flex: 1 1 100% !important;
+        min-width: 0 !important;
+    }
 }

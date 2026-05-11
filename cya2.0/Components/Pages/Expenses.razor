@@ -60,7 +60,7 @@
                 </RadzenDropDown>
                 </div>
                 <div class="date-range-apply-group" style="display:flex;align-items:center;gap:0.5rem;flex-wrap:wrap;">
-                    <div style="display:flex;align-items:center;gap:0.5rem;flex-wrap:nowrap;">
+                    <div class="date-range-start-end-row" style="display:flex;align-items:center;gap:0.5rem;flex-wrap:nowrap;">
                     <div style="display:flex;align-items:center;gap:0.5rem;">
                         <RadzenLabel Text="@Localizer["StartDate"]" />
                         <RadzenDatePicker @bind-Value="@dateRangeState.PendingStartDate" DateFormat="MM/dd/yyyy" Style="max-width:130px"
@@ -85,7 +85,7 @@
         <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.End" Gap="1rem">
             <RadzenStack Orientation="Orientation.Vertical" Gap="0.4rem">
                 <div class="date-range-toolbar-box account-selector-box">
-                    <div style="display:flex;align-items:center;gap:0.5rem;flex-wrap:nowrap;">
+                    <div class="expenses-account-row" style="display:flex;align-items:center;gap:0.5rem;flex-wrap:nowrap;">
                         <RadzenLabel Text="@Localizer["Account"]" />
                         <RadzenDropDown TValue="string"
                                 Data="@((expenseData.UserAccounts ?? new List<AccountOptionDto>()))"
