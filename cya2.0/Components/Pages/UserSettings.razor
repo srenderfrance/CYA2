@@ -14,6 +14,19 @@
 @inject IStringLocalizer<Resource> Localizer
 @inject IJSRuntime JS
 
+<style>
+    @@media (max-width: 768px) {
+        .user-settings-sections {
+            flex-direction: column !important;
+            gap: 1rem !important;
+        }
+
+        .user-settings-section {
+            width: 100% !important;
+        }
+    }
+</style>
+
 <PageTitle>@Localizer["UserSettings"]</PageTitle>
 
 <div class="container mt-4">
@@ -35,9 +48,9 @@
         }
 
         <!-- Use RadzenStack with Horizontal orientation instead of Bootstrap row/col -->
-        <RadzenStack Orientation="Orientation.Horizontal" Gap="2rem" Class="mt-4">
+        <RadzenStack Orientation="Orientation.Horizontal" Gap="2rem" Class="mt-4 user-settings-sections">
             <!-- Default Account Column -->
-            <RadzenStack Orientation="Orientation.Vertical" Gap="1rem" Style="width: 48%;">
+            <RadzenStack Orientation="Orientation.Vertical" Gap="1rem" Style="width: 48%;" Class="user-settings-section">
                 <RadzenCard>
                     <RadzenStack Gap="1rem">
                         <RadzenText TextStyle="TextStyle.H5">@Localizer["DefaultAccount"]</RadzenText>
@@ -74,7 +87,7 @@
             </RadzenStack>
             
             <!-- Language Preference Column -->
-            <RadzenStack Orientation="Orientation.Vertical" Gap="1rem" Style="width: 48%;">
+            <RadzenStack Orientation="Orientation.Vertical" Gap="1rem" Style="width: 48%;" Class="user-settings-section">
                 <RadzenCard>
                     <RadzenStack Gap="1rem">
                         <RadzenText TextStyle="TextStyle.H5">@Localizer["LanguagePreference"]</RadzenText>
