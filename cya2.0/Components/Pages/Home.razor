@@ -58,6 +58,38 @@
         word-break: break-word;
     }
 
+    .home-header-toggle {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 0.15rem;
+    }
+
+    .home-header-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.75rem;
+        flex-wrap: nowrap;
+    }
+
+    .home-header-title {
+        margin: 0;
+        min-width: 0;
+        flex: 1 1 auto;
+    }
+
+    .home-header-toggle .rz-label {
+        font-size: 0.75rem;
+        line-height: 1.1;
+        text-align: center;
+    }
+
+    .home-header-toggle .home-visualization-switch {
+        transform: scale(0.85);
+        transform-origin: center;
+    }
+
     /* Match Admin/Donations switch color behavior */
     .home-visualization-switch.rz-switch .rz-switch-slider {
         background-color: var(--rz-primary) !important;
@@ -91,12 +123,81 @@
         background: var(--rz-primary) !important;
     }
 
+    .home-visualization-chart-wrap {
+        width: 100%;
+        overflow-x: auto;
+        overflow-y: hidden;
+    }
+
+    .home-visualization-chart-wrap .rz-chart {
+        min-width: 720px;
+    }
+
     @@media (max-width: 640px) {
         .home-account-row {
             flex-direction: column !important;
             align-items: stretch !important;
             gap: 0.35rem !important;
             width: 100%;
+        }
+
+        .home-controls-right {
+            order: 1;
+            max-width: 100% !important;
+            width: 100%;
+            min-width: 0;
+        }
+
+        .home-controls-left {
+            order: 2;
+            width: 100%;
+            min-width: 0;
+        }
+
+        .home-account-selector-row {
+            flex-wrap: wrap !important;
+            align-items: stretch !important;
+            width: 100%;
+        }
+
+        .home-account-selector-row .rz-dropdown {
+            width: 100% !important;
+            min-width: 0;
+        }
+
+        .home-missing-gift-wrap {
+            max-width: 100%;
+        }
+
+        .home-visualization-toggle-row {
+            gap: 0.35rem !important;
+        }
+
+        .home-visualization-toggle-row .rz-label {
+            font-size: 0.9rem;
+        }
+
+        .home-header-row {
+            gap: 0.5rem;
+        }
+
+        .home-header-title {
+            font-size: 1.1rem;
+            line-height: 1.15;
+        }
+
+        .home-header-title .badge {
+            font-size: 0.7rem;
+            margin-left: 0.35rem !important;
+            padding: 0.25rem 0.4rem;
+        }
+
+        .home-visualization-chart-wrap .rz-chart {
+            min-width: 760px;
+        }
+
+        .home-toggle-hide-mobile {
+            display: none !important;
         }
 
     }
@@ -109,13 +210,20 @@
 
 @if (ShowWelcomeHeader)
 {
-    <h1 class="h3">
-        @Localizer["WelcomeUser", userName]
-        @if (isAdminUser)
-        {
-            <span class="badge bg-danger ms-2">@Localizer["AdminMode"]</span>
-        }
-    </h1>
+    <div class="home-header-row">
+        <h1 class="h3 home-header-title">
+            @Localizer["WelcomeUser", userName]
+            @if (isAdminUser)
+            {
+                <span class="badge bg-danger ms-2">@Localizer["AdminMode"]</span>
+            }
+        </h1>
+
+        <RadzenStack Orientation="Orientation.Vertical" Gap="0.15rem" AlignItems="AlignItems.Center" Class="home-header-toggle">
+            <RadzenSwitch Class="home-visualization-switch" @bind-Value="showVisualizations" Change="OnVisualizationToggleChanged" />
+            <RadzenLabel Text="@(showVisualizations ? Localizer["AccountVisualizations"] : Localizer["AccountSummaries"])" />
+        </RadzenStack>
+    </div>
 }
 
 @if (isLoading)
@@ -135,17 +243,10 @@ else if (!dashboardData.UserAccounts.Any())
 else
 {
     <RadzenCard class="mt-4">
-        <RadzenStack Orientation="Orientation.Horizontal" Gap="2rem" JustifyContent="JustifyContent.SpaceBetween" AlignItems="AlignItems.Start" Wrap="FlexWrap.Wrap" Style="width:100%;">
-            <RadzenStack Orientation="Orientation.Vertical" Gap="0.4rem" Style="flex:1;">
-                <div class="date-range-toolbar-box" style="display:flex;align-items:center;gap:0.75rem;flex-wrap:wrap;">
-                    <RadzenLabel Text="@(showVisualizations ? Localizer["AccountVisualizations"] : Localizer["AccountSummaries"])" />
-                    <RadzenSwitch Class="home-visualization-switch" @bind-Value="showVisualizations" Change="OnVisualizationToggleChanged" />
-                </div>
-            </RadzenStack>
-
-            <RadzenStack Orientation="Orientation.Vertical" Gap="0.4rem" Style="flex:1; max-width:300px;">
+        <RadzenStack Orientation="Orientation.Horizontal" Gap="2rem" JustifyContent="JustifyContent.End" AlignItems="AlignItems.Start" Wrap="FlexWrap.Wrap" Style="width:100%;">
+            <RadzenStack Orientation="Orientation.Vertical" Gap="0.4rem" Style="flex:1; max-width:300px;" Class="home-controls-right">
                 <div class="date-range-toolbar-box account-selector-box">
-                    <div style="display:flex;align-items:center;gap:0.5rem;flex-wrap:nowrap;">
+                    <div class="home-account-selector-row" style="display:flex;align-items:center;gap:0.5rem;flex-wrap:nowrap;">
                         <RadzenLabel Text="@Localizer["Account"]" />
                         <RadzenDropDown TValue="string"
                                         Data="@dashboardData.UserAccounts"
@@ -520,6 +621,7 @@ else
         else if (accountVisualizationSeries.Any())
         {
             <RadzenCard class="mt-4">
+                <div class="home-visualization-chart-wrap">
                 <RadzenChart Style="height: 360px; margin-top:0.5rem;">
                     @if (selectedVisualizationGraphType == VisualizationGraphType.Line)
                     {
@@ -561,6 +663,7 @@ else
                     <RadzenValueAxis Formatter="@FormatVisualizationCurrency" />
                     <RadzenLegend Visible="true" />
                 </RadzenChart>
+                </div>
             </RadzenCard>
         }
     }

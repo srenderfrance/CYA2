@@ -165,6 +165,22 @@
         background: var(--rz-primary) !important;
     }
 
+    .donations-main-chart {
+        width: 100%;
+        overflow-x: auto;
+        overflow-y: hidden;
+    }
+
+    .donations-main-chart .rz-chart {
+        min-width: 720px;
+    }
+
+    @@media (max-width: 768px) {
+        .donations-main-chart .rz-chart {
+            min-width: 760px;
+        }
+    }
+
 </style>
 
 <RadzenStack Orientation="Orientation.Vertical" Gap="15px" Class="rz-p-4" Style="padding-top:0.5rem;">
