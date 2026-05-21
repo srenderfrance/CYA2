@@ -173,6 +173,62 @@ public class FinancialDashboardService : IFinancialDashboardService
         return userAccounts.Any(a => a.Fund.Equals(accountFund, StringComparison.OrdinalIgnoreCase));
     }
 
+    public async Task<List<MonthlyAccountVisualizationDto>> GetMonthlyVisualizationAsync(string accountFund, DateTime startDate, DateTime endDate, string userId)
+    {
+        var points = new List<MonthlyAccountVisualizationDto>();
+
+        try
+        {
+            var userContext = await _userAccountContextService.GetContextAsync(userId);
+            if (userContext == null)
+            {
+                return points;
+            }
+
+            var selectedAccount = _userAccountContextService.ResolveSelectedAccount(userContext, accountFund);
+            if (selectedAccount == null)
+            {
+                return points;
+            }
+
+            var repositoryAccount = ToCoreAccount(selectedAccount);
+            var cursor = new DateTime(startDate.Year, startDate.Month, 1);
+            var endMonth = new DateTime(endDate.Year, endDate.Month, 1);
+            var singleYear = startDate.Year == endDate.Year;
+
+            while (cursor <= endMonth)
+            {
+                var monthStart = cursor;
+                var monthEnd = cursor.AddMonths(1).AddDays(-1);
+                if (monthEnd > endDate)
+                {
+                    monthEnd = endDate;
+                }
+
+                var donationTotal = await _financialDashboardReadRepository.GetDonationTotalAsync(repositoryAccount, monthStart, monthEnd);
+                var expenseTotal = await _financialDashboardReadRepository.GetExpenseTotalAsync(repositoryAccount, monthStart, monthEnd);
+                var balance = await _financialDashboardReadRepository.GetBalanceAsOfAsync(repositoryAccount, monthEnd);
+
+                points.Add(new MonthlyAccountVisualizationDto
+                {
+                    MonthStart = monthStart,
+                    MonthLabel = monthStart.ToString(singleYear ? "MMM" : "MMM yy"),
+                    DonationTotal = donationTotal,
+                    ExpenseTotal = expenseTotal,
+                    Balance = balance
+                });
+
+                cursor = cursor.AddMonths(1);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error building monthly visualization for account '{AccountFund}'", accountFund);
+        }
+
+        return points;
+    }
+
     private async Task PopulateSummariesFromSessionCacheAsync(FinancialDashboardDto dashboard, UserAccountContextAccount selectedAccount, bool isDefaultAccount)
     {
         var now = DateTime.Now;

@@ -12,7 +12,6 @@
 @rendermode InteractiveServer
 @inject IStringLocalizer<Resource> Localizer
 @inject ILogger<Donations> Logger
-@inject IJSRuntime JS
 @inject Cya2.Application.Interfaces.IUserSelectionService UserSelectionService
 @inject Cya2.Application.Interfaces.IUserDateRangeSelectionService DateRangeSelectionService
 
@@ -132,6 +131,40 @@
         text-overflow: ellipsis;
         white-space: nowrap;
     }
+
+    /* Keep Frequency View switch green in both off + on states */
+    .frequency-view-switch.rz-switch .rz-switch-slider {
+        background-color: var(--rz-primary) !important;
+        border-color: var(--rz-primary) !important;
+    }
+
+    .frequency-view-switch.rz-switch .rz-switch-slider::before,
+    .frequency-view-switch.rz-switch .rz-switch-slider::after {
+        background-color: #fff !important;
+    }
+
+    .frequency-view-switch.rz-switch .rz-switch-track,
+    .frequency-view-switch.rz-switch.rz-state-checked .rz-switch-track,
+    .frequency-view-switch.rz-switch input[type="checkbox"]:checked + .rz-switch-track,
+    .frequency-view-switch.rz-switch input[type="checkbox"]:checked + .rz-switch-slider {
+        background-color: var(--rz-primary) !important;
+        border-color: var(--rz-primary) !important;
+    }
+
+    .frequency-view-switch.rz-switch .rz-switch-thumb {
+        background-color: #fff !important;
+    }
+
+    .frequency-view-switch.rz-switch {
+        --rz-switch-checked-background-color: var(--rz-primary);
+        --rz-switch-unchecked-background-color: var(--rz-primary);
+        --rz-switch-background-color: var(--rz-primary);
+    }
+
+    .frequency-view-switch.rz-switch.rz-switch-checked .rz-switch-circle {
+        background: var(--rz-primary) !important;
+    }
+
 </style>
 
 <RadzenStack Orientation="Orientation.Vertical" Gap="15px" Class="rz-p-4" Style="padding-top:0.5rem;">
@@ -397,10 +430,123 @@
         }
         else
         {
-            <!-- Graphs placeholder -->
-            <RadzenCard>
-                <RadzenText TextStyle="TextStyle.Subtitle2">@Localizer["Graphs"]</RadzenText>
-                <div class="text-muted">@Localizer["ComingSoon"]</div>
+            <RadzenCard Style="margin-top:0.75rem;">
+                <RadzenStack Orientation="Orientation.Vertical" Gap="0.5rem">
+                    <RadzenText TextStyle="TextStyle.Subtitle2">@Localizer["Graphs"]</RadzenText>
+                    <RadzenText TextStyle="TextStyle.Body2" Style="color:#666;">
+                        @dateRangeState.StartDate.ToString("MM/dd/yyyy") - @dateRangeState.EndDate.ToString("MM/dd/yyyy")
+                    </RadzenText>
+
+                    <RadzenCard Style="padding:0.75rem; background:#fafafa; border:1px solid #e5e7eb;">
+                        <RadzenStack Orientation="Orientation.Horizontal" Gap="1rem" Wrap="FlexWrap.Wrap" AlignItems="AlignItems.Center">
+                            <div style="display:flex; align-items:center; gap:0.5rem;">
+                                <RadzenLabel Text="Graph Type" />
+                                <RadzenDropDown TValue="DonationGraphType"
+                                                Data="@donationGraphTypeOptions"
+                                                TextProperty="Text"
+                                                ValueProperty="Value"
+                                                @bind-Value="selectedDonationGraphType"
+                                                Style="width:180px;" />
+                            </div>
+
+                            <div style="display:flex; align-items:center; gap:0.5rem;">
+                                <RadzenCheckBox TValue="bool" @bind-Value="showGraphLabels" />
+                                <RadzenLabel Text="Show Data Labels" />
+                            </div>
+
+                            <div style="display:flex; align-items:center; gap:0.5rem; margin-left:auto;">
+                                <RadzenSwitch TValue="bool" Class="frequency-view-switch" Value="@showFrequencyPreset" Change="OnFrequencyPresetChanged" />
+                                <RadzenLabel Text="Frequency View" />
+                                <span style="font-size:0.8rem; color:#666; margin-left:0.5rem;">@Localizer["NonMonthlyIncludesSporadicAndOneTimeDonations"]</span>
+                            </div>
+                        </RadzenStack>
+                    </RadzenCard>
+
+                    @if (totalMonthlyDonationSeries.Any() || monthlyDonationSeriesByFrequency.Any())
+                    {
+                        <RadzenText TextStyle="TextStyle.Body1" Style="font-weight:600;">Monthly Donations</RadzenText>
+                        <div class="donations-main-chart">
+                        <RadzenChart Style="height: 360px;">
+                            @if (!showFrequencyPreset)
+                            {
+                                @if (selectedDonationGraphType == DonationGraphType.Line)
+                                {
+                                    <RadzenLineSeries Data="@totalMonthlyDonationSeries"
+                                                      CategoryProperty="MonthLabel"
+                                                      ValueProperty="Total"
+                                                      Title="Total">
+                                        <RadzenSeriesDataLabels Visible="@showGraphLabels" />
+                                        <RadzenMarkers Visible="true" MarkerType="MarkerType.Circle" />
+                                    </RadzenLineSeries>
+                                }
+                                else if (selectedDonationGraphType == DonationGraphType.Area)
+                                {
+                                    <RadzenAreaSeries Data="@totalMonthlyDonationSeries"
+                                                      CategoryProperty="MonthLabel"
+                                                      ValueProperty="Total"
+                                                      Title="Total">
+                                        <RadzenSeriesDataLabels Visible="@showGraphLabels" />
+                                        <RadzenMarkers Visible="true" MarkerType="MarkerType.Circle" />
+                                    </RadzenAreaSeries>
+                                }
+                                else
+                                {
+                                    <RadzenColumnSeries Data="@totalMonthlyDonationSeries"
+                                                        CategoryProperty="MonthLabel"
+                                                        ValueProperty="Total"
+                                                        Title="Total">
+                                        <RadzenSeriesDataLabels Visible="@showGraphLabels" />
+                                    </RadzenColumnSeries>
+                                }
+                            }
+
+                            @if (showFrequencyPreset)
+                            {
+                                @foreach (var frequencySeries in monthlyDonationSeriesByFrequency)
+                                {
+                                    @if (selectedDonationGraphType == DonationGraphType.Line)
+                                    {
+                                        <RadzenLineSeries Data="@frequencySeries.Value"
+                                                          CategoryProperty="MonthLabel"
+                                                          ValueProperty="Total"
+                                                          Title="@frequencySeries.Key">
+                                            <RadzenSeriesDataLabels Visible="@showGraphLabels" />
+                                            <RadzenMarkers Visible="true" MarkerType="MarkerType.Circle" />
+                                        </RadzenLineSeries>
+                                    }
+                                    else if (selectedDonationGraphType == DonationGraphType.Area)
+                                    {
+                                        <RadzenAreaSeries Data="@frequencySeries.Value"
+                                                          CategoryProperty="MonthLabel"
+                                                          ValueProperty="Total"
+                                                          Title="@frequencySeries.Key">
+                                            <RadzenSeriesDataLabels Visible="@showGraphLabels" />
+                                            <RadzenMarkers Visible="true" MarkerType="MarkerType.Circle" />
+                                        </RadzenAreaSeries>
+                                    }
+                                    else
+                                    {
+                                        <RadzenColumnSeries Data="@frequencySeries.Value"
+                                                            CategoryProperty="MonthLabel"
+                                                            ValueProperty="Total"
+                                                            Title="@frequencySeries.Key">
+                                            <RadzenSeriesDataLabels Visible="@showGraphLabels" />
+                                        </RadzenColumnSeries>
+                                    }
+                                }
+                            }
+                            <RadzenCategoryAxis />
+                            <RadzenValueAxis Formatter="@FormatUsdWholeDollars" />
+                            <RadzenLegend Visible="true" />
+                        </RadzenChart>
+                        </div>
+                        <RadzenText TextStyle="TextStyle.Caption" Style="color:#666;">X-axis: Month · Y-axis: Total Donations, USD whole dollars</RadzenText>
+                    }
+                    else
+                    {
+                        <div class="text-muted">@GetEmptyText()</div>
+                    }
+                </RadzenStack>
             </RadzenCard>
         }
     }
@@ -433,13 +579,39 @@
     }
 
     private enum ViewMode { GivingGrid, DonationList, Graphs }
+    private enum DonationGraphType { Line, Area, Column }
+
+    private sealed class DonationGraphTypeOption
+    {
+        public string Text { get; set; } = string.Empty;
+        public DonationGraphType Value { get; set; }
+    }
+
     private ViewMode currentView = ViewMode.GivingGrid;
+    private DonationGraphType selectedDonationGraphType = DonationGraphType.Line;
+    private bool showGraphLabels = true;
+    private bool showFrequencyPreset = false;
+    private readonly List<DonationGraphTypeOption> donationGraphTypeOptions =
+    [
+        new() { Text = "Line", Value = DonationGraphType.Line },
+        new() { Text = "Area", Value = DonationGraphType.Area },
+        new() { Text = "Column", Value = DonationGraphType.Column }
+    ];
+
     private void SetView(ViewMode mode) => currentView = mode;
 
     private readonly List<DateTime> monthColumns = new();
     private readonly List<DonationPivotRowDto> pivotRows = new();
     private readonly Dictionary<DateTime, decimal> monthTotals = new();
+    private readonly List<MonthlyDonationChartPoint> totalMonthlyDonationSeries = new();
+    private readonly Dictionary<string, List<MonthlyDonationChartPoint>> monthlyDonationSeriesByFrequency = new(StringComparer.OrdinalIgnoreCase);
     private decimal grandTotal = 0m;
+
+    private sealed class MonthlyDonationChartPoint
+    {
+        public string MonthLabel { get; set; } = string.Empty;
+        public decimal Total { get; set; }
+    }
 
     private RadzenDataGrid<DonationPivotRowDto>? _givingGridRef;
     private bool _needReloadGivingGrid = false;
@@ -450,6 +622,37 @@
     {
         var singleYear = dateRangeState.StartDate.Year == dateRangeState.EndDate.Year;
         return singleYear ? m.ToString("MMM") : m.ToString("MMM yy");
+    }
+
+    private string FormatUsdWholeDollars(object value)
+    {
+        if (value is decimal dec)
+        {
+            return dec.ToString("C0");
+        }
+
+        if (value is double dbl)
+        {
+            return dbl.ToString("C0");
+        }
+
+        if (value is float flt)
+        {
+            return flt.ToString("C0");
+        }
+
+        if (decimal.TryParse(value?.ToString(), out var parsed))
+        {
+            return parsed.ToString("C0");
+        }
+
+        return "$0";
+    }
+
+    private void OnFrequencyPresetChanged(bool isChecked)
+    {
+        showFrequencyPreset = isChecked;
+        StateHasChanged();
     }
 
     // Use IDateRangeStateService for centralized date management
@@ -891,6 +1094,129 @@
         }
 
         grandTotal = pivot.GrandTotal;
+        BuildMonthlyDonationSeries();
+    }
+
+    private void BuildMonthlyDonationSeries()
+    {
+        totalMonthlyDonationSeries.Clear();
+        monthlyDonationSeriesByFrequency.Clear();
+
+        foreach (var month in monthColumns)
+        {
+            var monthTotal = monthTotals.TryGetValue(month, out var total) ? total : 0m;
+            var roundedMonthTotal = Math.Round(monthTotal, 0, MidpointRounding.AwayFromZero);
+
+            totalMonthlyDonationSeries.Add(new MonthlyDonationChartPoint
+            {
+                MonthLabel = GetMonthHeader(month),
+                Total = roundedMonthTotal
+            });
+        }
+
+        if (!selectedDonations.Any())
+        {
+            return;
+        }
+
+        var groupedByFrequency = selectedDonations
+            .GroupBy(d => CanonicalFrequencyLabel(d.Frequency))
+            .ToDictionary(g => g.Key, g => g.ToList(), StringComparer.OrdinalIgnoreCase);
+
+        foreach (var frequencyGroup in groupedByFrequency.OrderBy(g => g.Key, StringComparer.OrdinalIgnoreCase))
+        {
+            var byMonth = frequencyGroup
+                .Value
+                .GroupBy(d => new DateTime(d.Date.Year, d.Date.Month, 1))
+                .ToDictionary(
+                    g => g.Key,
+                    g => Math.Round(g.Sum(d => Convert.ToDecimal(d.Amount)), 0, MidpointRounding.AwayFromZero));
+
+            var frequencySeries = new List<MonthlyDonationChartPoint>();
+
+        foreach (var month in monthColumns)
+        {
+                var total = byMonth.TryGetValue(month, out var monthTotal) ? monthTotal : 0m;
+
+                frequencySeries.Add(new MonthlyDonationChartPoint
+                {
+                    MonthLabel = GetMonthHeader(month),
+                    Total = total
+                });
+            }
+
+            monthlyDonationSeriesByFrequency[frequencyGroup.Key] = frequencySeries;
+        }
+
+        if (!monthlyDonationSeriesByFrequency.ContainsKey("Monthly"))
+        {
+            monthlyDonationSeriesByFrequency["Monthly"] = BuildZeroMonthlySeries();
+        }
+
+        if (!monthlyDonationSeriesByFrequency.ContainsKey("Non Monthly"))
+        {
+            monthlyDonationSeriesByFrequency["Non Monthly"] = BuildZeroMonthlySeries();
+        }
+
+        var ordered = monthlyDonationSeriesByFrequency
+            .OrderBy(kv => GetFrequencySeriesOrder(kv.Key))
+            .ThenBy(kv => kv.Key, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        monthlyDonationSeriesByFrequency.Clear();
+        foreach (var item in ordered)
+        {
+            monthlyDonationSeriesByFrequency[item.Key] = item.Value;
+        }
+
+    }
+
+    private string CanonicalFrequencyLabel(string? frequency)
+    {
+        var trimmed = string.IsNullOrWhiteSpace(frequency) ? "Unspecified" : frequency.Trim();
+        var normalized = NormalizeFrequency(trimmed);
+
+        if (normalized is "onetime" or "sporadic")
+        {
+            return "Non Monthly";
+        }
+
+        if (normalized == "monthly")
+        {
+            return "Monthly";
+        }
+
+        return trimmed;
+    }
+
+    private List<MonthlyDonationChartPoint> BuildZeroMonthlySeries()
+    {
+        return monthColumns
+            .Select(m => new MonthlyDonationChartPoint
+            {
+                MonthLabel = GetMonthHeader(m),
+                Total = 0m
+            })
+            .ToList();
+    }
+
+    private static string NormalizeFrequency(string value)
+    {
+        return value
+            .Replace(" ", string.Empty, StringComparison.Ordinal)
+            .Replace("-", string.Empty, StringComparison.Ordinal)
+            .ToLowerInvariant();
+    }
+
+    private int GetFrequencySeriesOrder(string key)
+    {
+        var normalized = NormalizeFrequency(key);
+        return normalized switch
+        {
+            "monthly" => 0,
+            "nonmonthly" => 1,
+            _ => 2
+        };
     }
 
     private void OnGivingGridCellRender(DataGridCellRenderEventArgs<DonationPivotRowDto> args)

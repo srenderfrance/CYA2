@@ -132,6 +132,16 @@ html {
 }
 
 /* ------------------------------------------------------------
+   DIAGNOSTIC: Force chart tooltips on-screen
+   ------------------------------------------------------------ */
+.rz-chart-tooltip {
+    position: fixed !important;
+    top: 40px !important;
+    left: 40px !important;
+    z-index: 20000 !important;
+}
+
+/* ------------------------------------------------------------
    5. RADZEN DATA GRID — amount column alignment
       (.amount-column-fix is applied via RadzenDataGridColumn
       HeaderCssClass on the Expenses page.)

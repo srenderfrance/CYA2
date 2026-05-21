@@ -39,6 +39,15 @@ public class FinancialSummaryDto
     public string Period { get; set; } = string.Empty;
 }
 
+public class MonthlyAccountVisualizationDto
+{
+    public DateTime MonthStart { get; set; }
+    public string MonthLabel { get; set; } = string.Empty;
+    public decimal DonationTotal { get; set; }
+    public decimal ExpenseTotal { get; set; }
+    public decimal Balance { get; set; }
+}
+
 /// <summary>
 /// User account information for dropdown
 /// </summary>
