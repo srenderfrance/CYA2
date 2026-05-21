@@ -106,6 +106,12 @@ a, .btn-link {
     border-color: #1861ac;
 }
 
+/* Match Frequency View switch active color to app button theme */
+.rz-switch.rz-state-active {
+    background-color: var(--rz-primary) !important;
+    border-color: var(--rz-primary) !important;
+}
+
 .btn:focus, 
 .btn:active:focus, 
 .btn-link.nav-link:focus, 

@@ -10,6 +10,7 @@
 @attribute [StreamRendering]
 @using System.Security.Claims
 @using System.Globalization
+@using Cya2.Shared.Utilities
 @inject AuthenticationStateProvider AuthStateProvider
 @inject IStringLocalizer<Resource> Localizer
 @using Cya2.Application.Interfaces
@@ -48,9 +49,46 @@
         height: auto;
     }
 
+    .home-missing-gift-wrap {
+        max-width: 340px;
+    }
+
     .home-missing-gift-title {
         white-space: normal;
         word-break: break-word;
+    }
+
+    /* Match Admin/Donations switch color behavior */
+    .home-visualization-switch.rz-switch .rz-switch-slider {
+        background-color: var(--rz-primary) !important;
+        border-color: var(--rz-primary) !important;
+    }
+
+    .home-visualization-switch.rz-switch .rz-switch-slider::before,
+    .home-visualization-switch.rz-switch .rz-switch-slider::after {
+        background-color: #fff !important;
+    }
+
+    .home-visualization-switch.rz-switch .rz-switch-track,
+    .home-visualization-switch.rz-switch.rz-state-checked .rz-switch-track,
+    .home-visualization-switch.rz-switch input[type="checkbox"]:checked + .rz-switch-track,
+    .home-visualization-switch.rz-switch input[type="checkbox"]:checked + .rz-switch-slider {
+        background-color: var(--rz-primary) !important;
+        border-color: var(--rz-primary) !important;
+    }
+
+    .home-visualization-switch.rz-switch .rz-switch-thumb {
+        background-color: #fff !important;
+    }
+
+    .home-visualization-switch.rz-switch {
+        --rz-switch-checked-background-color: var(--rz-primary);
+        --rz-switch-unchecked-background-color: var(--rz-primary);
+        --rz-switch-background-color: var(--rz-primary);
+    }
+
+    .home-visualization-switch.rz-switch.rz-switch-checked .rz-switch-circle {
+        background: var(--rz-primary) !important;
     }
 
     @@media (max-width: 640px) {
@@ -97,38 +135,53 @@ else if (!dashboardData.UserAccounts.Any())
 else
 {
     <RadzenCard class="mt-4">
-        <RadzenStack Orientation="Orientation.Horizontal" Gap="1rem" JustifyContent="JustifyContent.SpaceBetween" AlignItems="AlignItems.Center" Wrap="FlexWrap.Wrap">
-            <RadzenStack Orientation="Orientation.Horizontal" Gap="1rem" AlignItems="AlignItems.Center" Wrap="FlexWrap.Wrap" Class="home-account-row">
-                <RadzenText TextStyle="TextStyle.H5">@Localizer["Account"]</RadzenText>
-
-                <RadzenDropDown TValue="string"
-                                Data="@dashboardData.UserAccounts"
-                                TextProperty="DisplayName"
-                                ValueProperty="Fund"
-                                Value="@selectedAccount"
-                                Change="@OnAccountSelectionAsync"
-                                Placeholder="@Localizer["ChooseAccount"]"
-                                 Class="account-selector-dropdown">
-                    <ValueTemplate>
-                        <span class="home-account-dropdown-text">
-                            @(dashboardData.UserAccounts.FirstOrDefault(a => a.Fund == selectedAccount)?.DisplayName ?? selectedAccount)
-                        </span>
-                    </ValueTemplate>
-                    <Template Context="acct">
-                        <span class="home-account-dropdown-text">@acct.DisplayName</span>
-                    </Template>
-                </RadzenDropDown>
+        <RadzenStack Orientation="Orientation.Horizontal" Gap="2rem" JustifyContent="JustifyContent.SpaceBetween" AlignItems="AlignItems.Start" Wrap="FlexWrap.Wrap" Style="width:100%;">
+            <RadzenStack Orientation="Orientation.Vertical" Gap="0.4rem" Style="flex:1;">
+                <div class="date-range-toolbar-box" style="display:flex;align-items:center;gap:0.75rem;flex-wrap:wrap;">
+                    <RadzenLabel Text="@(showVisualizations ? Localizer["AccountVisualizations"] : Localizer["AccountSummaries"])" />
+                    <RadzenSwitch Class="home-visualization-switch" @bind-Value="showVisualizations" Change="OnVisualizationToggleChanged" />
+                </div>
             </RadzenStack>
 
-            @if (missingGiftDonors.Count > 0)
-            {
-                <RadzenButton Text=@($"Missing Monthly Donations ({missingGiftDonors.Count})")
-                              Icon="warning"
-                              ButtonStyle="ButtonStyle.Danger"
-                              Size="ButtonSize.Small"
-                              Class="home-missing-gift-button"
-                              Click="@(() => showMissingGiftDialog = !showMissingGiftDialog)" />
-            }
+            <RadzenStack Orientation="Orientation.Vertical" Gap="0.4rem" Style="flex:1; max-width:300px;">
+                <div class="date-range-toolbar-box account-selector-box">
+                    <div style="display:flex;align-items:center;gap:0.5rem;flex-wrap:nowrap;">
+                        <RadzenLabel Text="@Localizer["Account"]" />
+                        <RadzenDropDown TValue="string"
+                                        Data="@dashboardData.UserAccounts"
+                                        TextProperty="DisplayName"
+                                        ValueProperty="Fund"
+                                        Value="@selectedAccount"
+                                        Change="@OnAccountSelectionAsync"
+                                        Placeholder="@Localizer["ChooseAccount"]"
+                                        Class="account-selector-dropdown-inline">
+                            <ValueTemplate>
+                                <span style="display:flex;align-items:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding-right:1.75rem;width:100%;">
+                                    @(dashboardData.UserAccounts.FirstOrDefault(a => a.Fund == selectedAccount)?.DisplayName ?? selectedAccount)
+                                </span>
+                            </ValueTemplate>
+                            <Template Context="acct">
+                                <span style="display:flex;align-items:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;width:100%;">
+                                    @acct.DisplayName
+                                </span>
+                            </Template>
+                        </RadzenDropDown>
+                    </div>
+                </div>
+
+                @if (!showVisualizations && missingGiftDonors.Count > 0)
+                {
+                    <div style="width:100%;">
+                        <RadzenButton Text=@($"Missing Monthly Donations ({missingGiftDonors.Count})")
+                                      Icon="warning"
+                                      ButtonStyle="ButtonStyle.Danger"
+                                      Size="ButtonSize.Small"
+                                      Class="home-missing-gift-button"
+                                      Style="width:100%;"
+                                      Click="@(() => showMissingGiftDialog = !showMissingGiftDialog)" />
+                    </div>
+                }
+            </RadzenStack>
         </RadzenStack>
 
         @if (showMissingGiftDialog && missingGiftDonors.Count > 0)
@@ -156,7 +209,7 @@ else
         }
     </RadzenCard>
 
-    @if (dashboardData.HasAccountData)
+    @if (dashboardData.HasAccountData && !showVisualizations)
     {
         <RadzenStack Orientation="Orientation.Horizontal" Gap="1rem" Class="mt-4" JustifyContent="JustifyContent.Center" Wrap="FlexWrap.Wrap">
             <RadzenStack Orientation="Orientation.Vertical" Style="width: 24%; min-width: 260px;">
@@ -202,7 +255,7 @@ else
                         <hr class="my-2" />
 
                         <div class="d-flex justify-content-between align-items-center">
-                            <RadzenText TextStyle="TextStyle.Subtitle1">@Localizer["Balance"]</RadzenText>
+                            <RadzenText TextStyle="TextStyle.Subtitle1">@Localizer["CurrentBalance"]</RadzenText>
                             <RadzenText TextStyle="TextStyle.Subtitle1">
                                 <span class="fw-bold" style="font-size:1.1em;">
                                     @Math.Abs(dashboardData.CurrentMonth.Balance).ToString("C", CultureInfo.CurrentCulture)
@@ -265,7 +318,7 @@ else
                         <hr class="my-2" />
 
                         <div class="d-flex justify-content-between align-items-center">
-                            <RadzenText TextStyle="TextStyle.Subtitle1">@Localizer["Balance"]</RadzenText>
+                            <RadzenText TextStyle="TextStyle.Subtitle1">@Localizer["EndingBalance"]</RadzenText>
                             <div class="text-end">
                                 <RadzenText TextStyle="TextStyle.Subtitle1">
                                     <span class="fw-bold" style="font-size:1.1em;">
@@ -330,7 +383,7 @@ else
                         <hr class="my-2" />
 
                         <div class="d-flex justify-content-between align-items-center">
-                            <RadzenText TextStyle="TextStyle.Subtitle1">@Localizer["Balance"]</RadzenText>
+                            <RadzenText TextStyle="TextStyle.Subtitle1">@Localizer["CurrentBalance"]</RadzenText>
                             <div class="text-end">
                                 <RadzenText TextStyle="TextStyle.Subtitle1">
                                     <span class="fw-bold" style="font-size:1.1em;">
@@ -395,7 +448,7 @@ else
                         <hr class="my-2" />
 
                         <div class="d-flex justify-content-between align-items-center">
-                            <RadzenText TextStyle="TextStyle.Subtitle1">@Localizer["Balance"]</RadzenText>
+                            <RadzenText TextStyle="TextStyle.Subtitle1">@Localizer["EndingBalance"]</RadzenText>
                             <div class="text-end">
                                 <RadzenText TextStyle="TextStyle.Subtitle1">
                                     <span class="fw-bold" style="font-size:1.1em;">
@@ -409,6 +462,107 @@ else
                 </RadzenCard>
             </RadzenStack>
         </RadzenStack>
+    }
+    else if (dashboardData.HasAccountData && showVisualizations)
+    {
+        <RadzenCard class="mt-4">
+            <RadzenStack Orientation="Orientation.Vertical" Gap="0.75rem">
+                <RadzenStack Orientation="Orientation.Horizontal" Gap="1rem" Wrap="FlexWrap.Wrap" AlignItems="AlignItems.Center">
+                    <div style="display:flex; align-items:center; gap:0.5rem;">
+                        <RadzenLabel Text="@Localizer["CommonRanges"]" />
+                        <RadzenDropDown TValue="DateRangeHelper.DateRangePreset"
+                                        Data="@visualizationPresetOptions"
+                                        TextProperty="Text"
+                                        ValueProperty="Value"
+                                        @bind-Value="visualizationSelectedPreset"
+                                        Change="OnVisualizationPresetChanged"
+                                        Style="width:180px;" />
+                    </div>
+
+                    <div style="display:flex; align-items:center; gap:0.5rem;">
+                        <RadzenLabel Text="@Localizer["StartDate"]" />
+                        <RadzenDatePicker @bind-Value="visualizationPendingStartDate" DateFormat="MM/dd/yyyy" Style="max-width:130px" />
+                    </div>
+
+                    <div style="display:flex; align-items:center; gap:0.5rem;">
+                        <RadzenLabel Text="@Localizer["EndDate"]" />
+                        <RadzenDatePicker @bind-Value="visualizationPendingEndDate" DateFormat="MM/dd/yyyy" Style="max-width:130px" />
+                    </div>
+
+                    <RadzenButton Text="@Localizer["Apply"]" ButtonStyle="ButtonStyle.Primary" Click="ApplyVisualizationRange" />
+                </RadzenStack>
+
+                <RadzenStack Orientation="Orientation.Horizontal" Gap="1rem" Wrap="FlexWrap.Wrap" AlignItems="AlignItems.Center">
+                    <div style="display:flex; align-items:center; gap:0.5rem;">
+                        <RadzenLabel Text="Graph Type" />
+                        <RadzenDropDown TValue="VisualizationGraphType"
+                                        Data="@visualizationGraphTypeOptions"
+                                        TextProperty="Text"
+                                        ValueProperty="Value"
+                                        @bind-Value="selectedVisualizationGraphType"
+                                        Style="width:180px;" />
+                    </div>
+
+                    <div style="display:flex; align-items:center; gap:0.5rem;">
+                        <RadzenCheckBox TValue="bool" @bind-Value="showVisualizationLabels" />
+                        <RadzenLabel Text="Show Data Labels" />
+                    </div>
+                </RadzenStack>
+            </RadzenStack>
+        </RadzenCard>
+
+        @if (isVisualizationLoading)
+        {
+            <div class="mt-4">
+                <RadzenProgressBar Value="100" ShowValue="false" Mode="ProgressBarMode.Indeterminate" />
+            </div>
+        }
+        else if (accountVisualizationSeries.Any())
+        {
+            <RadzenCard class="mt-4">
+                <RadzenChart Style="height: 360px; margin-top:0.5rem;">
+                    @if (selectedVisualizationGraphType == VisualizationGraphType.Line)
+                    {
+                        <RadzenLineSeries Data="@accountVisualizationSeries" CategoryProperty="MonthLabel" ValueProperty="DonationTotal" Title="@Localizer["Donations"]">
+                            <RadzenSeriesDataLabels Visible="@showVisualizationLabels" />
+                        </RadzenLineSeries>
+                        <RadzenLineSeries Data="@accountVisualizationSeries" CategoryProperty="MonthLabel" ValueProperty="ExpenseTotal" Title="@Localizer["Expenses"]">
+                            <RadzenSeriesDataLabels Visible="@showVisualizationLabels" />
+                        </RadzenLineSeries>
+                        <RadzenLineSeries Data="@accountVisualizationSeries" CategoryProperty="MonthLabel" ValueProperty="Balance" Title="@Localizer["CurrentBalance"]">
+                            <RadzenSeriesDataLabels Visible="@showVisualizationLabels" />
+                        </RadzenLineSeries>
+                    }
+                    else if (selectedVisualizationGraphType == VisualizationGraphType.Area)
+                    {
+                        <RadzenAreaSeries Data="@accountVisualizationSeries" CategoryProperty="MonthLabel" ValueProperty="DonationTotal" Title="@Localizer["Donations"]">
+                            <RadzenSeriesDataLabels Visible="@showVisualizationLabels" />
+                        </RadzenAreaSeries>
+                        <RadzenAreaSeries Data="@accountVisualizationSeries" CategoryProperty="MonthLabel" ValueProperty="ExpenseTotal" Title="@Localizer["Expenses"]">
+                            <RadzenSeriesDataLabels Visible="@showVisualizationLabels" />
+                        </RadzenAreaSeries>
+                        <RadzenAreaSeries Data="@accountVisualizationSeries" CategoryProperty="MonthLabel" ValueProperty="Balance" Title="@Localizer["CurrentBalance"]">
+                            <RadzenSeriesDataLabels Visible="@showVisualizationLabels" />
+                        </RadzenAreaSeries>
+                    }
+                    else
+                    {
+                        <RadzenColumnSeries Data="@accountVisualizationSeries" CategoryProperty="MonthLabel" ValueProperty="DonationTotal" Title="@Localizer["Donations"]">
+                            <RadzenSeriesDataLabels Visible="@showVisualizationLabels" />
+                        </RadzenColumnSeries>
+                        <RadzenColumnSeries Data="@accountVisualizationSeries" CategoryProperty="MonthLabel" ValueProperty="ExpenseTotal" Title="@Localizer["Expenses"]">
+                            <RadzenSeriesDataLabels Visible="@showVisualizationLabels" />
+                        </RadzenColumnSeries>
+                        <RadzenColumnSeries Data="@accountVisualizationSeries" CategoryProperty="MonthLabel" ValueProperty="Balance" Title="@Localizer["CurrentBalance"]">
+                            <RadzenSeriesDataLabels Visible="@showVisualizationLabels" />
+                        </RadzenColumnSeries>
+                    }
+                    <RadzenCategoryAxis />
+                    <RadzenValueAxis Formatter="@FormatVisualizationCurrency" />
+                    <RadzenLegend Visible="true" />
+                </RadzenChart>
+            </RadzenCard>
+        }
     }
 }
 
@@ -429,6 +583,38 @@ private const int MaxDashboardMemoryCacheItems = 15;
 private bool cacheWarmupPending;
 private string cachedUserId = string.Empty;
 private List<string> pendingPrefetchFunds = new();
+
+private bool showVisualizations;
+private bool isVisualizationLoading;
+private bool showVisualizationLabels;
+private VisualizationGraphType selectedVisualizationGraphType = VisualizationGraphType.Line;
+private DateRangeHelper.DateRangePreset visualizationSelectedPreset = DateRangeHelper.DateRangePreset.ThisYear;
+private DateTime visualizationPendingStartDate;
+private DateTime visualizationPendingEndDate;
+private DateTime visualizationStartDate;
+private DateTime visualizationEndDate;
+private List<MonthlyAccountVisualizationDto> accountVisualizationSeries = new();
+private List<DatePresetOption> visualizationPresetOptions = new();
+private readonly List<VisualizationGraphTypeOption> visualizationGraphTypeOptions =
+[
+    new() { Text = "Line", Value = VisualizationGraphType.Line },
+    new() { Text = "Area", Value = VisualizationGraphType.Area },
+    new() { Text = "Column", Value = VisualizationGraphType.Column }
+];
+
+private sealed class DatePresetOption
+{
+    public string Text { get; set; } = string.Empty;
+    public DateRangeHelper.DateRangePreset Value { get; set; }
+}
+
+private enum VisualizationGraphType { Line, Area, Column }
+
+private sealed class VisualizationGraphTypeOption
+{
+    public string Text { get; set; } = string.Empty;
+    public VisualizationGraphType Value { get; set; }
+}
 
 // Missing gift alert state
 private List<Cya2.Application.DTOs.DonorSummaryDto> missingGiftDonors = new();
@@ -553,6 +739,16 @@ private bool showMissingGiftDialog = false;
                 SessionUserStateService.SelectedEndDate = hydratedRange.EndDate;
                 SessionUserStateService.SelectedDatePreset = string.IsNullOrWhiteSpace(hydratedRange.Preset) ? "ThisMonth" : hydratedRange.Preset;
             }
+
+            visualizationPresetOptions = DateRangeHelper.GetPresetOptions(Localizer)
+                .Select(p => new DatePresetOption { Value = p.preset, Text = p.displayName })
+                .ToList();
+
+            var (vizStart, vizEnd) = DateRangeHelper.GetPresetDateRange(visualizationSelectedPreset);
+            visualizationPendingStartDate = vizStart.Date;
+            visualizationPendingEndDate = vizEnd.Date;
+            visualizationStartDate = visualizationPendingStartDate;
+            visualizationEndDate = visualizationPendingEndDate;
 
             var requestedFund = !string.IsNullOrWhiteSpace(SessionUserStateService.SelectedAccountFund)
                 ? SessionUserStateService.SelectedAccountFund
@@ -808,6 +1004,10 @@ private bool showMissingGiftDialog = false;
             selectedAccount = ResolveSelectedAccount(dashboardData);
             SessionUserStateService.SelectedAccountFund = selectedAccount;
             await ComputeMissingGiftAlertsAsync();
+            if (showVisualizations)
+            {
+                await LoadVisualizationDataAsync();
+            }
             try
             {
                 // Persist server-side selection for initial page loads across circuits
@@ -841,6 +1041,71 @@ private bool showMissingGiftDialog = false;
             isLoading = false;
             await InvokeAsync(StateHasChanged);
         }
+    }
+
+    private async Task OnVisualizationToggleChanged(bool isChecked)
+    {
+        showVisualizations = isChecked;
+        if (showVisualizations)
+        {
+            await LoadVisualizationDataAsync();
+        }
+    }
+
+    private async Task OnVisualizationPresetChanged(object value)
+    {
+        if (value is DateRangeHelper.DateRangePreset preset)
+        {
+            visualizationSelectedPreset = preset;
+            if (preset != DateRangeHelper.DateRangePreset.Custom)
+            {
+                var (start, end) = DateRangeHelper.GetPresetDateRange(preset);
+                visualizationPendingStartDate = start.Date;
+                visualizationPendingEndDate = end.Date;
+                await ApplyVisualizationRange();
+            }
+        }
+    }
+
+    private async Task ApplyVisualizationRange()
+    {
+        visualizationStartDate = visualizationPendingStartDate.Date;
+        visualizationEndDate = visualizationPendingEndDate.Date;
+        visualizationSelectedPreset = DateRangeHelper.DetectPreset(visualizationStartDate, visualizationEndDate);
+        await LoadVisualizationDataAsync();
+    }
+
+    private async Task LoadVisualizationDataAsync()
+    {
+        if (string.IsNullOrWhiteSpace(selectedAccount) || string.IsNullOrWhiteSpace(cachedUserId))
+        {
+            accountVisualizationSeries.Clear();
+            return;
+        }
+
+        isVisualizationLoading = true;
+        try
+        {
+            accountVisualizationSeries = await DashboardService.GetMonthlyVisualizationAsync(
+                selectedAccount,
+                visualizationStartDate,
+                visualizationEndDate,
+                cachedUserId);
+        }
+        finally
+        {
+            isVisualizationLoading = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private string FormatVisualizationCurrency(object value)
+    {
+        if (value is decimal dec) return dec.ToString("C0", CultureInfo.CurrentCulture);
+        if (value is double dbl) return dbl.ToString("C0", CultureInfo.CurrentCulture);
+        return decimal.TryParse(value?.ToString(), out var parsed)
+            ? parsed.ToString("C0", CultureInfo.CurrentCulture)
+            : 0m.ToString("C0", CultureInfo.CurrentCulture);
     }
 
     private async Task PrefetchDashboardsAsync(string userId, List<string> accountsToPrefetch)

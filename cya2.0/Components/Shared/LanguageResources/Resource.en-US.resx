@@ -609,6 +609,9 @@
   <data name="ErrorSavingAccountSetting" xml:space="preserve">
     <value>Error saving account setting:</value>
   </data>
+  <data name="EndingBalance" xml:space="preserve">
+    <value>Ending Balance</value>
+  </data>
   <data name="CreatePrimaryFund" xml:space="preserve">
     <value>Create Primary Fund</value>
   </data>
@@ -635,5 +638,14 @@
   </data>
   <data name="RecategorizeDonationsConfirmMessage" xml:space="preserve">
     <value>This will recategorize all DonationData rows (Monthly, Yearly, Sporadic, One-time) using current classification rules. Continue?</value>
+  </data>
+  <data name="NonMonthlyIncludesSporadicAndOneTimeDonations" xml:space="preserve">
+    <value>Non Monthly includes Sporadic and One Time donations.</value>
+  </data>
+  <data name="SummaryCards" xml:space="preserve">
+    <value>Summary Cards</value>
+  </data>
+  <data name="AccountVisualizations" xml:space="preserve">
+    <value>Account Visualizations</value>
   </data>
 </root>

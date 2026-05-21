@@ -28,6 +28,11 @@ public interface IFinancialDashboardService
     /// Validate user has access to specific account
     /// </summary>
     Task<bool> ValidateAccountAccessAsync(string accountFund, string userId);
+
+    /// <summary>
+    /// Get monthly account visualization values for a date range.
+    /// </summary>
+    Task<List<MonthlyAccountVisualizationDto>> GetMonthlyVisualizationAsync(string accountFund, DateTime startDate, DateTime endDate, string userId);
 }
 
 public interface ISessionAccountDataCacheService

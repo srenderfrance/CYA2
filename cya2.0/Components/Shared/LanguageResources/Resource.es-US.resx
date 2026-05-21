@@ -609,6 +609,9 @@
   <data name="ErrorSavingAccountSetting" xml:space="preserve">
     <value>Error al guardar la configuración de cuenta:</value>
   </data>
+  <data name="EndingBalance" xml:space="preserve">
+    <value>Saldo Final</value>
+  </data>
   <data name="CreatePrimaryFund" xml:space="preserve">
     <value>Crear Fondo Primario</value>
   </data>
@@ -635,5 +638,14 @@
   </data>
   <data name="RecategorizeDonationsConfirmMessage" xml:space="preserve">
     <value>Esto recategorizará todas las filas de DonationData (Mensual, Anual, Esporádica, Única) usando las reglas actuales de clasificación. ¿Continuar?</value>
+  </data>
+  <data name="NonMonthlyIncludesSporadicAndOneTimeDonations" xml:space="preserve">
+    <value>No Mensual incluye donaciones Esporádicas y Únicas.</value>
+  </data>
+  <data name="SummaryCards" xml:space="preserve">
+    <value>Tarjetas de Resumen</value>
+  </data>
+  <data name="AccountVisualizations" xml:space="preserve">
+    <value>Visualizaciones de Cuenta</value>
   </data>
 </root>

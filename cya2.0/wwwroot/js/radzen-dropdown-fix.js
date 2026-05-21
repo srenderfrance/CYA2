@@ -34,7 +34,6 @@ window.radzenDropdownFix = {
                         this.registerDropdown(node);
                     }
                 });
-                console.log("TEST2");
                 // Check for style changes that show/hide dropdowns
                 if (mutation.type === 'attributes' && 
                     mutation.attributeName === 'style' && 
@@ -73,11 +72,9 @@ window.radzenDropdownFix = {
             
             this.openDropdowns.add(dropdownInfo);
             this.lastDropdownOpenTime = Date.now();
-            console.log("TEST");
             
             // Set initial position as fixed
             this.positionDropdownPanel(dropdownInfo);
-            console.log("TEST3");
         }
     },
     
@@ -103,7 +100,6 @@ window.radzenDropdownFix = {
     
     getElementPosition: function(element) {
         const rect = element.getBoundingClientRect();
-        console.log("TEST4");
         return {
             top: rect.top + window.scrollY,
             left: rect.left + window.scrollX,
