@@ -1,10 +1,14 @@
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.RateLimiting;
 using cya2.Services.Imports;
 
 namespace cya2.Controllers
 {
     [ApiController]
     [Route("api/import-progress")]
+    [Authorize]
+    [DisableRateLimiting]
     public class ImportProgressController : ControllerBase
     {
         private readonly ImportProgressService _progressService;

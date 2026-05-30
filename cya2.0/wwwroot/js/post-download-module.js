@@ -1,5 +1,4 @@
-window.postJsonAndDownload = async function (url, jsonPayload) {
-window.postJsonAndDownload = async function (url, jsonPayload) {
+export async function postJsonAndDownload(url, jsonPayload) {
     try {
         const tokenResponse = await fetch('/api/antiforgery-token', {
             method: 'GET',
@@ -15,7 +14,6 @@ window.postJsonAndDownload = async function (url, jsonPayload) {
         if (!requestToken) {
             throw new Error('Antiforgery token missing in response.');
         }
-        console.debug('postJsonAndDownload: antiforgery token retrieved', { hasToken: !!requestToken });
 
         const postResponse = await fetch(url, {
             method: 'POST',
@@ -50,21 +48,6 @@ window.postJsonAndDownload = async function (url, jsonPayload) {
         URL.revokeObjectURL(downloadUrl);
     } catch (err) {
         console.error('postJsonAndDownload error', err);
+        throw err;
     }
-};
-
-window.downloadTextFile = function (fileName, content, mimeType) {
-    try {
-        const blob = new Blob([content ?? ''], { type: mimeType || 'text/plain;charset=utf-8' });
-        const downloadUrl = URL.createObjectURL(blob);
-        const anchor = document.createElement('a');
-        anchor.href = downloadUrl;
-        anchor.download = fileName || 'download.txt';
-        document.body.appendChild(anchor);
-        anchor.click();
-        anchor.remove();
-        URL.revokeObjectURL(downloadUrl);
-    } catch (err) {
-        console.error('downloadTextFile error', err);
-    }
-};
+}

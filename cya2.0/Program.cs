@@ -8,13 +8,16 @@ using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authentication.Google;
 using Microsoft.AspNetCore.Authentication.OAuth;
+using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Components.Server;
 using Microsoft.AspNetCore.Localization;
+using Microsoft.AspNetCore.RateLimiting;
 using OfficeOpenXml;
 using Radzen;
 using System.Security.Claims;
 using System.Threading;
+using System.Threading.RateLimiting;
 using Cya2.Application.Interfaces;
 using Cya2.Core.Interfaces;
 using Cya2.Core.ValueObjects;
@@ -59,6 +62,8 @@ builder.Services.AddLogging(l =>
 });
 
 builder.Services.AddHttpContextAccessor();
+builder.Services.AddScoped<UserSessionHydrationService>();
+builder.Services.AddHostedService<CacheDataVersionMonitorService>();
 
 // Needed by file upload preview calls and some components/services
 builder.Services.AddHttpClient();
@@ -78,15 +83,7 @@ builder.Services.AddCleanArchitectureRepositories();
 // Shared helper: user id resolver (implementation in Infrastructure)
 builder.Services.AddScoped<IUserIdResolver, UserIdResolver>();
 
-// Ensure session/state services have correct lifetimes
-// Per-user UI session state (Blazor Server scope) - preserve across pages in same circuit
-builder.Services.AddScoped<Cya2.Application.Interfaces.ISessionUserStateService, Cya2.Application.Services.SessionUserStateService>();
-
-// Dashboard DTO cache uses internal per-user keys and should survive cross-page scopes
-builder.Services.AddSingleton<Cya2.Application.Interfaces.ISessionDashboardDtoCacheService, Cya2.Application.Services.SessionDashboardDtoCacheService>();
-
-// Import progress/session notifications - singleton so dialogs across components can observe
-builder.Services.AddSingleton<Cya2.Application.Interfaces.ISessionImportProgressService, Cya2.Application.Services.SessionImportProgressService>();
+// Session and cache services are registered in AddApplicationServices().
 
 builder.Services.AddAuthenticationCore();
 builder.Services.AddCascadingAuthenticationState();
@@ -114,12 +111,14 @@ var authBuilder = builder.Services.AddAuthentication(opts =>
 })
 .AddCookie(opts =>
 {
+    opts.Cookie.Name = "cya2.auth";
     opts.LoginPath = "/api/login";
     opts.AccessDeniedPath = "/not-authorized";
     opts.ExpireTimeSpan = TimeSpan.FromHours(24);
     opts.SlidingExpiration = false;
     opts.Cookie.HttpOnly = true;
     opts.Cookie.SecurePolicy = CookieSecurePolicy.Always;
+    opts.Cookie.SameSite = SameSiteMode.Lax;
     opts.Events = new CookieAuthenticationEvents
     {
         OnRedirectToLogin = context =>
@@ -179,8 +178,10 @@ if (hasValidGoogleConfig)
 
                 async Task RejectUnauthorizedAsync(string reason)
                 {
-                    logger.LogWarning("Google sign-in rejected: {Reason}", reason);
-                    context.Fail(reason);
+                    logger.LogWarning("Google sign-in rejected. TraceId={TraceId}, Reason={Reason}",
+                        context.HttpContext.TraceIdentifier,
+                        reason);
+                    context.Fail("Unauthorized sign-in attempt");
                     await context.HttpContext.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
                     context.Response.Redirect("/not-authorized");
                     context.HandleResponse();
@@ -188,8 +189,10 @@ if (hasValidGoogleConfig)
 
                 async Task FailLoginProcessingAsync(string reason)
                 {
-                    logger.LogWarning("Google sign-in could not be processed: {Reason}", reason);
-                    context.Fail(reason);
+                    logger.LogWarning("Google sign-in processing failed. TraceId={TraceId}, Reason={Reason}",
+                        context.HttpContext.TraceIdentifier,
+                        reason);
+                    context.Fail("Sign-in processing failed");
                     await context.HttpContext.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
                     context.Response.Redirect("/login-error");
                     context.HandleResponse();
@@ -350,6 +353,44 @@ builder.Services.AddHealthChecks()
 
 builder.Services.AddLocalization();
 
+builder.Services.AddRateLimiter(options =>
+{
+    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+
+    options.AddPolicy("AuthPolicy", httpContext =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            partitionKey: httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+            factory: _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 10,
+                Window = TimeSpan.FromMinutes(1),
+                QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+                QueueLimit = 0
+            }));
+
+    options.AddPolicy("ApiPolicy", httpContext =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            partitionKey: httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+            factory: _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 120,
+                Window = TimeSpan.FromMinutes(1),
+                QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+                QueueLimit = 0
+            }));
+
+    options.AddPolicy("UploadPolicy", httpContext =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            partitionKey: httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+            factory: _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 60,
+                Window = TimeSpan.FromMinutes(1),
+                QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+                QueueLimit = 0
+            }));
+});
+
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
 
@@ -367,13 +408,7 @@ var app = builder.Build();
 try
 {
     var startupLogger = app.Services.GetRequiredService<ILogger<Program>>();
-    var env = app.Services.GetRequiredService<IWebHostEnvironment>();
-    startupLogger.LogInformation("Startup paths: ContentRoot={ContentRoot}, WebRoot={WebRoot}", env.ContentRootPath, env.WebRootPath);
-
-    var appCssPath = Path.Combine(env.WebRootPath ?? string.Empty, "app.css");
-    var blazorCulturePath = Path.Combine(env.WebRootPath ?? string.Empty, "js", "blazorCulture.js");
-    startupLogger.LogInformation("Static asset check: app.css exists={AppCssExists} at {AppCssPath}", File.Exists(appCssPath), appCssPath);
-    startupLogger.LogInformation("Static asset check: blazorCulture.js exists={JsExists} at {JsPath}", File.Exists(blazorCulturePath), blazorCulturePath);
+    startupLogger.LogInformation("Startup diagnostics initialized");
 }
 catch { }
 
@@ -453,7 +488,7 @@ TaskScheduler.UnobservedTaskException += (sender, args) =>
     }
 };
 
-app.MapHealthChecks("/health");
+app.MapHealthChecks("/health").RequireAuthorization();
 
 // Initialize monitor service
 dbMonitorService = app.Services.GetRequiredService<IDatabaseAvailabilityMonitor>();
@@ -494,13 +529,40 @@ app.Use(async (context, next) =>
 {
     context.Response.Headers["X-Content-Type-Options"] = "nosniff";
     context.Response.Headers["X-Frame-Options"] = "DENY";
-    context.Response.Headers["X-XSS-Protection"] = "1; mode=block";
     context.Response.Headers["Referrer-Policy"] = "strict-origin-when-cross-origin";
+    context.Response.Headers["Permissions-Policy"] = "accelerometer=(), autoplay=(), camera=(), geolocation=(), gyroscope=(), magnetometer=(), microphone=(), payment=(), usb=(), clipboard-read=(self), clipboard-write=(self)";
+    context.Response.Headers["Content-Security-Policy"] =
+        "default-src 'self'; " +
+        "base-uri 'self'; " +
+        "object-src 'none'; " +
+        "frame-ancestors 'none'; " +
+        "form-action 'self'; " +
+        "script-src 'self' https://cdn.jsdelivr.net; " +
+        "script-src-elem 'self' https://cdn.jsdelivr.net; " +
+        "script-src-attr 'unsafe-inline'; " +
+        "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; " +
+        "font-src 'self' https://cdn.jsdelivr.net data:; " +
+        "img-src 'self' data: https:; " +
+        "connect-src 'self' https: wss:; " +
+        "frame-src 'none';";
+    await next();
+});
+
+app.Use(async (context, next) =>
+{
+    if (!app.Environment.IsDevelopment() &&
+        context.Request.Path.Equals("/auth-config-required", StringComparison.OrdinalIgnoreCase))
+    {
+        context.Response.StatusCode = StatusCodes.Status404NotFound;
+        return;
+    }
+
     await next();
 });
 
 app.UseAuthentication();
 app.UseAuthorization();
+app.UseRateLimiter();
 // Use middleware to populate session-selected account from server-side selection store
 app.UseSelectedAccountMiddleware();
 app.UseDatabaseCheck();
@@ -520,15 +582,14 @@ app.Use(async (context, next) =>
     await next();
 });
 
-app.MapControllers().DisableAntiforgery();
+app.MapControllers().RequireRateLimiting("ApiPolicy");
 
 app.MapRazorComponents<App>()
-   .AddInteractiveServerRenderMode()
-   .DisableAntiforgery();
+   .AddInteractiveServerRenderMode();
 
 app.MapGet("/api/login", async (HttpContext ctx, IDatabaseAvailabilityMonitor monitor, ILogger<Program> logger) =>
 {
-    logger.LogInformation("Login endpoint invoked");
+    logger.LogDebug("Login endpoint invoked. TraceId={TraceId}", ctx.TraceIdentifier);
 
     await ctx.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
 
@@ -564,7 +625,7 @@ app.MapGet("/api/login", async (HttpContext ctx, IDatabaseAvailabilityMonitor mo
 
     if (!hasValidGoogleConfig)
     {
-        logger.LogWarning("Google OAuth not configured, redirecting to auth config page");
+        logger.LogWarning("Google OAuth not configured. TraceId={TraceId}", ctx.TraceIdentifier);
         ctx.Response.Redirect("/auth-config-required", false);
         return Results.Empty;
     }
@@ -580,106 +641,22 @@ app.MapGet("/api/login", async (HttpContext ctx, IDatabaseAvailabilityMonitor mo
 
     props.Parameters["prompt"] = "select_account";
     return Results.Challenge(props, new[] { GoogleDefaults.AuthenticationScheme });
-});
+}).RequireRateLimiting("AuthPolicy");
 
 app.MapGet("/logout", async (HttpContext ctx) =>
 {
     await ctx.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
     ctx.Response.Redirect("/logged-out");
-});
+}).RequireAuthorization().RequireRateLimiting("AuthPolicy");
 
-app.MapGet("/api/check-db", (HttpContext ctx, IConfiguration cfg, IDatabaseAvailabilityMonitor monitor) =>
+app.MapGet("/api/antiforgery-token", (HttpContext ctx, IAntiforgery antiforgery, ILogger<Program> logger) =>
 {
-    try
-    {
-        var cs = cfg.GetConnectionString("default") ?? string.Empty;
-        string host = "localhost";
-        int port = 3306;
-
-        foreach (var part in cs.Split(";"))
-        {
-            if (part.StartsWith("server=", StringComparison.OrdinalIgnoreCase) ||
-                part.StartsWith("host=", StringComparison.OrdinalIgnoreCase))
-            {
-                host = part[(part.IndexOf('=') + 1)..].Trim();
-            }
-            else if (part.StartsWith("port=", StringComparison.OrdinalIgnoreCase))
-            {
-                int.TryParse(part[(part.IndexOf('=') + 1)..].Trim(), out port);
-            }
-        }
-
-        var ok = GlobalSettings.CheckDatabaseTcpConnection(host, port, 2000);
-        if (ok)
-        {
-            monitor.Resume();
-            return Results.Ok(new { status = "connected" });
-        }
-
-        return Results.Ok(new { status = "disconnected", message = monitor.LastError });
-    }
-    catch (Exception ex)
-    {
-        return Results.Ok(new { status = "error", message = ex.Message });
-    }
-});
-
-app.MapGet("/api/auth-status", (HttpContext ctx) =>
-{
-    var isAuth = ctx.User.Identity?.IsAuthenticated ?? false;
-    var claims = ctx.User.Claims.Select(c => new { type = c.Type, value = c.Value }).ToList();
-    return Results.Ok(new
-    {
-        isAuthenticated = isAuth,
-        userName = ctx.User.Identity?.Name,
-        claims,
-        systemStatus = new
-        {
-            GlobalSettings.CompleteBypass,
-            GlobalSettings.AllowMySqlLoading,
-            GlobalSettings.BypassDatabaseMonitoring,
-            databaseIsConnected = ctx.RequestServices.GetRequiredService<IDatabaseAvailabilityMonitor>().IsConnected,
-            isAzureEnvironment = !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("WEBSITE_SITE_NAME")),
-            requestPath = ctx.Request.Path.ToString()
-        }
-    });
-}).WithMetadata(new AllowAnonymousAttribute());
-
-// Upload endpoints
-app.MapPost("/api/upload/donations", async (HttpRequest req, IDonationImportService import, ILogger<Program> logger) =>
-{
-    try
-    {
-        var form = await req.ReadFormAsync();
-        var file = form.Files.Count > 0 ? form.Files[0] : null;
-        if (file is null || file.Length == 0) return Results.BadRequest("No file");
-        await using var stream = file.OpenReadStream();
-        var res = await import.StartImportAsync(stream, CancellationToken.None);
-        return Results.Json(res);
-    }
-    catch (Exception ex)
-    {
-        logger.LogError(ex, "Donation upload endpoint failed");
-        return Results.Problem(ex.Message);
-    }
-});
-
-app.MapPost("/api/upload/accounting", async (HttpRequest req, IAccountingImportService import, ILogger<Program> logger) =>
-{
-    try
-    {
-        var form = await req.ReadFormAsync();
-        var file = form.Files.Count > 0 ? form.Files[0] : null;
-        if (file is null || file.Length == 0) return Results.BadRequest("No file");
-        await using var stream = file.OpenReadStream();
-        var res = await import.StartImportAsync(stream, CancellationToken.None);
-        return Results.Json(res);
-    }
-    catch (Exception ex)
-    {
-        logger.LogError(ex, "Accounting upload endpoint failed");
-        return Results.Problem(ex.Message);
-    }
-});
+    var tokens = antiforgery.GetAndStoreTokens(ctx);
+    logger.LogDebug("Issued antiforgery token for {Path}. TraceId={TraceId}, UserAuthenticated={IsAuthenticated}",
+        ctx.Request.Path,
+        ctx.TraceIdentifier,
+        ctx.User?.Identity?.IsAuthenticated == true);
+    return Results.Ok(new { requestToken = tokens.RequestToken });
+}).RequireAuthorization().RequireRateLimiting("ApiPolicy");
 
 app.Run();

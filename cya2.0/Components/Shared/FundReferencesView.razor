@@ -1,0 +1,80 @@
+@using Cya2.Core.Entities
+@using Cya2.Application.Services
+@inject IStringLocalizer<Resource> Localizer
+@inject AdminFundReadService AdminFundReadService
+@inject IJSRuntime JS
+
+<RadzenStack Orientation="Orientation.Vertical" Gap="1rem" Class="rz-p-3" Style="overflow:auto;">
+    @if (!string.IsNullOrEmpty(errorMessage))
+    {
+        <RadzenAlert AlertStyle="AlertStyle.Danger" ShowIcon="true" Variant="Variant.Filled">
+            @errorMessage
+        </RadzenAlert>
+    }
+
+    <RadzenCard>
+        <RadzenDataGrid TItem="Account"
+                        Data="@accounts"
+                        AllowSorting="true"
+                        AllowFiltering="true"
+                        AllowPaging="false"
+                        EmptyText="@Localizer["NoAccountFound"]">
+            <Columns>
+                <RadzenDataGridColumn TItem="Account" Property="AccountNumber" Title="@Localizer["AccountNumber"]" Width="170px" />
+                <RadzenDataGridColumn TItem="Account" Property="Fund" Title="@Localizer["Fund"]" Width="280px" />
+                <RadzenDataGridColumn TItem="Account" Property="AccountingClass" Title="@Localizer["Class"]" Width="170px" />
+                <RadzenDataGridColumn TItem="Account" Property="Overhead" Title="@Localizer["Overhead"]" Width="120px" TextAlign="TextAlign.Right">
+                    <Template Context="a">
+                        @a.Overhead.ToString("N2")%
+                    </Template>
+                </RadzenDataGridColumn>
+            </Columns>
+        </RadzenDataGrid>
+    </RadzenCard>
+
+    <div style="display:flex; justify-content:flex-end;">
+        <RadzenButton Text="@Localizer["CopyTable"]"
+                      Icon="content_copy"
+                      ButtonStyle="ButtonStyle.Primary"
+                      Style="background-color: #0a3b6b; border-color: #0a3b6b;"
+                      Click="CopyTableAsync" />
+    </div>
+</RadzenStack>
+
+@code {
+    private string errorMessage = string.Empty;
+    private List<Account> accounts = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            accounts = (await AdminFundReadService.GetAllAccountsAsync() ?? new List<Account>())
+                .OrderBy(a => a.Fund)
+                .ToList();
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error loading accounts: {ex.Message}";
+        }
+    }
+
+    private async Task CopyTableAsync()
+    {
+        try
+        {
+            var sb = new System.Text.StringBuilder();
+            sb.AppendLine($"{Localizer["AccountNumber"]}\t{Localizer["Fund"]}\t{Localizer["Class"]}\t{Localizer["Overhead"]}");
+            foreach (var a in accounts)
+            {
+                sb.AppendLine($"{a.AccountNumber}\t{a.Fund}\t{a.AccountingClass}\t{a.Overhead:N2}%");
+            }
+
+            await JS.InvokeVoidAsync("navigator.clipboard.writeText", sb.ToString());
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error copying table: {ex.Message}";
+        }
+    }
+}

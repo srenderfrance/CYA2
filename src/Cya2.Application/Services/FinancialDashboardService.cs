@@ -205,17 +205,19 @@ public class FinancialDashboardService : IFinancialDashboardService
                     monthEnd = endDate;
                 }
 
-                var donationTotal = await _financialDashboardReadRepository.GetDonationTotalAsync(repositoryAccount, monthStart, monthEnd);
-                var expenseTotal = await _financialDashboardReadRepository.GetExpenseTotalAsync(repositoryAccount, monthStart, monthEnd);
-                var balance = await _financialDashboardReadRepository.GetBalanceAsOfAsync(repositoryAccount, monthEnd);
+                var donationTask = _financialDashboardReadRepository.GetDonationTotalAsync(repositoryAccount, monthStart, monthEnd);
+                var expenseTask = _financialDashboardReadRepository.GetExpenseTotalAsync(repositoryAccount, monthStart, monthEnd);
+                var balanceTask = _financialDashboardReadRepository.GetBalanceAsOfAsync(repositoryAccount, monthEnd);
+
+                await Task.WhenAll(donationTask, expenseTask, balanceTask);
 
                 points.Add(new MonthlyAccountVisualizationDto
                 {
                     MonthStart = monthStart,
                     MonthLabel = monthStart.ToString(singleYear ? "MMM" : "MMM yy"),
-                    DonationTotal = donationTotal,
-                    ExpenseTotal = expenseTotal,
-                    Balance = balance
+                    DonationTotal = donationTask.Result,
+                    ExpenseTotal = expenseTask.Result,
+                    Balance = balanceTask.Result
                 });
 
                 cursor = cursor.AddMonths(1);

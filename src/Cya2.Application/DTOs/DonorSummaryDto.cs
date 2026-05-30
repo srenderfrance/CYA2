@@ -11,6 +11,10 @@ public class DonorSummaryDto
     public string Email { get; set; } = string.Empty;
     public string PhoneSummary { get; set; } = string.Empty;
     public string AddressSummary { get; set; } = string.Empty;
+    public string City { get; set; } = string.Empty;
+    public string State { get; set; } = string.Empty;
+    public string PostalCode { get; set; } = string.Empty;
+    public string Country { get; set; } = string.Empty;
     public DonorFrequency Frequency { get; set; } = DonorFrequency.None;
     /// <summary>
     /// True when this donor is a monthly giver with one or more missing gifts

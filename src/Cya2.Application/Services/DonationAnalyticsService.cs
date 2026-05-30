@@ -16,7 +16,7 @@ public class DonationAnalyticsService : IDonationAnalyticsService
     /// <summary>
     /// Build pivot table data for donation grid display - moved from Donations.razor BuildPivot()
     /// </summary>
-    public async Task<DonationPivotResult> BuildDonationPivotAsync(List<Donation> donations, DateTime startDate, DateTime endDate)
+    public Task<DonationPivotResult> BuildDonationPivotAsync(List<Donation> donations, DateTime startDate, DateTime endDate)
     {
         var result = new DonationPivotResult();
 
@@ -30,7 +30,7 @@ public class DonationAnalyticsService : IDonationAnalyticsService
         }
 
         if (!donations.Any()) 
-            return result;
+            return Task.FromResult(result);
 
         // Group by donor and build pivot rows
         var byDonor = donations
@@ -70,35 +70,35 @@ public class DonationAnalyticsService : IDonationAnalyticsService
 
         result.GrandTotal = result.MonthTotals.Values.Sum();
 
-        return result;
+        return Task.FromResult(result);
     }
 
     /// <summary>
     /// Get comprehensive donation summary for account and date range
     /// </summary>
-    public async Task<DonationSummaryResult> GetDonationSummaryAsync(int accountId, DateTime startDate, DateTime endDate)
+    public Task<DonationSummaryResult> GetDonationSummaryAsync(int accountId, DateTime startDate, DateTime endDate)
     {
         // This would integrate with your existing data loading patterns
         // For now, return a basic structure that can be enhanced
-        return new DonationSummaryResult
+        return Task.FromResult(new DonationSummaryResult
         {
             AccountId = accountId,
             StartDate = startDate,
             EndDate = endDate
-        };
+        });
     }
 
     /// <summary>
     /// Filter donations by account and sub-account criteria
     /// Moves filtering logic from Donations.razor ProcessDonationData()
     /// </summary>
-    public async Task<List<Donation>> FilterDonationsAsync(List<Donation> donations, Account account, string? subAccountSelection = null)
+    public Task<List<Donation>> FilterDonationsAsync(List<Donation> donations, Account account, string? subAccountSelection = null)
     {
         if (donations == null || !donations.Any())
-            return new List<Donation>();
+            return Task.FromResult(new List<Donation>());
 
         if (account == null)
-            return donations;
+            return Task.FromResult(donations);
 
         var filtered = new List<Donation>();
 
@@ -125,14 +125,14 @@ public class DonationAnalyticsService : IDonationAnalyticsService
             }
         }
 
-        return filtered.OrderByDescending(d => d.Date).ToList();
+        return Task.FromResult(filtered.OrderByDescending(d => d.Date).ToList());
     }
 
     // Implement missing interface methods
-    public async Task<DonorAnalyticsResult> AnalyzeDonorPerformanceAsync(string accountFund, DateTime fromDate, DateTime toDate)
+    public Task<DonorAnalyticsResult> AnalyzeDonorPerformanceAsync(string accountFund, DateTime fromDate, DateTime toDate)
     {
         // Placeholder implementation
-        return new DonorAnalyticsResult
+        return Task.FromResult(new DonorAnalyticsResult
         {
             AccountFund = accountFund,
             AnalysisDate = DateTime.Now,
@@ -140,19 +140,19 @@ public class DonationAnalyticsService : IDonationAnalyticsService
             TotalGiving = 0,
             AverageGiving = 0,
             Insights = new List<DonorInsight>()
-        };
+        });
     }
 
-    public async Task<List<DonorTrendDto>> GetDonorTrendsAsync(string accountFund, int monthsBack = 12)
+    public Task<List<DonorTrendDto>> GetDonorTrendsAsync(string accountFund, int monthsBack = 12)
     {
         // Placeholder implementation
-        return new List<DonorTrendDto>();
+        return Task.FromResult(new List<DonorTrendDto>());
     }
 
-    public async Task<DonorRetentionReport> AnalyzeRetentionAsync(string accountFund, DateTime fromDate, DateTime toDate)
+    public Task<DonorRetentionReport> AnalyzeRetentionAsync(string accountFund, DateTime fromDate, DateTime toDate)
     {
         // Placeholder implementation
-        return new DonorRetentionReport
+        return Task.FromResult(new DonorRetentionReport
         {
             AccountFund = accountFund,
             AnalysisPeriod = DateTime.Now,
@@ -161,12 +161,12 @@ public class DonationAnalyticsService : IDonationAnalyticsService
             RetainedDonors = 0,
             LapsedDonors = 0,
             Insights = new List<RetentionInsight>()
-        };
+        });
     }
 
-    public async Task<List<DonorSegmentDto>> SegmentDonorsAsync(string accountFund)
+    public Task<List<DonorSegmentDto>> SegmentDonorsAsync(string accountFund)
     {
         // Placeholder implementation
-        return new List<DonorSegmentDto>();
+        return Task.FromResult(new List<DonorSegmentDto>());
     }
 }

@@ -10,6 +10,7 @@
 @inject NavigationManager NavigationManager
 @inject ISessionUserStateService SessionUserStateService
 @inject Cya2.Application.Interfaces.IUserIdResolver UserIdResolver
+@inject cya2.Services.UserSessionHydrationService SessionHydrationService
 @rendermode InteractiveServer
 @inject IStringLocalizer<Resource> Localizer
 @inject IJSRuntime JS
@@ -32,6 +33,13 @@
 <div class="container mt-4">
     <RadzenCard>
         <RadzenText TextStyle="TextStyle.H3">@Localizer["SettingsAndPreferences"]</RadzenText>
+
+        @if (isLoading)
+        {
+            <PageLoadingIndicator IsLoading="true" LoadingText="@Localizer["Loading"]" />
+        }
+        else
+        {
 
         @if (!string.IsNullOrEmpty(errorMessage))
         {
@@ -113,6 +121,7 @@
                 </RadzenCard>
             </RadzenStack>
         </RadzenStack>
+        }
     </RadzenCard>
 </div>
 
@@ -132,6 +141,7 @@
     private string currentLanguage = "en-US";
     private string selectedAccountingClass = string.Empty;
     private string selectedLanguage = "en-US";
+    private bool isLoading = true;
 
     protected override async Task OnInitializedAsync()
     {
@@ -142,6 +152,7 @@
     {
         try
         {
+            isLoading = true;
             errorMessage = string.Empty;
             successMessage = string.Empty;
 
@@ -157,8 +168,10 @@
             var authLevel = user.FindFirstValue("AuthLevel") ?? string.Empty;
             var isAdminOnlyHint = user.IsInRole("Admin") || string.Equals(authLevel, "Admin", StringComparison.OrdinalIgnoreCase);
 
-            var userIdentifier = UserIdResolver.ResolveUserId(user, SessionUserStateService.CurrentUserId);
-            SessionUserStateService.ResetForUser(userIdentifier);
+            var userIdentifier = SessionHydrationService.HydrateForUser(
+                user,
+                hydrateSelectedAccount: false,
+                hydrateDateRange: false);
 
             if (string.IsNullOrWhiteSpace(userIdentifier))
             {
@@ -207,6 +220,10 @@
         catch (Exception ex)
         {
             errorMessage = $"{Localizer["ErrorLoadingUserData"]} {ex.Message}";
+        }
+        finally
+        {
+            isLoading = false;
         }
     }
 

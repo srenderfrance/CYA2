@@ -50,4 +50,28 @@ function enableAutocompleteTabBehavior(containerId) {
 
 // Expose globally for simple invocation from Blazor
 window.enableAutocompleteTabBehavior = enableAutocompleteTabBehavior;
+
+window.isAutocompletePopupVisible = function () {
+    try {
+        const panels = document.querySelectorAll('.rz-autocomplete-panel, .rz-autocomplete-popup');
+        for (const panel of panels) {
+            if (!panel) continue;
+
+            const style = window.getComputedStyle(panel);
+            const isVisible = style.display !== 'none'
+                && style.visibility !== 'hidden'
+                && style.opacity !== '0'
+                && panel.getClientRects().length > 0;
+
+            if (isVisible) {
+                return true;
+            }
+        }
+    } catch {
+        // ignore
+    }
+
+    return false;
+};
+
 export { enableAutocompleteTabBehavior };
