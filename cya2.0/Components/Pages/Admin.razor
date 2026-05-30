@@ -92,6 +92,10 @@
         <RadzenCard Style="overflow: visible;">
             <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" JustifyContent="JustifyContent.SpaceBetween" Gap="0.5rem" Class="rz-mt-1 rz-mb-4" Style="padding-bottom: 0.5rem; margin-bottom: 1.5rem;">
                 <RadzenText TextStyle="TextStyle.H5" Style="font-weight: 800; color: #1f2937;">@Localizer["ManageFundraisingAccounts"]</RadzenText>
+                <RadzenButton Text="@Localizer["FundRefrences"]"
+                              ButtonStyle="ButtonStyle.Primary"
+                              Style="background-color: #0a3b6b; border-color: #0a3b6b;"
+                              Click="@(async () => await OpenFundReferencesDialog())" />
             </RadzenStack>
 
             <div class="admin-form-shell" style="width:100%; max-width:900px;">
@@ -1680,6 +1684,13 @@
         {
             await DialogService.OpenAsync<AccountSummariesView>(
                 title: Localizer["AccountSummaries"],
+                options: BuildAdminDialogOptions(width: "90vw", height: "auto", resizable: true, showClose: true));
+        }
+
+        private async Task OpenFundReferencesDialog()
+        {
+            await DialogService.OpenAsync<FundReferencesView>(
+                title: Localizer["FundRefrences"],
                 options: BuildAdminDialogOptions(width: "90vw", height: "auto", resizable: true, showClose: true));
         }
 

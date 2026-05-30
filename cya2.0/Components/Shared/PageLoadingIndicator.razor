@@ -1,0 +1,12 @@
+@if (IsLoading)
+{
+    <div class="mt-3">
+        <RadzenProgressBar Value="100" ShowValue="false" Mode="ProgressBarMode.Indeterminate" />
+        <p class="text-muted mt-1">@LoadingText</p>
+    </div>
+}
+
+@code {
+    [Parameter] public bool IsLoading { get; set; }
+    [Parameter] public string LoadingText { get; set; } = "Loading...";
+}

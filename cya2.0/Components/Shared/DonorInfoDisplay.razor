@@ -3,7 +3,7 @@
 
 <div style="display:grid; grid-template-columns: 90px 1fr; row-gap:8px; column-gap:8px; align-items:start; font-size:0.85rem; @AdditionalStyling">
     <div style="font-weight:600; color:#666; @SelectableTextStyle">@Localizer["Name"]</div>
-    <div style="font-weight:500; overflow-wrap:anywhere; min-width:0; @SelectableTextStyle">@(string.IsNullOrWhiteSpace(DonorName) ? Localizer["Unknown"] : DonorName)</div>
+    <div style="font-weight:500; overflow-wrap:anywhere; min-width:0; @SelectableTextStyle">@(string.IsNullOrWhiteSpace(DonorName) ? Localizer["None"] : DonorName)</div>
 
     <div style="font-weight:600; color:#666; @SelectableTextStyle">@Localizer["Email"]</div>
     <div style="overflow-wrap:anywhere; min-width:0; @SelectableTextStyle">@(string.IsNullOrWhiteSpace(DonorEmail) ? Localizer["None"] : DonorEmail)</div>

@@ -10,6 +10,7 @@ using Cya2.Core.ReadModels;
 using Cya2.Core.Services;
 using Cya2.Core.ValueObjects;
 using Microsoft.Extensions.Logging;
+using System.Diagnostics;
 
 namespace Cya2.Application.Services
 {
@@ -60,16 +61,25 @@ namespace Cya2.Application.Services
 
         public async Task<List<DonorSummaryDto>> GetDonorSummariesAsync(IEnumerable<string> fundNames, DateRange dateRange)
         {
+            var sw = Stopwatch.StartNew();
             var funds = NormalizeFunds(fundNames);
             if (!funds.Any()) return new List<DonorSummaryDto>();
 
             var signature = BuildFundsSignature(funds);
             if (_donorSummaryCache.TryGetDonorSummaries(signature, dateRange.StartDate, dateRange.EndDate, out var cached))
             {
+                _logger.LogInformation(
+                    "Donor summaries source=cache funds={FundCount} range={Start:yyyy-MM-dd}..{End:yyyy-MM-dd} rows={RowCount} elapsedMs={ElapsedMs}",
+                    funds.Count,
+                    dateRange.StartDate,
+                    dateRange.EndDate,
+                    cached.Count,
+                    sw.ElapsedMilliseconds);
                 return cached;
             }
 
             var donations = await _donationReadRepository.GetDonationsByFundsAndDateRangeAsync(funds, dateRange.StartDate, dateRange.EndDate);
+            donations = DeduplicateDonations(donations);
             _lastQuery = "GetDonationsByFundsAndDateRange";
 
             var result = BuildDonorSummaries(donations)
@@ -78,6 +88,15 @@ namespace Cya2.Application.Services
                 .ToList();
 
             _donorSummaryCache.SetDonorSummaries(signature, dateRange.StartDate, dateRange.EndDate, result);
+
+            _logger.LogInformation(
+                "Donor summaries source=db funds={FundCount} range={Start:yyyy-MM-dd}..{End:yyyy-MM-dd} donations={DonationCount} rows={RowCount} elapsedMs={ElapsedMs}",
+                funds.Count,
+                dateRange.StartDate,
+                dateRange.EndDate,
+                donations?.Count ?? 0,
+                result.Count,
+                sw.ElapsedMilliseconds);
             return result;
         }
 
@@ -96,6 +115,7 @@ namespace Cya2.Application.Services
             var funds = NormalizeFunds(fundNames);
             if (!funds.Any()) return new List<DonorSummaryDto>();
             var donations = await _donationReadRepository.GetDonationsByFundsAsync(funds);
+            donations = DeduplicateDonations(donations);
             _lastQuery = "GetDonationsByFunds (all donors)";
             return BuildDonorSummaries(donations).OrderByDescending(d => d.Total).ThenBy(d => d.Name).ToList();
         }
@@ -186,6 +206,19 @@ namespace Cya2.Application.Services
             return string.Join("||", funds.OrderBy(f => f, StringComparer.OrdinalIgnoreCase));
         }
 
+        private static List<DonationRecord> DeduplicateDonations(List<DonationRecord> donations)
+        {
+            if (donations == null || donations.Count == 0)
+            {
+                return new List<DonationRecord>();
+            }
+
+            return donations
+                .GroupBy(d => d.Id)
+                .Select(g => g.First())
+                .ToList();
+        }
+
         private IEnumerable<DonorSummaryDto> BuildDonorSummaries(List<DonationRecord> donations)
         {
             var groups = donations
@@ -235,6 +268,10 @@ namespace Cya2.Application.Services
                     Email = mostRecentWithEmail?.Email ?? string.Empty,
                     PhoneSummary = string.Join("; ", phones),
                     AddressSummary = mostRecentWithAddress?.Address ?? string.Empty,
+                    City = mostRecentWithAddress?.City ?? string.Empty,
+                    State = mostRecentWithAddress?.State ?? string.Empty,
+                    PostalCode = mostRecentWithAddress?.PostalCode ?? string.Empty,
+                    Country = mostRecentWithAddress?.Country ?? string.Empty,
                     Frequency = frequency,
                     HasMissingGiftAlert = missingAlerts.Count > 0,
                     MissingMonths = missingAlerts.Select(a => a.ExpectedMonthLabel).ToList()

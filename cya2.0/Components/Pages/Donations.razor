@@ -14,6 +14,7 @@
 @inject ILogger<Donations> Logger
 @inject Cya2.Application.Interfaces.IUserSelectionService UserSelectionService
 @inject Cya2.Application.Interfaces.IUserDateRangeSelectionService DateRangeSelectionService
+@inject cya2.Services.UserSessionHydrationService SessionHydrationService
 
 @* CLEAN ARCHITECTURE INTEGRATION *@
 @using Cya2.Application.Interfaces
@@ -311,6 +312,14 @@
                       ButtonStyle="@(currentView == ViewMode.Graphs ? ButtonStyle.Primary : ButtonStyle.Light)"
                       Size="ButtonSize.Small"
                       Click="@(() => SetView(ViewMode.Graphs))" />
+
+        @if (currentView != ViewMode.Graphs)
+        {
+            <div style="display:flex; align-items:center; gap:0.4rem; margin-left:0.75rem;">
+                <RadzenLabel Text="@Localizer["CompactView"]" />
+                <RadzenCheckBox TValue="bool" @bind-Value="useCompactView" />
+            </div>
+        }
     </RadzenStack>
 
     @if (!string.IsNullOrEmpty(errorMessage))
@@ -322,10 +331,7 @@
 
     @if (isLoading)
     {
-        <div class="mt-3">
-            <RadzenProgressBar Value="100" ShowValue="false" Mode="ProgressBarMode.Indeterminate" />
-            <p class="text-muted mt-1">@Localizer["LoadingDonations"]</p>
-        </div>
+        <PageLoadingIndicator IsLoading="true" LoadingText="@Localizer["LoadingDonations"]" />
     }
     else
     {
@@ -336,7 +342,8 @@
                 <div class="giving-grid-wrapper">
                 <RadzenDataGrid TItem="DonationPivotRowDto"
                                 Data="@pivotRows"
-                                Class="giving-grid"
+                                Class="@(useCompactView ? "giving-grid compact-data-grid" : "giving-grid")"
+                                 Dense="@useCompactView"
                                  AllowPaging="false"
                                  AllowSorting="false"
                                  AllowFiltering="false"
@@ -419,9 +426,10 @@
                                     AllowColumnResize="true"
                                     AllowSorting="true"
                                     AllowPaging="false"
+                                    Dense="@useCompactView"
                                     FilterMode="FilterMode.Advanced"
                                     EmptyText="@GetEmptyText()"
-                                    Class="donation-list">
+                                    Class="@(useCompactView ? "donation-list compact-data-grid" : "donation-list")">
                         <Columns>
                             <RadzenDataGridColumn TItem="DonationRowDto" Property="Date" Title="@(Localizer["Date"])" FormatString="{0:MM/dd/yyyy}" Width="110px" />
                             <RadzenDataGridColumn TItem="DonationRowDto" Property="Donor" Title="@(Localizer["Donor"])" Width="200px">
@@ -607,6 +615,7 @@
     private DonationGraphType selectedDonationGraphType = DonationGraphType.Line;
     private bool showGraphLabels = true;
     private bool showFrequencyPreset = false;
+    private bool useCompactView = false;
     private readonly List<DonationGraphTypeOption> donationGraphTypeOptions =
     [
         new() { Text = "Line", Value = DonationGraphType.Line },
@@ -682,35 +691,10 @@
             var authState = await AuthStateProvider.GetAuthenticationStateAsync();
             var user = authState.User;
 
-            // Resolve user id
-            userId = UserIdResolver.ResolveUserId(user, SessionUserStateService.CurrentUserId);
-
-            // Do not reset session state here. The middleware is responsible for populating per-request
-            // selected-account and setting CurrentUserId. Only initialize CurrentUserId when empty so we
-            // don't accidentally clear middleware-populated SelectedAccountFund.
-            if (string.IsNullOrWhiteSpace(SessionUserStateService.CurrentUserId))
+            userId = SessionHydrationService.HydrateForUser(user);
+            if (!string.IsNullOrWhiteSpace(SessionUserStateService.SelectedAccountFund))
             {
-                SessionUserStateService.CurrentUserId = userId;
-            }
-
-            // If middleware populated server-side selection (in a separate HTTP request scope) it may be
-            // stored in IUserSelectionService (Memory cache). The Blazor circuit's scoped SessionUserStateService
-            // can be empty because middleware ran in a different scope. Try to hydrate session from the
-            // server-side selection store so the circuit has the same SelectedAccountFund.
-            if (string.IsNullOrWhiteSpace(SessionUserStateService.SelectedAccountFund))
-            {
-                try
-                {
-                    if (!string.IsNullOrWhiteSpace(userId) && UserSelectionService != null && UserSelectionService.TryGetSelectedAccount(userId, out var svcAcct) && !string.IsNullOrWhiteSpace(svcAcct))
-                    {
-                        SessionUserStateService.SelectedAccountFund = svcAcct;
-                        Debug($"Hydrated session SelectedAccountFund from UserSelectionService: '{svcAcct}'");
-                    }
-                }
-                catch (Exception ex)
-                {
-                    Logger.LogWarning(ex, "Failed to hydrate session SelectedAccountFund from UserSelectionService");
-                }
+                Debug($"Hydrated session SelectedAccountFund: '{SessionUserStateService.SelectedAccountFund}'");
             }
 
             var authLevel = user.FindFirstValue("AuthLevel") ?? string.Empty;
@@ -719,15 +703,6 @@
                               string.Equals(authLevel, "Viewer", StringComparison.OrdinalIgnoreCase);
 
             presetOptions = GetPresetOptions();
-
-            if ((!SessionUserStateService.SelectedStartDate.HasValue || !SessionUserStateService.SelectedEndDate.HasValue) &&
-                !string.IsNullOrWhiteSpace(userId) &&
-                DateRangeSelectionService.TryGetDateRange(userId, out var hydratedRange))
-            {
-                SessionUserStateService.SelectedStartDate = hydratedRange.StartDate;
-                SessionUserStateService.SelectedEndDate = hydratedRange.EndDate;
-                SessionUserStateService.SelectedDatePreset = string.IsNullOrWhiteSpace(hydratedRange.Preset) ? "ThisMonth" : hydratedRange.Preset;
-            }
 
             dateRangeState = DateRangeStateService.InitializeDateRange(SessionUserStateService);
 

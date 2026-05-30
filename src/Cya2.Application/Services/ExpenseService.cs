@@ -5,6 +5,7 @@ using Cya2.Core.Interfaces;
 using Cya2.Core.ReadModels;
 using Cya2.Core.ValueObjects;
 using Cya2.Core.Services;
+using System.Diagnostics;
 
 namespace Cya2.Application.Services;
 
@@ -50,6 +51,7 @@ public class ExpenseService : IExpenseService
 
     public async Task<ExpenseDataDto> GetExpenseDataAsync(string accountName, DateRange dateRange, string userId, bool isAdminOrViewer = false)
     {
+        var sw = Stopwatch.StartNew();
         try
         {
             var context = await _userAccountContextService.GetContextAsync(userId, isAdminOrViewer);
@@ -74,6 +76,15 @@ public class ExpenseService : IExpenseService
             {
                 cached.UserAccounts = contextAccounts.Select(MapToAccountOptionDto).ToList();
                 cached.SelectedAccount = selectedAccount.Fund ?? string.Empty;
+                _logger.LogInformation(
+                    "Expense data source=cache user={UserId} account={Account} range={Start:yyyy-MM-dd}..{End:yyyy-MM-dd} expenses={ExpenseCount} transfers={TransferCount} elapsedMs={ElapsedMs}",
+                    userId,
+                    cached.SelectedAccount,
+                    dateRange.StartDate,
+                    dateRange.EndDate,
+                    cached.ExpenseTransactions?.Count ?? 0,
+                    cached.TransferTransactions?.Count ?? 0,
+                    sw.ElapsedMilliseconds);
                 return cached;
             }
 
@@ -88,7 +99,7 @@ public class ExpenseService : IExpenseService
             var result = new ExpenseDataDto
             {
                 UserAccounts = contextAccounts.Select(MapToAccountOptionDto).ToList(),
-                SelectedAccount = selectedAccount.Fund,
+                SelectedAccount = selectedAccount.Fund ?? string.Empty,
                 ExpenseTransactions = expenseTransactions,
                 TransferTransactions = transferTransactions,
                 ExpenseTotal = categorized.ExpenseTotal,
@@ -98,11 +109,27 @@ public class ExpenseService : IExpenseService
             };
 
             _expenseCache.SetExpenseData(userId, selectedAccount.Fund ?? string.Empty, dateRange.StartDate, dateRange.EndDate, result);
+
+            _logger.LogInformation(
+                "Expense data source=db user={UserId} account={Account} range={Start:yyyy-MM-dd}..{End:yyyy-MM-dd} expenses={ExpenseCount} transfers={TransferCount} elapsedMs={ElapsedMs}",
+                userId,
+                result.SelectedAccount,
+                dateRange.StartDate,
+                dateRange.EndDate,
+                result.ExpenseTransactions?.Count ?? 0,
+                result.TransferTransactions?.Count ?? 0,
+                sw.ElapsedMilliseconds);
             return result;
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error getting expense data for account: {AccountName}", accountName);
+            _logger.LogError(ex,
+                "Error getting expense data for account={AccountName} user={UserId} range={Start:yyyy-MM-dd}..{End:yyyy-MM-dd} elapsedMs={ElapsedMs}",
+                accountName,
+                userId,
+                dateRange.StartDate,
+                dateRange.EndDate,
+                sw.ElapsedMilliseconds);
             var fallbackAccounts = await GetUserAccountsAsync(userId, isAdminOrViewer);
             return new ExpenseDataDto
             {

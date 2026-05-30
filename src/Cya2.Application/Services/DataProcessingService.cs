@@ -11,14 +11,14 @@ public class DataProcessingService : IDataProcessingService
 {
     #region Instance Methods (for Dependency Injection)
     
-    public async Task<List<T>> FilterByDateRangeAsync<T>(List<T> data, DateTime startDate, DateTime endDate) where T : class
+    public Task<List<T>> FilterByDateRangeAsync<T>(List<T> data, DateTime startDate, DateTime endDate) where T : class
     {
-        return FilterByDateRange(data, startDate, endDate);
+        return Task.FromResult(FilterByDateRange(data, startDate, endDate));
     }
     
-    public async Task<List<Donation>> FilterBySubAccountAsync(List<Donation> donations, Account account, string? subAccountSelection = null)
+    public Task<List<Donation>> FilterBySubAccountAsync(List<Donation> donations, Account account, string? subAccountSelection = null)
     {
-        return FilterBySubAccount(donations, account, subAccountSelection);
+        return Task.FromResult(FilterBySubAccount(donations, account, subAccountSelection));
     }
     
     public DateRangePresetResult ApplyDateRangePreset(DateRangePreset preset, DateTime? customStart = null)

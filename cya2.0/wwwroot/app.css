@@ -193,6 +193,44 @@ a, .btn-link {
     margin: 0 auto;
 }
 
+.expense-grid-compact .rz-data-grid .rz-column-header,
+.expense-grid-compact .rz-data-grid .rz-cell,
+.expense-grid-compact .rz-data-grid .rz-column-footer {
+    padding-top: 2px !important;
+    padding-bottom: 2px !important;
+    line-height: 1.1 !important;
+}
+
+.expense-grid-compact .rz-data-grid {
+    font-size: 0.78rem;
+}
+
+.expense-data-grid-compact table th,
+.expense-data-grid-compact table td {
+    padding-top: 2px !important;
+    padding-bottom: 2px !important;
+    line-height: 1.1 !important;
+    font-size: 0.78rem !important;
+}
+
+.expense-data-grid-compact .rz-cell-data,
+.expense-data-grid-compact .rz-column-title {
+    line-height: 1.1 !important;
+}
+
+.compact-data-grid table th,
+.compact-data-grid table td {
+    padding-top: 2px !important;
+    padding-bottom: 2px !important;
+    line-height: 1.1 !important;
+    font-size: 0.78rem !important;
+}
+
+.compact-data-grid .rz-cell-data,
+.compact-data-grid .rz-column-title {
+    line-height: 1.1 !important;
+}
+
 /* ------------------------------------------------------------
    Donor search row (moved from Donors.razor <style> block)
    ------------------------------------------------------------ */

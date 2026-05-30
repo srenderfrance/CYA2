@@ -1,146 +1,55 @@
 using System;
 using System.Collections.Generic;
-using System.Globalization;
 using System.Linq;
 using System.Threading.Tasks;
-using Cya2.Core.Interfaces;
-using Cya2.Core.ReadModels;
+using Cya2.Core.ValueObjects;
+using Cya2.Application.Interfaces;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using OfficeOpenXml;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
+using Microsoft.AspNetCore.Antiforgery;
 
 namespace cya2.Controllers
 {
     [ApiController]
     [Route("api/donors")]
+    [Authorize]
     public class DonorExportController : ControllerBase
     {
-        private readonly IDonationReadRepository _donationRepo;
+        private readonly IDonorService _donorService;
+        private readonly IUserAccountContextService _userAccountContextService;
+        private readonly IUserIdResolver _userIdResolver;
         private readonly ILogger<DonorExportController> _logger;
+        private readonly IAntiforgery _antiforgery;
 
-        public DonorExportController(IDonationReadRepository donationRepo, ILogger<DonorExportController> logger)
+        public DonorExportController(
+            IDonorService donorService,
+            IUserAccountContextService userAccountContextService,
+            IUserIdResolver userIdResolver,
+            ILogger<DonorExportController> logger,
+            IAntiforgery antiforgery)
         {
-            _donationRepo = donationRepo;
+            _donorService = donorService;
+            _userAccountContextService = userAccountContextService;
+            _userIdResolver = userIdResolver;
             _logger = logger;
-        }
-
-        [HttpGet("export")]
-        public async Task<IActionResult> Export([FromQuery] string fund, [FromQuery] string start, [FromQuery] string end)
-        {
-            try
-            {
-                if (string.IsNullOrEmpty(fund)) return BadRequest("Missing fund");
-
-                // Parse dates (expecting ISO or yyyy-MM-dd etc.)
-                DateTime startDate;
-                DateTime endDate;
-                if (!DateTime.TryParse(start, null, DateTimeStyles.RoundtripKind, out startDate))
-                {
-                    if (!DateTime.TryParse(start, out startDate)) startDate = DateTime.MinValue;
-                }
-                if (!DateTime.TryParse(end, null, DateTimeStyles.RoundtripKind, out endDate))
-                {
-                    if (!DateTime.TryParse(end, out endDate)) endDate = DateTime.MaxValue;
-                }
-
-                // Log exact fund string being used for SQL
-                try { _logger?.LogInformation("DonorExportController: Export requested for fund='{Fund}' start={Start} end={End}", fund, startDate, endDate); } catch { }
-                try { Console.WriteLine($"DonorExportController.TRACE: Export called with fund='{fund}' start='{startDate:o}' end='{endDate:o}'"); } catch { }
-
-                // Query donations for the fund and date range
-                var rows = await _donationRepo.GetDonationsByFundsAndDateRangeAsync(
-                    new[] { fund }, startDate, endDate);
-
-                // Group by donor name
-                var grouped = rows
-                    .Where(d => !string.IsNullOrWhiteSpace(d.AccountName))
-                    .GroupBy(d => d.AccountName!.Trim(), StringComparer.OrdinalIgnoreCase)
-                    .Select(g => new
-                    {
-                        Name = g.Key,
-                        Total = g.Sum(x => Convert.ToDecimal(x.Amount)),
-                        LastDonation = g.Max(x => x.Date),
-                        Email = g.Select(x => x.Email).FirstOrDefault(e => !string.IsNullOrWhiteSpace(e)) ?? string.Empty,
-                        Phone = string.Join("; ", g.Select(x => !string.IsNullOrWhiteSpace(x.PhoneMobile) ? x.PhoneMobile : x.PhoneFixed).Where(s => !string.IsNullOrWhiteSpace(s)).Distinct()),
-                        Address = g.Select(x => x.Address).FirstOrDefault(a => !string.IsNullOrWhiteSpace(a)) ?? string.Empty
-                    })
-                    .OrderByDescending(d => d.Total)
-                    .ThenBy(d => d.Name)
-                    .ToList();
-
-                // Use EPPlus license API for non-commercial organization
-                ExcelPackage.License.SetNonCommercialOrganization("Servant Partners");
-                using var package = new ExcelPackage();
-                var ws = package.Workbook.Worksheets.Add("Donors");
-                // Add license/comment note as a worksheet comment on the header cell
-                var licenseComment = "This workbook has been created with EPPlus licensed to Servant Partners under The Polyform Noncommercial License: See https://polyformproject.org/license";
-                // Ensure the header cell exists before adding comment
-                ws.Cells[1, 1].Value = ws.Cells[1, 1].Value ?? string.Empty;
-                var cmt = ws.Cells[1, 1].AddComment(licenseComment, "Servant Partners");
-                cmt.AutoFit = true;
-                cmt.Visible = false;
-
-                // Headers
-                ws.Cells[1, 1].Value = "Name";
-                ws.Cells[1, 2].Value = "Total";
-                ws.Cells[1, 3].Value = "LastDonation";
-                ws.Cells[1, 4].Value = "Email";
-                ws.Cells[1, 5].Value = "Phone";
-                ws.Cells[1, 6].Value = "Address";
-
-                var row = 2;
-                foreach (var d in grouped)
-                {
-                    ws.Cells[row, 1].Value = d.Name;
-                    ws.Cells[row, 2].Value = d.Total;
-                    ws.Cells[row, 2].Style.Numberformat.Format = "#,##0.00";
-                    ws.Cells[row, 3].Value = d.LastDonation;
-                    ws.Cells[row, 3].Style.Numberformat.Format = "mm/dd/yyyy";
-                    ws.Cells[row, 4].Value = d.Email;
-                    ws.Cells[row, 5].Value = d.Phone;
-                    ws.Cells[row, 6].Value = d.Address;
-                    row++;
-                }
-
-                ws.Cells[ws.Dimension.Address].AutoFitColumns();
-
-                var bytes = package.GetAsByteArray();
-                var fileName = $"donors_{fund}_{DateTime.Now:yyyyMMddHHmmss}.xlsx";
-                return File(bytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", fileName);
-            }
-            catch (Exception ex)
-            {
-                return StatusCode(500, ex.Message);
-            }
-        }
-
-        // Accept pre-built donor summary data from the client and export the provided rows.
-        public class ExportRow
-        {
-            public string Name { get; set; } = string.Empty;
-            public decimal Total { get; set; }
-            public DateTime? LastDonation { get; set; }
-            public string Email { get; set; } = string.Empty;
-            public string Phone { get; set; } = string.Empty;
-            public string Address { get; set; } = string.Empty;
-            public string PaymentMethod { get; set; } = string.Empty;
-            public string GiftType { get; set; } = string.Empty;
-            public string SoftCredit { get; set; } = string.Empty;
+            _antiforgery = antiforgery;
         }
 
         public class ExportRequest
         {
-            public string Fund { get; set; } = string.Empty;
-            public List<ExportRow> Rows { get; set; } = new List<ExportRow>();
+            public List<string> Funds { get; set; } = new List<string>();
+            public DateTime? StartDate { get; set; }
+            public DateTime? EndDate { get; set; }
+            public bool AllDates { get; set; }
             public bool IncludeTotal { get; set; } = true;
-            public bool IncludeLastDonation { get; set; } = true;
             public bool IncludeEmail { get; set; } = false;
             public bool IncludePhone { get; set; } = false;
             public bool IncludeAddress { get; set; } = false;
             public bool IncludePaymentMethod { get; set; } = false;
-            public bool IncludeGiftType { get; set; } = false;
-            public bool IncludeSoftCredit { get; set; } = false;
+            public bool IncludeFrequency { get; set; } = true;
         }
 
         [HttpPost("export-data")]
@@ -148,6 +57,30 @@ namespace cya2.Controllers
         {
             try
             {
+                try
+                {
+                    await _antiforgery.ValidateRequestAsync(HttpContext);
+                }
+                catch (AntiforgeryValidationException ex)
+                {
+                    var hasHeaderToken = Request.Headers.ContainsKey("RequestVerificationToken");
+                    var hasFormToken = Request.HasFormContentType && Request.Form.ContainsKey("__RequestVerificationToken");
+                    var antiforgeryCookies = Request.Cookies.Keys
+                        .Where(k => k.Contains("Antiforgery", StringComparison.OrdinalIgnoreCase))
+                        .ToArray();
+
+                    _logger.LogWarning(ex,
+                        "Antiforgery validation failed for {Path}. HasHeaderToken={HasHeaderToken}, HasFormToken={HasFormToken}, HeaderNames={HeaderNames}, AntiforgeryCookies={AntiforgeryCookies}, ContentType={ContentType}",
+                        Request.Path,
+                        hasHeaderToken,
+                        hasFormToken,
+                        string.Join(",", Request.Headers.Keys),
+                        string.Join(",", antiforgeryCookies),
+                        Request.ContentType ?? string.Empty);
+
+                    return BadRequest("Antiforgery validation failed.");
+                }
+
                 // Support both form-submitted JSON (Request.Form["request"]) and raw JSON body
                 ExportRequest? req = null;
 
@@ -178,14 +111,69 @@ namespace cya2.Controllers
                     }
                 }
 
-                if (req == null || req.Rows == null || !req.Rows.Any())
+                if (req == null)
                 {
                     return BadRequest("No export data provided.");
                 }
 
-                // Log exact fund string provided in request payload
-                try { _logger?.LogInformation("DonorExportController: ExportData request for fund='{Fund}'; rows={Count}", req.Fund, req.Rows.Count); } catch { }
-                try { Console.WriteLine($"DonorExportController.TRACE: ExportData called with Fund='{req.Fund}' rows={req.Rows.Count}"); } catch { }
+                var requestedFunds = (req.Funds ?? new List<string>())
+                    .Where(f => !string.IsNullOrWhiteSpace(f))
+                    .Select(f => f.Trim())
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .ToList();
+
+                if (!requestedFunds.Any())
+                {
+                    return BadRequest("At least one fund is required.");
+                }
+
+                var userId = _userIdResolver.ResolveUserId(User);
+                if (string.IsNullOrWhiteSpace(userId))
+                {
+                    return Unauthorized();
+                }
+
+                var authLevel = User.FindFirst("AuthLevel")?.Value ?? string.Empty;
+                var isAdminOrViewerHint = User.IsInRole("Admin")
+                    || string.Equals(authLevel, "Admin", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(authLevel, "Viewer", StringComparison.OrdinalIgnoreCase);
+
+                var context = await _userAccountContextService.GetContextAsync(userId, isAdminOrViewerHint);
+                if (context == null)
+                {
+                    return Forbid();
+                }
+
+                var allowedFunds = context.Accounts
+                    .Select(a => a.Fund)
+                    .Where(f => !string.IsNullOrWhiteSpace(f))
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+                if (requestedFunds.Any(f => !allowedFunds.Contains(f)))
+                {
+                    _logger.LogWarning("ExportData denied. TraceId={TraceId}, UserId={UserId}, RequestedFundCount={RequestedFundCount}",
+                        HttpContext.TraceIdentifier,
+                        userId,
+                        requestedFunds.Count);
+                    return Forbid();
+                }
+
+                var donorRows = req.AllDates
+                    ? await _donorService.GetAllDonorSummariesAsync(requestedFunds)
+                    : await _donorService.GetDonorSummariesAsync(
+                        requestedFunds,
+                        new DateRange(
+                            req.StartDate ?? DateTime.MinValue,
+                            req.EndDate ?? DateTime.MaxValue));
+
+                if (donorRows == null || donorRows.Count == 0)
+                {
+                    return BadRequest("No export data provided.");
+                }
+
+                _logger.LogInformation("DonorExportController: ExportData request for funds={Funds}; generatedRows={Count}",
+                    string.Join(",", requestedFunds), donorRows.Count);
 
                 // Use EPPlus license API for non-commercial organization
                 ExcelPackage.License.SetNonCommercialOrganization("Servant Partners");
@@ -201,41 +189,75 @@ namespace cya2.Controllers
                 var col = 1;
                 ws.Cells[1, col++].Value = "Name";
                 if (req.IncludeTotal) ws.Cells[1, col++].Value = "Total";
-                if (req.IncludeLastDonation) ws.Cells[1, col++].Value = "LastDonation";
                 if (req.IncludePaymentMethod) ws.Cells[1, col++].Value = "PaymentMethod";
-                if (req.IncludeGiftType) ws.Cells[1, col++].Value = "GiftType";
-                if (req.IncludeSoftCredit) ws.Cells[1, col++].Value = "SoftCredit";
                 if (req.IncludeEmail) ws.Cells[1, col++].Value = "Email";
                 if (req.IncludePhone) ws.Cells[1, col++].Value = "Phone";
                 if (req.IncludeAddress) ws.Cells[1, col++].Value = "Address";
+                if (req.IncludeFrequency) ws.Cells[1, col++].Value = "Frequency";
 
                 var rowIndex = 2;
-                foreach (var r in req.Rows)
+                foreach (var r in donorRows)
                 {
                     col = 1;
                     ws.Cells[rowIndex, col++].Value = r.Name;
                     if (req.IncludeTotal) { ws.Cells[rowIndex, col].Value = r.Total; ws.Cells[rowIndex, col++].Style.Numberformat.Format = "#,##0.00"; }
-                    if (req.IncludeLastDonation) { ws.Cells[rowIndex, col].Value = r.LastDonation; ws.Cells[rowIndex, col++].Style.Numberformat.Format = "mm/dd/yyyy"; }
                     if (req.IncludePaymentMethod) ws.Cells[rowIndex, col++].Value = r.PaymentMethod;
-                    if (req.IncludeGiftType) ws.Cells[rowIndex, col++].Value = r.GiftType;
-                    if (req.IncludeSoftCredit) ws.Cells[rowIndex, col++].Value = r.SoftCredit;
                     if (req.IncludeEmail) ws.Cells[rowIndex, col++].Value = r.Email;
-                    if (req.IncludePhone) ws.Cells[rowIndex, col++].Value = r.Phone;
-                    if (req.IncludeAddress) ws.Cells[rowIndex, col++].Value = r.Address;
+                    if (req.IncludePhone) ws.Cells[rowIndex, col++].Value = r.PhoneSummary;
+                    if (req.IncludeAddress) ws.Cells[rowIndex, col++].Value = r.AddressSummary;
+                    if (req.IncludeFrequency) ws.Cells[rowIndex, col++].Value = GetFrequencyLabel(r.Frequency);
                     rowIndex++;
                 }
 
                 ws.Cells[ws.Dimension.Address].AutoFitColumns();
                 var bytes = package.GetAsByteArray();
-                var fileName = $"donors_{(string.IsNullOrEmpty(req.Fund) ? "all" : req.Fund)}_{DateTime.Now:yyyyMMddHHmmss}.xlsx";
+                var fileName = BuildExportFileName(requestedFunds, req.AllDates, req.StartDate, req.EndDate);
                 // Return the file as a FileContentResult
                 var result = File(bytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", fileName);
                 return result;
             }
             catch (Exception ex)
             {
-                return StatusCode(500, ex.Message);
+                _logger.LogError(ex, "Donor export failed. TraceId={TraceId}", HttpContext.TraceIdentifier);
+                return Problem(
+                    detail: $"An unexpected error occurred while generating the export. TraceId={HttpContext.TraceIdentifier}",
+                    statusCode: StatusCodes.Status500InternalServerError);
             }
         }
+
+        private static string BuildExportFileName(List<string> requestedFunds, bool allDates, DateTime? startDate, DateTime? endDate)
+        {
+            var fundPart = requestedFunds.Count == 1
+                ? SanitizeFilePart(requestedFunds[0])
+                : $"multi_{requestedFunds.Count}_funds";
+
+            var rangePart = allDates
+                ? "all-dates"
+                : $"{(startDate ?? DateTime.MinValue):yyyyMMdd}-{(endDate ?? DateTime.MaxValue):yyyyMMdd}";
+
+            return $"donors_{fundPart}_{rangePart}_{DateTime.Now:yyyyMMddHHmmss}.xlsx";
+        }
+
+        private static string SanitizeFilePart(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                return "all";
+            }
+
+            var invalid = Path.GetInvalidFileNameChars();
+            var cleaned = new string(value.Trim().Select(c => invalid.Contains(c) ? '_' : c).ToArray());
+            cleaned = cleaned.Replace(' ', '_');
+            return string.IsNullOrWhiteSpace(cleaned) ? "all" : cleaned;
+        }
+
+        private static string GetFrequencyLabel(Cya2.Core.Enums.DonorFrequency frequency) => frequency switch
+        {
+            Cya2.Core.Enums.DonorFrequency.OneTime => "One-time",
+            Cya2.Core.Enums.DonorFrequency.Monthly => "Monthly",
+            Cya2.Core.Enums.DonorFrequency.Yearly => "Yearly",
+            Cya2.Core.Enums.DonorFrequency.Sporadic => "Sporadic",
+            _ => string.Empty
+        };
     }
 }

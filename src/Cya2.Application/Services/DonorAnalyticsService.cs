@@ -18,7 +18,7 @@ public class DonorAnalyticsService : IDonorAnalyticsService
         _logger = logger;
     }
 
-    public async Task<List<DonorProfile>> BuildDonorProfilesAsync(List<Donation> allDonations, DateTime analysisStartDate, DateTime analysisEndDate)
+    public Task<List<DonorProfile>> BuildDonorProfilesAsync(List<Donation> allDonations, DateTime analysisStartDate, DateTime analysisEndDate)
     {
         try
         {
@@ -27,16 +27,16 @@ public class DonorAnalyticsService : IDonorAnalyticsService
 
             // TODO: Implement full donor profile building
             // This is a placeholder implementation
-            return new List<DonorProfile>();
+            return Task.FromResult(new List<DonorProfile>());
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error building donor profiles");
-            return new List<DonorProfile>();
+            return Task.FromResult(new List<DonorProfile>());
         }
     }
 
-    public async Task<DonorProfile?> GetDonorProfileAsync(string donorName, List<Donation> allDonations, DateTime analysisStartDate, DateTime analysisEndDate)
+    public Task<DonorProfile?> GetDonorProfileAsync(string donorName, List<Donation> allDonations, DateTime analysisStartDate, DateTime analysisEndDate)
     {
         try
         {
@@ -44,17 +44,16 @@ public class DonorAnalyticsService : IDonorAnalyticsService
 
             // TODO: Implement full donor profile retrieval
             // This is a placeholder implementation
-            await Task.CompletedTask;
-            return null;
+            return Task.FromResult<DonorProfile?>(null);
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error getting donor profile for {DonorName}", donorName);
-            return null;
+            return Task.FromResult<DonorProfile?>(null);
         }
     }
 
-    public async Task<List<DonorAlertResult>> GetDonorAlertsAsync(List<DonorProfile> profiles, DateTime alertStartDate, DateTime alertEndDate)
+    public Task<List<DonorAlertResult>> GetDonorAlertsAsync(List<DonorProfile> profiles, DateTime alertStartDate, DateTime alertEndDate)
     {
         try
         {
@@ -63,16 +62,16 @@ public class DonorAnalyticsService : IDonorAnalyticsService
 
             // TODO: Implement full donor alerts analysis
             // This is a placeholder implementation
-            return new List<DonorAlertResult>();
+            return Task.FromResult(new List<DonorAlertResult>());
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error getting donor alerts");
-            return new List<DonorAlertResult>();
+            return Task.FromResult(new List<DonorAlertResult>());
         }
     }
 
-    public async Task<List<DonorSummaryResult>> GetDonorSummariesAsync(List<Donation> donations, DateTime startDate, DateTime endDate)
+    public Task<List<DonorSummaryResult>> GetDonorSummariesAsync(List<Donation> donations, DateTime startDate, DateTime endDate)
     {
         try
         {
@@ -81,16 +80,16 @@ public class DonorAnalyticsService : IDonorAnalyticsService
 
             // TODO: Implement full donor summaries generation
             // This is a placeholder implementation
-            return new List<DonorSummaryResult>();
+            return Task.FromResult(new List<DonorSummaryResult>());
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error getting donor summaries");
-            return new List<DonorSummaryResult>();
+            return Task.FromResult(new List<DonorSummaryResult>());
         }
     }
 
-    public async Task<DonorAnalyticsResult> AnalyzeDonorPerformanceAsync(string accountFund, DateTime fromDate, DateTime toDate)
+    public Task<DonorAnalyticsResult> AnalyzeDonorPerformanceAsync(string accountFund, DateTime fromDate, DateTime toDate)
     {
         try
         {
@@ -99,7 +98,7 @@ public class DonorAnalyticsService : IDonorAnalyticsService
 
             // TODO: Implement full donor performance analysis
             // This is a placeholder implementation
-            return new DonorAnalyticsResult
+            return Task.FromResult(new DonorAnalyticsResult
             {
                 AccountFund = accountFund,
                 AnalysisDate = DateTime.Now,
@@ -107,16 +106,16 @@ public class DonorAnalyticsService : IDonorAnalyticsService
                 TotalGiving = 0,
                 AverageGiving = 0,
                 Insights = new List<DonorInsight>()
-            };
+            });
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error analyzing donor performance for account {AccountFund}", accountFund);
-            return new DonorAnalyticsResult { AccountFund = accountFund };
+            return Task.FromResult(new DonorAnalyticsResult { AccountFund = accountFund });
         }
     }
 
-    public async Task<List<DonorTrendDto>> GetDonorTrendsAsync(string accountFund, int monthsBack = 12)
+    public Task<List<DonorTrendDto>> GetDonorTrendsAsync(string accountFund, int monthsBack = 12)
     {
         try
         {
@@ -125,16 +124,16 @@ public class DonorAnalyticsService : IDonorAnalyticsService
 
             // TODO: Implement full donor trends analysis
             // This is a placeholder implementation
-            return new List<DonorTrendDto>();
+            return Task.FromResult(new List<DonorTrendDto>());
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error getting donor trends for account {AccountFund}", accountFund);
-            return new List<DonorTrendDto>();
+            return Task.FromResult(new List<DonorTrendDto>());
         }
     }
 
-    public async Task<DonorRetentionReport> AnalyzeRetentionAsync(string accountFund, DateTime fromDate, DateTime toDate)
+    public Task<DonorRetentionReport> AnalyzeRetentionAsync(string accountFund, DateTime fromDate, DateTime toDate)
     {
         try
         {
@@ -143,7 +142,7 @@ public class DonorAnalyticsService : IDonorAnalyticsService
 
             // TODO: Implement full donor retention analysis
             // This is a placeholder implementation
-            return new DonorRetentionReport
+            return Task.FromResult(new DonorRetentionReport
             {
                 AccountFund = accountFund,
                 AnalysisPeriod = DateTime.Now,
@@ -152,16 +151,16 @@ public class DonorAnalyticsService : IDonorAnalyticsService
                 RetainedDonors = 0,
                 LapsedDonors = 0,
                 Insights = new List<RetentionInsight>()
-            };
+            });
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error analyzing donor retention for account {AccountFund}", accountFund);
-            return new DonorRetentionReport { AccountFund = accountFund };
+            return Task.FromResult(new DonorRetentionReport { AccountFund = accountFund });
         }
     }
 
-    public async Task<List<DonorSegmentDto>> SegmentDonorsAsync(string accountFund)
+    public Task<List<DonorSegmentDto>> SegmentDonorsAsync(string accountFund)
     {
         try
         {
@@ -169,12 +168,12 @@ public class DonorAnalyticsService : IDonorAnalyticsService
 
             // TODO: Implement full donor segmentation
             // This is a placeholder implementation
-            return new List<DonorSegmentDto>();
+            return Task.FromResult(new List<DonorSegmentDto>());
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error segmenting donors for account {AccountFund}", accountFund);
-            return new List<DonorSegmentDto>();
+            return Task.FromResult(new List<DonorSegmentDto>());
         }
     }
 }

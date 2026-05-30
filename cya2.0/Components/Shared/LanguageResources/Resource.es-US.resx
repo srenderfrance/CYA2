@@ -648,4 +648,13 @@
   <data name="AccountVisualizations" xml:space="preserve">
     <value>Visualizaciones de Cuenta</value>
   </data>
+  <data name="CompactView" xml:space="preserve">
+    <value>Vista Compacta</value>
+  </data>
+  <data name="FundRefrences" xml:space="preserve">
+    <value>Referencias de Fondos</value>
+  </data>
+  <data name="CopyTable" xml:space="preserve">
+    <value>Copiar Tabla</value>
+  </data>
 </root>

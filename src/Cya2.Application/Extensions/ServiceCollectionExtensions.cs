@@ -16,7 +16,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<ISessionAccountDataCacheService, DashboardSessionCacheService>();
         services.AddSingleton<ISessionDashboardDtoCacheService, SessionDashboardDtoCacheService>();
         services.AddScoped<ISessionUserStateService, SessionUserStateService>();
-        services.AddScoped<ISessionImportProgressService, SessionImportProgressService>();
+        services.AddSingleton<ISessionImportProgressService, SessionImportProgressService>();
         services.AddScoped<IDateRangeStateService, DateRangeStateService>();
         services.AddScoped<IUserAccountContextService, UserAccountContextService>();
 

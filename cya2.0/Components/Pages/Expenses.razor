@@ -15,6 +15,7 @@
 @inject Cya2.Application.Interfaces.IUserIdResolver UserIdResolver
 @inject Cya2.Application.Interfaces.IUserSelectionService UserSelectionService
 @inject Cya2.Application.Interfaces.IUserDateRangeSelectionService DateRangeSelectionService
+@inject cya2.Services.UserSessionHydrationService SessionHydrationService
 
 @rendermode InteractiveServer
 @attribute [StreamRendering]
@@ -132,13 +133,20 @@
         <!-- Grids and messages (right side) -->
         <div class="page-grid-col">
             <div class="date-range-toolbar-box" style="width: fit-content; margin-top: 0.5rem; margin-bottom: 0.5rem;">
-                <RadzenToggleButton Value="useMinimalView"
-                                    ValueChanged="@(async (bool v) => await OnViewModeChange(v))"
-                                    Text="@(useMinimalView ? Localizer["ShowMoreDetail"] : Localizer["ShowLessDetail"])"
-                                    ButtonStyle="ButtonStyle.Primary"
-                                    ToggleButtonStyle="ButtonStyle.Primary"
-                                    Class="expenses-view-toggle"
-                                    Style="max-width: 220px;" />
+                <div style="display:flex; align-items:center; gap:0.75rem; flex-wrap:wrap;">
+                    <RadzenToggleButton Value="useMinimalView"
+                                        ValueChanged="@(async (bool v) => await OnViewModeChange(v))"
+                                        Text="@(useMinimalView ? Localizer["ShowMoreDetail"] : Localizer["ShowLessDetail"])"
+                                        ButtonStyle="ButtonStyle.Primary"
+                                        ToggleButtonStyle="ButtonStyle.Primary"
+                                        Class="expenses-view-toggle"
+                                        Style="max-width: 220px;" />
+
+                    <div style="display:flex; align-items:center; gap:0.5rem;">
+                        <RadzenLabel Text="@Localizer["CompactView"]" />
+                        <RadzenCheckBox TValue="bool" @bind-Value="useCompactView" />
+                    </div>
+                </div>
 
             @if (!string.IsNullOrEmpty(errorMessage))
             {
@@ -149,23 +157,21 @@
 
             @if (isLoading)
             {
-                <div class="mt-3">
-                    <RadzenProgressBar Value="100" ShowValue="false" Mode="ProgressBarMode.Indeterminate" />
-                    <p class="text-muted mt-1">@Localizer["Loading"]</p>
-                </div>
+                <PageLoadingIndicator IsLoading="true" LoadingText="@Localizer["Loading"]" />
             }
 
             <!-- Transfer Transactions Grid -->
             @if (expenseData.TransferTransactions.Any())
             {
-                <RadzenCard Class="rz-mt-2 narrow-expense-grid">
+                <RadzenCard Class="@(useCompactView ? "rz-mt-2 narrow-expense-grid expense-grid-compact" : "rz-mt-2 narrow-expense-grid")">
                     <RadzenStack Orientation="Orientation.Horizontal" JustifyContent="JustifyContent.SpaceBetween">
                         <RadzenText TextStyle="TextStyle.Subtitle1" Style="font-weight:bold; padding-bottom: 8px;">@Localizer["InternalTransfers"]</RadzenText>
                     </RadzenStack>
 
                     <RadzenDataGrid Data="@expenseData.TransferTransactions" 
                                     TItem="ExpenseTransactionDto" 
-                                    Dense="true" 
+                                    Dense="@useCompactView" 
+                                    Class="@(useCompactView ? "expense-data-grid-compact" : string.Empty)"
                                     ShowPagingSummary="false" 
                                     AllowPaging="false"
                                     AllowColumnResize="true"
@@ -180,14 +186,15 @@
             <!-- Expense Transactions Grid -->
             @if (expenseData.ExpenseTransactions.Any())
             {
-                <RadzenCard Class="rz-mt-2 narrow-expense-grid">
+                <RadzenCard Class="@(useCompactView ? "rz-mt-2 narrow-expense-grid expense-grid-compact" : "rz-mt-2 narrow-expense-grid")">
                     <RadzenStack Orientation="Orientation.Horizontal" JustifyContent="JustifyContent.SpaceBetween">
                         <RadzenText TextStyle="TextStyle.Subtitle1" Style="font-weight:bold; padding-bottom: 8px;">@Localizer["Expenses"]</RadzenText>
                     </RadzenStack>
 
                     <RadzenDataGrid Data="@expenseData.ExpenseTransactions" 
                                     TItem="ExpenseTransactionDto" 
-                                    Dense="true" 
+                                    Dense="@useCompactView" 
+                                    Class="@(useCompactView ? "expense-data-grid-compact" : string.Empty)"
                                     ShowPagingSummary="false" 
                                     AllowPaging="false"
                                     AllowColumnResize="true"
@@ -232,6 +239,7 @@
     private List<Cya2.Application.DTOs.DateRangePresetOptionDto> presetOptions = new();
 
     private bool useMinimalView = true;
+    private bool useCompactView = false;
     private bool refreshTransferGrid = false;
     private bool refreshExpenseGrid = false;
     private bool canAccessAllAccounts = false;
@@ -243,7 +251,7 @@
             var authState = await AuthStateProvider.GetAuthenticationStateAsync();
             var user = authState.User;
 
-            userId = UserIdResolver.ResolveUserId(user, SessionUserStateService.CurrentUserId);
+            userId = SessionHydrationService.HydrateForUser(user);
 
             Console.WriteLine($"[Expenses] OnInitializedAsync: resolved userId='{userId}', Session.SelectedAccountFund='{SessionUserStateService.SelectedAccountFund}', Session.DefaultAccountFund='{SessionUserStateService.DefaultAccountFund}'");
 
@@ -252,30 +260,6 @@
                                   string.Equals(authLevel, "Admin", StringComparison.OrdinalIgnoreCase) ||
                                   string.Equals(authLevel, "Viewer", StringComparison.OrdinalIgnoreCase);
             canAccessAllAccounts = isAdminOrViewer;
-
-            // Only reset session state when the resolved userId changes
-            var resolvedUserId = UserIdResolver.ResolveUserId(user, SessionUserStateService.CurrentUserId);
-            if (SessionUserStateService.CurrentUserId != resolvedUserId)
-            {
-                SessionUserStateService.ResetForUser(resolvedUserId);
-            }
-
-            if (string.IsNullOrWhiteSpace(SessionUserStateService.SelectedAccountFund)
-                && !string.IsNullOrWhiteSpace(userId)
-                && UserSelectionService.TryGetSelectedAccount(userId, out var hydratedAccount)
-                && !string.IsNullOrWhiteSpace(hydratedAccount))
-            {
-                SessionUserStateService.SelectedAccountFund = hydratedAccount;
-            }
-
-            if ((!SessionUserStateService.SelectedStartDate.HasValue || !SessionUserStateService.SelectedEndDate.HasValue)
-                && !string.IsNullOrWhiteSpace(userId)
-                && DateRangeSelectionService.TryGetDateRange(userId, out var hydratedRange))
-            {
-                SessionUserStateService.SelectedStartDate = hydratedRange.StartDate;
-                SessionUserStateService.SelectedEndDate = hydratedRange.EndDate;
-                SessionUserStateService.SelectedDatePreset = string.IsNullOrWhiteSpace(hydratedRange.Preset) ? "ThisMonth" : hydratedRange.Preset;
-            }
 
             presetOptions = GetPresetOptions();
             dateRangeState = DateRangeStateService.InitializeDateRange(SessionUserStateService);

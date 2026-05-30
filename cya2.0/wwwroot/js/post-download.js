@@ -1,32 +1,70 @@
-window.postJsonAndDownload = function (url, jsonPayload) {
+window.postJsonAndDownload = async function (url, jsonPayload) {
+window.postJsonAndDownload = async function (url, jsonPayload) {
     try {
-        const data = JSON.parse(jsonPayload);
-        const form = document.createElement('form');
-        form.method = 'POST';
-        form.action = url;
-        form.style.display = 'none';
+        const tokenResponse = await fetch('/api/antiforgery-token', {
+            method: 'GET',
+            credentials: 'same-origin'
+        });
 
-        const input = document.createElement('input');
-        input.type = 'hidden';
-        input.name = 'request';
-        input.value = JSON.stringify(data);
-        form.appendChild(input);
+        if (!tokenResponse.ok) {
+            throw new Error('Could not get antiforgery token.');
+        }
 
-        document.body.appendChild(form);
-        form.submit();
-        form.remove();
+        const tokenPayload = await tokenResponse.json();
+        const requestToken = tokenPayload?.requestToken;
+        if (!requestToken) {
+            throw new Error('Antiforgery token missing in response.');
+        }
+        console.debug('postJsonAndDownload: antiforgery token retrieved', { hasToken: !!requestToken });
+
+        const postResponse = await fetch(url, {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: {
+                'Content-Type': 'application/json',
+                'RequestVerificationToken': requestToken
+            },
+            body: jsonPayload
+        });
+
+        if (!postResponse.ok) {
+            throw new Error(`Download request failed with status ${postResponse.status}.`);
+        }
+
+        const contentDisposition = postResponse.headers.get('content-disposition') || '';
+        const fileNameMatch = contentDisposition.match(/filename\*=UTF-8''([^;]+)|filename="?([^";]+)"?/i);
+        const encodedFileName = fileNameMatch?.[1];
+        const plainFileName = fileNameMatch?.[2];
+        const fileName = encodedFileName
+            ? decodeURIComponent(encodedFileName)
+            : (plainFileName || 'donors_export.xlsx');
+
+        const blob = await postResponse.blob();
+        const downloadUrl = URL.createObjectURL(blob);
+        const anchor = document.createElement('a');
+        anchor.href = downloadUrl;
+        anchor.download = fileName;
+        document.body.appendChild(anchor);
+        anchor.click();
+        anchor.remove();
+        URL.revokeObjectURL(downloadUrl);
     } catch (err) {
         console.error('postJsonAndDownload error', err);
     }
 };
 
-// Scrolls to the top of the page if the element (by id) is not fully visible in the viewport.
-window.scrollToIfHidden = function (elementId) {
-    const el = document.getElementById(elementId);
-    if (!el) return;
-    const rect = el.getBoundingClientRect();
-    const inView = rect.top >= 0 && rect.bottom <= window.innerHeight;
-    if (!inView) {
-        window.scrollTo({ top: 0, behavior: 'smooth' });
+window.downloadTextFile = function (fileName, content, mimeType) {
+    try {
+        const blob = new Blob([content ?? ''], { type: mimeType || 'text/plain;charset=utf-8' });
+        const downloadUrl = URL.createObjectURL(blob);
+        const anchor = document.createElement('a');
+        anchor.href = downloadUrl;
+        anchor.download = fileName || 'download.txt';
+        document.body.appendChild(anchor);
+        anchor.click();
+        anchor.remove();
+        URL.revokeObjectURL(downloadUrl);
+    } catch (err) {
+        console.error('downloadTextFile error', err);
     }
 };

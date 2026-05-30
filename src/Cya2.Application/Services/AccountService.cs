@@ -63,10 +63,10 @@ public class AccountService : IAccountService
         }
     }
 
-    public async Task<AccountBalanceDto> GetAccountBalanceAsync(string accountName, DateRange dateRange)
+    public Task<AccountBalanceDto> GetAccountBalanceAsync(string accountName, DateRange dateRange)
     {
         // Simplified implementation - in full app this would perform aggregation
-        return new AccountBalanceDto
+        return Task.FromResult(new AccountBalanceDto
         {
             AccountName = accountName,
             Balance = 0m,
@@ -74,12 +74,12 @@ public class AccountService : IAccountService
             TotalExpenses = 0m,
             TotalDonations = 0m,
             AsOfDate = DateTime.Today
-        };
+        });
     }
 
-    public async Task<List<AccountBalanceDto>> GetAllAccountBalancesAsync(DateRange dateRange)
+    public Task<List<AccountBalanceDto>> GetAllAccountBalancesAsync(DateRange dateRange)
     {
-        return new List<AccountBalanceDto>();
+        return Task.FromResult(new List<AccountBalanceDto>());
     }
 
     public async Task<List<AccountSummaryDto>> GetAccountsForUserAsync(string userId)
