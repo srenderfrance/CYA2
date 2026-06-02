@@ -1216,30 +1216,91 @@
                     return;
                 }
 
-                var request = new Cya2.Application.DTOs.AdminUserUpdateDto
+                var successMessages = new List<string>();
+                var errorMessages = new List<string>();
+
+                var hasProfileChanges = !string.IsNullOrWhiteSpace(newName)
+                                        || !string.IsNullOrWhiteSpace(newEmail)
+                                        || !string.IsNullOrWhiteSpace(newAuthLevel);
+                var hasGrantChange = accountToAddId > 0;
+                var hasRevokeChange = selectedLinkedAccountId > 0;
+
+                if (!hasProfileChanges && !hasGrantChange && !hasRevokeChange)
                 {
-                    UserId = selectedUser.Id,
-                    Name = string.IsNullOrWhiteSpace(newName) ? null : newName,
-                    Email = string.IsNullOrWhiteSpace(newEmail) ? null : newEmail,
-                    AuthLevel = string.IsNullOrWhiteSpace(newAuthLevel) ? null : newAuthLevel
-                };
-
-                var op = await UserManagementService.UpdateAdminUserAsync(request);
-                if (op.IsSuccess)
-                {
-                    staffUpdateSuccess = op.Message;
-
-                    newName = string.Empty;
-                    newEmail = string.Empty;
-                    newAuthLevel = string.Empty;
-
-                    await LoadAllStaff();
-                    await staffSelection(staffMember);
+                    staffUpdateError = "No changes provided for update.";
+                    return;
                 }
-                else
+
+                if (hasProfileChanges)
                 {
-                    staffUpdateError = op.Message;
+                    var request = new Cya2.Application.DTOs.AdminUserUpdateDto
+                    {
+                        UserId = selectedUser.Id,
+                        Name = string.IsNullOrWhiteSpace(newName) ? null : newName,
+                        Email = string.IsNullOrWhiteSpace(newEmail) ? null : newEmail,
+                        AuthLevel = string.IsNullOrWhiteSpace(newAuthLevel) ? null : newAuthLevel
+                    };
+
+                    var profileOp = await UserManagementService.UpdateAdminUserAsync(request);
+                    if (profileOp.IsSuccess)
+                    {
+                        successMessages.Add(profileOp.Message);
+                    }
+                    else
+                    {
+                        errorMessages.Add(profileOp.Message);
+                    }
                 }
+
+                if (hasGrantChange)
+                {
+                    var grantOp = await UserManagementService.GrantAccountAccessAsync(selectedUser.Id, accountToAddId);
+                    if (grantOp.IsSuccess)
+                    {
+                        successMessages.Add(grantOp.Message);
+                    }
+                    else
+                    {
+                        errorMessages.Add(grantOp.Message);
+                    }
+                }
+
+                if (hasRevokeChange)
+                {
+                    var revokeOp = await UserManagementService.RevokeAccountAccessAsync(selectedUser.Id, selectedLinkedAccountId);
+                    if (revokeOp.IsSuccess)
+                    {
+                        successMessages.Add(revokeOp.Message);
+                    }
+                    else
+                    {
+                        errorMessages.Add(revokeOp.Message);
+                    }
+                }
+
+                if (successMessages.Any())
+                {
+                    staffUpdateSuccess = string.Join(" ", successMessages);
+                }
+
+                if (errorMessages.Any())
+                {
+                    staffUpdateError = string.Join(" ", errorMessages);
+                }
+
+                // Clear editing inputs and account action selections after attempting update
+                newName = string.Empty;
+                newEmail = string.Empty;
+                newAuthLevel = string.Empty;
+                accountToAddId = 0;
+                selectedLinkedAccountId = 0;
+
+                await LoadAllStaff();
+
+                // User name may have changed, so re-select by user id then re-hydrate UI
+                var refreshedUser = staff.FirstOrDefault(u => u.Id == selectedUser.Id);
+                staffMember = refreshedUser?.Name ?? staffMember;
+                await staffSelection(staffMember);
             }
             catch (Exception ex)
             {
