@@ -12,7 +12,7 @@
   <ItemGroup>
     <PackageReference Include="Dapper" Version="2.1.72" />
     <PackageReference Include="EPPlus" Version="8.5.0" />
-    <PackageReference Include="Microsoft.AspNetCore.Authentication.Google" Version="8.0.16" />
+    <PackageReference Include="Microsoft.AspNetCore.Authentication.Google" Version="10.0.8" />
     <PackageReference Include="MySql.Data" Version="9.6.0" />
     <PackageReference Include="Radzen.Blazor" Version="9.1.0" />
     <PackageReference Include="System.Security.Cryptography.Xml" Version="10.0.8" />
