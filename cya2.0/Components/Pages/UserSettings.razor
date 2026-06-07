@@ -71,7 +71,8 @@
                                         Data="@userAccounts"
                                         TextProperty="Fund"
                                         ValueProperty="AccountingClass"
-                                        @bind-Value="selectedAccountingClass"
+                                        Value="@selectedAccountingClass"
+                                        Change="@(value => selectedAccountingClass = value?.ToString() ?? string.Empty)"
                                         Placeholder="@Localizer["SelectDefaultAccount"]"
                                         Style="width: 100%;"
                                         Disabled="@(userAccounts == null || userAccounts.Count == 0)">
@@ -108,7 +109,8 @@
                                         Data="@languageOptions"
                                         TextProperty="Text"
                                         ValueProperty="Value"
-                                        @bind-Value="selectedLanguage"
+                                        Value="@selectedLanguage"
+                                        Change="@(value => selectedLanguage = value?.ToString() ?? "en-US")"
                                         Style="width: 100%;" />
                         
                         <RadzenButton Text="@Localizer["Save"]"
