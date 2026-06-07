@@ -336,12 +336,6 @@
   <data name="TransactionType" xml:space="preserve">
     <value>Transaction Type</value>
   </data>
-  <data name="UpdateAccount" xml:space="preserve">
-    <value>Update Account</value>
-  </data>
-  <data name="UpdateLanguage" xml:space="preserve">
-    <value>Update Language</value>
-  </data>
   <data name="UpdateUser" xml:space="preserve">
     <value>Update User</value>
   </data>
@@ -656,5 +650,8 @@
   </data>
   <data name="CopyTable" xml:space="preserve">
     <value>Copy Table</value>
+  </data>
+  <data name="Save" xml:space="preserve">
+    <value>Save</value>
   </data>
 </root>
