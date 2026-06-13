@@ -10,11 +10,11 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Dapper" Version="2.1.72" />
-    <PackageReference Include="EPPlus" Version="8.5.0" />
+    <PackageReference Include="Dapper" Version="2.1.79" />
+    <PackageReference Include="EPPlus" Version="8.6.0" />
     <PackageReference Include="Microsoft.AspNetCore.Authentication.Google" Version="10.0.8" />
-    <PackageReference Include="MySql.Data" Version="9.6.0" />
-    <PackageReference Include="Radzen.Blazor" Version="9.1.0" />
+    <PackageReference Include="MySql.Data" Version="9.7.0" />
+    <PackageReference Include="Radzen.Blazor" Version="10.4.7" />
   </ItemGroup>
 
   <ItemGroup>

@@ -34,7 +34,7 @@
     <RadzenCard>
         <RadzenText TextStyle="TextStyle.H3">@Localizer["SettingsAndPreferences"]</RadzenText>
 
-        @if (isLoading)
+        @if (isLoading && userAccounts.Count == 0)
         {
             <PageLoadingIndicator IsLoading="true" LoadingText="@Localizer["Loading"]" />
         }

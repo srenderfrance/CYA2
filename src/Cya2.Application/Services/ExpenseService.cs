@@ -38,9 +38,10 @@ public class ExpenseService : IExpenseService
         try
         {
             var context = await _userAccountContextService.GetContextAsync(userId, isAdminOrViewer);
-            return (context?.Accounts ?? new List<UserAccountContextAccount>())
+            var mapped = (context?.Accounts ?? new List<UserAccountContextAccount>())
                 .Select(MapToAccountOptionDto)
                 .ToList();
+            return mapped;
         }
         catch (Exception ex)
         {
@@ -54,6 +55,22 @@ public class ExpenseService : IExpenseService
         var sw = Stopwatch.StartNew();
         try
         {
+            if (!string.IsNullOrWhiteSpace(accountName) &&
+                _expenseCache.TryGetExpenseData(userId, accountName, dateRange.StartDate, dateRange.EndDate, out var directCached))
+            {
+                directCached.SelectedAccount = accountName;
+                _logger.LogInformation(
+                    "Expense data source=cache-direct user={UserId} account={Account} range={Start:yyyy-MM-dd}..{End:yyyy-MM-dd} expenses={ExpenseCount} transfers={TransferCount} elapsedMs={ElapsedMs}",
+                    userId,
+                    directCached.SelectedAccount,
+                    dateRange.StartDate,
+                    dateRange.EndDate,
+                    directCached.ExpenseTransactions?.Count ?? 0,
+                    directCached.TransferTransactions?.Count ?? 0,
+                    sw.ElapsedMilliseconds);
+                return directCached;
+            }
+
             var context = await _userAccountContextService.GetContextAsync(userId, isAdminOrViewer);
             var contextAccounts = context?.Accounts ?? new List<UserAccountContextAccount>();
 

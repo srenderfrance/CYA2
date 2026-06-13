@@ -262,6 +262,24 @@ a, .btn-link {
     max-width: 100%;
 }
 
+/* ------------------------------------------------------------
+   Section loading boundary (shared progressive-loading wrapper)
+   ------------------------------------------------------------ */
+.section-loading-boundary {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
+}
+
+.section-loading-boundary--card {
+    border: 1px solid #d9dee5;
+    border-radius: 6px;
+    background-color: #f8f9fa;
+    padding: 0.75rem;
+}
+
 /* Shared account selector sizing (Donations/Donors/Expenses/Home) */
 .account-selector-box {
     width: min(420px, 100%);

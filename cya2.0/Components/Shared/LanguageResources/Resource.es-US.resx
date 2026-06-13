@@ -498,8 +498,8 @@
   <data name="PleaseSelectAnAccount" xml:space="preserve">
     <value>Por favor seleccione una cuenta.</value>
   </data>
-  <data name="CreateSecondaryFund" xml:space="preserve">
-    <value>Crear Fondo Secondario</value>
+  <data name="ManageSecondaryFund" xml:space="preserve">
+    <value>Administrar Fondo Secondario</value>
   </data>
   <data name="ThisMonth" xml:space="preserve">
     <value>Este Mes</value>
@@ -606,8 +606,8 @@
   <data name="EndingBalance" xml:space="preserve">
     <value>Saldo Final</value>
   </data>
-  <data name="CreatePrimaryFund" xml:space="preserve">
-    <value>Crear Fondo Primario</value>
+  <data name="ManagePrimaryFund" xml:space="preserve">
+    <value>AdministrarFondo Primario</value>
   </data>
   <data name="CreateNewFund" xml:space="preserve">
     <value>Crear Nuevo Fondo</value>

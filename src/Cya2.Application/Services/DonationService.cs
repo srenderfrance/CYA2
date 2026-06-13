@@ -32,6 +32,7 @@ public class DonationService : IDonationService
         var result = new DonationDataDto();
         var normalizedSubSelection = string.IsNullOrWhiteSpace(subAccountSelection) ? "All" : subAccountSelection;
         var bypassSubAccountCache = !string.Equals(normalizedSubSelection, "All", StringComparison.OrdinalIgnoreCase);
+        var cacheQueryRange = GetSessionCacheQueryRange(dateRange);
 
         try
         {
@@ -49,6 +50,20 @@ public class DonationService : IDonationService
                         dateRange.EndDate,
                         sw.ElapsedMilliseconds);
                     return directCached;
+                }
+
+                if (directCached != null)
+                {
+                    _logger.LogInformation(
+                        "Donation data cache-direct range mismatch user='{UserId}' account='{Account}' requested={RequestedStart:yyyy-MM-dd}..{RequestedEnd:yyyy-MM-dd} cached={CachedStart:yyyy-MM-dd}..{CachedEnd:yyyy-MM-dd} bypassSubAccountCache={BypassSubAccountCache} forceRefresh={ForceRefresh}",
+                        userId,
+                        accountName,
+                        dateRange.StartDate,
+                        dateRange.EndDate,
+                        directCached.CachedStartDate,
+                        directCached.CachedEndDate,
+                        bypassSubAccountCache,
+                        forceRefresh);
                 }
             }
 
@@ -173,10 +188,34 @@ public class DonationService : IDonationService
                         sw.ElapsedMilliseconds);
                     return cached;
                 }
+
+                if (cached != null)
+                {
+                    _logger.LogInformation(
+                        "Donation data cache range mismatch user='{UserId}' selectedAccount='{SelectedAccount}' requested={RequestedStart:yyyy-MM-dd}..{RequestedEnd:yyyy-MM-dd} cached={CachedStart:yyyy-MM-dd}..{CachedEnd:yyyy-MM-dd} bypassSubAccountCache={BypassSubAccountCache} forceRefresh={ForceRefresh}",
+                        userId,
+                        result.SelectedAccount,
+                        dateRange.StartDate,
+                        dateRange.EndDate,
+                        cached.CachedStartDate,
+                        cached.CachedEndDate,
+                        bypassSubAccountCache,
+                        forceRefresh);
+                }
             }
+
+            _logger.LogInformation(
+                "Donation data cache bypass user='{UserId}' requestedAccount='{RequestedAccount}' selectedAccount='{SelectedAccount}' bypassSubAccountCache={BypassSubAccountCache} forceRefresh={ForceRefresh} subAccountSelection='{SubAccountSelection}'",
+                userId,
+                accountName,
+                result.SelectedAccount,
+                bypassSubAccountCache,
+                forceRefresh,
+                normalizedSubSelection);
 
             // Query donation records from read repository
             var donationRecords = new List<Cya2.Core.ReadModels.DonationRecord>();
+            var queryRange = bypassSubAccountCache ? dateRange : cacheQueryRange;
             if (selected != null && !string.IsNullOrWhiteSpace(selected.Fund))
             {
                 if (result.ShowSubAccountDropdown)
@@ -204,8 +243,8 @@ public class DonationService : IDonationService
 
                     donationRecords = (await _donationReadRepository.GetDonationsByFundsAndDateRangeAsync(
                             fundsForSelection.Distinct(StringComparer.OrdinalIgnoreCase),
-                            dateRange.StartDate,
-                            dateRange.EndDate))
+                            queryRange.StartDate,
+                            queryRange.EndDate))
                         ?? new List<Cya2.Core.ReadModels.DonationRecord>();
                 }
                 else
@@ -213,19 +252,19 @@ public class DonationService : IDonationService
                     donationRecords = (await _donationReadRepository.GetDonationsByAccountAndDateRangeAsync(
                             selected.AccountId,
                             selected.Fund,
-                            dateRange.StartDate,
-                            dateRange.EndDate))
+                            queryRange.StartDate,
+                            queryRange.EndDate))
                         ?? new List<Cya2.Core.ReadModels.DonationRecord>();
                 }
             }
             else if (fundsToQuery.Count > 0)
             {
-                donationRecords = (await _donationReadRepository.GetDonationsByFundsAndDateRangeAsync(fundsToQuery, dateRange.StartDate, dateRange.EndDate))
+                donationRecords = (await _donationReadRepository.GetDonationsByFundsAndDateRangeAsync(fundsToQuery, queryRange.StartDate, queryRange.EndDate))
                     ?? new List<Cya2.Core.ReadModels.DonationRecord>();
             }
 
             _logger.LogInformation(
-                "Donation data source=db loaded for user '{UserId}': selectedAccount='{SelectedAccount}', requestedAccount='{RequestedAccount}', fundsQueried={FundCount}, rows={RowCount}, range={StartDate:yyyy-MM-dd}..{EndDate:yyyy-MM-dd}, elapsedMs={ElapsedMs}",
+                "Donation data source=db loaded for user '{UserId}': selectedAccount='{SelectedAccount}', requestedAccount='{RequestedAccount}', fundsQueried={FundCount}, rows={RowCount}, requestedRange={RequestedStart:yyyy-MM-dd}..{RequestedEnd:yyyy-MM-dd}, queriedRange={QueryStart:yyyy-MM-dd}..{QueryEnd:yyyy-MM-dd}, elapsedMs={ElapsedMs}",
                 userId,
                 result.SelectedAccount,
                 accountName,
@@ -233,6 +272,8 @@ public class DonationService : IDonationService
                 donationRecords.Count,
                 dateRange.StartDate,
                 dateRange.EndDate,
+                queryRange.StartDate,
+                queryRange.EndDate,
                 sw.ElapsedMilliseconds);
 
             // Map DonationRecord -> DonationRowDto (application DTO)
@@ -260,8 +301,8 @@ public class DonationService : IDonationService
             result.FundNamesForSelection = donationRecords.Select(r => r.Fund).Where(f => !string.IsNullOrWhiteSpace(f)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
             result.RawDonationFunds = donationRecords.Select(r => r.Fund).Where(f => !string.IsNullOrWhiteSpace(f)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
 
-            result.CachedStartDate = dateRange.StartDate;
-            result.CachedEndDate = dateRange.EndDate;
+            result.CachedStartDate = queryRange.StartDate;
+            result.CachedEndDate = queryRange.EndDate;
 
             // Store into cache for quick reuse (cache by selectedAccount) - prefer prioritize when explicit account requested
             if (!bypassSubAccountCache && !string.IsNullOrWhiteSpace(result.SelectedAccount) && _donationCache != null)
@@ -289,6 +330,23 @@ public class DonationService : IDonationService
 
         return cached.CachedStartDate.Date <= requested.StartDate.Date &&
                cached.CachedEndDate.Date   >= requested.EndDate.Date;
+    }
+
+    private static DateRange GetSessionCacheQueryRange(DateRange requested)
+    {
+        var now = DateTime.UtcNow;
+        var baselineStart = new DateTime(now.Year - 2, 1, 1);
+        var baselineEnd = new DateTime(now.Year, 12, 31);
+
+        var start = requested.StartDate.Date < baselineStart ? requested.StartDate.Date : baselineStart;
+        var end = requested.EndDate.Date > baselineEnd ? requested.EndDate.Date : baselineEnd;
+
+        if ((end - start).TotalDays > 1461)
+        {
+            return new DateRange(requested.StartDate.Date, requested.EndDate.Date);
+        }
+
+        return new DateRange(start, end);
     }
 
     private static string GetFrequencyLabel(Cya2.Core.Enums.DonorFrequency? frequency) => frequency switch
