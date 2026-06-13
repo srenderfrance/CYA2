@@ -228,9 +228,9 @@
     </div>
 }
 
-@if (isLoading)
+@if (!dashboardData.UserAccounts.Any() && isLoading)
 {
-    <PageLoadingIndicator IsLoading="true" LoadingText="@Localizer["Loading"]" />
+    <SectionLoadingBoundary IsLoading="true" LoadingText="@Localizer["Loading"]" MinHeight="220px" />
 }
 else if (!dashboardData.UserAccounts.Any())
 {
@@ -311,6 +311,7 @@ else
 
     @if (dashboardData.HasAccountData && !showVisualizations)
     {
+        <SectionLoadingBoundary IsLoading="isAccountDataLoading" LoadingText="@Localizer["Loading"]" MinHeight="280px" UseCardSurface="false" Class="mt-4">
         <RadzenStack Orientation="Orientation.Horizontal" Gap="1rem" Class="mt-4" JustifyContent="JustifyContent.Center" Wrap="FlexWrap.Wrap">
             <RadzenStack Orientation="Orientation.Vertical" Style="width: 24%; min-width: 260px;">
                 <RadzenCard Style="height: 100%;">
@@ -562,6 +563,7 @@ else
                 </RadzenCard>
             </RadzenStack>
         </RadzenStack>
+        </SectionLoadingBoundary>
     }
     else if (dashboardData.HasAccountData && showVisualizations)
     {
@@ -611,13 +613,12 @@ else
             </RadzenStack>
         </RadzenCard>
 
-        @if (isVisualizationLoading)
-        {
-            <div class="mt-4">
-                <RadzenProgressBar Value="100" ShowValue="false" Mode="ProgressBarMode.Indeterminate" />
-            </div>
-        }
-        else if (accountVisualizationSeries.Any())
+        <SectionLoadingBoundary IsLoading="isAccountDataLoading || isVisualizationLoading"
+                                LoadingText="@Localizer["Loading"]"
+                                MinHeight="300px"
+                                UseCardSurface="false"
+                                Class="mt-4">
+        @if (accountVisualizationSeries.Any())
         {
             <RadzenCard class="mt-4">
                 <div class="home-visualization-chart-wrap">
@@ -665,6 +666,7 @@ else
                 </div>
             </RadzenCard>
         }
+        </SectionLoadingBoundary>
     }
 }
 
@@ -674,6 +676,7 @@ else
 
 private string userName = string.Empty;
 private bool isLoading = true;
+private bool isAccountDataLoading = true;
 private string selectedAccount = string.Empty;
 private bool isAdminUser;
 
@@ -793,6 +796,7 @@ private bool showMissingGiftDialog = false;
     {
         var initSw = Stopwatch.StartNew();
         isLoading = true;
+        isAccountDataLoading = true;
 
         try
         {
@@ -879,6 +883,7 @@ private bool showMissingGiftDialog = false;
         finally
         {
             isLoading = false;
+            isAccountDataLoading = false;
             Logger.LogInformation(
                 "Home init complete user={UserId} selectedAccount={SelectedAccount} userAccounts={AccountCount} elapsedMs={ElapsedMs}",
                 cachedUserId,
@@ -948,7 +953,7 @@ private bool showMissingGiftDialog = false;
             }
 
             var hasImmediateCache = SessionDashboardDtoCacheService.TryGetDashboard(cachedUserId, accountName, out var cachedSelection);
-            isLoading = !hasImmediateCache;
+            isAccountDataLoading = !hasImmediateCache;
             StateHasChanged();
 
             selectedAccount = accountName;
@@ -1035,7 +1040,7 @@ private bool showMissingGiftDialog = false;
         }
         finally
         {
-            isLoading = false;
+            isAccountDataLoading = false;
             await InvokeAsync(StateHasChanged);
         }
     }

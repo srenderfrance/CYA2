@@ -5,6 +5,7 @@
 @using Radzen.Blazor
 @using Microsoft.AspNetCore.Components.Authorization
 @using System.Security.Claims
+@using System.Diagnostics
 @using Cya2.Application.DTOs
 @using Cya2.Application.Interfaces
 @using Cya2.Core.ValueObjects
@@ -20,6 +21,7 @@
 @rendermode InteractiveServer
 @attribute [StreamRendering]
 @inject IStringLocalizer<Resource> Localizer
+@inject ILogger<Expenses> Logger
 
 <PageTitle>@Localizer["Expenses"]</PageTitle>
 
@@ -155,56 +157,53 @@
                 </RadzenAlert>
             }
 
-            @if (isLoading)
-            {
-                <PageLoadingIndicator IsLoading="true" LoadingText="@Localizer["Loading"]" />
-            }
+            <SectionLoadingBoundary IsLoading="isLoading" LoadingText="@Localizer["Loading"]" MinHeight="260px" UseCardSurface="false" Class="mt-2">
+                <!-- Transfer Transactions Grid -->
+                @if (expenseData.TransferTransactions.Any())
+                {
+                    <RadzenCard Class="@(useCompactView ? "rz-mt-2 narrow-expense-grid expense-grid-compact" : "rz-mt-2 narrow-expense-grid")">
+                        <RadzenStack Orientation="Orientation.Horizontal" JustifyContent="JustifyContent.SpaceBetween">
+                            <RadzenText TextStyle="TextStyle.Subtitle1" Style="font-weight:bold; padding-bottom: 8px;">@Localizer["InternalTransfers"]</RadzenText>
+                        </RadzenStack>
 
-            <!-- Transfer Transactions Grid -->
-            @if (expenseData.TransferTransactions.Any())
-            {
-                <RadzenCard Class="@(useCompactView ? "rz-mt-2 narrow-expense-grid expense-grid-compact" : "rz-mt-2 narrow-expense-grid")">
-                    <RadzenStack Orientation="Orientation.Horizontal" JustifyContent="JustifyContent.SpaceBetween">
-                        <RadzenText TextStyle="TextStyle.Subtitle1" Style="font-weight:bold; padding-bottom: 8px;">@Localizer["InternalTransfers"]</RadzenText>
-                    </RadzenStack>
+                        <RadzenDataGrid Data="@expenseData.TransferTransactions" 
+                                        TItem="ExpenseTransactionDto" 
+                                        Dense="@useCompactView" 
+                                        Class="@(useCompactView ? "expense-data-grid-compact" : string.Empty)"
+                                        ShowPagingSummary="false" 
+                                        AllowPaging="false"
+                                        AllowColumnResize="true"
+                                        AllowColumnReorder="false">
+                            <Columns>
+                                @RenderTransferColumns()
+                            </Columns>
+                        </RadzenDataGrid>
+                    </RadzenCard>
+                }
 
-                    <RadzenDataGrid Data="@expenseData.TransferTransactions" 
-                                    TItem="ExpenseTransactionDto" 
-                                    Dense="@useCompactView" 
-                                    Class="@(useCompactView ? "expense-data-grid-compact" : string.Empty)"
-                                    ShowPagingSummary="false" 
-                                    AllowPaging="false"
-                                    AllowColumnResize="true"
-                                    AllowColumnReorder="false">
-                        <Columns>
-                            @RenderTransferColumns()
-                        </Columns>
-                    </RadzenDataGrid>
-                </RadzenCard>
-            }
+                <!-- Expense Transactions Grid -->
+                @if (expenseData.ExpenseTransactions.Any())
+                {
+                    <RadzenCard Class="@(useCompactView ? "rz-mt-2 narrow-expense-grid expense-grid-compact" : "rz-mt-2 narrow-expense-grid")">
+                        <RadzenStack Orientation="Orientation.Horizontal" JustifyContent="JustifyContent.SpaceBetween">
+                            <RadzenText TextStyle="TextStyle.Subtitle1" Style="font-weight:bold; padding-bottom: 8px;">@Localizer["Expenses"]</RadzenText>
+                        </RadzenStack>
 
-            <!-- Expense Transactions Grid -->
-            @if (expenseData.ExpenseTransactions.Any())
-            {
-                <RadzenCard Class="@(useCompactView ? "rz-mt-2 narrow-expense-grid expense-grid-compact" : "rz-mt-2 narrow-expense-grid")">
-                    <RadzenStack Orientation="Orientation.Horizontal" JustifyContent="JustifyContent.SpaceBetween">
-                        <RadzenText TextStyle="TextStyle.Subtitle1" Style="font-weight:bold; padding-bottom: 8px;">@Localizer["Expenses"]</RadzenText>
-                    </RadzenStack>
-
-                    <RadzenDataGrid Data="@expenseData.ExpenseTransactions" 
-                                    TItem="ExpenseTransactionDto" 
-                                    Dense="@useCompactView" 
-                                    Class="@(useCompactView ? "expense-data-grid-compact" : string.Empty)"
-                                    ShowPagingSummary="false" 
-                                    AllowPaging="false"
-                                    AllowColumnResize="true"
-                                    AllowColumnReorder="false">
-                        <Columns>
-                            @RenderExpenseColumns()
-                        </Columns>
-                    </RadzenDataGrid>
-                </RadzenCard>
-            }
+                        <RadzenDataGrid Data="@expenseData.ExpenseTransactions" 
+                                        TItem="ExpenseTransactionDto" 
+                                        Dense="@useCompactView" 
+                                        Class="@(useCompactView ? "expense-data-grid-compact" : string.Empty)"
+                                        ShowPagingSummary="false" 
+                                        AllowPaging="false"
+                                        AllowColumnResize="true"
+                                        AllowColumnReorder="false">
+                            <Columns>
+                                @RenderExpenseColumns()
+                            </Columns>
+                        </RadzenDataGrid>
+                    </RadzenCard>
+                }
+            </SectionLoadingBoundary>
 
             </div>
 
@@ -229,7 +228,7 @@
     private ExpenseDataDto expenseData = new();
     private string errorMessage = string.Empty;
     private string selectedAccount = string.Empty;
-    private bool isLoading = false;
+    private bool isLoading = true;
     private string userId = string.Empty;
 
     private decimal expenseTotal = 0.00m;
@@ -246,8 +245,10 @@
 
     protected override async Task OnInitializedAsync()
     {
+        var initSw = Stopwatch.StartNew();
         try
         {
+            isLoading = true;
             var authState = await AuthStateProvider.GetAuthenticationStateAsync();
             var user = authState.User;
 
@@ -325,6 +326,17 @@
             errorMessage = $"Error initializing data: {ex.Message}";
             isLoading = false;
         }
+        finally
+        {
+            isLoading = false;
+            Logger.LogInformation("Expenses init complete user={UserId} selectedAccount={SelectedAccount} accounts={AccountCount} expenses={ExpenseCount} transfers={TransferCount} elapsedMs={ElapsedMs}",
+                userId,
+                selectedAccount,
+                expenseData.UserAccounts?.Count ?? 0,
+                expenseData.ExpenseTransactions?.Count ?? 0,
+                expenseData.TransferTransactions?.Count ?? 0,
+                initSw.ElapsedMilliseconds);
+        }
     }
 
     private List<Cya2.Application.DTOs.DateRangePresetOptionDto> GetPresetOptions()
@@ -382,6 +394,7 @@
             return;
         }
 
+        var loadSw = Stopwatch.StartNew();
         try
         {
             isLoading = true;
@@ -426,6 +439,14 @@
         finally
         {
             isLoading = false;
+            Logger.LogInformation("Expenses data load complete user={UserId} selectedAccount={SelectedAccount} range={Start:yyyy-MM-dd}..{End:yyyy-MM-dd} expenses={ExpenseCount} transfers={TransferCount} elapsedMs={ElapsedMs}",
+                userId,
+                selectedAccount,
+                dateRangeState.StartDate,
+                dateRangeState.EndDate,
+                expenseData.ExpenseTransactions?.Count ?? 0,
+                expenseData.TransferTransactions?.Count ?? 0,
+                loadSw.ElapsedMilliseconds);
             await InvokeAsync(StateHasChanged);
         }
     }

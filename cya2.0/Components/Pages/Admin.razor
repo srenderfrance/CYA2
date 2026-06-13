@@ -28,7 +28,6 @@
 @inject Cya2.Application.Services.UserManagementService UserManagementService
 @inject Cya2.Application.Services.AdminFundReadService AdminFundReadService
 @inject Cya2.Application.Services.AdminFundWriteService AdminFundWriteService
-@using Cya2.Application.DTOs
 @inject Cya2.Application.Interfaces.IUserIdResolver UserIdResolver
 
 <RadzenStack Orientation="Orientation.Vertical" Gap="1rem" Class="rz-pt-0 rz-px-4 rz-pb-4">
@@ -103,7 +102,7 @@
                     <!-- Toggle row (no special bottom margin so it matches other rows) -->
                     <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="2rem" Class="admin-form-row admin-form-first-row">
                         <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="0.5rem" Style="width: 220px;" Class="admin-form-label">
-                            <RadzenText TextStyle="TextStyle.Subtitle2" Class="admin-label" Style="font-weight: bold;">@(createSubFund ? Localizer["CreateSecondaryFund"] : Localizer["CreatePrimaryFund"])</RadzenText>
+                            <RadzenText TextStyle="TextStyle.Subtitle2" Class="admin-label" Style="font-weight: bold;">@(createSubFund ? Localizer["ManageSecondaryFund"] : Localizer["ManagePrimaryFund"])</RadzenText>
                         </RadzenStack>
                         <div style="flex: 1; display:flex; align-items:center;">
                             <RadzenSwitch @bind-value="createSubFund" Class="admin-mode-switch" />

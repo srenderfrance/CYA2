@@ -11,6 +11,7 @@ using Cya2.Core.Services;
 using Cya2.Core.ValueObjects;
 using Microsoft.Extensions.Logging;
 using System.Diagnostics;
+using System.Collections.Concurrent;
 
 namespace Cya2.Application.Services
 {
@@ -26,6 +27,8 @@ namespace Cya2.Application.Services
         private readonly DonorFrequencyService _frequencyService;
         private readonly DonorMissingGiftService _missingGiftService;
         private string? _lastQuery;
+        private static readonly ConcurrentDictionary<string, SemaphoreSlim> _queryLocks = new(StringComparer.OrdinalIgnoreCase);
+        private static readonly ConcurrentDictionary<string, List<string>> _accountFundsCache = new(StringComparer.OrdinalIgnoreCase);
 
         public DonorService(
             IDonationReadRepository donationReadRepository,
@@ -78,33 +81,66 @@ namespace Cya2.Application.Services
                 return cached;
             }
 
-            var donations = await _donationReadRepository.GetDonationsByFundsAndDateRangeAsync(funds, dateRange.StartDate, dateRange.EndDate);
-            donations = DeduplicateDonations(donations);
-            _lastQuery = "GetDonationsByFundsAndDateRange";
+            var lockKey = $"range|{signature}|{dateRange.StartDate:yyyyMMdd}|{dateRange.EndDate:yyyyMMdd}";
+            var gate = _queryLocks.GetOrAdd(lockKey, _ => new SemaphoreSlim(1, 1));
+            await gate.WaitAsync();
+            try
+            {
+                if (_donorSummaryCache.TryGetDonorSummaries(signature, dateRange.StartDate, dateRange.EndDate, out cached))
+                {
+                    _logger.LogInformation(
+                        "Donor summaries source=cache-after-wait funds={FundCount} range={Start:yyyy-MM-dd}..{End:yyyy-MM-dd} rows={RowCount} elapsedMs={ElapsedMs}",
+                        funds.Count,
+                        dateRange.StartDate,
+                        dateRange.EndDate,
+                        cached.Count,
+                        sw.ElapsedMilliseconds);
+                    return cached;
+                }
 
-            var result = BuildDonorSummaries(donations)
-                .OrderByDescending(d => d.Total)
-                .ThenBy(d => d.Name)
-                .ToList();
+                var donations = await _donationReadRepository.GetDonationsByFundsAndDateRangeAsync(funds, dateRange.StartDate, dateRange.EndDate);
+                donations = DeduplicateDonations(donations);
+                _lastQuery = "GetDonationsByFundsAndDateRange";
 
-            _donorSummaryCache.SetDonorSummaries(signature, dateRange.StartDate, dateRange.EndDate, result);
+                var result = BuildDonorSummaries(donations)
+                    .OrderByDescending(d => d.Total)
+                    .ThenBy(d => d.Name)
+                    .ToList();
 
-            _logger.LogInformation(
-                "Donor summaries source=db funds={FundCount} range={Start:yyyy-MM-dd}..{End:yyyy-MM-dd} donations={DonationCount} rows={RowCount} elapsedMs={ElapsedMs}",
-                funds.Count,
-                dateRange.StartDate,
-                dateRange.EndDate,
-                donations?.Count ?? 0,
-                result.Count,
-                sw.ElapsedMilliseconds);
-            return result;
+                _donorSummaryCache.SetDonorSummaries(signature, dateRange.StartDate, dateRange.EndDate, result);
+
+                _logger.LogInformation(
+                    "Donor summaries source=db funds={FundCount} range={Start:yyyy-MM-dd}..{End:yyyy-MM-dd} donations={DonationCount} rows={RowCount} elapsedMs={ElapsedMs}",
+                    funds.Count,
+                    dateRange.StartDate,
+                    dateRange.EndDate,
+                    donations?.Count ?? 0,
+                    result.Count,
+                    sw.ElapsedMilliseconds);
+                return result;
+            }
+            finally
+            {
+                gate.Release();
+                if (gate.CurrentCount == 1)
+                {
+                    _queryLocks.TryRemove(lockKey, out _);
+                }
+            }
         }
 
         public async Task<List<DonorSummaryDto>> GetDonorSummariesForAccountAsync(int accountId, string accountFund, DateRange dateRange)
         {
-            var subAccounts = await _donationReadRepository.GetSubAccountsByAccountIdAsync(accountId);
-            var funds = new List<string> { accountFund };
-            funds.AddRange(subAccounts.Select(s => s.SubFund));
+            var funds = await GetExpandedFundsForAccountAsync(accountId, accountFund);
+
+            _logger.LogInformation(
+                "Donor summaries account expansion accountId={AccountId} fund='{Fund}' subAccountCount={SubAccountCount} expandedFundCount={ExpandedFundCount} range={Start:yyyy-MM-dd}..{End:yyyy-MM-dd}",
+                accountId,
+                accountFund,
+                Math.Max(0, funds.Count - 1),
+                funds.Count,
+                dateRange.StartDate,
+                dateRange.EndDate);
 
             return await GetDonorSummariesAsync(funds, dateRange);
         }
@@ -112,20 +148,107 @@ namespace Cya2.Application.Services
 
         public async Task<List<DonorSummaryDto>> GetAllDonorSummariesAsync(IEnumerable<string> fundNames)
         {
+        var sw = Stopwatch.StartNew();
             var funds = NormalizeFunds(fundNames);
             if (!funds.Any()) return new List<DonorSummaryDto>();
+
+        var signature = BuildFundsSignature(funds);
+        var allDatesStart = DateTime.MinValue.Date;
+        var allDatesEnd = DateTime.MaxValue.Date;
+        if (_donorSummaryCache.TryGetDonorSummaries(signature, allDatesStart, allDatesEnd, out var cached))
+        {
+            _logger.LogInformation(
+                "Donor summaries source=cache-all-dates funds={FundCount} rows={RowCount} elapsedMs={ElapsedMs}",
+                funds.Count,
+                cached.Count,
+                sw.ElapsedMilliseconds);
+            return cached;
+        }
+
+        var allDatesLockKey = $"all|{signature}";
+        var allDatesGate = _queryLocks.GetOrAdd(allDatesLockKey, _ => new SemaphoreSlim(1, 1));
+        await allDatesGate.WaitAsync();
+        try
+        {
+            if (_donorSummaryCache.TryGetDonorSummaries(signature, allDatesStart, allDatesEnd, out cached))
+            {
+                _logger.LogInformation(
+                    "Donor summaries source=cache-all-dates-after-wait funds={FundCount} rows={RowCount} elapsedMs={ElapsedMs}",
+                    funds.Count,
+                    cached.Count,
+                    sw.ElapsedMilliseconds);
+                return cached;
+            }
+
             var donations = await _donationReadRepository.GetDonationsByFundsAsync(funds);
             donations = DeduplicateDonations(donations);
             _lastQuery = "GetDonationsByFunds (all donors)";
-            return BuildDonorSummaries(donations).OrderByDescending(d => d.Total).ThenBy(d => d.Name).ToList();
+
+            var result = BuildDonorSummaries(donations).OrderByDescending(d => d.Total).ThenBy(d => d.Name).ToList();
+            _donorSummaryCache.SetDonorSummaries(signature, allDatesStart, allDatesEnd, result);
+
+            _logger.LogInformation(
+                "Donor summaries source=db-all-dates funds={FundCount} donations={DonationCount} rows={RowCount} elapsedMs={ElapsedMs}",
+                funds.Count,
+                donations?.Count ?? 0,
+                result.Count,
+                sw.ElapsedMilliseconds);
+
+            return result;
+        }
+        finally
+        {
+            allDatesGate.Release();
+            if (allDatesGate.CurrentCount == 1)
+            {
+                _queryLocks.TryRemove(allDatesLockKey, out _);
+            }
+        }
         }
 
         public async Task<List<DonorSummaryDto>> GetAllDonorSummariesAsync(int accountId, string accountFund)
         {
-            var subAccounts = await _donationReadRepository.GetSubAccountsByAccountIdAsync(accountId);
-            var funds = new List<string> { accountFund };
-            funds.AddRange(subAccounts.Select(s => s.SubFund));
+            var funds = await GetExpandedFundsForAccountAsync(accountId, accountFund);
+
+            _logger.LogInformation(
+                "Donor summaries all-dates account expansion accountId={AccountId} fund='{Fund}' subAccountCount={SubAccountCount} expandedFundCount={ExpandedFundCount}",
+                accountId,
+                accountFund,
+                Math.Max(0, funds.Count - 1),
+                funds.Count);
+
             return await GetAllDonorSummariesAsync(funds);
+        }
+
+        private async Task<List<string>> GetExpandedFundsForAccountAsync(int accountId, string accountFund)
+        {
+            var normalizedFund = string.IsNullOrWhiteSpace(accountFund) ? string.Empty : accountFund.Trim();
+            var key = $"{accountId}|{normalizedFund}";
+            if (_accountFundsCache.TryGetValue(key, out var cachedFunds) && cachedFunds.Count > 0)
+            {
+                _logger.LogInformation(
+                    "Donor account funds source=cache accountId={AccountId} fund='{Fund}' expandedFundCount={ExpandedFundCount}",
+                    accountId,
+                    normalizedFund,
+                    cachedFunds.Count);
+                return cachedFunds;
+            }
+
+            var subAccounts = await _donationReadRepository.GetSubAccountsByAccountIdAsync(accountId);
+            var funds = new List<string> { normalizedFund };
+            funds.AddRange(subAccounts.Select(s => s.SubFund));
+            funds = NormalizeFunds(funds);
+
+            _accountFundsCache[key] = funds;
+
+            _logger.LogInformation(
+                "Donor account funds source=db accountId={AccountId} fund='{Fund}' subAccountCount={SubAccountCount} expandedFundCount={ExpandedFundCount}",
+                accountId,
+                normalizedFund,
+                subAccounts?.Count ?? 0,
+                funds.Count);
+
+            return funds;
         }
         public async Task<DonorDetailDto?> GetDonorDetailAsync(string donorName, string accountFund)
         {
