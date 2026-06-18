@@ -457,15 +457,12 @@
         <SectionLoadingBoundary IsLoading="isGraphViewLoading" LoadingText="@Localizer["LoadingDonations"]" MinHeight="280px" UseCardSurface="false">
             <RadzenCard Style="margin-top:0.75rem;">
                 <RadzenStack Orientation="Orientation.Vertical" Gap="0.5rem">
-                    <RadzenText TextStyle="TextStyle.Subtitle2">@Localizer["Graphs"]</RadzenText>
-                    <RadzenText TextStyle="TextStyle.Body2" Style="color:#666;">
-                        @dateRangeState.StartDate.ToString("MM/dd/yyyy") - @dateRangeState.EndDate.ToString("MM/dd/yyyy")
-                    </RadzenText>
+                  
 
                     <RadzenCard Style="padding:0.75rem; background:#fafafa; border:1px solid #e5e7eb;">
                         <RadzenStack Orientation="Orientation.Horizontal" Gap="1rem" Wrap="FlexWrap.Wrap" AlignItems="AlignItems.Center">
                             <div style="display:flex; align-items:center; gap:0.5rem;">
-                                <RadzenLabel Text="Graph Type" />
+                                <RadzenLabel Text=@Localizer["GraphType"] />
                                 <RadzenDropDown TValue="DonationGraphType"
                                                 Data="@donationGraphTypeOptions"
                                                 TextProperty="Text"
@@ -473,25 +470,30 @@
                                                 @bind-Value="selectedDonationGraphType"
                                                 Style="width:180px;" />
                             </div>
-
-                            <div style="display:flex; align-items:center; gap:0.5rem;">
+                                               <div style="display:flex; align-items:center; gap:0.5rem;">
                                 <RadzenCheckBox TValue="bool" @bind-Value="showGraphLabels" />
-                                <RadzenLabel Text="Show Data Labels" />
+                                <RadzenLabel Text=@Localizer["ShowLabels"] />
                             </div>
 
                             <div style="display:flex; align-items:center; gap:0.5rem; margin-left:auto;">
                                 <RadzenSwitch TValue="bool" Class="frequency-view-switch" Value="@showFrequencyPreset" Change="OnFrequencyPresetChanged" />
-                                <RadzenLabel Text="Frequency View" />
+                                <RadzenLabel Text=@Localizer["FrequencyView"] />
                                 <span style="font-size:0.8rem; color:#666; margin-left:0.5rem;">@Localizer["NonMonthlyIncludesSporadicAndOneTimeDonations"]</span>
                             </div>
-                        </RadzenStack>
+                   
+                    </RadzenStack> 
+                  
                     </RadzenCard>
-
+                   
                     @if (totalMonthlyDonationSeries.Any() || monthlyDonationSeriesByFrequency.Any())
                     {
-                        <RadzenText TextStyle="TextStyle.Body1" Style="font-weight:600;">Monthly Donations</RadzenText>
+                        <RadzenText TextStyle="TextStyle.Body1" Style="font-weight:600;">@Localizer["MonthlyDonations"]</RadzenText>
+                        <RadzenText TextStyle="TextStyle.Subtitle2">@Localizer["DateRange"]</RadzenText>
+                        <RadzenText TextStyle="TextStyle.Body2" Style="color:#666;">
+                            @dateRangeState.StartDate.ToString("MM/dd/yyyy") - @dateRangeState.EndDate.ToString("MM/dd/yyyy")
+                        </RadzenText>     
                         <div class="donations-main-chart">
-                        <RadzenChart Style="height: 360px;">
+                        <RadzenChart @key="graphRenderKey" Style="height: 360px;">
                             @if (!showFrequencyPreset)
                             {
                                 @if (selectedDonationGraphType == DonationGraphType.Line)
@@ -565,7 +567,7 @@
                             <RadzenLegend Visible="true" />
                         </RadzenChart>
                         </div>
-                        <RadzenText TextStyle="TextStyle.Caption" Style="color:#666;">X-axis: Month · Y-axis: Total Donations, USD whole dollars</RadzenText>
+                        <RadzenText TextStyle="TextStyle.Caption" Style="color:#666;">@Localizer["HorizontalaxisMonthVerticalaxisTotalDonationsUSD"]</RadzenText>
                     }
                     else
                     {
@@ -637,6 +639,7 @@
     private readonly List<MonthlyDonationChartPoint> totalMonthlyDonationSeries = new();
     private readonly Dictionary<string, List<MonthlyDonationChartPoint>> monthlyDonationSeriesByFrequency = new(StringComparer.OrdinalIgnoreCase);
     private decimal grandTotal = 0m;
+    private string graphRenderKey = string.Empty;
 
     private sealed class MonthlyDonationChartPoint
     {
@@ -999,15 +1002,35 @@
         await base.OnAfterRenderAsync(firstRender);
     }
 
-    private void OnPresetChanged(object? args)
+    private async Task OnPresetChanged(object? args)
     {
-        if (args is DateRangePreset preset)
+        DateRangePreset preset;
+
+        if (args is DateRangePreset enumPreset)
         {
-            DateRangeStateService.ApplyPreset(dateRangeState, preset);
-            if (preset != DateRangePreset.Custom)
-                _ = selectDateRange();
-            else
-                StateHasChanged();
+            preset = enumPreset;
+        }
+        else if (args is string stringPreset && Enum.TryParse<DateRangePreset>(stringPreset, true, out var parsedPreset))
+        {
+            preset = parsedPreset;
+        }
+        else if (args is int intPreset && Enum.IsDefined(typeof(DateRangePreset), intPreset))
+        {
+            preset = (DateRangePreset)intPreset;
+        }
+        else
+        {
+            return;
+        }
+
+        DateRangeStateService.ApplyPreset(dateRangeState, preset);
+        if (preset != DateRangePreset.Custom)
+        {
+            await selectDateRange();
+        }
+        else
+        {
+            await InvokeAsync(StateHasChanged);
         }
     }
 
@@ -1121,6 +1144,7 @@
 
         if (!selectedDonations.Any())
         {
+            UpdateGraphRenderKey();
             return;
         }
 
@@ -1174,6 +1198,15 @@
             monthlyDonationSeriesByFrequency[item.Key] = item.Value;
         }
 
+        UpdateGraphRenderKey();
+
+    }
+
+    private void UpdateGraphRenderKey()
+    {
+        graphRenderKey = string.Create(
+            System.Globalization.CultureInfo.InvariantCulture,
+            $"{selectedAccount}|{selectedSubAccount}|{dateRangeState.StartDate:yyyyMMdd}|{dateRangeState.EndDate:yyyyMMdd}|{monthColumns.Count}|{totalMonthlyDonationSeries.Count}|{monthlyDonationSeriesByFrequency.Count}|{showFrequencyPreset}");
     }
 
     private string CanonicalFrequencyLabel(string? frequency)
