@@ -654,4 +654,19 @@
   <data name="Save" xml:space="preserve">
     <value>Save</value>
   </data>
+  <data name="HorizontalaxisMonthVerticalaxisTotalDonationsUSD" xml:space="preserve">
+    <value>Horizontal-axis: Month | Vertical-axis: Total Donations, USD</value>
+  </data>
+  <data name="MonthlyDonations" xml:space="preserve">
+    <value>Monthy Donations</value>
+  </data>
+  <data name="GraphType" xml:space="preserve">
+    <value>Graph Type</value>
+  </data>
+  <data name="ShowLabels" xml:space="preserve">
+    <value>Show Labels</value>
+  </data>
+  <data name="FrequencyView" xml:space="preserve">
+    <value>Frequency View</value>
+  </data>
 </root>
