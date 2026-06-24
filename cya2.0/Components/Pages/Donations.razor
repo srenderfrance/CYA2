@@ -353,6 +353,8 @@
                         <!-- Donor: header/cell left -->
                         <RadzenDataGridColumn TItem="DonationPivotRowDto"
                                               Title="@(Localizer["Donor"])"
+                                              Frozen="true"
+                                              FrozenPosition="FrozenColumnPosition.Left"
                                               OrderIndex="0"
                                               TextAlign="TextAlign.Left">
                             <Template Context="row">
@@ -431,7 +433,7 @@
                                     Class="@(useCompactView ? "donation-list compact-data-grid" : "donation-list")">
                         <Columns>
                             <RadzenDataGridColumn TItem="DonationRowDto" Property="Date" Title="@(Localizer["Date"])" FormatString="{0:MM/dd/yyyy}" Width="110px" />
-                            <RadzenDataGridColumn TItem="DonationRowDto" Property="Donor" Title="@(Localizer["Donor"])" Width="200px">
+                            <RadzenDataGridColumn TItem="DonationRowDto" Property="Donor" Title="@(Localizer["Donor"])" Width="200px" Frozen="true" FrozenPosition="FrozenColumnPosition.Left">
                                 <Template Context="donation">
                                     <span class="donor-cell" @onclick="@(() => OnDonorClick(donation.Donor))">@donation.Donor</span>
                                 </Template>
@@ -1219,6 +1221,11 @@
             return "Non Monthly";
         }
 
+        if (normalized == "quarterly")
+        {
+            return "Quarterly";
+        }
+
         if (normalized == "monthly")
         {
             return "Monthly";
@@ -1252,8 +1259,9 @@
         return normalized switch
         {
             "monthly" => 0,
-            "nonmonthly" => 1,
-            _ => 2
+            "quarterly" => 1,
+            "nonmonthly" => 2,
+            _ => 3
         };
     }
 

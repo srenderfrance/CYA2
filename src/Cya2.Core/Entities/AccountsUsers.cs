@@ -2,7 +2,6 @@ namespace Cya2.Core.Entities;
 
 public class AccountsUsers : BaseEntity
 {
-    public int Id { get; set; }
     public int UserId { get; set; }
     public int AccountId { get; set; }
 

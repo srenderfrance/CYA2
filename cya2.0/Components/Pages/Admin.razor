@@ -77,10 +77,10 @@
                           Class="admin-rollback-btn"
                           Click="@(async () => await OpenRollbackDialog())" />
 
-            @* <RadzenButton Text="@GetLocalizedString("RecategorizeDonations", "Recategorize Donations")"
+            <RadzenButton Text="@GetLocalizedString("RecategorizeDonations", "Recategorize Donations")"
                           ButtonStyle="ButtonStyle.Light"
                           Icon="cleaning_services"
-                          Click="@(async () => await RecategorizeAllDonations())" /> *@
+                          Click="@(async () => await RecategorizeAllDonations())" /> 
         </RadzenStack>
         </div>
     </RadzenStack>
@@ -821,7 +821,7 @@
 
         // User form properties (no longer used in UI, kept for potential reuse)
         [SupplyParameterFromForm]
-        private UserFormModel formModel { get; set; } = new UserFormModel();
+        private UserFormModel? formModel { get; set; }
 
         // Fund properties
         private string? errorMessage;

@@ -255,6 +255,7 @@ namespace cya2.Controllers
         {
             Cya2.Core.Enums.DonorFrequency.OneTime => "One-time",
             Cya2.Core.Enums.DonorFrequency.Monthly => "Monthly",
+        Cya2.Core.Enums.DonorFrequency.Quarterly => "Quarterly",
             Cya2.Core.Enums.DonorFrequency.Yearly => "Yearly",
             Cya2.Core.Enums.DonorFrequency.Sporadic => "Sporadic",
             _ => string.Empty
