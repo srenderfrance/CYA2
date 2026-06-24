@@ -4,7 +4,6 @@ namespace Cya2.Core.Entities;
 
 public class User : BaseEntity
 {
-    public int Id { get; set; }
     public string GoogleId { get; set; } = string.Empty;
     public string Email { get; set; } = string.Empty;
     public string Name { get; set; } = string.Empty;
@@ -12,7 +11,6 @@ public class User : BaseEntity
     public string AuthLevel { get; set; } = "User"; // "User", "Viewer", "Admin"
     public int? DefaultAccount { get; set; } = null;
     public string Prefrence { get; set; } = "default";
-    public DateTime DateCreated { get; set; } = DateTime.UtcNow;
 
     // Parameterless constructor
     public User() { }
@@ -26,7 +24,7 @@ public class User : BaseEntity
         Language = language?.Trim() ?? "en";
         AuthLevel = authLevel?.Trim() ?? "User";
         DefaultAccount = defaultAccount;
-        DateCreated = DateTime.Now;
+        DateCreated = DateTime.UtcNow;
         Prefrence = "default";
     }
 

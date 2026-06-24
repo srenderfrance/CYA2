@@ -7,4 +7,5 @@
 
 ## Blazor App Guidelines
 - For this Blazor app, data is typically updated once per day; session-scoped cached data can be treated as current during a single user session.
-- Include `UserSettings.razor` and `Admin.razor` in navigation/performance optimization scope.
+- Use Dapper for data access instead of Entity Framework.
+- Project stack and standards: .NET 10 Blazor app using Dapper, MySQL, Radzen components, Clean Architecture; current priority is improving mobile/small-screen UI behavior.

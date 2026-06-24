@@ -36,6 +36,10 @@ public class DonorFrequencyService
     private const int YearlyMinMonths = 11;
     private const int YearlyMaxMonths = 13;
 
+    // Gifts are considered quarterly if between 2 and 4 months apart.
+    private const int QuarterlyMinMonths = 2;
+    private const int QuarterlyMaxMonths = 4;
+
     // Evaluation window for Monthly classification.
     private const int MonthlyLookbackMonths = 12;
 
@@ -59,6 +63,9 @@ public class DonorFrequencyService
 
         if (IsMonthly(sorted))
             return DonorFrequency.Monthly;
+
+        if (IsQuarterly(sorted))
+            return DonorFrequency.Quarterly;
 
         if (IsYearly(sorted))
             return DonorFrequency.Yearly;
@@ -87,7 +94,7 @@ public class DonorFrequencyService
         // Check catch-up only for monthly donors
         if (donorStatus == DonorFrequency.Monthly)
         {
-            var catchUp = DetectCatchUp(gift, historyAroundGift);
+            var catchUp = DetectCatchUp(gift, historyAroundGift ?? Array.Empty<DonorGiftRecord>());
             if (catchUp.IsCatchUp)
             {
                 return new GiftClassificationResult
@@ -206,6 +213,22 @@ public class DonorFrequencyService
         {
             var months = MonthsBetween(sorted[i - 1].Date, sorted[i].Date);
             if (months < YearlyMinMonths || months > YearlyMaxMonths)
+                return false;
+        }
+
+        return true;
+    }
+
+    private static bool IsQuarterly(List<DonorGiftRecord> sorted)
+    {
+        if (sorted.Count < 2)
+            return false;
+
+        // All consecutive gap pairs must fall within the quarterly window.
+        for (var i = 1; i < sorted.Count; i++)
+        {
+            var months = MonthsBetween(sorted[i - 1].Date, sorted[i].Date);
+            if (months < QuarterlyMinMonths || months > QuarterlyMaxMonths)
                 return false;
         }
 

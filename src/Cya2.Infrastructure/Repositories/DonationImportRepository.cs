@@ -156,7 +156,10 @@ ORDER BY AccountName, Fund, Date, Id";
                     FundKey = string.IsNullOrWhiteSpace(r.Fund)
                         ? "__NO_FUND__"
                         : r.Fund.Trim().ToUpperInvariant()
-                });
+                })
+                .ToList();
+
+            _logger.LogInformation("Recategorization grouped records into {GroupCount} donor/fund groups", groups.Count);
 
             foreach (var group in groups)
             {
@@ -206,7 +209,7 @@ ORDER BY AccountName, Fund, Date, Id";
             validateCmd.CommandText = @"
 SELECT COUNT(*)
 FROM DonationData
-WHERE Frequency IS NULL OR Frequency NOT IN (1,2,3,4)";
+WHERE Frequency IS NULL OR Frequency NOT IN (1,2,3,4,5)";
             var invalidCount = Convert.ToInt32(await validateCmd.ExecuteScalarAsync(ct));
             if (invalidCount > 0)
             {

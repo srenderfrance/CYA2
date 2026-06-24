@@ -2,7 +2,6 @@ namespace Cya2.Core.Entities;
 
 public class AccountingDataModel : BaseEntity
 {
-    public int Id { get; set; }
     public string AccountingClass { get; set; } = string.Empty; // Named "class" in QuickBooks CSV
     public DateTime Date { get; set; }
     public string Num { get; set; } = string.Empty;            // Transaction number
@@ -10,7 +9,6 @@ public class AccountingDataModel : BaseEntity
     public string AccountNumber { get; set; } = string.Empty;  // Account number
     public string Account { get; set; } = string.Empty;        // Account description
     public string Type { get; set; } = string.Empty;           // Transaction type
-    public DateTime DateCreated { get; set; } = DateTime.UtcNow;
 
     // Parameterless constructor
     public AccountingDataModel() { }
