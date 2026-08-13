@@ -3,11 +3,14 @@ html, body {
     margin: 0;
     padding: 0;
     background-color: #fff;
-    /* Allow normal scrolling */
-    overflow: visible;
+    /* Prevent horizontal page scrolling */
+    overflow-x: hidden;
+    overflow-y: auto;
     /* Add these for better positioning calculations */
     height: 100%;
     width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
 }
 
 /* Ensure app surface stays white even if Radzen theme variables change */
@@ -26,6 +29,9 @@ html, body {
     flex-direction: column;
     min-height: 100vh;
     position: relative; /* Add this to establish positioning context */
+    overflow-x: hidden; /* Prevent horizontal scrolling at layout level */
+    max-width: 100%;
+    box-sizing: border-box;
 }
 
 /* Header should NOT be sticky - let it scroll with content */
@@ -38,6 +44,9 @@ html, body {
     flex: 1;
     position: relative; /* Add this to help with dropdown positioning */
     /* Normal flow - will scroll naturally */
+    overflow-x: hidden; /* Prevent horizontal scrolling */
+    max-width: 100%;
+    box-sizing: border-box;
 }
 
 /* Restore default browser scrollbar colors */
@@ -403,15 +412,16 @@ a, .btn-link {
     }
 }
 
-/* Donors grid: keep readable column widths on narrow screens */
+/* Donors grid: container constrains width, grid handles internal scrolling */
 .donors-grid-scroll {
     width: 100%;
-    overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
+    max-width: 100%;
+    overflow: hidden; /* Clip the grid, but grid itself will scroll internally */
+    position: relative;
 }
 
 .donors-data-grid {
-    min-width: 760px;
+    width: 100%; /* Fill container, let grid create internal scroll */
 }
 
 /* Expenses view toggle should stay same green in both states */

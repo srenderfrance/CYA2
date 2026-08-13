@@ -105,15 +105,17 @@ public static class DisplayFormatter
         if (string.IsNullOrWhiteSpace(fund)) 
             return string.Empty;
 
-        // Prefer space-colon pattern if present, otherwise any colon
-        var idx = fund.IndexOf(" :", StringComparison.Ordinal);
-        if (idx < 0)
+        var trimmedFund = fund.Trim();
+
+        // Intern accounts are stored as "Intern: Name" but should display as "Name (Intern)".
+        const string internPrefix = "Intern:";
+        if (trimmedFund.StartsWith(internPrefix, StringComparison.OrdinalIgnoreCase))
         {
-            idx = fund.IndexOf(':');
+            var internName = trimmedFund[internPrefix.Length..].Trim();
+            return string.IsNullOrWhiteSpace(internName) ? "Intern" : $"{internName} (Intern)";
         }
 
-        var before = idx >= 0 ? fund[..idx] : fund;
-        return before.TrimEnd();
+        return trimmedFund;
     }
 
     /// <summary>

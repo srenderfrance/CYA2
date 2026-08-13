@@ -8,7 +8,7 @@ public class User : BaseEntity
     public string Email { get; set; } = string.Empty;
     public string Name { get; set; } = string.Empty;
     public string Language { get; set; } = "en";
-    public string AuthLevel { get; set; } = "User"; // "User", "Viewer", "Admin"
+    public string AuthLevel { get; set; } = "User"; // "User", "Intern", "Viewer", "Admin"
     public int? DefaultAccount { get; set; } = null;
     public string Prefrence { get; set; } = "default";
 
@@ -42,6 +42,11 @@ public class User : BaseEntity
     public bool IsUser()
     {
         return string.Equals(AuthLevel, "User", StringComparison.OrdinalIgnoreCase);
+    }
+
+    public bool IsIntern()
+    {
+        return string.Equals(AuthLevel, "Intern", StringComparison.OrdinalIgnoreCase);
     }
 
     public bool CanViewAllAccounts()
@@ -162,6 +167,7 @@ public class User : BaseEntity
         {
             "Admin" => "Administrator",
             "Viewer" => "Viewer",
+            "Intern" => "Intern",
             "User" => "User",
             _ => "Unknown"
         };

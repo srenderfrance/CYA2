@@ -31,7 +31,7 @@ namespace Cya2.Infrastructure.Services
             }
             var options = new MemoryCacheEntryOptions { AbsoluteExpirationRelativeToNow = ttl ?? _defaultTtl };
             _cache.Set(key, account, options);
-            _logger.LogInformation("MemoryUserSelectionService: Set selection for {UserId} -> {Account} (ttl={Ttl})", userId, account, options.AbsoluteExpirationRelativeToNow);
+            _logger.LogDebug("MemoryUserSelectionService: Set selection for {UserId} -> {Account} (ttl={Ttl})", userId, account, options.AbsoluteExpirationRelativeToNow);
         }
 
         public bool TryGetSelectedAccount(string userId, out string account)
@@ -45,7 +45,7 @@ namespace Cya2.Infrastructure.Services
             var key = UserKey(userId);
             var found = _cache.TryGetValue<string?>(key, out var cachedAccount);
             account = cachedAccount ?? string.Empty;
-            _logger.LogInformation("MemoryUserSelectionService: TryGet for {UserId} -> found={Found}, account='{Account}'", userId, found, account);
+            _logger.LogDebug("MemoryUserSelectionService: TryGet for {UserId} -> found={Found}, account='{Account}'", userId, found, account);
             return found;
         }
 
@@ -53,7 +53,7 @@ namespace Cya2.Infrastructure.Services
         {
             if (string.IsNullOrWhiteSpace(userId)) return;
             _cache.Remove(UserKey(userId));
-            _logger.LogInformation("MemoryUserSelectionService: Removed selection for {UserId}", userId);
+            _logger.LogDebug("MemoryUserSelectionService: Removed selection for {UserId}", userId);
         }
 
         private string UserKey(string userId) => $"UserSelection:{userId}";

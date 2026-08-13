@@ -165,6 +165,7 @@ namespace cya2.Services.Imports
             var map = BuildColumnMap(ws, headerRow);
 
             string[] required = { "Gift Date","Name","Gift Payment Type","Gift Type","Fund Split Amount","Fund Notes",
+                "Honor/Memorial Name",
                 "Soft Credit Recipient Name","Preferred Address Line 1","Preferred City","Preferred State",
                 "Preferred ZIP","Preferred Country","Personal Email Number","Home Phone Number",
                 "Personal Mobile Phone Number","Gift Is Anonymous" };
@@ -194,6 +195,12 @@ namespace cya2.Services.Imports
                 var name    = ws.Cells[r, map["Name"]]?.Text?.Trim();
                 var amountTxt = ws.Cells[r, map["Fund Split Amount"]]?.Text?.Trim();
                 var fund    = ws.Cells[r, map["Fund Notes"]]?.Text?.Trim();
+                var internDesignation = GetCellText(ws, r, map["Honor/Memorial Name"]);
+                var addressee = map.TryGetValue("Primary Addressee", out var primaryAddresseeCol)
+                    ? GetCellText(ws, r, primaryAddresseeCol)
+                    : map.TryGetValue("Addressee", out var addresseeCol)
+                        ? GetCellText(ws, r, addresseeCol)
+                        : null;
 
                 if (string.IsNullOrWhiteSpace(name) && string.IsNullOrWhiteSpace(fund) && string.IsNullOrWhiteSpace(amountTxt)) continue;
                 if (!ExcelParsingHelpers.TryParseDateUS(dateTxt, out var date)) { result.FailedRows++; result.Errors.Add($"Row {r}: invalid Gift Date '{dateTxt}'"); continue; }
@@ -211,6 +218,8 @@ namespace cya2.Services.Imports
                     GiftType      = ws.Cells[r, map["Gift Type"]]?.Text?.Trim() ?? string.Empty,
                     Amount        = amount,
                     Fund          = fund ?? string.Empty,
+                    Intern        = internDesignation,
+                    Addressee     = addressee,
                     SoftCreditName = isAnon ? null : ws.Cells[r, map["Soft Credit Recipient Name"]]?.Text?.Trim(),
                     Address       = isAnon ? null : ws.Cells[r, map["Preferred Address Line 1"]]?.Text?.Trim(),
                     City          = isAnon ? null : ws.Cells[r, map["Preferred City"]]?.Text?.Trim(),
@@ -223,6 +232,30 @@ namespace cya2.Services.Imports
                     IsAnonymous   = isAnon
                 });
                 result.TotalRows++;
+            }
+
+            var internPopulatedCount = allRows.Count(r => !string.IsNullOrWhiteSpace(r.Intern));
+            var addresseePopulatedCount = allRows.Count(r => !string.IsNullOrWhiteSpace(r.Addressee));
+            _logger.LogInformation(
+                "Donation import parse debug: rows={Rows}, internPopulated={InternPopulated}, addresseePopulated={AddresseePopulated}, internColumnIndex={InternColumnIndex}, addresseeColumnIndex={AddresseeColumnIndex}",
+                allRows.Count,
+                internPopulatedCount,
+                addresseePopulatedCount,
+                map["Honor/Memorial Name"],
+                map.TryGetValue("Primary Addressee", out var primaryAddresseeIndex)
+                    ? primaryAddresseeIndex
+                    : (map.TryGetValue("Addressee", out var addresseeIndex) ? addresseeIndex : -1));
+
+            var internSamples = allRows
+                .Select(r => r.Intern)
+                .Where(v => !string.IsNullOrWhiteSpace(v))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .Take(5)
+                .ToArray();
+
+            if (internSamples.Length > 0)
+            {
+                _logger.LogInformation("Donation import intern samples: {Samples}", string.Join(" | ", internSamples));
             }
 
             _progressService.CompleteStep(progressId, "Data Analysis", "Completed", $"Earliest date: {earliest?.ToString("yyyy-MM-dd") ?? "none"}");
@@ -359,6 +392,19 @@ namespace cya2.Services.Imports
                 if (!string.IsNullOrWhiteSpace(h) && !map.ContainsKey(h)) map[h] = c;
             }
             return map;
+        }
+
+        private static string? GetCellText(OfficeOpenXml.ExcelWorksheet ws, int row, int column)
+        {
+            var cell = ws.Cells[row, column];
+            var text = cell?.Text?.Trim();
+            if (!string.IsNullOrWhiteSpace(text))
+            {
+                return text;
+            }
+
+            var value = cell?.Value?.ToString()?.Trim();
+            return string.IsNullOrWhiteSpace(value) ? null : value;
         }
 
         private static string NormalizeDonorName(string? rawName)

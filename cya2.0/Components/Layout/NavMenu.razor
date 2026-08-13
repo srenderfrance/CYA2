@@ -48,9 +48,13 @@
                 </NavLink>
             </div>
             <div class="nav-item">
-                <NavLink class="nav-link" href="/expenses" @onclick="CloseMenu">
-                    <span class="bi bi-list-nested-nav-menu"></span> @Localizer["Expenses"]
-                </NavLink>
+                <AuthorizeView Policy="CanAccessExpenses">
+                    <Authorized>
+                        <NavLink class="nav-link" href="/expenses" @onclick="CloseMenu">
+                            <span class="bi bi-list-nested-nav-menu"></span> @Localizer["Expenses"]
+                        </NavLink>
+                    </Authorized>
+                </AuthorizeView>
             </div>
             <div class="nav-item">
                 <NavLink class="nav-link" href="/donors" @onclick="CloseMenu">
