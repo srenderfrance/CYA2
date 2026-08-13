@@ -1,5 +1,6 @@
 using Cya2.Application.DTOs;
 using Cya2.Core.Interfaces;
+using Cya2.Core.Utilities;
 using Microsoft.Extensions.Logging;
 
 namespace Cya2.Application.Services;
@@ -11,15 +12,18 @@ public class UserManagementService
 {
     private readonly IUserRepository _userRepository;
     private readonly IUserAccountAccessRepository _userAccountAccessRepository;
+    private readonly IAccountRepository _accountRepository;
     private readonly ILogger<UserManagementService> _logger;
 
     public UserManagementService(
         IUserRepository userRepository,
         IUserAccountAccessRepository userAccountAccessRepository,
+        IAccountRepository accountRepository,
         ILogger<UserManagementService> logger)
     {
         _userRepository = userRepository;
         _userAccountAccessRepository = userAccountAccessRepository;
+        _accountRepository = accountRepository;
         _logger = logger;
     }
 
@@ -130,11 +134,18 @@ public class UserManagementService
                 return new AdminUserOperationDto { IsSuccess = false, Message = "Selected user not found" };
             }
 
+            var originalName = user.Name;
+
             if (!string.IsNullOrWhiteSpace(request.Name)) user.Name = request.Name.Trim();
             if (!string.IsNullOrWhiteSpace(request.Email)) user.Email = request.Email.Trim();
             if (!string.IsNullOrWhiteSpace(request.AuthLevel)) user.AuthLevel = request.AuthLevel.Trim();
 
             await _userRepository.UpdateAsync(user);
+
+            if (string.Equals(user.AuthLevel, "Intern", StringComparison.OrdinalIgnoreCase))
+            {
+                await EnsureInternAccountAccessAsync(user, originalName);
+            }
 
             return new AdminUserOperationDto { IsSuccess = true, Message = "User updated successfully" };
         }
@@ -264,6 +275,16 @@ public class UserManagementService
             }
 
             var realAccountIds = (accountIds ?? Enumerable.Empty<int>()).Where(id => id > 0).Distinct().ToList();
+            var isInternUser = string.Equals(user.AuthLevel, "Intern", StringComparison.OrdinalIgnoreCase);
+
+            if (isInternUser)
+            {
+                var internAccount = await EnsureInternAccountAccessAsync(user);
+                realAccountIds = internAccount?.AccountId > 0
+                    ? new List<int> { internAccount.AccountId }
+                    : new List<int>();
+            }
+
             foreach (var accountId in realAccountIds)
             {
                 await _userAccountAccessRepository.GrantAccessAsync(user.Id, accountId);
@@ -308,5 +329,65 @@ public class UserManagementService
             _logger.LogError(ex, "Error deleting user {UserId}", userId);
             return new AdminUserOperationDto { IsSuccess = false, Message = $"Error: {ex.Message}" };
         }
+    }
+
+    private async Task<Cya2.Core.Entities.Account?> EnsureInternAccountAccessAsync(Cya2.Core.Entities.User user, string? originalName = null)
+    {
+        if (user == null || user.Id <= 0)
+        {
+            return null;
+        }
+
+        var desiredInternFund = InternAccountUtility.BuildInternFund(user.Name);
+        var desiredAccount = await _accountRepository.GetByFundAsync(desiredInternFund);
+
+        var linkedAccounts = await _userAccountAccessRepository.GetUserAccountsAsync(user.Id);
+        var linkedInternAccount = linkedAccounts.FirstOrDefault(a => InternAccountUtility.IsInternFund(a.Fund));
+
+        if (desiredAccount == null && linkedInternAccount != null)
+        {
+            linkedInternAccount.Fund = desiredInternFund;
+            desiredAccount = await _accountRepository.UpdateAsync(linkedInternAccount);
+        }
+
+        if (desiredAccount == null && !string.IsNullOrWhiteSpace(originalName))
+        {
+            var previousFund = InternAccountUtility.BuildInternFund(originalName);
+            var previousAccount = await _accountRepository.GetByFundAsync(previousFund);
+            if (previousAccount != null)
+            {
+                previousAccount.Fund = desiredInternFund;
+                desiredAccount = await _accountRepository.UpdateAsync(previousAccount);
+            }
+        }
+
+        if (desiredAccount == null)
+        {
+            desiredAccount = await _accountRepository.AddAsync(new Cya2.Core.Entities.Account
+            {
+                Fund = desiredInternFund,
+                AccountingClass = "INTERN",
+                AccountNumber = $"INT-{user.Id}",
+                Overhead = 12.00m,
+                SoftCredit = string.Empty,
+                BalanceAdjustment = 0,
+                CreatedAt = DateTime.UtcNow
+            });
+        }
+
+        if (desiredAccount?.AccountId > 0)
+        {
+            var hasAccess = await _userAccountAccessRepository.HasAccessAsync(user.Id, desiredAccount.AccountId);
+            if (!hasAccess)
+            {
+                await _userAccountAccessRepository.GrantAccessAsync(user.Id, desiredAccount.AccountId);
+            }
+
+            await _userAccountAccessRepository.SetUserDefaultAccountAsync(user.Id, desiredAccount.AccountId);
+            return desiredAccount;
+        }
+
+        _logger.LogWarning("Failed to resolve/create intern account for user {UserId} ({Email})", user.Id, user.Email);
+        return null;
     }
 }

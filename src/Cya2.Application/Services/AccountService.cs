@@ -2,6 +2,7 @@ using Microsoft.Extensions.Logging;
 using Cya2.Application.DTOs;
 using Cya2.Application.Interfaces;
 using Cya2.Core.Interfaces;
+using Cya2.Core.Utilities;
 using Cya2.Core.ValueObjects;
 
 namespace Cya2.Application.Services;
@@ -27,7 +28,7 @@ public class AccountService : IAccountService
             {
                 Fund = a.Fund,
                 AccountingClass = a.AccountingClass,
-                DisplayName = a.Fund,
+                DisplayName = InternAccountUtility.GetDisplayFundName(a.Fund),
                 CurrentBalance = a.BalanceAdjustment,
                 LastActivity = a.CreatedAt
             }).ToList();

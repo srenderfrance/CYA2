@@ -29,26 +29,28 @@ public class SessionDonationDataCacheService : ISessionDonationDataCacheService
     {
         var sw = Stopwatch.StartNew();
         data = default!;
-        if (string.IsNullOrWhiteSpace(userId) || string.IsNullOrWhiteSpace(fund)) return false;
+        var normalizedUserId = NormalizeKey(userId);
+        var normalizedFund = NormalizeKey(fund);
+        if (string.IsNullOrWhiteSpace(normalizedUserId) || string.IsNullOrWhiteSpace(normalizedFund)) return false;
 
         lock (_sync)
         {
-            if (!_cacheByUser.TryGetValue(userId, out var userCache))
+            if (!_cacheByUser.TryGetValue(normalizedUserId, out var userCache))
             {
-                _logger.LogInformation("Donation cache miss: user={UserId}, fund={Fund}, reason=missing-user-cache, elapsedMs={ElapsedMs}", userId, fund, sw.ElapsedMilliseconds);
+                _logger.LogInformation("Donation cache miss: user={UserId}, fund={Fund}, reason=missing-user-cache, elapsedMs={ElapsedMs}", normalizedUserId, normalizedFund, sw.ElapsedMilliseconds);
                 return false;
             }
-            if (!userCache.Items.TryGetValue(fund, out var dto))
+            if (!userCache.Items.TryGetValue(normalizedFund, out var dto))
             {
-                _logger.LogInformation("Donation cache miss: user={UserId}, fund={Fund}, reason=missing-fund, cachedFunds={CachedFunds}, elapsedMs={ElapsedMs}", userId, fund, userCache.Items.Count, sw.ElapsedMilliseconds);
+                _logger.LogInformation("Donation cache miss: user={UserId}, fund={Fund}, reason=missing-fund, cachedFunds={CachedFunds}, elapsedMs={ElapsedMs}", normalizedUserId, normalizedFund, userCache.Items.Count, sw.ElapsedMilliseconds);
                 return false;
             }
             data = dto;
-            Touch(userCache, fund);
+            Touch(userCache, normalizedFund);
             _logger.LogInformation(
                 "Donation cache hit: user={UserId}, fund={Fund}, rows={Rows}, range={Start:yyyy-MM-dd}..{End:yyyy-MM-dd}, approxBytes={ApproxBytes}, elapsedMs={ElapsedMs}",
-                userId,
-                fund,
+                normalizedUserId,
+                normalizedFund,
                 data.Donations?.Count ?? 0,
                 data.CachedStartDate,
                 data.CachedEndDate,
@@ -60,10 +62,11 @@ public class SessionDonationDataCacheService : ISessionDonationDataCacheService
 
     public IReadOnlyCollection<string> GetFunds(string userId)
     {
-        if (string.IsNullOrWhiteSpace(userId)) return Array.Empty<string>();
+        var normalizedUserId = NormalizeKey(userId);
+        if (string.IsNullOrWhiteSpace(normalizedUserId)) return Array.Empty<string>();
         lock (_sync)
         {
-            if (!_cacheByUser.TryGetValue(userId, out var userCache)) return Array.Empty<string>();
+            if (!_cacheByUser.TryGetValue(normalizedUserId, out var userCache)) return Array.Empty<string>();
             return userCache.LruFunds.ToList();
         }
     }
@@ -71,17 +74,19 @@ public class SessionDonationDataCacheService : ISessionDonationDataCacheService
     public void SetDonationData(string userId, string fund, DonationDataDto data, bool prioritize = false)
     {
         var sw = Stopwatch.StartNew();
-        if (string.IsNullOrWhiteSpace(userId) || string.IsNullOrWhiteSpace(fund) || data == null) return;
+        var normalizedUserId = NormalizeKey(userId);
+        var normalizedFund = NormalizeKey(fund);
+        if (string.IsNullOrWhiteSpace(normalizedUserId) || string.IsNullOrWhiteSpace(normalizedFund) || data == null) return;
         lock (_sync)
         {
-            if (!_cacheByUser.TryGetValue(userId, out var userCache))
+            if (!_cacheByUser.TryGetValue(normalizedUserId, out var userCache))
             {
                 userCache = new UserDonationCache();
-                _cacheByUser[userId] = userCache;
+                _cacheByUser[normalizedUserId] = userCache;
             }
 
-            userCache.Items[fund] = data;
-            Touch(userCache, fund, prioritize);
+            userCache.Items[normalizedFund] = data;
+            Touch(userCache, normalizedFund, prioritize);
 
             while (userCache.Items.Count > MaxItemsPerUser)
             {
@@ -93,8 +98,8 @@ public class SessionDonationDataCacheService : ISessionDonationDataCacheService
 
             _logger.LogInformation(
                 "Donation cache set: user={UserId}, fund={Fund}, rows={Rows}, range={Start:yyyy-MM-dd}..{End:yyyy-MM-dd}, approxBytes={ApproxBytes}, cachedFunds={CachedFunds}, prioritize={Prioritize}, elapsedMs={ElapsedMs}",
-                userId,
-                fund,
+                normalizedUserId,
+                normalizedFund,
                 data.Donations?.Count ?? 0,
                 data.CachedStartDate,
                 data.CachedEndDate,
@@ -128,5 +133,10 @@ public class SessionDonationDataCacheService : ISessionDonationDataCacheService
         {
             return 0;
         }
+    }
+
+    private static string NormalizeKey(string key)
+    {
+        return string.IsNullOrWhiteSpace(key) ? string.Empty : key.Trim();
     }
 }

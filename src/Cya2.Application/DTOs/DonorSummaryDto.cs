@@ -6,9 +6,12 @@ namespace Cya2.Application.DTOs;
 public class DonorSummaryDto
 {
     public string Name { get; set; } = string.Empty;
+    public string SourceSummary { get; set; } = string.Empty;
     public decimal Total { get; set; }
     public string PaymentMethod { get; set; } = string.Empty;
     public string Email { get; set; } = string.Empty;
+    public string PhoneMobile { get; set; } = string.Empty;
+    public string PhoneFixed { get; set; } = string.Empty;
     public string PhoneSummary { get; set; } = string.Empty;
     public string AddressSummary { get; set; } = string.Empty;
     public string City { get; set; } = string.Empty;

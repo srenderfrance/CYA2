@@ -18,30 +18,44 @@ public class SessionExpenseDataCacheService : ISessionExpenseDataCacheService
     public bool TryGetExpenseData(string userId, string fund, DateTime startDate, DateTime endDate, out ExpenseDataDto data)
     {
         data = default!;
-        var key = BuildKey(userId, fund, startDate, endDate);
+        var normalizedUserId = NormalizeKey(userId);
+        var normalizedFund = NormalizeKey(fund);
+        if (string.IsNullOrWhiteSpace(normalizedUserId) || string.IsNullOrWhiteSpace(normalizedFund))
+        {
+            return false;
+        }
+
+        var key = BuildKey(normalizedUserId, normalizedFund, startDate, endDate);
         lock (_sync)
         {
             if (!_cache.TryGetValue(key, out var cached))
             {
-                _logger.LogInformation("Expense DTO cache miss: user={UserId}, fund={Fund}, range={Start:yyyy-MM-dd}..{End:yyyy-MM-dd}", userId, fund, startDate, endDate);
+                _logger.LogInformation("Expense DTO cache miss: user={UserId}, fund={Fund}, range={Start:yyyy-MM-dd}..{End:yyyy-MM-dd}", normalizedUserId, normalizedFund, startDate, endDate);
                 return false;
             }
 
             data = cached;
-            _logger.LogInformation("Expense DTO cache hit: user={UserId}, fund={Fund}, range={Start:yyyy-MM-dd}..{End:yyyy-MM-dd}, expenses={ExpenseCount}, transfers={TransferCount}", userId, fund, startDate, endDate, cached.ExpenseTransactions?.Count ?? 0, cached.TransferTransactions?.Count ?? 0);
+            _logger.LogInformation("Expense DTO cache hit: user={UserId}, fund={Fund}, range={Start:yyyy-MM-dd}..{End:yyyy-MM-dd}, expenses={ExpenseCount}, transfers={TransferCount}", normalizedUserId, normalizedFund, startDate, endDate, cached.ExpenseTransactions?.Count ?? 0, cached.TransferTransactions?.Count ?? 0);
             return true;
         }
     }
 
     public void SetExpenseData(string userId, string fund, DateTime startDate, DateTime endDate, ExpenseDataDto data)
     {
-        var key = BuildKey(userId, fund, startDate, endDate);
+        var normalizedUserId = NormalizeKey(userId);
+        var normalizedFund = NormalizeKey(fund);
+        if (string.IsNullOrWhiteSpace(normalizedUserId) || string.IsNullOrWhiteSpace(normalizedFund) || data == null)
+        {
+            return;
+        }
+
+        var key = BuildKey(normalizedUserId, normalizedFund, startDate, endDate);
         lock (_sync)
         {
             _cache[key] = data;
         }
 
-        _logger.LogInformation("Expense DTO cache set: user={UserId}, fund={Fund}, range={Start:yyyy-MM-dd}..{End:yyyy-MM-dd}, expenses={ExpenseCount}, transfers={TransferCount}", userId, fund, startDate, endDate, data.ExpenseTransactions?.Count ?? 0, data.TransferTransactions?.Count ?? 0);
+        _logger.LogInformation("Expense DTO cache set: user={UserId}, fund={Fund}, range={Start:yyyy-MM-dd}..{End:yyyy-MM-dd}, expenses={ExpenseCount}, transfers={TransferCount}", normalizedUserId, normalizedFund, startDate, endDate, data.ExpenseTransactions?.Count ?? 0, data.TransferTransactions?.Count ?? 0);
     }
 
     public void InvalidateAll()
@@ -52,4 +66,7 @@ public class SessionExpenseDataCacheService : ISessionExpenseDataCacheService
 
     private static string BuildKey(string userId, string fund, DateTime startDate, DateTime endDate)
         => $"{userId}|{fund}|{startDate:yyyyMMdd}|{endDate:yyyyMMdd}";
+
+    private static string NormalizeKey(string value)
+        => string.IsNullOrWhiteSpace(value) ? string.Empty : value.Trim();
 }

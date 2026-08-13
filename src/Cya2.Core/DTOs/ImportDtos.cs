@@ -10,6 +10,8 @@ public sealed class DonationImportRowDto
     public required string GiftType { get; init; }
     public required double Amount { get; init; }
     public required string Fund { get; init; }
+    public string? Intern { get; init; }
+    public string? Addressee { get; init; }
     public string? SoftCreditName { get; init; }
     public string? Address { get; init; }
     public string? City { get; init; }

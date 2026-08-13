@@ -28,12 +28,11 @@
 @inject Cya2.Application.Services.UserManagementService UserManagementService
 @inject Cya2.Application.Services.AdminFundReadService AdminFundReadService
 @inject Cya2.Application.Services.AdminFundWriteService AdminFundWriteService
-@using Cya2.Application.DTOs
 @inject Cya2.Application.Interfaces.IUserIdResolver UserIdResolver
 
-<RadzenStack Orientation="Orientation.Vertical" Gap="1rem" Class="rz-pt-0 rz-px-4 rz-pb-4">
+<RadzenStack Orientation="Orientation.Vertical" Gap="1rem" Class="rz-pt-0 rz-px-4 rz-pb-4" Style="max-width:100%; overflow-x:hidden; box-sizing:border-box;">
     <!-- Top row: accounts buttons on the left, upload buttons on the right -->
-    <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" JustifyContent="JustifyContent.SpaceBetween" Gap="1rem" Class="rz-mb-3 admin-top-row">
+    <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" JustifyContent="JustifyContent.SpaceBetween" Gap="1rem" Class="rz-mb-3 admin-top-row" Style="max-width:100%; box-sizing:border-box;">
         <RadzenButton Icon="menu"
                       ButtonStyle="ButtonStyle.Light"
                       Class="admin-toolbar-toggle"
@@ -42,7 +41,7 @@
 
         <div class="admin-top-actions @(showAdminToolbarButtons ? "expanded" : "collapsed")">
         <!-- Left group: existing account dialogs -->
-        <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="1rem" Class="admin-top-left">
+        <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="1rem" Class="admin-top-left" Style="max-width:100%; box-sizing:border-box;">
             <RadzenButton Text="@Localizer["AccountsOverview"]"
                           ButtonStyle="ButtonStyle.Primary"
                           Style="background-color: #0a3b6b; border-color: #0a3b6b;"
@@ -55,7 +54,7 @@
         </RadzenStack>
 
         <!-- Right group: upload controls -->
-        <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="0.75rem" Class="admin-top-right">
+        <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="0.75rem" Class="admin-top-right" Style="max-width:100%; box-sizing:border-box;">
             <!-- NOTE: No size limit for now. TODO: enforce a sensible max file size. -->
             <div style="display:flex; align-items:center; gap:0.5rem;">
                 <InputFile id="donationFileInput" style="display:none" OnChange="OnDonationInputFileChange" accept=".xlsx" />
@@ -78,10 +77,12 @@
                           Class="admin-rollback-btn"
                           Click="@(async () => await OpenRollbackDialog())" />
 
-            @* <RadzenButton Text="@GetLocalizedString("RecategorizeDonations", "Recategorize Donations")"
+            @* Commented out - Recategorize Donations button
+            <RadzenButton Text="@GetLocalizedString("RecategorizeDonations", "Recategorize Donations")"
                           ButtonStyle="ButtonStyle.Light"
                           Icon="cleaning_services"
-                          Click="@(async () => await RecategorizeAllDonations())" /> *@
+                          Click="@(async () => await RecategorizeAllDonations())" /> 
+            *@
         </RadzenStack>
         </div>
     </RadzenStack>
@@ -103,10 +104,10 @@
                     <!-- Toggle row (no special bottom margin so it matches other rows) -->
                     <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="2rem" Class="admin-form-row admin-form-first-row">
                         <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="0.5rem" Style="width: 220px;" Class="admin-form-label">
-                            <RadzenText TextStyle="TextStyle.Subtitle2" Class="admin-label" Style="font-weight: bold;">@(createSubFund ? Localizer["CreateSecondaryFund"] : Localizer["CreatePrimaryFund"])</RadzenText>
+                            <RadzenText TextStyle="TextStyle.Subtitle2" Class="admin-label" Style="font-weight: bold;">@(createSubFund ? Localizer["ManageSecondaryFund"] : Localizer["ManagePrimaryFund"])</RadzenText>
                         </RadzenStack>
                         <div style="flex: 1; display:flex; align-items:center;">
-                            <RadzenSwitch @bind-Value="createSubFund" Class="admin-mode-switch" />
+                            <RadzenSwitch @bind-value="createSubFund" Class="admin-mode-switch" />
                         </div>
                     </RadzenStack>
 
@@ -137,7 +138,7 @@
                                    @onmouseleave="@(() => tooltipService.Close())"></i>
                             </RadzenStack>
                             <RadzenFormField Variant="Variant.Outlined" Style="flex: 1;">
-                                <RadzenTextBox @bind-Value="@accountNumber" Placeholder="@Localizer["AccountNumber"]" />
+                                <RadzenTextBox @bind-value="@accountNumber" Placeholder="@Localizer["AccountNumber"]" />
                             </RadzenFormField>
                         </RadzenStack>
 
@@ -150,7 +151,7 @@
                                    @onmouseleave="@(() => tooltipService.Close())"></i>
                             </RadzenStack>
                             <RadzenFormField Variant="Variant.Outlined" Style="flex: 1;">
-                                <RadzenTextBox @bind-Value="@newFundName" Placeholder="@Localizer["Fund"]" />
+                                <RadzenTextBox @bind-value="@newFundName" Placeholder="@Localizer["Fund"]" />
                             </RadzenFormField>
                         </RadzenStack>
 
@@ -163,7 +164,7 @@
                                    @onmouseleave="@(() => tooltipService.Close())"></i>
                             </RadzenStack>
                             <RadzenFormField Variant="Variant.Outlined" Style="flex: 1;">
-                                <RadzenTextBox @bind-Value="@fundClass" Placeholder="@Localizer["Class"]" />
+                                <RadzenTextBox @bind-value="@fundClass" Placeholder="@Localizer["Class"]" />
                             </RadzenFormField>
                         </RadzenStack>
 
@@ -172,7 +173,7 @@
                             <RadzenText TextStyle="TextStyle.Subtitle2" Class="admin-label" Style="font-weight: bold; width: 220px;">@Localizer["Overhead"]</RadzenText>
                             <RadzenFormField Variant="Variant.Outlined" Style="flex: 1;">
                                 <RadzenNumeric TValue="decimal?"
-                                               @bind-Value="overheadValue"
+                                               @bind-value="overheadValue"
                                                Placeholder="0"
                                                Format="n2"
                                                Suffix="%" />
@@ -183,7 +184,7 @@
                         <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="2rem" Class="admin-form-row">
                             <RadzenText TextStyle="TextStyle.Subtitle2" Class="admin-label" Style="font-weight: bold; width: 220px;">@Localizer["SoftCredit"]</RadzenText>
                             <RadzenFormField Variant="Variant.Outlined" Style="flex: 1;">
-                                <RadzenTextBox @bind-Value="@softCredit" Placeholder="@Localizer["SoftCredit"]" />
+                                <RadzenTextBox @bind-value="@softCredit" Placeholder="@Localizer["SoftCredit"]" />
                             </RadzenFormField>
                         </RadzenStack>
 
@@ -191,7 +192,7 @@
                         <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="2rem" Class="admin-form-row">
                             <RadzenText TextStyle="TextStyle.Subtitle2" Class="admin-label" Style="font-weight: bold; width: 220px;">@Localizer["BalanceAdjustment"]</RadzenText>
                             <RadzenFormField Variant="Variant.Outlined" Style="flex: 1;">
-                                <RadzenNumeric TValue="decimal?" @bind-Value="@balanceAdjustment" Placeholder="0.00" Format="C" />
+                                <RadzenNumeric TValue="decimal?" @bind-value="@balanceAdjustment" Placeholder="0.00" Format="C" />
                             </RadzenFormField>
                         </RadzenStack>
 
@@ -259,7 +260,7 @@
                              <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="2rem" Class="admin-form-row">
                                  <RadzenText TextStyle="TextStyle.Subtitle2" Class="admin-label" Style="font-weight: bold; width: 220px;">@Localizer["Fund"]</RadzenText>
                                  <RadzenFormField Variant="Variant.Outlined" Style="flex: 1;">
-                                    <RadzenTextBox @bind-Value="subAccountNameEdit" Placeholder="@Localizer["Fund"]" />
+                                    <RadzenTextBox @bind-value="subAccountNameEdit" Placeholder="@Localizer["Fund"]" />
                                  </RadzenFormField>
                              </RadzenStack>
 
@@ -353,7 +354,7 @@
                                                 ValueChanged="@(async (string val) => { staffMember = val; await staffSelection(val); })"
                                                 Placeholder="@Localizer["SelectUser"]" />
                             </div>
-                            <RadzenTextBox @bind-Value="@newName" Placeholder="@Localizer["EnterUpdateName"]" />
+                            <RadzenTextBox @bind-value="@newName" Placeholder="@Localizer["EnterUpdateName"]" />
                         </RadzenStack>
                     </div>
                 </RadzenStack>
@@ -366,7 +367,7 @@
                             <div class="rz-border-radius-1 rz-border-1" style="height: 38px; display: grid; align-items: center; justify-items: start; background-color: #f0f0f0; padding: 0 0.5rem;">
                                 <RadzenText TextStyle="TextStyle.Body1" Style="margin:0;">@(string.IsNullOrEmpty(selectedStaffEmail) ? @Localizer["NoUserSelected"] : selectedStaffEmail)</RadzenText>
                             </div>
-                            <RadzenTextBox @bind-Value="@newEmail" Placeholder="@Localizer["EnterUpdateEmail"]" />
+                            <RadzenTextBox @bind-value="@newEmail" Placeholder="@Localizer["EnterUpdateEmail"]" />
                         </RadzenStack>
                     </div>
                 </RadzenStack>
@@ -510,7 +511,7 @@
                     <!-- Rollback Options -->
                     <RadzenStack Orientation="Orientation.Vertical" Gap="1rem" Style="padding: 1rem; background-color: #f8f9fa; border-radius: 6px;">
                         <RadzenStack Orientation="Orientation.Vertical" Gap="0.75rem">
-                            <RadzenRadioButtonList @bind-Value="rollbackTarget" Orientation="Orientation.Vertical" Gap="0.75rem">
+                            <RadzenRadioButtonList @bind-value="rollbackTarget" Orientation="Orientation.Vertical" Gap="0.75rem">
                                 <Items>
                                     <RadzenRadioButtonListItem Text="@GetRollbackOptionText("donations")" Value='"donations"' />
                                     <RadzenRadioButtonListItem Text="@GetRollbackOptionText("accounting")" Value='"accounting"' />
@@ -797,7 +798,7 @@
         private string selectedStaffEmail = string.Empty;
         private string selectedStaffAuthLevel = string.Empty;
         private string newAuthLevel = string.Empty;
-        private List<string> authLevels = new List<string> { "User", "Viewer", "Admin" };
+        private List<string> authLevels = new List<string> { "User", "Intern", "Viewer", "Admin" };
 
         private string selectedStaff = string.Empty;
         public string newName = string.Empty;
@@ -822,7 +823,7 @@
 
         // User form properties (no longer used in UI, kept for potential reuse)
         [SupplyParameterFromForm]
-        private UserFormModel formModel { get; set; } = new UserFormModel();
+        private UserFormModel? formModel { get; set; }
 
         // Fund properties
         private string? errorMessage;
@@ -2227,6 +2228,45 @@
             height: 38px;
         }
 
+        /* Breakpoint: show hamburger menu and hide toolbar */
+        @@media (max-width: 1200px) {
+            .admin-toolbar-toggle {
+                display: inline-flex;
+            }
+
+            .admin-top-actions {
+                display: none;
+                width: 100%;
+                flex-direction: column !important;
+                align-items: stretch;
+                gap: 0.5rem;
+            }
+
+            .admin-top-actions.expanded {
+                display: flex;
+            }
+
+            .admin-top-left,
+            .admin-top-right {
+                width: 100%;
+                flex-direction: column !important;
+                align-items: stretch !important;
+                gap: 0.5rem !important;
+            }
+
+            .admin-top-right > div {
+                width: 100%;
+            }
+
+            .admin-top-left .rz-button,
+            .admin-top-right .rz-button,
+            .admin-top-right label.rz-button,
+            .admin-top-right .admin-rollback-btn {
+                width: 100% !important;
+                justify-content: center;
+            }
+        }
+
         .admin-rollback-btn {
             flex: 0 0 auto;
             white-space: nowrap;
@@ -2346,6 +2386,7 @@
             display: none !important; /* Hide the Yes/No text labels */
         }
 
+        /* Form and user management responsive styles */
         @@media (max-width: 992px) {
             .admin-form-label,
             .admin-label[style*="width: 220px"] {
@@ -2528,3 +2569,4 @@
             }
         }
     </style>
+

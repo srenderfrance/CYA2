@@ -97,6 +97,32 @@ namespace cya2.Services.Imports
 
                 try
                 {
+                    static async Task<bool> ColumnExistsAsync(MySqlConnection connection, MySqlTransaction transaction, string table, string column, CancellationToken ct)
+                    {
+                        var cmd = connection.CreateCommand();
+                        cmd.Transaction = transaction;
+                        cmd.CommandText = @"SELECT COUNT(*)
+FROM INFORMATION_SCHEMA.COLUMNS
+WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = @TableName AND COLUMN_NAME = @ColumnName";
+                        cmd.Parameters.Add(new MySqlParameter("@TableName", table));
+                        cmd.Parameters.Add(new MySqlParameter("@ColumnName", column));
+                        return Convert.ToInt32(await cmd.ExecuteScalarAsync(ct)) > 0;
+                    }
+
+                    static async Task EnsureColumnExistsAsync(MySqlConnection connection, MySqlTransaction transaction, string table, string column, string sqlType, CancellationToken ct)
+                    {
+                        if (await ColumnExistsAsync(connection, transaction, table, column, ct))
+                        {
+                            return;
+                        }
+
+                        var alter = connection.CreateCommand();
+                        alter.Transaction = transaction;
+                        alter.CommandTimeout = 60;
+                        alter.CommandText = $"ALTER TABLE `{table}` ADD COLUMN `{column}` {sqlType} NULL";
+                        await alter.ExecuteNonQueryAsync(ct);
+                    }
+
                     // Check if backup table exists and has data
                     var checkBackupCmd = conn.CreateCommand();
                     checkBackupCmd.Transaction = (MySqlTransaction)tx;
@@ -147,6 +173,27 @@ namespace cya2.Services.Imports
                     _logger.LogInformation("Rolling back donations to backup {BackupId} from {BackupDate} with {RecordCount} records", 
                         latestBackupId, backupDate, backupRecordCount);
 
+                    await EnsureColumnExistsAsync(conn, (MySqlTransaction)tx, "DonationData", "Intern", "VARCHAR(255)", cancellationToken);
+                    await EnsureColumnExistsAsync(conn, (MySqlTransaction)tx, "DonationData", "Addressee", "VARCHAR(255)", cancellationToken);
+
+                    var hasBackupIntern = await ColumnExistsAsync(conn, (MySqlTransaction)tx, "DonationDataBackup", "Intern", cancellationToken);
+                    var hasBackupAddressee = await ColumnExistsAsync(conn, (MySqlTransaction)tx, "DonationDataBackup", "Addressee", cancellationToken);
+
+                    string restoreColumns = "Id, Date, AccountName, PaymentMethod, GiftType, Amount, Fund";
+                    string restoreSelect = "Id, Date, AccountName, PaymentMethod, GiftType, Amount, Fund";
+                    if (hasBackupIntern)
+                    {
+                        restoreColumns += ", Intern";
+                        restoreSelect += ", Intern";
+                    }
+                    if (hasBackupAddressee)
+                    {
+                        restoreColumns += ", Addressee";
+                        restoreSelect += ", Addressee";
+                    }
+                    restoreColumns += ", SoftCreditName, Address, City, State, PostalCode, Country, Email, PhoneFixed, PhoneMobile, DateCreated, IsAnonymous";
+                    restoreSelect += ", SoftCreditName, Address, City, State, PostalCode, Country, Email, PhoneFixed, PhoneMobile, DateCreated, COALESCE(IsAnonymous, 0)";
+
                     // Clear current donation data
                     var clearCmd = conn.CreateCommand();
                     clearCmd.Transaction = (MySqlTransaction)tx;
@@ -158,15 +205,11 @@ namespace cya2.Services.Imports
                     var restoreCmd = conn.CreateCommand();
                     restoreCmd.Transaction = (MySqlTransaction)tx;
                     restoreCmd.CommandTimeout = 300;
-                    restoreCmd.CommandText = @"
-                        INSERT INTO DonationData 
-                        (Id, Date, AccountName, PaymentMethod, GiftType, Amount, Fund, SoftCreditName, 
-                         Address, City, State, PostalCode, Country, Email, PhoneFixed, PhoneMobile, 
-                         DateCreated, IsAnonymous)
-                        SELECT Id, Date, AccountName, PaymentMethod, GiftType, Amount, Fund, SoftCreditName, 
-                               Address, City, State, PostalCode, Country, Email, PhoneFixed, PhoneMobile, 
-                               DateCreated, COALESCE(IsAnonymous, 0)
-                        FROM DonationDataBackup 
+                    restoreCmd.CommandText = $@"
+                        INSERT INTO DonationData
+                        ({restoreColumns})
+                        SELECT {restoreSelect}
+                        FROM DonationDataBackup
                         WHERE BackupId = @BackupId";
                     restoreCmd.Parameters.Add(new MySqlParameter("@BackupId", latestBackupId));
                     

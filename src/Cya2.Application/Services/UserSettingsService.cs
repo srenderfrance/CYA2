@@ -2,6 +2,7 @@ using Cya2.Application.DTOs;
 using Cya2.Application.Interfaces;
 using Cya2.Core.Interfaces;
 using Microsoft.Extensions.Logging;
+using System.Collections.Concurrent;
 
 namespace Cya2.Application.Services;
 
@@ -11,6 +12,7 @@ public class UserSettingsService : IUserSettingsService
     private readonly IUserAccountAccessRepository _userAccountAccessRepository;
     private readonly ILogger<UserSettingsService> _logger;
     private readonly IUserAccountContextService _userAccountContextService;
+    private static readonly ConcurrentDictionary<int, UserSettingsDto> _settingsCache = new();
 
     public UserSettingsService(
         IUserRepository userRepository,
@@ -34,10 +36,15 @@ public class UserSettingsService : IUserSettingsService
                 return null;
             }
 
+            if (_settingsCache.TryGetValue(context.UserId, out var cachedSettings))
+            {
+                return CloneSettings(cachedSettings);
+            }
+
             var user = await _userRepository.GetByIdAsync(context.UserId);
             var language = user?.Language;
 
-            return new UserSettingsDto
+            var settings = new UserSettingsDto
             {
                 UserId = context.UserId,
                 DefaultAccountId = context.DefaultAccountId,
@@ -51,6 +58,9 @@ public class UserSettingsService : IUserSettingsService
                     Overhead = Convert.ToDecimal(a.Overhead)
                 }).ToList()
             };
+
+            _settingsCache[context.UserId] = CloneSettings(settings);
+            return settings;
         }
         catch (Exception ex)
         {
@@ -63,7 +73,13 @@ public class UserSettingsService : IUserSettingsService
     {
         try
         {
-            return await _userAccountAccessRepository.SetUserDefaultAccountAsync(userId, defaultAccountId);
+            var updated = await _userAccountAccessRepository.SetUserDefaultAccountAsync(userId, defaultAccountId);
+            if (updated && _settingsCache.TryGetValue(userId, out var cached))
+            {
+                cached.DefaultAccountId = defaultAccountId;
+            }
+
+            return updated;
         }
         catch (Exception ex)
         {
@@ -85,12 +101,38 @@ public class UserSettingsService : IUserSettingsService
             user.Language = string.Equals(language, "es-US", StringComparison.OrdinalIgnoreCase) ? "es-US" : "en-US";
             var updated = await _userRepository.UpdateAsync(user);
 
-            return updated != null && updated.Id == userId;
+            var success = updated != null && updated.Id == userId;
+            if (success && _settingsCache.TryGetValue(userId, out var cached))
+            {
+                cached.Language = user.Language;
+            }
+
+            return success;
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to update language for user {UserId}", userId);
             return false;
         }
+    }
+
+    private static UserSettingsDto CloneSettings(UserSettingsDto source)
+    {
+        return new UserSettingsDto
+        {
+            UserId = source.UserId,
+            DefaultAccountId = source.DefaultAccountId,
+            Language = source.Language,
+            UserAccounts = (source.UserAccounts ?? new List<AccountOptionDto>())
+                .Select(a => new AccountOptionDto
+                {
+                    AccountId = a.AccountId,
+                    Fund = a.Fund,
+                    AccountingClass = a.AccountingClass,
+                    AccountNumber = a.AccountNumber,
+                    Overhead = a.Overhead
+                })
+                .ToList()
+        };
     }
 }
