@@ -8,6 +8,7 @@ using Cya2.Core.Enums;
 using Cya2.Core.Interfaces;
 using Cya2.Core.ReadModels;
 using Cya2.Core.Services;
+using Cya2.Core.Utilities;
 using Cya2.Core.ValueObjects;
 using Microsoft.Extensions.Logging;
 using System.Diagnostics;
@@ -46,11 +47,11 @@ namespace Cya2.Application.Services
 
         public async Task<List<string>> GetDonorNamesAsync(string accountFund)
         {
-            var donations = await _donationReadRepository.GetDonationsByFundsAsync(new[] { accountFund });
+            var donations = await GetDonationsForFundAsync(accountFund);
             _lastQuery = "GetDonationsByFunds";
 
             return donations
-                .Select(d => d.AccountName)
+                .Select(ResolveDonorDisplayName)
                 .Where(n => !string.IsNullOrWhiteSpace(n))
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .OrderBy(n => n)
@@ -71,13 +72,6 @@ namespace Cya2.Application.Services
             var signature = BuildFundsSignature(funds);
             if (_donorSummaryCache.TryGetDonorSummaries(signature, dateRange.StartDate, dateRange.EndDate, out var cached))
             {
-                _logger.LogInformation(
-                    "Donor summaries source=cache funds={FundCount} range={Start:yyyy-MM-dd}..{End:yyyy-MM-dd} rows={RowCount} elapsedMs={ElapsedMs}",
-                    funds.Count,
-                    dateRange.StartDate,
-                    dateRange.EndDate,
-                    cached.Count,
-                    sw.ElapsedMilliseconds);
                 return cached;
             }
 
@@ -88,17 +82,14 @@ namespace Cya2.Application.Services
             {
                 if (_donorSummaryCache.TryGetDonorSummaries(signature, dateRange.StartDate, dateRange.EndDate, out cached))
                 {
-                    _logger.LogInformation(
-                        "Donor summaries source=cache-after-wait funds={FundCount} range={Start:yyyy-MM-dd}..{End:yyyy-MM-dd} rows={RowCount} elapsedMs={ElapsedMs}",
-                        funds.Count,
-                        dateRange.StartDate,
-                        dateRange.EndDate,
-                        cached.Count,
-                        sw.ElapsedMilliseconds);
                     return cached;
                 }
 
                 var donations = await _donationReadRepository.GetDonationsByFundsAndDateRangeAsync(funds, dateRange.StartDate, dateRange.EndDate);
+                if (TryGetSingleInternFund(funds, out var internFund))
+                {
+                    donations = await GetInternDonationsByRangeAsync(internFund, dateRange.StartDate, dateRange.EndDate);
+                }
                 donations = DeduplicateDonations(donations);
                 _lastQuery = "GetDonationsByFundsAndDateRange";
 
@@ -108,15 +99,6 @@ namespace Cya2.Application.Services
                     .ToList();
 
                 _donorSummaryCache.SetDonorSummaries(signature, dateRange.StartDate, dateRange.EndDate, result);
-
-                _logger.LogInformation(
-                    "Donor summaries source=db funds={FundCount} range={Start:yyyy-MM-dd}..{End:yyyy-MM-dd} donations={DonationCount} rows={RowCount} elapsedMs={ElapsedMs}",
-                    funds.Count,
-                    dateRange.StartDate,
-                    dateRange.EndDate,
-                    donations?.Count ?? 0,
-                    result.Count,
-                    sw.ElapsedMilliseconds);
                 return result;
             }
             finally
@@ -133,15 +115,6 @@ namespace Cya2.Application.Services
         {
             var funds = await GetExpandedFundsForAccountAsync(accountId, accountFund);
 
-            _logger.LogInformation(
-                "Donor summaries account expansion accountId={AccountId} fund='{Fund}' subAccountCount={SubAccountCount} expandedFundCount={ExpandedFundCount} range={Start:yyyy-MM-dd}..{End:yyyy-MM-dd}",
-                accountId,
-                accountFund,
-                Math.Max(0, funds.Count - 1),
-                funds.Count,
-                dateRange.StartDate,
-                dateRange.EndDate);
-
             return await GetDonorSummariesAsync(funds, dateRange);
         }
 
@@ -157,11 +130,6 @@ namespace Cya2.Application.Services
         var allDatesEnd = DateTime.MaxValue.Date;
         if (_donorSummaryCache.TryGetDonorSummaries(signature, allDatesStart, allDatesEnd, out var cached))
         {
-            _logger.LogInformation(
-                "Donor summaries source=cache-all-dates funds={FundCount} rows={RowCount} elapsedMs={ElapsedMs}",
-                funds.Count,
-                cached.Count,
-                sw.ElapsedMilliseconds);
             return cached;
         }
 
@@ -172,27 +140,23 @@ namespace Cya2.Application.Services
         {
             if (_donorSummaryCache.TryGetDonorSummaries(signature, allDatesStart, allDatesEnd, out cached))
             {
-                _logger.LogInformation(
-                    "Donor summaries source=cache-all-dates-after-wait funds={FundCount} rows={RowCount} elapsedMs={ElapsedMs}",
-                    funds.Count,
-                    cached.Count,
-                    sw.ElapsedMilliseconds);
                 return cached;
             }
 
-            var donations = await _donationReadRepository.GetDonationsByFundsAsync(funds);
+            List<DonationRecord> donations;
+            if (TryGetSingleInternFund(funds, out var internFund))
+            {
+                donations = await GetInternDonationsByRangeAsync(internFund, DateTime.MinValue.Date, DateTime.MaxValue.Date);
+            }
+            else
+            {
+                donations = await _donationReadRepository.GetDonationsByFundsAsync(funds);
+            }
             donations = DeduplicateDonations(donations);
             _lastQuery = "GetDonationsByFunds (all donors)";
 
             var result = BuildDonorSummaries(donations).OrderByDescending(d => d.Total).ThenBy(d => d.Name).ToList();
             _donorSummaryCache.SetDonorSummaries(signature, allDatesStart, allDatesEnd, result);
-
-            _logger.LogInformation(
-                "Donor summaries source=db-all-dates funds={FundCount} donations={DonationCount} rows={RowCount} elapsedMs={ElapsedMs}",
-                funds.Count,
-                donations?.Count ?? 0,
-                result.Count,
-                sw.ElapsedMilliseconds);
 
             return result;
         }
@@ -210,13 +174,6 @@ namespace Cya2.Application.Services
         {
             var funds = await GetExpandedFundsForAccountAsync(accountId, accountFund);
 
-            _logger.LogInformation(
-                "Donor summaries all-dates account expansion accountId={AccountId} fund='{Fund}' subAccountCount={SubAccountCount} expandedFundCount={ExpandedFundCount}",
-                accountId,
-                accountFund,
-                Math.Max(0, funds.Count - 1),
-                funds.Count);
-
             return await GetAllDonorSummariesAsync(funds);
         }
 
@@ -226,11 +183,6 @@ namespace Cya2.Application.Services
             var key = $"{accountId}|{normalizedFund}";
             if (_accountFundsCache.TryGetValue(key, out var cachedFunds) && cachedFunds.Count > 0)
             {
-                _logger.LogInformation(
-                    "Donor account funds source=cache accountId={AccountId} fund='{Fund}' expandedFundCount={ExpandedFundCount}",
-                    accountId,
-                    normalizedFund,
-                    cachedFunds.Count);
                 return cachedFunds;
             }
 
@@ -241,21 +193,20 @@ namespace Cya2.Application.Services
 
             _accountFundsCache[key] = funds;
 
-            _logger.LogInformation(
-                "Donor account funds source=db accountId={AccountId} fund='{Fund}' subAccountCount={SubAccountCount} expandedFundCount={ExpandedFundCount}",
-                accountId,
-                normalizedFund,
-                subAccounts?.Count ?? 0,
-                funds.Count);
-
             return funds;
         }
         public async Task<DonorDetailDto?> GetDonorDetailAsync(string donorName, string accountFund)
         {
-            var donations = await _donationReadRepository.GetDonationsByFundsAndDonorAsync(new[] { accountFund }, donorName);
-            _lastQuery = "GetDonationsByFundsAndDonor";
+            var donations = await GetDonationsForFundAsync(accountFund);
+            _lastQuery = "GetDonationsByFunds (filtered by donor display name)";
 
-            var r = donations
+            var normalizedLookupName = NormalizeDonorLookupName(donorName);
+
+            var matchingDonations = donations
+                .Where(d => string.Equals(ResolveDonorDisplayName(d), normalizedLookupName, StringComparison.OrdinalIgnoreCase))
+                .ToList();
+
+            var r = matchingDonations
                 .OrderByDescending(d => d.Date)
                 .FirstOrDefault();
 
@@ -297,8 +248,15 @@ namespace Cya2.Application.Services
 
         public async Task<List<DonorSummaryDto>> SearchDonorsAsync(string searchTerm, string accountFund)
         {
-            var donations = await _donationReadRepository.SearchDonationsByFundsAndDonorAsync(new[] { accountFund }, searchTerm);
-            _lastQuery = "SearchDonationsByFundsAndDonor";
+            var donations = await GetDonationsForFundAsync(accountFund);
+            _lastQuery = "GetDonationsByFunds (search by donor display name)";
+
+            if (!string.IsNullOrWhiteSpace(searchTerm))
+            {
+                donations = donations
+                    .Where(d => ResolveDonorDisplayName(d).Contains(searchTerm, StringComparison.OrdinalIgnoreCase))
+                    .ToList();
+            }
 
             return BuildDonorSummaries(donations)
                 .OrderByDescending(d => d.Total)
@@ -324,6 +282,49 @@ namespace Cya2.Application.Services
                 .ToList()!;
         }
 
+        private static bool TryGetSingleInternFund(IReadOnlyCollection<string> funds, out string internFund)
+        {
+            internFund = string.Empty;
+            if (funds.Count != 1)
+            {
+                return false;
+            }
+
+            var candidate = funds.FirstOrDefault();
+            if (string.IsNullOrWhiteSpace(candidate) || !InternAccountUtility.IsInternFund(candidate))
+            {
+                return false;
+            }
+
+            internFund = candidate;
+            return true;
+        }
+
+        private async Task<List<DonationRecord>> GetDonationsForFundAsync(string accountFund)
+        {
+            if (InternAccountUtility.IsInternFund(accountFund))
+            {
+                return await GetInternDonationsByRangeAsync(accountFund, DateTime.MinValue.Date, DateTime.MaxValue.Date);
+            }
+
+            return await _donationReadRepository.GetDonationsByFundsAsync(new[] { accountFund });
+        }
+
+        private async Task<List<DonationRecord>> GetInternDonationsByRangeAsync(string internFund, DateTime startDate, DateTime endDate)
+        {
+            if (!InternAccountUtility.TryGetInternDesignationName(internFund, out var internDesignationName))
+            {
+                return new List<DonationRecord>();
+            }
+
+            var donations = await _donationReadRepository.GetInternDonationsByDesignationAndDateRangeAsync(
+                internDesignationName,
+                startDate,
+                endDate);
+
+            return donations ?? new List<DonationRecord>();
+        }
+
         private static string BuildFundsSignature(IEnumerable<string> funds)
         {
             return string.Join("||", funds.OrderBy(f => f, StringComparer.OrdinalIgnoreCase));
@@ -345,8 +346,9 @@ namespace Cya2.Application.Services
         private IEnumerable<DonorSummaryDto> BuildDonorSummaries(List<DonationRecord> donations)
         {
             var groups = donations
-                .Where(d => !string.IsNullOrWhiteSpace(d.AccountName))
-                .GroupBy(d => d.AccountName!, StringComparer.OrdinalIgnoreCase);
+                .Select(d => new { Donation = d, Identity = ResolveDonorIdentity(d) })
+                .Where(x => !string.IsNullOrWhiteSpace(x.Identity.DisplayName))
+                .GroupBy(x => x.Identity.DisplayName, StringComparer.OrdinalIgnoreCase);
 
             // Use the latest available donation date in the loaded dataset as the
             // freshness anchor for missing-gift checks. This prevents false
@@ -359,25 +361,39 @@ namespace Cya2.Application.Services
 
             foreach (var g in groups)
             {
-                var mostRecentWithEmail = g.OrderByDescending(x => x.Date).FirstOrDefault(x => !string.IsNullOrWhiteSpace(x.Email));
-                var mostRecentWithAddress = g.OrderByDescending(x => x.Date).FirstOrDefault(x => !string.IsNullOrWhiteSpace(x.Address));
+                var donorRows = g.Select(x => x.Donation).ToList();
+                var identities = g.Select(x => x.Identity).ToList();
 
-                var phones = g
+                var mostRecentWithEmail = donorRows.OrderByDescending(x => x.Date).FirstOrDefault(x => !string.IsNullOrWhiteSpace(x.Email));
+                var mostRecentWithAddress = donorRows.OrderByDescending(x => x.Date).FirstOrDefault(x => !string.IsNullOrWhiteSpace(x.Address));
+
+                var phones = donorRows
                     .Select(x => !string.IsNullOrWhiteSpace(x.PhoneMobile) ? x.PhoneMobile : x.PhoneFixed)
                     .Where(p => !string.IsNullOrWhiteSpace(p))
                     .Distinct(StringComparer.OrdinalIgnoreCase);
 
                 // Build gift records for frequency classification.
-                var giftHistory = g
+                var giftHistory = donorRows
                     .Select(x => new DonorGiftRecord { Date = x.Date, Amount = Convert.ToDecimal(x.Amount) })
                     .OrderBy(x => x.Date)
                     .ToList();
 
                 // Use stored frequency from most recent donation if available,
                 // otherwise fall back to live classification.
-                var mostRecent = g.OrderByDescending(x => x.Date).First();
+                var mostRecent = donorRows.OrderByDescending(x => x.Date).First();
                 var frequency = mostRecent.Frequency
                     ?? _frequencyService.ClassifyDonor(giftHistory);
+
+                var hasDirect = identities.Any(i => i.IsDirect);
+                var sourceOrganizations = identities
+                    .Select(i => i.SourceOrganization)
+                    .Where(o => !string.IsNullOrWhiteSpace(o))
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .OrderBy(o => o, StringComparer.OrdinalIgnoreCase)
+                    .ToList();
+
+                var sourceSummary = BuildSourceSummary(hasDirect, sourceOrganizations);
+                var donorDisplayName = BuildDonorSummaryName(g.Key, hasDirect, sourceOrganizations);
 
                 // Detect missing gift alerts for monthly donors.
                 var missingAlerts = frequency == DonorFrequency.Monthly
@@ -386,9 +402,12 @@ namespace Cya2.Application.Services
 
                 yield return new DonorSummaryDto
                 {
-                    Name = g.Key,
-                    Total = g.Sum(x => Convert.ToDecimal(x.Amount)),
+                    Name = donorDisplayName,
+                    SourceSummary = sourceSummary,
+                    Total = donorRows.Sum(x => Convert.ToDecimal(x.Amount)),
                     Email = mostRecentWithEmail?.Email ?? string.Empty,
+                    PhoneMobile = mostRecent?.PhoneMobile ?? string.Empty,
+                    PhoneFixed = mostRecent?.PhoneFixed ?? string.Empty,
                     PhoneSummary = string.Join("; ", phones),
                     AddressSummary = mostRecentWithAddress?.Address ?? string.Empty,
                     City = mostRecentWithAddress?.City ?? string.Empty,
@@ -400,6 +419,128 @@ namespace Cya2.Application.Services
                     MissingMonths = missingAlerts.Select(a => a.ExpectedMonthLabel).ToList()
                 };
             }
+        }
+
+        private static DonorIdentity ResolveDonorIdentity(DonationRecord record)
+        {
+            var accountName = NormalizeNameValue(record.AccountName);
+            var addressee = NormalizeNameValue(record.Addressee);
+            var softCreditName = NormalizeNameValue(record.SoftCreditName);
+
+            if (!string.IsNullOrWhiteSpace(softCreditName) &&
+                !ContainsName(accountName, softCreditName) &&
+                !ContainsName(addressee, softCreditName))
+            {
+                return new DonorIdentity
+                {
+                    DisplayName = softCreditName,
+                    SourceOrganization = accountName,
+                    IsDirect = false
+                };
+            }
+
+            if (!string.IsNullOrWhiteSpace(addressee))
+            {
+                return new DonorIdentity
+                {
+                    DisplayName = addressee,
+                    SourceOrganization = string.Empty,
+                    IsDirect = true
+                };
+            }
+
+            if (!string.IsNullOrWhiteSpace(accountName))
+            {
+                return new DonorIdentity
+                {
+                    DisplayName = accountName,
+                    SourceOrganization = string.Empty,
+                    IsDirect = true
+                };
+            }
+
+            return new DonorIdentity
+            {
+                DisplayName = record.IsAnonymous ? string.Empty : "Unknown",
+                SourceOrganization = string.Empty,
+                IsDirect = true
+            };
+        }
+
+        private static string ResolveDonorDisplayName(DonationRecord record)
+        {
+            return ResolveDonorIdentity(record).DisplayName;
+        }
+
+        private static string BuildDonorSummaryName(string canonicalName, bool hasDirect, IReadOnlyCollection<string> sourceOrganizations)
+        {
+            if (!hasDirect && sourceOrganizations.Count > 0)
+            {
+                return $"{canonicalName} (via {string.Join(", ", sourceOrganizations)})";
+            }
+
+            return canonicalName;
+        }
+
+        private static string BuildSourceSummary(bool hasDirect, IReadOnlyCollection<string> sourceOrganizations)
+        {
+            if (hasDirect && sourceOrganizations.Count > 0)
+            {
+                return $"Also gives via {string.Join(", ", sourceOrganizations)}";
+            }
+
+            return string.Empty;
+        }
+
+        private static string NormalizeDonorLookupName(string donorName)
+        {
+            if (string.IsNullOrWhiteSpace(donorName))
+            {
+                return string.Empty;
+            }
+
+            var normalized = donorName.Trim();
+            var viaMarkerIndex = normalized.IndexOf(" (via ", StringComparison.OrdinalIgnoreCase);
+            if (viaMarkerIndex > 0 && normalized.EndsWith(')'))
+            {
+                return normalized[..viaMarkerIndex].Trim();
+            }
+
+            return normalized;
+        }
+
+        private static string NormalizeNameValue(string? value)
+        {
+            var normalized = value?.Trim();
+            if (string.IsNullOrWhiteSpace(normalized))
+            {
+                return string.Empty;
+            }
+
+            if (string.Equals(normalized, "NA", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(normalized, "N/A", StringComparison.OrdinalIgnoreCase))
+            {
+                return string.Empty;
+            }
+
+            return normalized;
+        }
+
+        private static bool ContainsName(string source, string candidate)
+        {
+            if (string.IsNullOrWhiteSpace(source) || string.IsNullOrWhiteSpace(candidate))
+            {
+                return false;
+            }
+
+            return source.Contains(candidate, StringComparison.OrdinalIgnoreCase);
+        }
+
+        private sealed class DonorIdentity
+        {
+            public string DisplayName { get; init; } = string.Empty;
+            public string SourceOrganization { get; init; } = string.Empty;
+            public bool IsDirect { get; init; }
         }
     }
 }

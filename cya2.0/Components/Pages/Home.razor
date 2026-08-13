@@ -12,6 +12,7 @@
 @using System.Globalization
 @using System.Diagnostics
 @using Cya2.Shared.Utilities
+@using Cya2.Core.Utilities
 @inject AuthenticationStateProvider AuthStateProvider
 @inject IStringLocalizer<Resource> Localizer
 @using Cya2.Application.Interfaces
@@ -257,7 +258,7 @@ else
                                         Class="account-selector-dropdown-inline">
                             <ValueTemplate>
                                 <span style="display:flex;align-items:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding-right:1.75rem;width:100%;">
-                                    @(dashboardData.UserAccounts.FirstOrDefault(a => a.Fund == selectedAccount)?.DisplayName ?? selectedAccount)
+                                    @(dashboardData.UserAccounts.FirstOrDefault(a => a.Fund == selectedAccount)?.DisplayName ?? DisplayFormatter.FormatFundDisplay(selectedAccount))
                                 </span>
                             </ValueTemplate>
                             <Template Context="acct">
@@ -328,14 +329,17 @@ else
 
                         <hr class="my-2" />
 
-                        <div class="d-flex justify-content-between">
-                            <RadzenText TextStyle="TextStyle.Body1">@Localizer["Expenses"]</RadzenText>
-                            <RadzenText TextStyle="TextStyle.Body1">
-                                <span class="fw-bold">@dashboardData.CurrentMonth.TotalExpenses.ToString("C", CultureInfo.CurrentCulture)</span>
-                            </RadzenText>
-                        </div>
+                        @if (!isInternAccountSelected)
+                        {
+                            <div class="d-flex justify-content-between">
+                                <RadzenText TextStyle="TextStyle.Body1">@Localizer["Expenses"]</RadzenText>
+                                <RadzenText TextStyle="TextStyle.Body1">
+                                    <span class="fw-bold">@dashboardData.CurrentMonth.TotalExpenses.ToString("C", CultureInfo.CurrentCulture)</span>
+                                </RadzenText>
+                            </div>
 
-                        <hr class="my-2" />
+                            <hr class="my-2" />
+                        }
 
                         <div class="d-flex justify-content-between">
                             <RadzenText TextStyle="TextStyle.Body1">@Localizer["Overhead"]</RadzenText>
@@ -346,24 +350,30 @@ else
 
                         <hr class="my-2" />
 
-                        <div class="d-flex justify-content-between">
-                            <RadzenText TextStyle="TextStyle.Body1">@Localizer["InternalTransfers"]</RadzenText>
-                            <RadzenText TextStyle="TextStyle.Body1">
-                                <span class="fw-bold">@dashboardData.CurrentMonth.InternalTransfers.ToString("C", CultureInfo.CurrentCulture)</span>
-                            </RadzenText>
-                        </div>
+                        @if (!isInternAccountSelected)
+                        {
+                            <div class="d-flex justify-content-between">
+                                <RadzenText TextStyle="TextStyle.Body1">@Localizer["InternalTransfers"]</RadzenText>
+                                <RadzenText TextStyle="TextStyle.Body1">
+                                    <span class="fw-bold">@dashboardData.CurrentMonth.InternalTransfers.ToString("C", CultureInfo.CurrentCulture)</span>
+                                </RadzenText>
+                            </div>
 
-                        <hr class="my-2" />
+                            <hr class="my-2" />
+                        }
 
-                        <div class="d-flex justify-content-between align-items-center">
-                            <RadzenText TextStyle="TextStyle.Subtitle1">@Localizer["CurrentBalance"]</RadzenText>
-                            <RadzenText TextStyle="TextStyle.Subtitle1">
-                                <span class="fw-bold" style="font-size:1.1em;">
-                                    @Math.Abs(dashboardData.CurrentMonth.Balance).ToString("C", CultureInfo.CurrentCulture)
-                                    @(dashboardData.CurrentMonth.Balance < 0 ? $" {Localizer["Deficit"]}" : "")
-                                </span>
-                            </RadzenText>
-                        </div>
+                        @if (!isInternAccountSelected)
+                        {
+                            <div class="d-flex justify-content-between align-items-center">
+                                <RadzenText TextStyle="TextStyle.Subtitle1">@Localizer["CurrentBalance"]</RadzenText>
+                                <RadzenText TextStyle="TextStyle.Subtitle1">
+                                    <span class="fw-bold" style="font-size:1.1em;">
+                                        @Math.Abs(dashboardData.CurrentMonth.Balance).ToString("C", CultureInfo.CurrentCulture)
+                                        @(dashboardData.CurrentMonth.Balance < 0 ? $" {Localizer["Deficit"]}" : "")
+                                    </span>
+                                </RadzenText>
+                            </div>
+                        }
                     </RadzenStack>
                 </RadzenCard>
             </RadzenStack>
@@ -385,16 +395,19 @@ else
 
                         <hr class="my-2" />
 
-                        <div class="d-flex justify-content-between">
-                            <RadzenText TextStyle="TextStyle.Body1">@Localizer["Expenses"]</RadzenText>
-                            <div class="text-end">
-                                <RadzenText TextStyle="TextStyle.Body1">
-                                    <span class="fw-bold">@dashboardData.PriorMonth.TotalExpenses.ToString("C", CultureInfo.CurrentCulture)</span>
-                                </RadzenText>
+                        @if (!isInternAccountSelected)
+                        {
+                            <div class="d-flex justify-content-between">
+                                <RadzenText TextStyle="TextStyle.Body1">@Localizer["Expenses"]</RadzenText>
+                                <div class="text-end">
+                                    <RadzenText TextStyle="TextStyle.Body1">
+                                        <span class="fw-bold">@dashboardData.PriorMonth.TotalExpenses.ToString("C", CultureInfo.CurrentCulture)</span>
+                                    </RadzenText>
+                                </div>
                             </div>
-                        </div>
 
-                        <hr class="my-2" />
+                            <hr class="my-2" />
+                        }
 
                         <div class="d-flex justify-content-between">
                             <RadzenText TextStyle="TextStyle.Body1">@Localizer["Overhead"]</RadzenText>
@@ -407,28 +420,34 @@ else
 
                         <hr class="my-2" />
 
-                        <div class="d-flex justify-content-between">
-                            <RadzenText TextStyle="TextStyle.Body1">@Localizer["InternalTransfers"]</RadzenText>
-                            <div class="text-end">
-                                <RadzenText TextStyle="TextStyle.Body1">
-                                    <span class="fw-bold">@dashboardData.PriorMonth.InternalTransfers.ToString("C", CultureInfo.CurrentCulture)</span>
-                                </RadzenText>
+                        @if (!isInternAccountSelected)
+                        {
+                            <div class="d-flex justify-content-between">
+                                <RadzenText TextStyle="TextStyle.Body1">@Localizer["InternalTransfers"]</RadzenText>
+                                <div class="text-end">
+                                    <RadzenText TextStyle="TextStyle.Body1">
+                                        <span class="fw-bold">@dashboardData.PriorMonth.InternalTransfers.ToString("C", CultureInfo.CurrentCulture)</span>
+                                    </RadzenText>
+                                </div>
                             </div>
-                        </div>
 
-                        <hr class="my-2" />
+                            <hr class="my-2" />
+                        }
 
-                        <div class="d-flex justify-content-between align-items-center">
-                            <RadzenText TextStyle="TextStyle.Subtitle1">@Localizer["EndingBalance"]</RadzenText>
-                            <div class="text-end">
-                                <RadzenText TextStyle="TextStyle.Subtitle1">
-                                    <span class="fw-bold" style="font-size:1.1em;">
-                                        @Math.Abs(dashboardData.PriorMonth.Balance).ToString("C", CultureInfo.CurrentCulture)
-                                        @(dashboardData.PriorMonth.Balance < 0 ? $" {Localizer["Deficit"]}" : "")
-                                    </span>
-                                </RadzenText>
+                        @if (!isInternAccountSelected)
+                        {
+                            <div class="d-flex justify-content-between align-items-center">
+                                <RadzenText TextStyle="TextStyle.Subtitle1">@Localizer["EndingBalance"]</RadzenText>
+                                <div class="text-end">
+                                    <RadzenText TextStyle="TextStyle.Subtitle1">
+                                        <span class="fw-bold" style="font-size:1.1em;">
+                                            @Math.Abs(dashboardData.PriorMonth.Balance).ToString("C", CultureInfo.CurrentCulture)
+                                            @(dashboardData.PriorMonth.Balance < 0 ? $" {Localizer["Deficit"]}" : "")
+                                        </span>
+                                    </RadzenText>
+                                </div>
                             </div>
-                        </div>
+                        }
                     </RadzenStack>
                 </RadzenCard>
             </RadzenStack>
@@ -450,16 +469,19 @@ else
 
                         <hr class="my-2" />
 
-                        <div class="d-flex justify-content-between">
-                            <RadzenText TextStyle="TextStyle.Body1">@Localizer["Expenses"]</RadzenText>
-                            <div class="text-end">
-                                <RadzenText TextStyle="TextStyle.Body1">
-                                    <span class="fw-bold">@dashboardData.CurrentYear.TotalExpenses.ToString("C", CultureInfo.CurrentCulture)</span>
-                                </RadzenText>
+                        @if (!isInternAccountSelected)
+                        {
+                            <div class="d-flex justify-content-between">
+                                <RadzenText TextStyle="TextStyle.Body1">@Localizer["Expenses"]</RadzenText>
+                                <div class="text-end">
+                                    <RadzenText TextStyle="TextStyle.Body1">
+                                        <span class="fw-bold">@dashboardData.CurrentYear.TotalExpenses.ToString("C", CultureInfo.CurrentCulture)</span>
+                                    </RadzenText>
+                                </div>
                             </div>
-                        </div>
 
-                        <hr class="my-2" />
+                            <hr class="my-2" />
+                        }
 
                         <div class="d-flex justify-content-between">
                             <RadzenText TextStyle="TextStyle.Body1">@Localizer["Overhead"]</RadzenText>
@@ -472,28 +494,34 @@ else
 
                         <hr class="my-2" />
 
-                        <div class="d-flex justify-content-between">
-                            <RadzenText TextStyle="TextStyle.Body1">@Localizer["InternalTransfers"]</RadzenText>
-                            <div class="text-end">
-                                <RadzenText TextStyle="TextStyle.Body1">
-                                    <span class="fw-bold">@dashboardData.CurrentYear.InternalTransfers.ToString("C", CultureInfo.CurrentCulture)</span>
-                                </RadzenText>
+                        @if (!isInternAccountSelected)
+                        {
+                            <div class="d-flex justify-content-between">
+                                <RadzenText TextStyle="TextStyle.Body1">@Localizer["InternalTransfers"]</RadzenText>
+                                <div class="text-end">
+                                    <RadzenText TextStyle="TextStyle.Body1">
+                                        <span class="fw-bold">@dashboardData.CurrentYear.InternalTransfers.ToString("C", CultureInfo.CurrentCulture)</span>
+                                    </RadzenText>
+                                </div>
                             </div>
-                        </div>
 
-                        <hr class="my-2" />
+                            <hr class="my-2" />
+                        }
 
-                        <div class="d-flex justify-content-between align-items-center">
-                            <RadzenText TextStyle="TextStyle.Subtitle1">@Localizer["CurrentBalance"]</RadzenText>
-                            <div class="text-end">
-                                <RadzenText TextStyle="TextStyle.Subtitle1">
-                                    <span class="fw-bold" style="font-size:1.1em;">
-                                        @Math.Abs(dashboardData.CurrentYear.Balance).ToString("C", CultureInfo.CurrentCulture)
-                                        @(dashboardData.CurrentYear.Balance < 0 ? $" {Localizer["Deficit"]}" : "")
-                                    </span>
-                                </RadzenText>
+                        @if (!isInternAccountSelected)
+                        {
+                            <div class="d-flex justify-content-between align-items-center">
+                                <RadzenText TextStyle="TextStyle.Subtitle1">@Localizer["CurrentBalance"]</RadzenText>
+                                <div class="text-end">
+                                    <RadzenText TextStyle="TextStyle.Subtitle1">
+                                        <span class="fw-bold" style="font-size:1.1em;">
+                                            @Math.Abs(dashboardData.CurrentYear.Balance).ToString("C", CultureInfo.CurrentCulture)
+                                            @(dashboardData.CurrentYear.Balance < 0 ? $" {Localizer["Deficit"]}" : "")
+                                        </span>
+                                    </RadzenText>
+                                </div>
                             </div>
-                        </div>
+                        }
                     </RadzenStack>
                 </RadzenCard>
             </RadzenStack>
@@ -515,16 +543,19 @@ else
 
                         <hr class="my-2" />
 
-                        <div class="d-flex justify-content-between">
-                            <RadzenText TextStyle="TextStyle.Body1">@Localizer["Expenses"]</RadzenText>
-                            <div class="text-end">
-                                <RadzenText TextStyle="TextStyle.Body1">
-                                    <span class="fw-bold">@dashboardData.PriorYear.TotalExpenses.ToString("C", CultureInfo.CurrentCulture)</span>
-                                </RadzenText>
+                        @if (!isInternAccountSelected)
+                        {
+                            <div class="d-flex justify-content-between">
+                                <RadzenText TextStyle="TextStyle.Body1">@Localizer["Expenses"]</RadzenText>
+                                <div class="text-end">
+                                    <RadzenText TextStyle="TextStyle.Body1">
+                                        <span class="fw-bold">@dashboardData.PriorYear.TotalExpenses.ToString("C", CultureInfo.CurrentCulture)</span>
+                                    </RadzenText>
+                                </div>
                             </div>
-                        </div>
 
-                        <hr class="my-2" />
+                            <hr class="my-2" />
+                        }
 
                         <div class="d-flex justify-content-between">
                             <RadzenText TextStyle="TextStyle.Body1">@Localizer["Overhead"]</RadzenText>
@@ -537,28 +568,34 @@ else
 
                         <hr class="my-2" />
 
-                        <div class="d-flex justify-content-between">
-                            <RadzenText TextStyle="TextStyle.Body1">@Localizer["InternalTransfers"]</RadzenText>
-                            <div class="text-end">
-                                <RadzenText TextStyle="TextStyle.Body1">
-                                    <span class="fw-bold">@dashboardData.PriorYear.InternalTransfers.ToString("C", CultureInfo.CurrentCulture)</span>
-                                </RadzenText>
+                        @if (!isInternAccountSelected)
+                        {
+                            <div class="d-flex justify-content-between">
+                                <RadzenText TextStyle="TextStyle.Body1">@Localizer["InternalTransfers"]</RadzenText>
+                                <div class="text-end">
+                                    <RadzenText TextStyle="TextStyle.Body1">
+                                        <span class="fw-bold">@dashboardData.PriorYear.InternalTransfers.ToString("C", CultureInfo.CurrentCulture)</span>
+                                    </RadzenText>
+                                </div>
                             </div>
-                        </div>
 
-                        <hr class="my-2" />
+                            <hr class="my-2" />
+                        }
 
-                        <div class="d-flex justify-content-between align-items-center">
-                            <RadzenText TextStyle="TextStyle.Subtitle1">@Localizer["EndingBalance"]</RadzenText>
-                            <div class="text-end">
-                                <RadzenText TextStyle="TextStyle.Subtitle1">
-                                    <span class="fw-bold" style="font-size:1.1em;">
-                                        @Math.Abs(dashboardData.PriorYear.Balance).ToString("C", CultureInfo.CurrentCulture)
-                                        @(dashboardData.PriorYear.Balance < 0 ? $" {Localizer["Deficit"]}" : "")
-                                    </span>
-                                </RadzenText>
+                        @if (!isInternAccountSelected)
+                        {
+                            <div class="d-flex justify-content-between align-items-center">
+                                <RadzenText TextStyle="TextStyle.Subtitle1">@Localizer["EndingBalance"]</RadzenText>
+                                <div class="text-end">
+                                    <RadzenText TextStyle="TextStyle.Subtitle1">
+                                        <span class="fw-bold" style="font-size:1.1em;">
+                                            @Math.Abs(dashboardData.PriorYear.Balance).ToString("C", CultureInfo.CurrentCulture)
+                                            @(dashboardData.PriorYear.Balance < 0 ? $" {Localizer["Deficit"]}" : "")
+                                        </span>
+                                    </RadzenText>
+                                </div>
                             </div>
-                        </div>
+                        }
                     </RadzenStack>
                 </RadzenCard>
             </RadzenStack>
@@ -628,36 +665,72 @@ else
                         <RadzenLineSeries Data="@accountVisualizationSeries" CategoryProperty="MonthLabel" ValueProperty="DonationTotal" Title="@Localizer["Donations"]">
                             <RadzenSeriesDataLabels Visible="@showVisualizationLabels" />
                         </RadzenLineSeries>
-                        <RadzenLineSeries Data="@accountVisualizationSeries" CategoryProperty="MonthLabel" ValueProperty="ExpenseTotal" Title="@Localizer["Expenses"]">
-                            <RadzenSeriesDataLabels Visible="@showVisualizationLabels" />
-                        </RadzenLineSeries>
-                        <RadzenLineSeries Data="@accountVisualizationSeries" CategoryProperty="MonthLabel" ValueProperty="Balance" Title="@Localizer["CurrentBalance"]">
-                            <RadzenSeriesDataLabels Visible="@showVisualizationLabels" />
-                        </RadzenLineSeries>
+                        @if (isInternAccountSelected)
+                        {
+                            <RadzenLineSeries Data="@accountVisualizationSeries" CategoryProperty="MonthLabel" ValueProperty="OverheadTotal" Title="@Localizer["Overhead"]">
+                                <RadzenSeriesDataLabels Visible="@showVisualizationLabels" />
+                            </RadzenLineSeries>
+                        }
+                        else
+                        {
+                            <RadzenLineSeries Data="@accountVisualizationSeries" CategoryProperty="MonthLabel" ValueProperty="ExpenseTotal" Title="@Localizer["Expenses"]">
+                                <RadzenSeriesDataLabels Visible="@showVisualizationLabels" />
+                            </RadzenLineSeries>
+                        }
+                        @if (!isInternAccountSelected)
+                        {
+                            <RadzenLineSeries Data="@accountVisualizationSeries" CategoryProperty="MonthLabel" ValueProperty="Balance" Title="@Localizer["CurrentBalance"]">
+                                <RadzenSeriesDataLabels Visible="@showVisualizationLabels" />
+                            </RadzenLineSeries>
+                        }
                     }
                     else if (selectedVisualizationGraphType == VisualizationGraphType.Area)
                     {
                         <RadzenAreaSeries Data="@accountVisualizationSeries" CategoryProperty="MonthLabel" ValueProperty="DonationTotal" Title="@Localizer["Donations"]">
                             <RadzenSeriesDataLabels Visible="@showVisualizationLabels" />
                         </RadzenAreaSeries>
-                        <RadzenAreaSeries Data="@accountVisualizationSeries" CategoryProperty="MonthLabel" ValueProperty="ExpenseTotal" Title="@Localizer["Expenses"]">
-                            <RadzenSeriesDataLabels Visible="@showVisualizationLabels" />
-                        </RadzenAreaSeries>
-                        <RadzenAreaSeries Data="@accountVisualizationSeries" CategoryProperty="MonthLabel" ValueProperty="Balance" Title="@Localizer["CurrentBalance"]">
-                            <RadzenSeriesDataLabels Visible="@showVisualizationLabels" />
-                        </RadzenAreaSeries>
+                        @if (isInternAccountSelected)
+                        {
+                            <RadzenAreaSeries Data="@accountVisualizationSeries" CategoryProperty="MonthLabel" ValueProperty="OverheadTotal" Title="@Localizer["Overhead"]">
+                                <RadzenSeriesDataLabels Visible="@showVisualizationLabels" />
+                            </RadzenAreaSeries>
+                        }
+                        else
+                        {
+                            <RadzenAreaSeries Data="@accountVisualizationSeries" CategoryProperty="MonthLabel" ValueProperty="ExpenseTotal" Title="@Localizer["Expenses"]">
+                                <RadzenSeriesDataLabels Visible="@showVisualizationLabels" />
+                            </RadzenAreaSeries>
+                        }
+                        @if (!isInternAccountSelected)
+                        {
+                            <RadzenAreaSeries Data="@accountVisualizationSeries" CategoryProperty="MonthLabel" ValueProperty="Balance" Title="@Localizer["CurrentBalance"]">
+                                <RadzenSeriesDataLabels Visible="@showVisualizationLabels" />
+                            </RadzenAreaSeries>
+                        }
                     }
                     else
                     {
                         <RadzenColumnSeries Data="@accountVisualizationSeries" CategoryProperty="MonthLabel" ValueProperty="DonationTotal" Title="@Localizer["Donations"]">
                             <RadzenSeriesDataLabels Visible="@showVisualizationLabels" />
                         </RadzenColumnSeries>
-                        <RadzenColumnSeries Data="@accountVisualizationSeries" CategoryProperty="MonthLabel" ValueProperty="ExpenseTotal" Title="@Localizer["Expenses"]">
-                            <RadzenSeriesDataLabels Visible="@showVisualizationLabels" />
-                        </RadzenColumnSeries>
-                        <RadzenColumnSeries Data="@accountVisualizationSeries" CategoryProperty="MonthLabel" ValueProperty="Balance" Title="@Localizer["CurrentBalance"]">
-                            <RadzenSeriesDataLabels Visible="@showVisualizationLabels" />
-                        </RadzenColumnSeries>
+                        @if (isInternAccountSelected)
+                        {
+                            <RadzenColumnSeries Data="@accountVisualizationSeries" CategoryProperty="MonthLabel" ValueProperty="OverheadTotal" Title="@Localizer["Overhead"]">
+                                <RadzenSeriesDataLabels Visible="@showVisualizationLabels" />
+                            </RadzenColumnSeries>
+                        }
+                        else
+                        {
+                            <RadzenColumnSeries Data="@accountVisualizationSeries" CategoryProperty="MonthLabel" ValueProperty="ExpenseTotal" Title="@Localizer["Expenses"]">
+                                <RadzenSeriesDataLabels Visible="@showVisualizationLabels" />
+                            </RadzenColumnSeries>
+                        }
+                        @if (!isInternAccountSelected)
+                        {
+                            <RadzenColumnSeries Data="@accountVisualizationSeries" CategoryProperty="MonthLabel" ValueProperty="Balance" Title="@Localizer["CurrentBalance"]">
+                                <RadzenSeriesDataLabels Visible="@showVisualizationLabels" />
+                            </RadzenColumnSeries>
+                        }
                     }
                     <RadzenCategoryAxis />
                     <RadzenValueAxis Formatter="@FormatVisualizationCurrency" />
@@ -679,6 +752,7 @@ private bool isLoading = true;
 private bool isAccountDataLoading = true;
 private string selectedAccount = string.Empty;
 private bool isAdminUser;
+private bool isInternAccountSelected;
 
 private FinancialDashboardDto dashboardData = new();
 private string debugMessage = string.Empty;
@@ -860,6 +934,7 @@ private bool showMissingGiftDialog = false;
 
             SessionUserStateService.SelectedAccountFund = selectedAccount;
             SessionUserStateService.DefaultAccountFund = defaultFundFromDto;
+            RefreshSelectedAccountMode();
 
             if (!string.IsNullOrWhiteSpace(cachedUserId) && !string.IsNullOrWhiteSpace(selectedAccount))
             {
@@ -957,6 +1032,7 @@ private bool showMissingGiftDialog = false;
             StateHasChanged();
 
             selectedAccount = accountName;
+            RefreshSelectedAccountMode();
 
             if (hasImmediateCache)
             {
@@ -988,7 +1064,11 @@ private bool showMissingGiftDialog = false;
                     if (!SessionDonationDataCacheService.TryGetDonationData(userId, selectedAccount, out var cachedPrefetch)
                         || !CacheCoversRange(cachedPrefetch, startPrefetch, endPrefetch))
                     {
-                        var prefetchDto = await DonationService.GetDonationDataAsync(selectedAccount, "All", new Cya2.Core.ValueObjects.DateRange(startPrefetch, endPrefetch), userId);
+                        var prefetchDto = await DonationService.GetDonationDataAsync(
+                            selectedAccount,
+                            "All",
+                            new Cya2.Core.ValueObjects.DateRange(startPrefetch, endPrefetch),
+                            userId);
                         SessionDonationDataCacheService.SetDonationData(userId, selectedAccount, prefetchDto, prioritize: true);
                         Logger.LogInformation("Home.accountSelection: preloaded donation cache for selectedAccount={Account}", selectedAccount);
                     }
@@ -1150,6 +1230,11 @@ private bool showMissingGiftDialog = false;
         }
 
         return data.UserAccounts.FirstOrDefault()?.Fund ?? string.Empty;
+    }
+
+    private void RefreshSelectedAccountMode()
+    {
+        isInternAccountSelected = InternAccountUtility.IsInternFund(selectedAccount);
     }
 
     private static bool CacheCoversRange(DonationDataDto dto, DateTime startDate, DateTime endDate)

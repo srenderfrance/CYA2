@@ -1,8 +1,10 @@
 using Cya2.Core.Entities;
 using Cya2.Core.Interfaces;
 using Cya2.Core.ReadModels;
+using Cya2.Core.Utilities;
 using Dapper;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
 using MySql.Data.MySqlClient;
 
 namespace Cya2.Infrastructure.Repositories;
@@ -11,11 +13,13 @@ public sealed class DonationReadRepository : IDonationReadRepository
 {
     private readonly IConfiguration _configuration;
     private readonly IDatabaseGuard _dbGuard;
+    private readonly ILogger<DonationReadRepository> _logger;
 
-    public DonationReadRepository(IConfiguration configuration, IDatabaseGuard dbGuard)
+    public DonationReadRepository(IConfiguration configuration, IDatabaseGuard dbGuard, ILogger<DonationReadRepository> logger)
     {
         _configuration = configuration;
         _dbGuard = dbGuard;
+        _logger = logger;
     }
 
     private string ConnStr => _configuration.GetConnectionString("default") ?? string.Empty;
@@ -178,6 +182,216 @@ WHERE AccountName LIKE @SearchTerm
   )",
             new { AccountId = accountId, Fund = fundName, SearchTerm = likeTerm });
         return rows.ToList();
+    }
+
+    public async Task<List<DonationRecord>> GetInternDonationsByDesignationAndDateRangeAsync(string internDesignationName, DateTime startDate, DateTime endDate)
+    {
+        _dbGuard.ThrowIfUnavailable();
+
+        if (string.IsNullOrWhiteSpace(internDesignationName))
+        {
+            return new List<DonationRecord>();
+        }
+
+        var normalizedDesignation = internDesignationName.Trim();
+        var alternateDesignation = InternAccountUtility.GetAlternateDesignationName(normalizedDesignation);
+        var hasAlternateDesignation = !string.IsNullOrWhiteSpace(alternateDesignation);
+        var hasNameTokens = InternAccountUtility.TryGetFirstAndLastName(normalizedDesignation, out var firstName, out var lastName);
+        var designationLookupKey = InternAccountUtility.BuildLookupKey(normalizedDesignation);
+        var alternateLookupKey = InternAccountUtility.BuildLookupKey(alternateDesignation);
+        var hasAlternateLookupKey = !string.IsNullOrWhiteSpace(alternateLookupKey);
+
+        await using var conn = new MySqlConnection(ConnStr);
+
+        var exactMatchCount = await conn.ExecuteScalarAsync<int>(
+            @"SELECT COUNT(*)
+FROM DonationData
+WHERE Date >= @StartDate
+  AND Date <= @EndDate
+  AND Intern COLLATE utf8mb4_0900_ai_ci = @InternDesignationName COLLATE utf8mb4_0900_ai_ci",
+            new
+            {
+                StartDate = startDate,
+                EndDate = endDate,
+                InternDesignationName = normalizedDesignation
+            });
+
+        var alternateMatchCount = hasAlternateDesignation
+            ? await conn.ExecuteScalarAsync<int>(
+                @"SELECT COUNT(*)
+FROM DonationData
+WHERE Date >= @StartDate
+  AND Date <= @EndDate
+  AND Intern COLLATE utf8mb4_0900_ai_ci = @AlternateDesignation COLLATE utf8mb4_0900_ai_ci",
+                new
+                {
+                    StartDate = startDate,
+                    EndDate = endDate,
+                    AlternateDesignation = alternateDesignation
+                })
+            : 0;
+
+        var tokenMatchCount = hasNameTokens
+            ? await conn.ExecuteScalarAsync<int>(
+                @"SELECT COUNT(*)
+FROM DonationData
+WHERE Date >= @StartDate
+  AND Date <= @EndDate
+  AND Intern IS NOT NULL
+  AND (
+      Intern COLLATE utf8mb4_0900_ai_ci LIKE @FirstToken COLLATE utf8mb4_0900_ai_ci
+      OR Intern COLLATE utf8mb4_0900_ai_ci LIKE @LastToken COLLATE utf8mb4_0900_ai_ci
+  )",
+                new
+                {
+                    StartDate = startDate,
+                    EndDate = endDate,
+                    FirstToken = $"%{firstName}%",
+                    LastToken = $"%{lastName}%"
+                })
+            : 0;
+
+        var normalizedMatchCount = await conn.ExecuteScalarAsync<int>(
+            @"SELECT COUNT(*)
+FROM DonationData
+WHERE Date >= @StartDate
+  AND Date <= @EndDate
+  AND (
+      LOWER(REPLACE(REPLACE(REPLACE(REPLACE(COALESCE(Intern,''), ' ', ''), ',', ''), '.', ''), '-', '')) = @DesignationLookupKey
+      OR (@HasAlternateLookupKey = 1 AND LOWER(REPLACE(REPLACE(REPLACE(REPLACE(COALESCE(Intern,''), ' ', ''), ',', ''), '.', ''), '-', '')) = @AlternateLookupKey)
+  )",
+            new
+            {
+                StartDate = startDate,
+                EndDate = endDate,
+                DesignationLookupKey = designationLookupKey,
+                AlternateLookupKey = alternateLookupKey,
+                HasAlternateLookupKey = hasAlternateLookupKey ? 1 : 0
+            });
+
+        _logger.LogInformation(
+            "Intern donation query debug: designation='{Designation}', alternate='{Alternate}', hasAlternate={HasAlternate}, firstName='{FirstName}', lastName='{LastName}', hasNameTokens={HasNameTokens}, lookupKey='{LookupKey}', alternateLookupKey='{AlternateLookupKey}', exactMatches={ExactMatches}, alternateMatches={AlternateMatches}, tokenMatches={TokenMatches}, normalizedMatches={NormalizedMatches}, range={StartDate:yyyy-MM-dd}..{EndDate:yyyy-MM-dd}",
+            normalizedDesignation,
+            alternateDesignation,
+            hasAlternateDesignation,
+            firstName,
+            lastName,
+            hasNameTokens,
+            designationLookupKey,
+            alternateLookupKey,
+            exactMatchCount,
+            alternateMatchCount,
+            tokenMatchCount,
+            normalizedMatchCount,
+            startDate,
+            endDate);
+
+        var rows = await conn.QueryAsync<DonationRecord>(
+            @"SELECT
+    Id,
+    Date,
+    Frequency,
+    AccountName,
+    PaymentMethod,
+    GiftType,
+    Amount,
+    Fund,
+    Intern,
+    Addressee,
+    SoftCreditName,
+    Address,
+    City,
+    State,
+    PostalCode,
+    Country,
+    Email,
+    PhoneFixed,
+    PhoneMobile,
+    DateCreated,
+    IsAnonymous
+FROM DonationData
+WHERE Date >= @StartDate
+  AND Date <= @EndDate
+  AND (
+      Intern COLLATE utf8mb4_0900_ai_ci = @InternDesignationName COLLATE utf8mb4_0900_ai_ci
+      OR (@HasAlternateDesignation = 1 AND Intern COLLATE utf8mb4_0900_ai_ci = @AlternateDesignation COLLATE utf8mb4_0900_ai_ci)
+      OR (
+          LOCATE(',', Intern) > 0
+          AND TRIM(CONCAT(
+              TRIM(SUBSTRING_INDEX(Intern, ',', -1)),
+              ' ',
+              TRIM(SUBSTRING_INDEX(Intern, ',', 1))
+          )) COLLATE utf8mb4_0900_ai_ci = @InternDesignationName COLLATE utf8mb4_0900_ai_ci
+      )
+      OR (
+          @HasAlternateDesignation = 1
+          AND LOCATE(',', Intern) > 0
+          AND TRIM(CONCAT(
+              TRIM(SUBSTRING_INDEX(Intern, ',', -1)),
+              ' ',
+              TRIM(SUBSTRING_INDEX(Intern, ',', 1))
+          )) COLLATE utf8mb4_0900_ai_ci = @AlternateDesignation COLLATE utf8mb4_0900_ai_ci
+      )
+      OR (
+          @HasNameTokens = 1
+          AND Intern IS NOT NULL
+          AND Intern COLLATE utf8mb4_0900_ai_ci LIKE @FirstToken COLLATE utf8mb4_0900_ai_ci
+          AND Intern COLLATE utf8mb4_0900_ai_ci LIKE @LastToken COLLATE utf8mb4_0900_ai_ci
+      )
+      OR (
+          LOWER(REPLACE(REPLACE(REPLACE(REPLACE(COALESCE(Intern,''), ' ', ''), ',', ''), '.', ''), '-', '')) = @DesignationLookupKey
+      )
+      OR (
+          @HasAlternateLookupKey = 1
+          AND LOWER(REPLACE(REPLACE(REPLACE(REPLACE(COALESCE(Intern,''), ' ', ''), ',', ''), '.', ''), '-', '')) = @AlternateLookupKey
+      )
+  )",
+            new
+            {
+                StartDate = startDate,
+                EndDate = endDate,
+                InternDesignationName = normalizedDesignation,
+                AlternateDesignation = alternateDesignation,
+                HasAlternateDesignation = hasAlternateDesignation ? 1 : 0,
+                HasNameTokens = hasNameTokens ? 1 : 0,
+                FirstToken = $"%{firstName}%",
+                LastToken = $"%{lastName}%",
+                DesignationLookupKey = designationLookupKey,
+                AlternateLookupKey = alternateLookupKey,
+                HasAlternateLookupKey = hasAlternateLookupKey ? 1 : 0
+            });
+
+        var rowList = rows.ToList();
+        if (rowList.Count == 0)
+        {
+            var topInternValues = await conn.QueryAsync<string>(
+                @"SELECT COALESCE(Intern, '')
+FROM DonationData
+WHERE Date >= @StartDate
+  AND Date <= @EndDate
+  AND Intern IS NOT NULL
+  AND Intern <> ''
+GROUP BY Intern
+ORDER BY COUNT(*) DESC
+LIMIT 5",
+                new
+                {
+                    StartDate = startDate,
+                    EndDate = endDate
+                });
+
+            _logger.LogInformation(
+                "Intern donation query sample values in range: {InternSamples}",
+                string.Join(" | ", topInternValues));
+        }
+
+        _logger.LogInformation(
+            "Intern donation query returned {RowCount} rows for designation='{Designation}' (alternate='{Alternate}')",
+            rowList.Count,
+            normalizedDesignation,
+            alternateDesignation);
+
+        return rowList;
     }
 
     private async Task<List<DonationRecord>> LoadByFundsAsync(

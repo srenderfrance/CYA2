@@ -511,7 +511,7 @@
     <value>All Dates</value>
   </data>
   <data name="AllDonors" xml:space="preserve">
-    <value>All Donors</value>
+    <value>All Dates</value>
   </data>
   <data name="NoDonorSelected" xml:space="preserve">
     <value>No donor has been selected.</value>

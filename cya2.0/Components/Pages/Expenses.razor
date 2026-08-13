@@ -1,4 +1,5 @@
 @page "/expenses"
+@using Microsoft.AspNetCore.Authorization
 @using static Microsoft.AspNetCore.Components.Web.RenderMode
 @using Cya2.Shared.Utilities
 @using Radzen
@@ -20,6 +21,7 @@
 
 @rendermode InteractiveServer
 @attribute [StreamRendering]
+@attribute [Authorize(Policy = "CanAccessExpenses")]
 @inject IStringLocalizer<Resource> Localizer
 @inject ILogger<Expenses> Logger
 
@@ -172,6 +174,7 @@
                                         Class="@(useCompactView ? "expense-data-grid-compact" : string.Empty)"
                                         ShowPagingSummary="false" 
                                         AllowPaging="false"
+                                        AllowVirtualization="false"
                                         AllowColumnResize="true"
                                         AllowColumnReorder="false">
                             <Columns>
@@ -195,6 +198,7 @@
                                         Class="@(useCompactView ? "expense-data-grid-compact" : string.Empty)"
                                         ShowPagingSummary="false" 
                                         AllowPaging="false"
+                                        AllowVirtualization="false"
                                         AllowColumnResize="true"
                                         AllowColumnReorder="false">
                             <Columns>
@@ -223,6 +227,31 @@
     </div> <!-- End main two-col layout -->
 
 </RadzenStack> <!-- End main vertical stack -->
+
+<style>
+    @@media (max-width: 992px) {
+        .narrow-expense-grid .rz-datatable-scrollable-body,
+        .expense-data-grid-compact .rz-datatable-scrollable-body {
+            max-height: 65vh;
+            overflow: auto !important;
+            scrollbar-gutter: stable both-edges;
+            scrollbar-width: auto;
+        }
+
+        .narrow-expense-grid .rz-datatable-scrollable-table-wrapper,
+        .narrow-expense-grid .rz-grid-table,
+        .narrow-expense-grid .rz-datatable-scrollable-table-wrapper > table,
+        .narrow-expense-grid .rz-grid-table > table,
+        .expense-data-grid-compact .rz-datatable-scrollable-table-wrapper,
+        .expense-data-grid-compact .rz-grid-table,
+        .expense-data-grid-compact .rz-datatable-scrollable-table-wrapper > table,
+        .expense-data-grid-compact .rz-grid-table > table {
+            width: auto !important;
+            min-width: 100% !important;
+            table-layout: auto !important;
+        }
+    }
+</style>
 
 @code {
     private ExpenseDataDto expenseData = new();
@@ -477,7 +506,7 @@
             {
                 <text>
                     <!-- Amount on the far left -->
-                    <RadzenDataGridColumn TItem="ExpenseTransactionDto" Property="Amount" Title="@Localizer["Amount"]" FormatString="{0:C2}" Width="120px" TextAlign="TextAlign.Right">
+                    <RadzenDataGridColumn TItem="ExpenseTransactionDto" Property="Amount" Title="@Localizer["Amount"]" FormatString="{0:C2}" Width="120px" TextAlign="TextAlign.Right" Frozen="true">
                         <HeaderTemplate>
                             <div style="display:flex;justify-content:flex-end;padding-right:8px;box-sizing:border-box;width:100%;">@Localizer["Amount"]</div>
                         </HeaderTemplate>
@@ -520,7 +549,7 @@
             {
                 <text>
                     <!-- Amount on the far left -->
-                    <RadzenDataGridColumn TItem="ExpenseTransactionDto" Property="Amount" Title="@Localizer["Amount"]" FormatString="{0:C2}" Width="120px" TextAlign="TextAlign.Right">
+                    <RadzenDataGridColumn TItem="ExpenseTransactionDto" Property="Amount" Title="@Localizer["Amount"]" FormatString="{0:C2}" Width="120px" TextAlign="TextAlign.Right" Frozen="true">
                         <HeaderTemplate>
                             <div style="display:flex;justify-content:flex-end;padding-right:8px;box-sizing:border-box;width:100%;">@Localizer["Amount"]</div>
                         </HeaderTemplate>

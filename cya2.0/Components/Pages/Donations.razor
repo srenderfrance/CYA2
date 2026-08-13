@@ -35,47 +35,94 @@
 <PageTitle>@Localizer["Donations"]</PageTitle>
 
 <style>
-    /* Stronger overrides to beat Radzen defaults */
-    .giving-grid-wrapper { overflow-x: auto; width: 100%; }
-
-    /* Ensure the RadzenCard containing the grid fills width and clips overflow to the wrapper */
+    /* Card contains the grid wrapper */
     .giving-grid-card,
     .giving-grid-card.rz-card {
-        display: block !important;
         width: 100% !important;
-        padding: 0.5rem !important; /* keep card padding consistent */
+        padding: 0.5rem !important;
         box-sizing: border-box !important;
-        overflow: hidden !important;
     }
 
-    /* Also force the grid container itself to size to content */
+    /* Wrapper clips; Radzen grid owns internal scrolling */
+    .giving-grid-wrapper {
+        width: 100%;
+        max-width: 100%;
+        overflow: hidden;
+        position: relative;
+    }
+
+    /* Grid fills available width; Radzen handles internal horizontal scroll */
     .giving-grid {
-        display: inline-block !important;
-        width: auto !important;
-        table-layout: auto !important;
-        vertical-align: top !important;
+        width: 100% !important;
+        max-width: 100% !important;
+        box-sizing: border-box !important;
     }
 
-    /* Target Radzen-generated table inside our giving-grid and force it to size to content */
-    .giving-grid .rz-datatable-tablewrapper > table,
+    .giving-grid .rz-data-grid,
+    .giving-grid .rz-datatable,
+    .giving-grid .rz-datatable-scrollable,
+    .giving-grid .rz-datatable-scrollable-wrapper,
+    .giving-grid .rz-datatable-scrollable-view,
+    .giving-grid .rz-datatable-scrollable-body,
+    .giving-grid .rz-grid-table-wrapper {
+        width: 100% !important;
+    }
+
+    /* Let Radzen scrollable table size to content width for frozen-column scrolling */
+    .giving-grid .rz-datatable-scrollable-table-wrapper,
+    .giving-grid .rz-grid-table,
     .giving-grid .rz-datatable-scrollable-table-wrapper > table,
-    .giving-grid .rz-grid-table {
+    .giving-grid .rz-grid-table > table {
         width: auto !important;
+        min-width: 100% !important;
         table-layout: auto !important;
-        display: inline-table !important;
     }
 
-    /* Cap the donor column (first column) so it can't grow to fill the parent */
+    /* Make Radzen's own scroll container handle both axes and keep scrollbar visible */
+    .giving-grid .rz-datatable-scrollable-body {
+        max-height: 70vh;
+        overflow: auto !important;
+        scrollbar-gutter: stable both-edges;
+        scrollbar-width: auto;
+    }
+
+    @@media (max-width: 992px) {
+        .donation-list .rz-datatable-scrollable-body {
+            max-height: 65vh;
+            overflow: auto !important;
+            scrollbar-gutter: stable both-edges;
+            scrollbar-width: auto;
+        }
+
+        .donation-list .rz-datatable-scrollable-table-wrapper,
+        .donation-list .rz-grid-table,
+        .donation-list .rz-datatable-scrollable-table-wrapper > table,
+        .donation-list .rz-grid-table > table {
+            width: auto !important;
+            min-width: 100% !important;
+            table-layout: auto !important;
+        }
+    }
+
+    /* Donor column sizing */
+    .giving-grid .rz-grid-table thead th:first-child,
+    .giving-grid .rz-grid-table tbody td:first-child,
+    .giving-grid .rz-grid-table tfoot td:first-child {
+        min-width: 200px !important;
+        max-width: 200px !important;
+        width: 200px !important;
+    }
+
+    /* Donor cell content */
     .giving-grid .rz-grid-table thead th:first-child .rz-column-title,
     .giving-grid .rz-grid-table tbody td:first-child .rz-cell-data {
-        max-width: 480px !important;
         white-space: nowrap !important;
         overflow: hidden !important;
         text-overflow: ellipsis !important;
     }
 
     /* Keep existing grid styling (smaller font, padding) */
-    .giving-grid .rz-data-grid { font-size: 0.75rem; /* table-layout and width overridden above */ }
+    .giving-grid .rz-data-grid { font-size: 0.75rem; }
     .giving-grid .rz-cell,
     .giving-grid .rz-column-header,
     .giving-grid .rz-column-footer { padding: 2px 4px; line-height: 1.1; overflow: hidden; text-overflow: ellipsis; }
@@ -88,13 +135,13 @@
         text-align: left;
     }
 
-    /* Donor cell: allow to expand but cap its maximum width so grid doesn't stretch to full container */
+    /* Donor cell: clickable link style with fixed width */
     .giving-grid .donor-cell {
-        display: inline-block;
+        display: block;
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
-        max-width: 480px; /* cap donor width */
+        width: 100%;
         cursor: pointer;
         color: #0a3b6b;
         text-decoration: none;
@@ -186,14 +233,14 @@
 
 </style>
 
-<RadzenStack Orientation="Orientation.Vertical" Gap="15px" Class="rz-p-4" Style="padding-top:0.5rem;">
+<RadzenStack Orientation="Orientation.Vertical" Gap="15px" Class="rz-p-4" Style="padding-top:0.5rem; max-width:100%; overflow-x:hidden; box-sizing:border-box;">
 
     <RadzenStack Orientation="Orientation.Horizontal"
                  Gap="2rem"
                  JustifyContent="JustifyContent.SpaceBetween"
                  AlignItems="AlignItems.Start"
                  Wrap="FlexWrap.Wrap"
-                 Style="width:100%;">
+                 Style="width:100%; max-width:100%; box-sizing:border-box;">
 
         <RadzenStack Orientation="Orientation.Vertical" Gap="0.4rem" Style="flex:1;">
             <RadzenStack Orientation="Orientation.Horizontal"
@@ -346,6 +393,8 @@
                                  AllowFiltering="false"
                                  AllowVirtualization="false"
                                  AllowColumnReorder="false"
+                                 AllowColumnPicking="false"
+                                 ShowColumnMenu="false"
                                  @ref="_givingGridRef"
                                  CellRender="@OnGivingGridCellRender"
                                  EmptyText="@GetEmptyText()">
@@ -353,6 +402,7 @@
                         <!-- Donor: header/cell left -->
                         <RadzenDataGridColumn TItem="DonationPivotRowDto"
                                               Title="@(Localizer["Donor"])"
+                                              Width="200px"
                                               Frozen="true"
                                               FrozenPosition="FrozenColumnPosition.Left"
                                               OrderIndex="0"
@@ -602,12 +652,6 @@
     private List<string> currentFundNamesForSelection = new();
     private Dictionary<string, int> subFundToPrimaryAccountId = new(StringComparer.OrdinalIgnoreCase);
 
-    private void Debug(string message)
-    {
-        var line = $"[{DateTime.Now:HH:mm:ss}] {message}";
-        Console.WriteLine($"DONATIONS DEBUG: {line}");
-    }
-
     private enum ViewMode { GivingGrid, DonationList, Graphs }
     private enum DonationGraphType { Line, Area, Column }
 
@@ -704,10 +748,6 @@
             var user = authState.User;
 
             userId = SessionHydrationService.HydrateForUser(user);
-            if (!string.IsNullOrWhiteSpace(SessionUserStateService.SelectedAccountFund))
-            {
-                Debug($"Hydrated session SelectedAccountFund: '{SessionUserStateService.SelectedAccountFund}'");
-            }
 
             var authLevel = user.FindFirstValue("AuthLevel") ?? string.Empty;
             isAdminOrViewer = user.IsInRole("Admin") ||
@@ -742,7 +782,6 @@
                     }).ToList();
 
                     donations = donationData.Donations ?? new List<DonationRowDto>();
-                    Debug($"Loaded donations from embedded dashboard cache for '{selectedAccount}' rows={donations.Count}");
                 }
                 else if (SessionDonationDataCacheService != null &&
                          SessionDonationDataCacheService.TryGetDonationData(userId, selectedAccount, out var cachedDto) &&
@@ -750,7 +789,6 @@
                 {
                     donationData = cachedDto;
                     donations = donationData.Donations ?? new List<DonationRowDto>();
-                    Debug($"Loaded donations from session donation cache for '{selectedAccount}' rows={donations.Count}");
                 }
                 else
                 {
@@ -773,18 +811,10 @@
             }
 
             isLoading = false;
-            Debug($"Initialized. SelectedAccount='{selectedAccount}', UserAccounts={donationData.UserAccounts.Count}");
-            Logger.LogInformation("Donations init complete user={UserId} selectedAccount={SelectedAccount} accounts={AccountCount} rows={RowCount} elapsedMs={ElapsedMs}",
-                userId,
-                selectedAccount,
-                donationData.UserAccounts?.Count ?? 0,
-                donations?.Count ?? 0,
-                initSw.ElapsedMilliseconds);
         }
         catch (Exception ex)
         {
             errorMessage = $"Error loading data: {ex.Message}";
-            Console.WriteLine($"Error in OnInitializedAsync: {ex.Message}");
             isLoading = false;
             Logger.LogWarning(ex, "Donations init failed after {ElapsedMs}ms", initSw.ElapsedMilliseconds);
         }
@@ -794,13 +824,11 @@
     {
         if (dto is null)
         {
-            Logger.LogInformation("[Donations] CacheCoversCurrentDateRange=false reason=null-dto range={Start:yyyy-MM-dd}..{End:yyyy-MM-dd}", dateRangeState.StartDate, dateRangeState.EndDate);
             return false;
         }
 
         if (dto.CachedStartDate == default || dto.CachedEndDate == default)
         {
-            Logger.LogInformation("[Donations] CacheCoversCurrentDateRange=false reason=missing-cache-range selectedAccount='{SelectedAccount}' dtoRange={CacheStart:yyyy-MM-dd}..{CacheEnd:yyyy-MM-dd} requested={Start:yyyy-MM-dd}..{End:yyyy-MM-dd}", dto.SelectedAccount, dto.CachedStartDate, dto.CachedEndDate, dateRangeState.StartDate, dateRangeState.EndDate);
             return false;
         }
 
@@ -810,14 +838,6 @@
         var cacheEnd = dto.CachedEndDate.Date;
 
         var covers = cacheStart <= rangeStart && cacheEnd >= rangeEnd;
-        if (!covers)
-        {
-            Logger.LogInformation("[Donations] CacheCoversCurrentDateRange=false reason=range-mismatch selectedAccount='{SelectedAccount}' dtoRange={CacheStart:yyyy-MM-dd}..{CacheEnd:yyyy-MM-dd} requested={Start:yyyy-MM-dd}..{End:yyyy-MM-dd}", dto.SelectedAccount, cacheStart, cacheEnd, rangeStart, rangeEnd);
-        }
-        else
-        {
-            Logger.LogInformation("[Donations] CacheCoversCurrentDateRange=true selectedAccount='{SelectedAccount}' dtoRange={CacheStart:yyyy-MM-dd}..{CacheEnd:yyyy-MM-dd} requested={Start:yyyy-MM-dd}..{End:yyyy-MM-dd}", dto.SelectedAccount, cacheStart, cacheEnd, rangeStart, rangeEnd);
-        }
 
         return covers;
     }
@@ -828,8 +848,6 @@
         try
         {
             isLoading = true;
-            Logger.LogInformation("[Donations] LoadDonationsData start: passedAccount='{Account}', subAccount='{Sub}', userId='{UserId}', isAdminOrViewer={IsAdmin}", accountName, subAccountValue, userId, isAdminOrViewer);
-            Console.WriteLine($"[Donations] LoadDonationsData start: passedAccount='{accountName}', subAccount='{subAccountValue}', userId='{userId}', isAdminOrViewer={isAdminOrViewer}, Session.SelectedAccountFund='{SessionUserStateService.SelectedAccountFund}', Session.DefaultAccountFund='{SessionUserStateService.DefaultAccountFund}'");
 
             // Remember what we explicitly passed to the service so we only overwrite session when caller provided an explicit account
             var passedAccount = accountName;
@@ -841,8 +859,6 @@
                 if (string.IsNullOrWhiteSpace(passedAccount) && !string.IsNullOrWhiteSpace(SessionUserStateService.SelectedAccountFund))
                 {
                     passedAccount = SessionUserStateService.SelectedAccountFund;
-                    Logger.LogInformation("[Donations] Using session-selected account when calling service: {Account}", passedAccount);
-                    Console.WriteLine($"[Donations] Using session-selected account when calling service: {passedAccount}");
                 }
             }
 
@@ -853,16 +869,6 @@
                 userId,
                 isAdminOrViewer,
                 forceRefresh: false) ?? new DonationDataDto();
-
-            Logger.LogInformation("[Donations] LoadDonationsData response: requestedAccount='{RequestedAccount}', returnedSelected='{ReturnedSelected}', cacheRange={CacheStart:yyyy-MM-dd}..{CacheEnd:yyyy-MM-dd}, rows={Rows}",
-                passedAccount,
-                dto.SelectedAccount,
-                dto.CachedStartDate,
-                dto.CachedEndDate,
-                dto.Donations?.Count ?? 0);
-
-            Logger.LogInformation("[Donations] Service returned SelectedAccount='{SelectedAccount}', UserAccounts={Count}", dto.SelectedAccount, dto.UserAccounts?.Count ?? 0);
-            Console.WriteLine($"[Donations] Service returned SelectedAccount='{dto.SelectedAccount}', UserAccountsCount={dto.UserAccounts?.Count ?? 0}");
 
             var dtoUserAccounts = dto.UserAccounts ?? new List<AccountOptionDto>();
             var dtoDonations = dto.Donations ?? new List<DonationRowDto>();
@@ -890,8 +896,6 @@
             currentAccount = dtoUserAccounts.FirstOrDefault(a => a.Fund == selectedAccount);
             donations = dtoDonations;
 
-            Debug($"Service returned donations total={dto.Donations?.Count ?? 0}; currentAccount='{currentAccount?.Fund}'");
-
             if (string.IsNullOrWhiteSpace(selectedAccount) && dtoUserAccounts.Count > 0)
             {
                 // choose a sensible UI fallback but do NOT persist it to session or to server
@@ -916,7 +920,6 @@
                     if (UserSelectionService != null && !string.IsNullOrWhiteSpace(uId))
                     {
                         UserSelectionService.SetSelectedAccount(uId, selectedAccount);
-                        Logger.LogInformation("[Donations] Persisted server-side selected account for userId={UserId} -> {Account}", uId, selectedAccount);
                     }
                 }
                 catch (Exception ex)
@@ -943,32 +946,17 @@
                     }
                     catch { }
                 }
-
-                Logger.LogInformation("[Donations] Not overwriting session on non-explicit load; Session.SelectedAccountFund='{SessionSel}'", SessionUserStateService.SelectedAccountFund);
-                Console.WriteLine($"[Donations] Not overwriting session on non-explicit load; Session.SelectedAccountFund='{SessionUserStateService.SelectedAccountFund}'");
             }
 
             selectedDonations = DonationPresentationService.FilterByDateRange(donations, dateRangeState.StartDate, dateRangeState.EndDate);
             BuildPivot();
 
-            Debug($"After filtering: donations={donations?.Count ?? 0}, selectedDonations={selectedDonations?.Count ?? 0}, dateRange={dateRangeState.StartDate:yyyy-MM-dd}..{dateRangeState.EndDate:yyyy-MM-dd}");
-
             // Mark that we need to reload the giving grid once the component has rendered and the grid ref is available
             _needReloadGivingGrid = true;
-            Logger.LogInformation("Donations data load complete user={UserId} selectedAccount={SelectedAccount} subAccount={SubAccount} explicitSelection={ExplicitSelection} range={Start:yyyy-MM-dd}..{End:yyyy-MM-dd} rows={RowCount} elapsedMs={ElapsedMs}",
-                userId,
-                selectedAccount,
-                selectedSubAccount,
-                explicitSelection,
-                dateRangeState.StartDate,
-                dateRangeState.EndDate,
-                donations?.Count ?? 0,
-                loadSw.ElapsedMilliseconds);
         }
         catch (Exception ex)
         {
             errorMessage = $"Error loading donation data: {ex.Message}";
-            Console.WriteLine($"Error in LoadDonationsData: {ex.Message}");
             Logger.LogWarning(ex, "Donations data load failed after {ElapsedMs}ms", loadSw.ElapsedMilliseconds);
         }
         finally
@@ -1045,7 +1033,6 @@
     private async Task OnSubAccountSelection(string value)
     {
         selectedSubAccount = value;
-        Debug($"SubAccount selected: '{selectedSubAccount}'");
         await LoadDonationsData(selectedAccount, selectedSubAccount, explicitSelection: true);
     }
 
@@ -1088,8 +1075,6 @@
             // Reload data for the new date range instead of only filtering the currently loaded in-memory list.
             await LoadDonationsData(selectedAccount, selectedSubAccount);
 
-            Debug($"Apply date filter: {dateRangeState.StartDate:yyyy-MM-dd} to {dateRangeState.EndDate:yyyy-MM-dd}; filteredCount={selectedDonations.Count}");
-
             // Ensure UI updates after loading data. If we're showing the grid, reload it to force the pivot to render.
             if (currentView == ViewMode.GivingGrid && _givingGridRef is not null)
             {
@@ -1103,7 +1088,6 @@
         catch (Exception ex)
         {
             errorMessage = $"Error applying date filter: {ex.Message}";
-            Console.WriteLine($"Error in selectDateRange: {ex.Message}");
         }
     }
 
@@ -1338,8 +1322,7 @@
         }
         catch (Exception ex)
         {
-            Debug($"Error opening donor dialog: {ex.Message}");
-            Console.WriteLine($"Error in OnDonorClick: {ex.Message}");
+            Logger.LogWarning(ex, "Error opening donor details dialog");
         }
     }
 

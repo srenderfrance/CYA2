@@ -34,7 +34,7 @@ AppDomain.CurrentDomain.AssemblyResolve += (sender, args) =>
     if ((args.Name.Contains("MySql") || args.Name.Contains("mysql", StringComparison.OrdinalIgnoreCase)) &&
         !GlobalSettings.AllowMySqlLoading)
     {
-        Console.WriteLine($"Prevented loading of MySQL assembly: {args.Name}");
+        System.Diagnostics.Debug.WriteLine($"Prevented loading of MySQL assembly: {args.Name}");
         return typeof(object).Assembly;
     }
     return null;
@@ -48,17 +48,15 @@ var mysqlConnStr = Environment.GetEnvironmentVariable("MYSQLCONNSTR_default");
 if (!string.IsNullOrEmpty(mysqlConnStr))
 {
     builder.Configuration["ConnectionStrings:default"] = mysqlConnStr;
-    Console.WriteLine("Added MySQL connection string from environment variable");
-}
-else
-{
-    Console.WriteLine("MySQL connection string not found in environment variables");
 }
 
 builder.Services.AddLogging(l =>
 {
     l.AddConsole();
-    l.AddDebug();
+    if (builder.Environment.IsDevelopment())
+    {
+        l.AddDebug();
+    }
 });
 
 builder.Services.AddHttpContextAccessor();
@@ -307,12 +305,6 @@ if (hasValidGoogleConfig)
             }
         };
     });
-    Console.WriteLine("Google OAuth authentication configured successfully");
-}
-else
-{
-    Console.WriteLine("Google OAuth configuration not found or invalid - OAuth authentication disabled");
-    Console.WriteLine("To enable Google OAuth, set valid values for Authentication:Google:ClientId and Authentication:Google:ClientSecret");
 }
 
 builder.Services.AddAuthorization(options =>
@@ -345,6 +337,8 @@ builder.Services.AddAuthorization(options =>
         p.RequireAuthenticatedUser().RequireClaim("AuthLevel", "Admin"));
     options.AddPolicy("CanViewAllAccounts", p =>
         p.RequireAuthenticatedUser().RequireClaim("AuthLevel", new[] { "Admin", "Viewer" }));
+    options.AddPolicy("CanAccessExpenses", p =>
+        p.RequireAuthenticatedUser().RequireClaim("AuthLevel", new[] { "Admin", "Viewer", "User" }));
 });
 
 builder.Services.AddHealthChecks()
@@ -405,13 +399,6 @@ builder.Services.AddSingleton<Cya2.Application.Interfaces.IUserDateRangeSelectio
 
 var app = builder.Build();
 
-try
-{
-    var startupLogger = app.Services.GetRequiredService<ILogger<Program>>();
-    startupLogger.LogInformation("Startup diagnostics initialized");
-}
-catch { }
-
 string[] supportedCultures = ["en-US", "es-US"];
 var localizationOptions = new RequestLocalizationOptions()
     .SetDefaultCulture(supportedCultures[0])
@@ -423,7 +410,7 @@ bool initialDbConnected = false;
 try
 {
     var logger = app.Services.GetRequiredService<ILogger<Program>>();
-    logger.LogInformation("Lightweight DB check...");
+    logger.LogDebug("Lightweight DB check...");
     var monitor = app.Services.GetRequiredService<IDatabaseAvailabilityMonitor>();
     var config = app.Services.GetRequiredService<IConfiguration>();
 
@@ -443,9 +430,9 @@ try
         }
     }
 
-    logger.LogInformation("Testing database connection to {Host}:{Port}", host, port);
+    logger.LogDebug("Testing database connection to {Host}:{Port}", host, port);
     initialDbConnected = GlobalSettings.CheckDatabaseTcpConnection(host, port, 2000);
-    logger.LogInformation("Database connection test result: {Result}", initialDbConnected);
+    logger.LogDebug("Database connection test result: {Result}", initialDbConnected);
 }
 catch (Exception ex)
 {
@@ -457,7 +444,8 @@ catch (Exception ex)
 GlobalSettings.AllowMySqlLoading = initialDbConnected;
 if (!initialDbConnected)
 {
-    Console.WriteLine("Database unavailable - limited mode");
+    var logger = app.Services.GetRequiredService<ILogger<Program>>();
+    logger.LogDebug("Database unavailable - limited mode");
 }
 
 AppDomain.CurrentDomain.UnhandledException += (sender, args) =>

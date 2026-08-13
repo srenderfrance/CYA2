@@ -32,6 +32,20 @@ public sealed class DonationImportRepository : IDonationImportRepository
 
     private string ConnStr => _config.GetConnectionString("default") ?? string.Empty;
 
+    private static async Task EnsureColumnExistsAsync(MySqlConnection conn, MySqlTransaction tx, string table, string column, string sqlType, CancellationToken ct)
+    {
+        if (await ColumnExistsAsync(conn, tx, table, column, ct))
+        {
+            return;
+        }
+
+        var alter = conn.CreateCommand();
+        alter.Transaction = tx;
+        alter.CommandTimeout = 60;
+        alter.CommandText = $"ALTER TABLE `{table}` ADD COLUMN `{column}` {sqlType} NULL";
+        await alter.ExecuteNonQueryAsync(ct);
+    }
+
     public async Task BackupAllAndDeleteFromDateAsync(DateTime fromDate, string progressId, CancellationToken ct)
     {
         _dbGuard.ThrowIfUnavailable();
@@ -49,7 +63,12 @@ public sealed class DonationImportRepository : IDonationImportRepository
             await conn.OpenAsync(ct);
             await using var tx = await conn.BeginTransactionAsync(ct);
 
+            await EnsureColumnExistsAsync(conn, (MySqlTransaction)tx, "DonationData", "Intern", "VARCHAR(255)", ct);
+            await EnsureColumnExistsAsync(conn, (MySqlTransaction)tx, "DonationData", "Addressee", "VARCHAR(255)", ct);
+
             await EnsureBackupTableAsync(conn, (MySqlTransaction)tx, ct);
+            await EnsureColumnExistsAsync(conn, (MySqlTransaction)tx, "DonationDataBackup", "Intern", "VARCHAR(255)", ct);
+            await EnsureColumnExistsAsync(conn, (MySqlTransaction)tx, "DonationDataBackup", "Addressee", "VARCHAR(255)", ct);
 
             string backupId = Guid.NewGuid().ToString();
 
@@ -65,18 +84,39 @@ public sealed class DonationImportRepository : IDonationImportRepository
                 _progress.UpdateStep(progressId, "Database Backup", $"Backing up all {rowCount:N0} existing records...");
 
                 bool hasIsAnon = await ColumnExistsAsync(conn, (MySqlTransaction)tx, "DonationData", "IsAnonymous", ct);
+                bool hasIntern = await ColumnExistsAsync(conn, (MySqlTransaction)tx, "DonationData", "Intern", ct);
+                bool hasAddressee = await ColumnExistsAsync(conn, (MySqlTransaction)tx, "DonationData", "Addressee", ct);
+                bool hasBackupIntern = await ColumnExistsAsync(conn, (MySqlTransaction)tx, "DonationDataBackup", "Intern", ct);
+                bool hasBackupAddressee = await ColumnExistsAsync(conn, (MySqlTransaction)tx, "DonationDataBackup", "Addressee", ct);
+                bool includeInternInBackup = hasIntern && hasBackupIntern;
+                bool includeAddresseeInBackup = hasAddressee && hasBackupAddressee;
+
+                string backupColumnsBase = "Id,Date,AccountName,PaymentMethod,GiftType,Amount,Fund";
+                string backupSelectBase = "Id,Date,AccountName,PaymentMethod,GiftType,Amount,Fund";
+                if (includeInternInBackup)
+                {
+                    backupColumnsBase += ",Intern";
+                    backupSelectBase += ",Intern";
+                }
+                if (includeAddresseeInBackup)
+                {
+                    backupColumnsBase += ",Addressee";
+                    backupSelectBase += ",Addressee";
+                }
+                backupColumnsBase += ",SoftCreditName,Address,City,State,PostalCode,Country,Email,PhoneFixed,PhoneMobile,DateCreated";
+                backupSelectBase += ",SoftCreditName,Address,City,State,PostalCode,Country,Email,PhoneFixed,PhoneMobile,DateCreated";
 
                 var insert = conn.CreateCommand();
                 insert.Transaction = (MySqlTransaction)tx;
                 insert.CommandTimeout = 300;
                 insert.CommandText = hasIsAnon
-                    ? @"INSERT INTO DonationDataBackup
-                        (Id,Date,AccountName,PaymentMethod,GiftType,Amount,Fund,SoftCreditName,Address,City,State,PostalCode,Country,Email,PhoneFixed,PhoneMobile,DateCreated,IsAnonymous,BackupId,BackupAt,Pinned,SourceRangeStart)
-                        SELECT Id,Date,AccountName,PaymentMethod,GiftType,Amount,Fund,SoftCreditName,Address,City,State,PostalCode,Country,Email,PhoneFixed,PhoneMobile,DateCreated,IsAnonymous,@bid,UTC_TIMESTAMP(),0,@from
+                    ? $@"INSERT INTO DonationDataBackup
+                        ({backupColumnsBase},IsAnonymous,BackupId,BackupAt,Pinned,SourceRangeStart)
+                        SELECT {backupSelectBase},IsAnonymous,@bid,UTC_TIMESTAMP(),0,@from
                         FROM DonationData"
-                    : @"INSERT INTO DonationDataBackup
-                        (Id,Date,AccountName,PaymentMethod,GiftType,Amount,Fund,SoftCreditName,Address,City,State,PostalCode,Country,Email,PhoneFixed,PhoneMobile,DateCreated,BackupId,BackupAt,Pinned,SourceRangeStart)
-                        SELECT Id,Date,AccountName,PaymentMethod,GiftType,Amount,Fund,SoftCreditName,Address,City,State,PostalCode,Country,Email,PhoneFixed,PhoneMobile,DateCreated,@bid,UTC_TIMESTAMP(),0,@from
+                    : $@"INSERT INTO DonationDataBackup
+                        ({backupColumnsBase},BackupId,BackupAt,Pinned,SourceRangeStart)
+                        SELECT {backupSelectBase},@bid,UTC_TIMESTAMP(),0,@from
                         FROM DonationData";
                 insert.Parameters.Add(new MySqlParameter("@bid", backupId));
                 insert.Parameters.Add(new MySqlParameter("@from", fromDate));
@@ -237,6 +277,14 @@ WHERE Frequency IS NULL OR Frequency NOT IN (1,2,3,4,5)";
         string tempFile = Path.Combine(Path.GetTempPath(), $"donation_import_{Guid.NewGuid():N}.csv");
         try
         {
+            var internPopulatedCount = batch.Count(r => !string.IsNullOrWhiteSpace(r.Intern));
+            var addresseePopulatedCount = batch.Count(r => !string.IsNullOrWhiteSpace(r.Addressee));
+            _logger.LogInformation(
+                "Donation import DB write debug: batchSize={BatchSize}, internPopulated={InternPopulated}, addresseePopulated={AddresseePopulated}",
+                batch.Count,
+                internPopulatedCount,
+                addresseePopulatedCount);
+
             var sb = new StringBuilder();
             foreach (var r in batch)
             {
@@ -247,6 +295,8 @@ WHERE Frequency IS NULL OR Frequency NOT IN (1,2,3,4,5)";
                 sb.Append(Q(r.GiftType)); sb.Append(',');
                 sb.Append(Q(r.Amount.ToString(CultureInfo.InvariantCulture))); sb.Append(',');
                 sb.Append(Q(r.Fund)); sb.Append(',');
+                sb.Append(Q(r.Intern)); sb.Append(',');
+                sb.Append(Q(r.Addressee)); sb.Append(',');
                 sb.Append(Q(r.SoftCreditName)); sb.Append(',');
                 sb.Append(Q(r.Address)); sb.Append(',');
                 sb.Append(Q(r.City)); sb.Append(',');
@@ -284,7 +334,7 @@ WHERE Frequency IS NULL OR Frequency NOT IN (1,2,3,4,5)";
                     Local = true
                 };
                 loader.Columns.AddRange(new[] { "Date","AccountName","PaymentMethod","GiftType","Amount","Fund",
-                    "SoftCreditName","Address","City","State","PostalCode","Country","Email",
+                    "Intern","Addressee","SoftCreditName","Address","City","State","PostalCode","Country","Email",
                     "PhoneFixed","PhoneMobile","IsAnonymous","DateCreated","Frequency" });
 
                 for (int attempt = 1; attempt <= maxAttempts; attempt++)
@@ -292,6 +342,7 @@ WHERE Frequency IS NULL OR Frequency NOT IN (1,2,3,4,5)";
                     try
                     {
                         result.Inserted = await Task.Run(() => (int)loader.Load(), ct);
+                        _logger.LogInformation("Donation import used MySqlBulkLoader. Inserted={Inserted}", result.Inserted);
                         return result;
                     }
                     catch (Exception ex)
@@ -304,7 +355,7 @@ WHERE Frequency IS NULL OR Frequency NOT IN (1,2,3,4,5)";
 
             // Attempt 2: multi-row parameterised INSERT
             var cols = new[] { "Date","AccountName","PaymentMethod","GiftType","Amount","Fund",
-                "SoftCreditName","Address","City","State","PostalCode","Country","Email",
+                "Intern","Addressee","SoftCreditName","Address","City","State","PostalCode","Country","Email",
                 "PhoneFixed","PhoneMobile","IsAnonymous","DateCreated","Frequency" };
 
             for (int attempt = 1; attempt <= maxAttempts; attempt++)
@@ -327,21 +378,24 @@ WHERE Frequency IS NULL OR Frequency NOT IN (1,2,3,4,5)";
                         cmd.Parameters.Add(new MySqlParameter(pn[3], row.GiftType));
                         cmd.Parameters.Add(new MySqlParameter(pn[4], row.Amount));
                         cmd.Parameters.Add(new MySqlParameter(pn[5], row.Fund));
-                        cmd.Parameters.Add(new MySqlParameter(pn[6], (object?)row.SoftCreditName ?? DBNull.Value));
-                        cmd.Parameters.Add(new MySqlParameter(pn[7], (object?)row.Address ?? DBNull.Value));
-                        cmd.Parameters.Add(new MySqlParameter(pn[8], (object?)row.City ?? DBNull.Value));
-                        cmd.Parameters.Add(new MySqlParameter(pn[9], (object?)row.State ?? DBNull.Value));
-                        cmd.Parameters.Add(new MySqlParameter(pn[10], (object?)row.PostalCode ?? DBNull.Value));
-                        cmd.Parameters.Add(new MySqlParameter(pn[11], (object?)row.Country ?? DBNull.Value));
-                        cmd.Parameters.Add(new MySqlParameter(pn[12], (object?)row.Email ?? DBNull.Value));
-                        cmd.Parameters.Add(new MySqlParameter(pn[13], (object?)row.PhoneFixed ?? DBNull.Value));
-                        cmd.Parameters.Add(new MySqlParameter(pn[14], (object?)row.PhoneMobile ?? DBNull.Value));
-                        cmd.Parameters.Add(new MySqlParameter(pn[15], row.IsAnonymous ? 1 : 0));
-                        cmd.Parameters.Add(new MySqlParameter(pn[16], row.DateCreated));
-                        cmd.Parameters.Add(new MySqlParameter(pn[17], row.Frequency.HasValue ? (object)(int)row.Frequency.Value : DBNull.Value));
+                        cmd.Parameters.Add(new MySqlParameter(pn[6], (object?)row.Intern ?? DBNull.Value));
+                        cmd.Parameters.Add(new MySqlParameter(pn[7], (object?)row.Addressee ?? DBNull.Value));
+                        cmd.Parameters.Add(new MySqlParameter(pn[8], (object?)row.SoftCreditName ?? DBNull.Value));
+                        cmd.Parameters.Add(new MySqlParameter(pn[9], (object?)row.Address ?? DBNull.Value));
+                        cmd.Parameters.Add(new MySqlParameter(pn[10], (object?)row.City ?? DBNull.Value));
+                        cmd.Parameters.Add(new MySqlParameter(pn[11], (object?)row.State ?? DBNull.Value));
+                        cmd.Parameters.Add(new MySqlParameter(pn[12], (object?)row.PostalCode ?? DBNull.Value));
+                        cmd.Parameters.Add(new MySqlParameter(pn[13], (object?)row.Country ?? DBNull.Value));
+                        cmd.Parameters.Add(new MySqlParameter(pn[14], (object?)row.Email ?? DBNull.Value));
+                        cmd.Parameters.Add(new MySqlParameter(pn[15], (object?)row.PhoneFixed ?? DBNull.Value));
+                        cmd.Parameters.Add(new MySqlParameter(pn[16], (object?)row.PhoneMobile ?? DBNull.Value));
+                        cmd.Parameters.Add(new MySqlParameter(pn[17], row.IsAnonymous ? 1 : 0));
+                        cmd.Parameters.Add(new MySqlParameter(pn[18], row.DateCreated));
+                        cmd.Parameters.Add(new MySqlParameter(pn[19], row.Frequency.HasValue ? (object)(int)row.Frequency.Value : DBNull.Value));
                     }
                     cmd.CommandText = $"INSERT INTO DonationData ({string.Join(',', cols)}) VALUES {string.Join(',', valueFragments)}";
                     result.Inserted = await cmd.ExecuteNonQueryAsync(ct);
+                    _logger.LogInformation("Donation import used multi-row insert. Inserted={Inserted}", result.Inserted);
                     await tx.CommitAsync(ct);
                     return result;
                 }
@@ -354,8 +408,8 @@ WHERE Frequency IS NULL OR Frequency NOT IN (1,2,3,4,5)";
 
             // Attempt 3: row-by-row fallback
             const string sql = @"INSERT INTO DonationData
-                (Date,AccountName,PaymentMethod,GiftType,Amount,Fund,SoftCreditName,Address,City,State,PostalCode,Country,Email,PhoneFixed,PhoneMobile,IsAnonymous,DateCreated,Frequency)
-                VALUES(@Date,@AccountName,@PaymentMethod,@GiftType,@Amount,@Fund,@SoftCreditName,@Address,@City,@State,@PostalCode,@Country,@Email,@PhoneFixed,@PhoneMobile,@IsAnonymous,@DateCreated,@Frequency)";
+                (Date,AccountName,PaymentMethod,GiftType,Amount,Fund,Intern,Addressee,SoftCreditName,Address,City,State,PostalCode,Country,Email,PhoneFixed,PhoneMobile,IsAnonymous,DateCreated,Frequency)
+                VALUES(@Date,@AccountName,@PaymentMethod,@GiftType,@Amount,@Fund,@Intern,@Addressee,@SoftCreditName,@Address,@City,@State,@PostalCode,@Country,@Email,@PhoneFixed,@PhoneMobile,@IsAnonymous,@DateCreated,@Frequency)";
             foreach (var row in batch)
             {
                 try
@@ -368,6 +422,8 @@ WHERE Frequency IS NULL OR Frequency NOT IN (1,2,3,4,5)";
                     cmd.Parameters.Add(new MySqlParameter("@GiftType", row.GiftType));
                     cmd.Parameters.Add(new MySqlParameter("@Amount", row.Amount));
                     cmd.Parameters.Add(new MySqlParameter("@Fund", row.Fund));
+                    cmd.Parameters.Add(new MySqlParameter("@Intern", (object?)row.Intern ?? DBNull.Value));
+                    cmd.Parameters.Add(new MySqlParameter("@Addressee", (object?)row.Addressee ?? DBNull.Value));
                     cmd.Parameters.Add(new MySqlParameter("@SoftCreditName", (object?)row.SoftCreditName ?? DBNull.Value));
                     cmd.Parameters.Add(new MySqlParameter("@Address", (object?)row.Address ?? DBNull.Value));
                     cmd.Parameters.Add(new MySqlParameter("@City", (object?)row.City ?? DBNull.Value));
@@ -388,6 +444,7 @@ WHERE Frequency IS NULL OR Frequency NOT IN (1,2,3,4,5)";
                     result.Errors.Add(ex.Message);
                 }
             }
+            _logger.LogInformation("Donation import used row-by-row insert. Inserted={Inserted}, Errors={ErrorCount}", result.Inserted, result.Errors.Count);
             return result;
         }
         catch (Exception ex)
@@ -417,6 +474,8 @@ WHERE Frequency IS NULL OR Frequency NOT IN (1,2,3,4,5)";
                 GiftType VARCHAR(255) NULL,
                 Amount DECIMAL(18,2) NULL,
                 Fund VARCHAR(255) NULL,
+                Intern VARCHAR(255) NULL,
+                Addressee VARCHAR(255) NULL,
                 SoftCreditName VARCHAR(255) NULL,
                 Address VARCHAR(255) NULL,
                 City VARCHAR(255) NULL,
