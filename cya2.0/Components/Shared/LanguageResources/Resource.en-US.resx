@@ -336,12 +336,6 @@
   <data name="TransactionType" xml:space="preserve">
     <value>Transaction Type</value>
   </data>
-  <data name="UpdateAccount" xml:space="preserve">
-    <value>Update Account</value>
-  </data>
-  <data name="UpdateLanguage" xml:space="preserve">
-    <value>Update Language</value>
-  </data>
   <data name="UpdateUser" xml:space="preserve">
     <value>Update User</value>
   </data>
@@ -504,8 +498,8 @@
   <data name="PleaseSelectAnAccount" xml:space="preserve">
     <value>Please select and account.</value>
   </data>
-  <data name="CreateSecondaryFund" xml:space="preserve">
-    <value>Create Secondary Fund</value>
+  <data name="ManageSecondaryFund" xml:space="preserve">
+    <value>Manage Secondary Fund</value>
   </data>
   <data name="ThisMonth" xml:space="preserve">
     <value>This Month</value>
@@ -517,7 +511,7 @@
     <value>All Dates</value>
   </data>
   <data name="AllDonors" xml:space="preserve">
-    <value>All Donors</value>
+    <value>All Dates</value>
   </data>
   <data name="NoDonorSelected" xml:space="preserve">
     <value>No donor has been selected.</value>
@@ -612,8 +606,8 @@
   <data name="EndingBalance" xml:space="preserve">
     <value>Ending Balance</value>
   </data>
-  <data name="CreatePrimaryFund" xml:space="preserve">
-    <value>Create Primary Fund</value>
+  <data name="ManagePrimaryFund" xml:space="preserve">
+    <value>Manage Primary Fund</value>
   </data>
   <data name="CreateNewFund" xml:space="preserve">
     <value>Create New Fund</value>
@@ -656,5 +650,23 @@
   </data>
   <data name="CopyTable" xml:space="preserve">
     <value>Copy Table</value>
+  </data>
+  <data name="Save" xml:space="preserve">
+    <value>Save</value>
+  </data>
+  <data name="HorizontalaxisMonthVerticalaxisTotalDonationsUSD" xml:space="preserve">
+    <value>Horizontal-axis: Month | Vertical-axis: Total Donations, USD</value>
+  </data>
+  <data name="MonthlyDonations" xml:space="preserve">
+    <value>Monthy Donations</value>
+  </data>
+  <data name="GraphType" xml:space="preserve">
+    <value>Graph Type</value>
+  </data>
+  <data name="ShowLabels" xml:space="preserve">
+    <value>Show Labels</value>
+  </data>
+  <data name="FrequencyView" xml:space="preserve">
+    <value>Frequency View</value>
   </data>
 </root>

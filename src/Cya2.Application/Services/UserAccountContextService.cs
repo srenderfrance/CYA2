@@ -1,6 +1,7 @@
 using Cya2.Application.Interfaces;
 using Cya2.Core.Interfaces;
 using Microsoft.Extensions.Logging;
+using System.Collections.Concurrent;
 
 namespace Cya2.Application.Services;
 
@@ -10,6 +11,7 @@ public class UserAccountContextService : IUserAccountContextService
     private readonly IUserAccountAccessRepository _userAccountAccessRepository;
     private readonly IAccountRepository _accountRepository;
     private readonly ILogger<UserAccountContextService> _logger;
+    private static readonly ConcurrentDictionary<string, UserAccountContext> _contextCache = new(StringComparer.OrdinalIgnoreCase);
 
     public UserAccountContextService(
         IUserRepository userRepository,
@@ -30,9 +32,21 @@ public class UserAccountContextService : IUserAccountContextService
             return null;
         }
 
+        var normalizedUserId = userId.Trim();
+        if (_contextCache.TryGetValue(normalizedUserId, out var cachedContext))
+        {
+            _logger.LogInformation(
+                "User account context source=cache user={UserId} isAdminOrViewer={IsAdminOrViewer} defaultAccountId={DefaultAccountId} accounts={AccountCount}",
+                normalizedUserId,
+                cachedContext.IsAdminOrViewer,
+                cachedContext.DefaultAccountId,
+                cachedContext.Accounts?.Count ?? 0);
+            return CloneContext(cachedContext);
+        }
+
         try
         {
-            var user = await ResolveUserAsync(userId);
+            var user = await ResolveUserAsync(normalizedUserId);
             if (user == null)
             {
                 return null;
@@ -48,7 +62,7 @@ public class UserAccountContextService : IUserAccountContextService
 
             if (isAdminOrViewerHint && !(isAdmin || isViewer))
             {
-                _logger.LogWarning("Applying admin/viewer hint for user {UserId} with DB AuthLevel '{AuthLevel}'", userId, authLevel);
+                _logger.LogWarning("Applying admin/viewer hint for user {UserId} with DB AuthLevel '{AuthLevel}'", normalizedUserId, authLevel);
             }
 
             var context = new UserAccountContext
@@ -59,11 +73,19 @@ public class UserAccountContextService : IUserAccountContextService
                 Accounts = await GetAccountsAsync(user.Id, canAccessAllAccounts)
             };
 
+            _contextCache[normalizedUserId] = CloneContext(context);
+            _logger.LogInformation(
+                "User account context source=db user={UserId} isAdminOrViewer={IsAdminOrViewer} defaultAccountId={DefaultAccountId} accounts={AccountCount}",
+                normalizedUserId,
+                context.IsAdminOrViewer,
+                context.DefaultAccountId,
+                context.Accounts?.Count ?? 0);
+
             return context;
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to build user account context for identifier {UserId}", userId);
+            _logger.LogError(ex, "Failed to build user account context for identifier {UserId}", normalizedUserId);
             return null;
         }
     }
@@ -127,5 +149,29 @@ public class UserAccountContextService : IUserAccountContextService
             BalanceAdjustment = a.BalanceAdjustment,
             OtherFunds = a.OtherFunds
         }).ToList();
+    }
+
+    private static UserAccountContext CloneContext(UserAccountContext source)
+    {
+        return new UserAccountContext
+        {
+            UserId = source.UserId,
+            IsAdminOrViewer = source.IsAdminOrViewer,
+            DefaultAccountId = source.DefaultAccountId,
+            Accounts = (source.Accounts ?? new List<UserAccountContextAccount>())
+                .Select(a => new UserAccountContextAccount
+                {
+                    AccountId = a.AccountId,
+                    Fund = a.Fund,
+                    AccountingClass = a.AccountingClass,
+                    AccountNumber = a.AccountNumber,
+                    CreatedAt = a.CreatedAt,
+                    Overhead = a.Overhead,
+                    SoftCredit = a.SoftCredit,
+                    BalanceAdjustment = a.BalanceAdjustment,
+                    OtherFunds = a.OtherFunds
+                })
+                .ToList()
+        };
     }
 }

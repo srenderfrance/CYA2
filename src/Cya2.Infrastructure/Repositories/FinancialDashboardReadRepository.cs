@@ -1,7 +1,9 @@
 using Cya2.Core.Entities;
 using Cya2.Core.Interfaces;
+using Cya2.Core.Utilities;
 using Dapper;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
 using MySql.Data.MySqlClient;
 
 namespace Cya2.Infrastructure.Repositories;
@@ -10,11 +12,13 @@ public sealed class FinancialDashboardReadRepository : IFinancialDashboardReadRe
 {
     private readonly IConfiguration _configuration;
     private readonly IDatabaseGuard _dbGuard;
+    private readonly ILogger<FinancialDashboardReadRepository> _logger;
 
-    public FinancialDashboardReadRepository(IConfiguration configuration, IDatabaseGuard dbGuard)
+    public FinancialDashboardReadRepository(IConfiguration configuration, IDatabaseGuard dbGuard, ILogger<FinancialDashboardReadRepository> logger)
     {
         _configuration = configuration;
         _dbGuard = dbGuard;
+        _logger = logger;
     }
 
     private string ConnStr => _configuration.GetConnectionString("default") ?? string.Empty;
@@ -36,6 +40,85 @@ WHERE Date >= @StartDate
         )
   )";
         return QuerySingleDecimalAsync(sql, new { StartDate = startDate, EndDate = endDate, account.Fund, account.AccountId });
+    }
+
+    public Task<decimal> GetInternDonationTotalAsync(string internDesignationName, DateTime startDate, DateTime endDate)
+    {
+        _dbGuard.ThrowIfUnavailable();
+        var normalizedDesignation = internDesignationName?.Trim() ?? string.Empty;
+        var alternateDesignation = InternAccountUtility.GetAlternateDesignationName(normalizedDesignation);
+        var hasAlternateDesignation = !string.IsNullOrWhiteSpace(alternateDesignation);
+        var hasNameTokens = InternAccountUtility.TryGetFirstAndLastName(normalizedDesignation, out var firstName, out var lastName);
+        var designationLookupKey = InternAccountUtility.BuildLookupKey(normalizedDesignation);
+        var alternateLookupKey = InternAccountUtility.BuildLookupKey(alternateDesignation);
+        var hasAlternateLookupKey = !string.IsNullOrWhiteSpace(alternateLookupKey);
+        const string sql = @"
+SELECT COALESCE(SUM(Amount), 0)
+FROM DonationData
+WHERE Date >= @StartDate
+  AND Date <= @EndDate
+  AND (
+      Intern COLLATE utf8mb4_0900_ai_ci = @InternDesignationName COLLATE utf8mb4_0900_ai_ci
+      OR (@HasAlternateDesignation = 1 AND Intern COLLATE utf8mb4_0900_ai_ci = @AlternateDesignation COLLATE utf8mb4_0900_ai_ci)
+      OR (
+          LOCATE(',', Intern) > 0
+          AND TRIM(CONCAT(
+              TRIM(SUBSTRING_INDEX(Intern, ',', -1)),
+              ' ',
+              TRIM(SUBSTRING_INDEX(Intern, ',', 1))
+          )) COLLATE utf8mb4_0900_ai_ci = @InternDesignationName COLLATE utf8mb4_0900_ai_ci
+      )
+      OR (
+          @HasAlternateDesignation = 1
+          AND LOCATE(',', Intern) > 0
+          AND TRIM(CONCAT(
+              TRIM(SUBSTRING_INDEX(Intern, ',', -1)),
+              ' ',
+              TRIM(SUBSTRING_INDEX(Intern, ',', 1))
+          )) COLLATE utf8mb4_0900_ai_ci = @AlternateDesignation COLLATE utf8mb4_0900_ai_ci
+      )
+      OR (
+          @HasNameTokens = 1
+          AND Intern IS NOT NULL
+          AND Intern COLLATE utf8mb4_0900_ai_ci LIKE @FirstToken COLLATE utf8mb4_0900_ai_ci
+          AND Intern COLLATE utf8mb4_0900_ai_ci LIKE @LastToken COLLATE utf8mb4_0900_ai_ci
+      )
+      OR (
+          LOWER(REPLACE(REPLACE(REPLACE(REPLACE(COALESCE(Intern,''), ' ', ''), ',', ''), '.', ''), '-', '')) = @DesignationLookupKey
+      )
+      OR (
+          @HasAlternateLookupKey = 1
+          AND LOWER(REPLACE(REPLACE(REPLACE(REPLACE(COALESCE(Intern,''), ' ', ''), ',', ''), '.', ''), '-', '')) = @AlternateLookupKey
+      )
+  )";
+
+        _logger.LogInformation(
+            "Intern dashboard total query debug: designation='{Designation}', alternate='{Alternate}', hasAlternate={HasAlternate}, firstName='{FirstName}', lastName='{LastName}', hasNameTokens={HasNameTokens}, lookupKey='{LookupKey}', alternateLookupKey='{AlternateLookupKey}', range={StartDate:yyyy-MM-dd}..{EndDate:yyyy-MM-dd}",
+            normalizedDesignation,
+            alternateDesignation,
+            hasAlternateDesignation,
+            firstName,
+            lastName,
+            hasNameTokens,
+            designationLookupKey,
+            alternateLookupKey,
+            startDate,
+            endDate);
+
+        return QuerySingleDecimalAsync(sql, new
+        {
+            StartDate = startDate,
+            EndDate = endDate,
+            InternDesignationName = normalizedDesignation,
+            AlternateDesignation = alternateDesignation,
+            HasAlternateDesignation = hasAlternateDesignation ? 1 : 0,
+            HasNameTokens = hasNameTokens ? 1 : 0,
+            FirstToken = $"%{firstName}%",
+            LastToken = $"%{lastName}%",
+            DesignationLookupKey = designationLookupKey,
+            AlternateLookupKey = alternateLookupKey,
+            HasAlternateLookupKey = hasAlternateLookupKey ? 1 : 0
+        });
     }
 
     public Task<decimal> GetExpenseTotalAsync(Account account, DateTime startDate, DateTime endDate)
@@ -109,6 +192,8 @@ WHERE (AccountingClass = @AccountingClass OR AccountNumber = @AccountNumber)
     private async Task<decimal> QuerySingleDecimalAsync(string sql, object parameters)
     {
         await using var conn = new MySqlConnection(ConnStr);
-        return await conn.ExecuteScalarAsync<decimal>(sql, parameters);
+        var value = await conn.ExecuteScalarAsync<decimal>(sql, parameters);
+        _logger.LogDebug("Dashboard scalar query result: {Value}", value);
+        return value;
     }
 }

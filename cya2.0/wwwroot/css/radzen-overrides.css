@@ -163,7 +163,15 @@ html {
 /* ------------------------------------------------------------
    6. EXPENSE GRID — inner table cell alignment
       (.narrow-expense-grid wraps the expense RadzenDataGrid.)
+      Container constrains, grid handles internal scrolling.
    ------------------------------------------------------------ */
+.narrow-expense-grid {
+    width: 100%;
+    max-width: 100%;
+    overflow: hidden; /* Clip the grid, but grid itself will scroll internally */
+    position: relative;
+}
+
 .narrow-expense-grid th:nth-child(1) .rz-column-title,
 .narrow-expense-grid td:nth-child(1) {
     text-align: right !important;

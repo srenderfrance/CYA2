@@ -336,12 +336,6 @@
   <data name="TransactionType" xml:space="preserve">
     <value>Tipo de Transacción</value>
   </data>
-  <data name="UpdateAccount" xml:space="preserve">
-    <value>Actualizar Cuenta</value>
-  </data>
-  <data name="UpdateLanguage" xml:space="preserve">
-    <value>Actualizar Idioma</value>
-  </data>
   <data name="UpdateUser" xml:space="preserve">
     <value>Actualizar Usuario</value>
   </data>
@@ -504,8 +498,8 @@
   <data name="PleaseSelectAnAccount" xml:space="preserve">
     <value>Por favor seleccione una cuenta.</value>
   </data>
-  <data name="CreateSecondaryFund" xml:space="preserve">
-    <value>Crear Fondo Secondario</value>
+  <data name="ManageSecondaryFund" xml:space="preserve">
+    <value>Administrar Fondo Secondario</value>
   </data>
   <data name="ThisMonth" xml:space="preserve">
     <value>Este Mes</value>
@@ -517,7 +511,7 @@
     <value>Todas las Fechas</value>
   </data>
   <data name="AllDonors" xml:space="preserve">
-    <value>Todos los Donantes</value>
+    <value>Todas las Fechas</value>
   </data>
   <data name="NoDonorSelected" xml:space="preserve">
     <value>No se ha seleccionado ningún donante.</value>
@@ -612,8 +606,8 @@
   <data name="EndingBalance" xml:space="preserve">
     <value>Saldo Final</value>
   </data>
-  <data name="CreatePrimaryFund" xml:space="preserve">
-    <value>Crear Fondo Primario</value>
+  <data name="ManagePrimaryFund" xml:space="preserve">
+    <value>AdministrarFondo Primario</value>
   </data>
   <data name="CreateNewFund" xml:space="preserve">
     <value>Crear Nuevo Fondo</value>
@@ -656,5 +650,23 @@
   </data>
   <data name="CopyTable" xml:space="preserve">
     <value>Copiar Tabla</value>
+  </data>
+  <data name="Save" xml:space="preserve">
+    <value>&#x8;Guardar</value>
+  </data>
+  <data name="HorizontalaxisMonthVerticalaxisTotalDonationsUSD" xml:space="preserve">
+    <value>Eje horizontal: Mes | Eje vertical: Total de donaciones (USD)</value>
+  </data>
+  <data name="MonthlyDonations" xml:space="preserve">
+    <value>Donaciones Mensuales</value>
+  </data>
+  <data name="GraphType" xml:space="preserve">
+    <value>Typo de Gráfico</value>
+  </data>
+  <data name="ShowLabels" xml:space="preserve">
+    <value>Mostrar Etiquetas</value>
+  </data>
+  <data name="FrequencyView" xml:space="preserve">
+    <value>Vista de Frecuencia</value>
   </data>
 </root>

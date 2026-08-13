@@ -8,37 +8,42 @@ public enum DonorFrequency
     /// <summary>
     /// No donations or invalid state
     /// </summary>
-    None,
+    None = 0,
     
     /// <summary>
     /// Single donation with no follow-up gifts
     /// </summary>
-    OneTime,
+    OneTime = 1,
     
     /// <summary>
     /// Multiple donations but irregular timing (not monthly or yearly pattern)
     /// </summary>
-    Sporadic,
+    Sporadic = 2,
     
     /// <summary>
     /// Regular monthly giving pattern (with allowance for catch-up donations)
     /// </summary>
-    Monthly,
+    Monthly = 3,
+
+    /// <summary>
+    /// Regular quarterly giving pattern (about every 3 months)
+    /// </summary>
+    Quarterly = 4,
     
     /// <summary>
     /// Annual giving pattern - one or more gifts per year around same time
     /// </summary>
-    Yearly,
+    Yearly = 5,
     
     /// <summary>
     /// Legacy value for backward compatibility - maps to Sporadic
     /// </summary>
     [Obsolete("Use Sporadic instead")]
-    Occasional,
+    Occasional = Sporadic,
     
     /// <summary>
     /// Legacy value for backward compatibility - maps to Monthly
     /// </summary>
     [Obsolete("Use Monthly instead")]
-    Frequent
+    Frequent = Monthly
 }

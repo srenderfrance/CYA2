@@ -1,6 +1,7 @@
 using Cya2.Application.DTOs;
 using Cya2.Application.Interfaces;
 using Cya2.Core.Interfaces;
+using Cya2.Core.Utilities;
 using Microsoft.Extensions.Logging;
 
 namespace Cya2.Application.Services;
@@ -58,7 +59,7 @@ public class FinancialDashboardService : IFinancialDashboardService
                 {
                     AccountId = a.AccountId,
                     Fund = a.Fund ?? string.Empty,
-                    DisplayName = a.Fund ?? string.Empty,
+                    DisplayName = InternAccountUtility.GetDisplayFundName(a.Fund),
                     AccountingClass = a.AccountingClass ?? string.Empty,
                     AccountNumber = a.AccountNumber ?? string.Empty,
                     Overhead = Convert.ToDecimal(a.Overhead),
@@ -80,6 +81,7 @@ public class FinancialDashboardService : IFinancialDashboardService
 
             dashboard.SelectedAccount = selectedContextAccount.Fund ?? string.Empty;
             dashboard.HasAccountData = true;
+            var isInternAccount = InternAccountUtility.IsInternFund(dashboard.SelectedAccount);
 
             // Embed full-range donation payloads for selected and default accounts so client receives them on initial load
             try
@@ -92,7 +94,11 @@ public class FinancialDashboardService : IFinancialDashboardService
                 {
                     try
                     {
-                        var selDto = await _donationService.GetDonationDataAsync(dashboard.SelectedAccount, "All", new Core.ValueObjects.DateRange(start, end), userId);
+                        var selDto = await _donationService.GetDonationDataAsync(
+                            dashboard.SelectedAccount,
+                            "All",
+                            new Core.ValueObjects.DateRange(start, end),
+                            userId);
                         dashboard.SelectedAccountDonations = selDto;
                     }
                     catch (Exception ex)
@@ -120,7 +126,11 @@ public class FinancialDashboardService : IFinancialDashboardService
                 _logger.LogWarning(ex, "Error preloading embedded donation payloads for dashboard");
             }
 
-            if (useSessionAccountDataCache)
+            if (isInternAccount)
+            {
+                await PopulateInternSummariesAsync(dashboard, selectedContextAccount);
+            }
+            else if (useSessionAccountDataCache)
             {
                 await PopulateSummariesFromSessionCacheAsync(dashboard, selectedContextAccount, userContext.DefaultAccountId == selectedContextAccount.AccountId);
                 _sessionAccountDataCache.LogCacheStatus();
@@ -153,7 +163,7 @@ public class FinancialDashboardService : IFinancialDashboardService
             {
                 AccountId = a.AccountId,
                 Fund = a.Fund ?? string.Empty,
-                DisplayName = a.Fund ?? string.Empty,
+                DisplayName = InternAccountUtility.GetDisplayFundName(a.Fund),
                 AccountingClass = a.AccountingClass ?? string.Empty,
                 AccountNumber = a.AccountNumber ?? string.Empty,
                 Overhead = Convert.ToDecimal(a.Overhead),
@@ -191,6 +201,39 @@ public class FinancialDashboardService : IFinancialDashboardService
                 return points;
             }
 
+            if (InternAccountUtility.IsInternFund(selectedAccount.Fund) &&
+                InternAccountUtility.TryGetInternDesignationName(selectedAccount.Fund, out var internDesignationName))
+            {
+                var internCursor = new DateTime(startDate.Year, startDate.Month, 1);
+                var internEndMonth = new DateTime(endDate.Year, endDate.Month, 1);
+                var internSingleYear = startDate.Year == endDate.Year;
+
+                while (internCursor <= internEndMonth)
+                {
+                    var monthStart = internCursor;
+                    var monthEnd = internCursor.AddMonths(1).AddDays(-1);
+                    if (monthEnd > endDate)
+                    {
+                        monthEnd = endDate;
+                    }
+
+                    var donationTotal = await _financialDashboardReadRepository.GetInternDonationTotalAsync(internDesignationName, monthStart, monthEnd);
+                    points.Add(new MonthlyAccountVisualizationDto
+                    {
+                        MonthStart = monthStart,
+                        MonthLabel = monthStart.ToString(internSingleYear ? "MMM" : "MMM yy"),
+                        DonationTotal = donationTotal,
+                        OverheadTotal = _accountCalculationService.CalculateOverheadAmount(selectedAccount, donationTotal),
+                        ExpenseTotal = 0,
+                        Balance = donationTotal
+                    });
+
+                    internCursor = internCursor.AddMonths(1);
+                }
+
+                return points;
+            }
+
             var repositoryAccount = ToCoreAccount(selectedAccount);
             var cursor = new DateTime(startDate.Year, startDate.Month, 1);
             var endMonth = new DateTime(endDate.Year, endDate.Month, 1);
@@ -216,6 +259,7 @@ public class FinancialDashboardService : IFinancialDashboardService
                     MonthStart = monthStart,
                     MonthLabel = monthStart.ToString(singleYear ? "MMM" : "MMM yy"),
                     DonationTotal = donationTask.Result,
+                    OverheadTotal = _accountCalculationService.CalculateOverheadAmount(selectedAccount, donationTask.Result),
                     ExpenseTotal = expenseTask.Result,
                     Balance = balanceTask.Result
                 });
@@ -229,6 +273,46 @@ public class FinancialDashboardService : IFinancialDashboardService
         }
 
         return points;
+    }
+
+    private async Task PopulateInternSummariesAsync(FinancialDashboardDto dashboard, UserAccountContextAccount selectedAccount)
+    {
+        if (!InternAccountUtility.TryGetInternDesignationName(selectedAccount.Fund, out var internDesignationName))
+        {
+            return;
+        }
+
+        var now = DateTime.Now;
+        var currentMonthStart = new DateTime(now.Year, now.Month, 1);
+        var currentMonthEnd = currentMonthStart.AddMonths(1).AddDays(-1);
+        var priorMonthStart = currentMonthStart.AddMonths(-1);
+        var priorMonthEnd = currentMonthStart.AddDays(-1);
+        var currentYearStart = new DateTime(now.Year, 1, 1);
+        var currentYearEnd = new DateTime(now.Year, now.Month, DateTime.DaysInMonth(now.Year, now.Month));
+        var priorYearStart = new DateTime(now.Year - 1, 1, 1);
+        var priorYearEnd = new DateTime(now.Year - 1, 12, 31);
+
+        dashboard.CurrentMonth = await BuildInternSummaryFromAggregatesAsync(selectedAccount, internDesignationName, currentMonthStart, currentMonthEnd, now.ToString("MMMM yyyy"));
+        dashboard.PriorMonth = await BuildInternSummaryFromAggregatesAsync(selectedAccount, internDesignationName, priorMonthStart, priorMonthEnd, now.AddMonths(-1).ToString("MMMM yyyy"));
+        dashboard.CurrentYear = await BuildInternSummaryFromAggregatesAsync(selectedAccount, internDesignationName, currentYearStart, currentYearEnd, now.ToString("yyyy"));
+        dashboard.PriorYear = await BuildInternSummaryFromAggregatesAsync(selectedAccount, internDesignationName, priorYearStart, priorYearEnd, (now.Year - 1).ToString());
+
+        SetYearAverages(dashboard, now);
+    }
+
+    private async Task<FinancialSummaryDto> BuildInternSummaryFromAggregatesAsync(UserAccountContextAccount account, string internDesignationName, DateTime startDate, DateTime endDate, string period)
+    {
+        var donationTotal = await _financialDashboardReadRepository.GetInternDonationTotalAsync(internDesignationName, startDate, endDate);
+
+        return new FinancialSummaryDto
+        {
+            Period = period,
+            TotalDonations = donationTotal,
+            TotalOverhead = _accountCalculationService.CalculateOverheadAmount(account, donationTotal),
+            TotalExpenses = 0,
+            InternalTransfers = 0,
+            Balance = donationTotal
+        };
     }
 
     private async Task PopulateSummariesFromSessionCacheAsync(FinancialDashboardDto dashboard, UserAccountContextAccount selectedAccount, bool isDefaultAccount)

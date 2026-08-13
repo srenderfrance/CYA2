@@ -1,7 +1,7 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk.Web">
 
   <PropertyGroup>
-    <TargetFramework>net8.0</TargetFramework>
+    <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <RootNamespace>cya2</RootNamespace>
@@ -10,12 +10,11 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Dapper" Version="2.1.72" />
-    <PackageReference Include="EPPlus" Version="8.5.0" />
-    <PackageReference Include="Microsoft.AspNetCore.Authentication.Google" Version="8.0.16" />
-    <PackageReference Include="MySql.Data" Version="9.6.0" />
-    <PackageReference Include="Radzen.Blazor" Version="9.1.0" />
-    <PackageReference Include="System.Security.Cryptography.Xml" Version="10.0.8" />
+    <PackageReference Include="Dapper" Version="2.1.79" />
+    <PackageReference Include="EPPlus" Version="8.6.0" />
+    <PackageReference Include="Microsoft.AspNetCore.Authentication.Google" Version="10.0.8" />
+    <PackageReference Include="MySql.Data" Version="9.7.0" />
+    <PackageReference Include="Radzen.Blazor" Version="10.4.7" />
   </ItemGroup>
 
   <ItemGroup>
@@ -36,14 +35,6 @@
     <EmbeddedResource Update="Components\Shared\LanguageResources\Resource.es-US.resx">
       <LogicalName>cya2.Components.Shared.LanguageResources.Resource.es-US.resources</LogicalName>
     </EmbeddedResource>
-  </ItemGroup>
-
-  <ItemGroup>
-    <Folder Include="cya2.0\Components\Shared\" />
-    <Folder Include="cya2.0\wwwroot\css\" />
-    <Folder Include="cya2.0\wwwroot\js\" />
-    <Folder Include="Infrastructure\Repositories\" />
-    <Folder Include="UtilityClasses\" />
   </ItemGroup>
 
 </Project>

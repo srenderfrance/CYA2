@@ -1,0 +1,36 @@
+@if (IsLoading)
+{
+    <div class="@GetContainerClass()" style="@GetContainerStyle()">
+        @if (LoadingContent is not null)
+        {
+            @LoadingContent
+        }
+        else
+        {
+            <PageLoadingIndicator IsLoading="true" LoadingText="@LoadingText" />
+        }
+    </div>
+}
+else
+{
+    @ChildContent
+}
+
+@code {
+    [Parameter] public bool IsLoading { get; set; }
+    [Parameter] public string LoadingText { get; set; } = "Loading...";
+    [Parameter] public string MinHeight { get; set; } = "120px";
+    [Parameter] public string Class { get; set; } = string.Empty;
+    [Parameter] public bool UseCardSurface { get; set; } = true;
+    [Parameter] public RenderFragment? LoadingContent { get; set; }
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+
+    private string GetContainerClass()
+    {
+        var surfaceClass = UseCardSurface ? " section-loading-boundary--card" : string.Empty;
+        var extraClass = string.IsNullOrWhiteSpace(Class) ? string.Empty : $" {Class}";
+        return $"section-loading-boundary{surfaceClass}{extraClass}";
+    }
+
+    private string GetContainerStyle() => $"min-height: {MinHeight};";
+}

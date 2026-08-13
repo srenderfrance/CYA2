@@ -7,8 +7,6 @@ namespace Cya2.Core.Entities;
 /// </summary>
 public class SubAccount : BaseEntity
 {
-    public int Id { get; set; }
-
     public int AccountId { get; set; }
 
     // UI refers to this as "Fund" for sub-funds; DB column name is SubFund
