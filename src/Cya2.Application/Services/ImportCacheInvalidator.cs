@@ -14,6 +14,8 @@ public sealed class ImportCacheInvalidator : IImportCacheInvalidator
     private readonly ISessionDonorSummaryCacheService _donorCache;
     private readonly ISessionExpenseDataCacheService _expenseCache;
     private readonly ISessionDashboardDtoCacheService _dashboardCache;
+    private readonly IAccountSnapshotCache _accountSnapshotCache;
+    private readonly ICacheInvalidationVersion _cacheInvalidationVersion;
     private readonly ILogger<ImportCacheInvalidator> _logger;
 
     public ImportCacheInvalidator(
@@ -21,12 +23,16 @@ public sealed class ImportCacheInvalidator : IImportCacheInvalidator
         ISessionDonorSummaryCacheService donorCache,
         ISessionExpenseDataCacheService expenseCache,
         ISessionDashboardDtoCacheService dashboardCache,
+        IAccountSnapshotCache accountSnapshotCache,
+        ICacheInvalidationVersion cacheInvalidationVersion,
         ILogger<ImportCacheInvalidator> logger)
     {
         _donationCache = donationCache;
         _donorCache    = donorCache;
         _expenseCache  = expenseCache;
         _dashboardCache = dashboardCache;
+        _accountSnapshotCache = accountSnapshotCache;
+        _cacheInvalidationVersion = cacheInvalidationVersion;
         _logger        = logger;
     }
 
@@ -36,6 +42,8 @@ public sealed class ImportCacheInvalidator : IImportCacheInvalidator
         _donorCache.InvalidateAll();
         _expenseCache.InvalidateAll();
         _dashboardCache.InvalidateAll();
-        _logger.LogInformation("All session caches cleared after import/rollback");
+        _accountSnapshotCache.InvalidateAll();
+        _cacheInvalidationVersion.Invalidate();
+        _logger.LogInformation("All session and account snapshot caches cleared after import/rollback");
     }
 }

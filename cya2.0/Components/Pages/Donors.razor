@@ -18,7 +18,7 @@
 @inject ISessionUserStateService SessionUserStateService
 @inject IDateRangeStateService DateRangeStateService
 @inject Cya2.Application.Interfaces.IUserIdResolver UserIdResolver
-@rendermode InteractiveServer
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
 @attribute [StreamRendering]
 @inject IStringLocalizer<Resource> Localizer
 @inject IJSRuntime JS
@@ -30,6 +30,7 @@
 @inject IUserSelectionService UserSelectionService
 @inject IUserDateRangeSelectionService DateRangeSelectionService
 @inject cya2.Services.UserSessionHydrationService SessionHydrationService
+@inject cya2.Services.Diagnostics.PageLoadCorrelationContext PageLoadCorrelation
 
 <PageTitle>@Localizer["Donors"]</PageTitle>
 
@@ -361,6 +362,7 @@
 
     protected override async Task OnInitializedAsync()
     {
+        using var operationScope = PageLoadCorrelation.BeginOperation(Logger, nameof(Donors), "Initialize");
         var initSw = Stopwatch.StartNew();
         try
         {
@@ -580,7 +582,7 @@
                 else
                 {
                     Logger.LogInformation("[Donors] Query path=Range+Account accountId={AccountId} fund='{Fund}' range={Start:yyyy-MM-dd}..{End:yyyy-MM-dd}", currentAccount.AccountId, currentAccount.Fund, range.StartDate, range.EndDate);
-                    donorsInRange = await DonorService.GetDonorSummariesForAccountAsync(currentAccount.AccountId, currentAccount.Fund, range);
+                    donorsInRange = await DonorService.GetDonorSummariesForAccountAsync(currentAccount, range);
                 }
             }
 
