@@ -19,6 +19,9 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<ISessionImportProgressService, SessionImportProgressService>();
         services.AddScoped<IDateRangeStateService, DateRangeStateService>();
         services.AddScoped<IUserAccountContextService, UserAccountContextService>();
+        services.AddSingleton<ICacheInvalidationVersion, CacheInvalidationVersion>();
+        services.AddSingleton<IAccountSnapshotCache, AccountSnapshotCache>();
+        services.AddScoped<IAccountSnapshotLoader, AccountSnapshotLoader>();
 
         // Donor analytics service
         services.AddScoped<IDonorAnalyticsService, DonorAnalyticsService>();
@@ -44,6 +47,8 @@ public static class ServiceCollectionExtensions
         services.AddScoped<UserManagementService>();
         services.AddScoped<AdminFundReadService>();
         services.AddScoped<AdminFundWriteService>();
+        services.AddScoped<IAdminPreloadService, AdminPreloadService>();
+        services.AddScoped<IAdminRecentAccountSnapshotService, AdminRecentAccountSnapshotService>();
 
         // Donor management services - enabled for Donors.razor migration
         services.AddScoped<IDonorService, DonorService>();

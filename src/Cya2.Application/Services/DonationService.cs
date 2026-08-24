@@ -1,5 +1,6 @@
 using Cya2.Application.DTOs;
 using Cya2.Application.Interfaces;
+using Cya2.Application.Models;
 using Cya2.Core.ValueObjects;
 using Cya2.Core.Interfaces;
 using Cya2.Core.Utilities;
@@ -13,17 +14,23 @@ public class DonationService : IDonationService
     private readonly IUserAccountContextService _userAccountContextService;
     private readonly IDonationReadRepository _donationReadRepository;
     private readonly ISessionDonationDataCacheService _donationCache;
+    private readonly IAccountSnapshotCache _accountSnapshotCache;
+    private readonly IAccountSnapshotLoader _accountSnapshotLoader;
     private readonly ILogger<DonationService> _logger;
 
     public DonationService(
         IUserAccountContextService userAccountContextService,
         IDonationReadRepository donationReadRepository,
         ISessionDonationDataCacheService donationCache,
+        IAccountSnapshotCache accountSnapshotCache,
+        IAccountSnapshotLoader accountSnapshotLoader,
         ILogger<DonationService> logger)
     {
         _userAccountContextService = userAccountContextService;
         _donationReadRepository = donationReadRepository;
         _donationCache = donationCache;
+        _accountSnapshotCache = accountSnapshotCache;
+        _accountSnapshotLoader = accountSnapshotLoader;
         _logger = logger;
     }
 
@@ -38,7 +45,8 @@ public class DonationService : IDonationService
 
         try
         {
-            if (!forceRefresh && !bypassSubAccountCache && !string.IsNullOrWhiteSpace(userId) && !string.IsNullOrWhiteSpace(accountName) && _donationCache != null)
+            if (!forceRefresh && !bypassSubAccountCache && !string.IsNullOrWhiteSpace(userId) && !string.IsNullOrWhiteSpace(accountName) && _donationCache != null &&
+                !IsCanonicalSnapshotRange(cacheQueryRange))
             {
                 if (_donationCache.TryGetDonationData(userId, accountName, out var directCached) &&
                     CacheCoversRequestedRange(directCached, dateRange))
@@ -69,7 +77,7 @@ public class DonationService : IDonationService
                 if (directCached != null)
                 {
                     _logger.LogInformation(
-                        "Donation data cache-direct range mismatch user='{UserId}' account='{Account}' requested={RequestedStart:yyyy-MM-dd}..{RequestedEnd:yyyy-MM-dd} cached={CachedStart:yyyy-MM-dd}..{CachedEnd:yyyy-MM-dd} bypassSubAccountCache={BypassSubAccountCache} forceRefresh={ForceRefresh}",
+                        "Donation data cache miss user='{UserId}' account='{Account}' reason=date-range-mismatch requested={RequestedStart:yyyy-MM-dd}..{RequestedEnd:yyyy-MM-dd} cached={CachedStart:yyyy-MM-dd}..{CachedEnd:yyyy-MM-dd} bypassSubAccountCache={BypassSubAccountCache} forceRefresh={ForceRefresh}",
                         userId,
                         accountName,
                         dateRange.StartDate,
@@ -116,12 +124,37 @@ public class DonationService : IDonationService
 
             result.SelectedSubAccount = normalizedSubSelection;
             var selectedIsInternAccount = selected != null && InternAccountUtility.IsInternFund(selected.Fund);
+            var queryRange = bypassSubAccountCache ? dateRange : cacheQueryRange;
+            AccountDataSnapshot? accountSnapshot = null;
+            var donationDataSource = "repository";
+
+            if (selected != null && IsCanonicalSnapshotRange(queryRange))
+            {
+                var snapshotKey = new AccountSnapshotKey(selected.AccountId, selected.Fund, 0).Normalize();
+                var snapshotWasCached = _accountSnapshotCache.TryGet(snapshotKey, out var cachedSnapshot);
+                accountSnapshot = snapshotWasCached
+                    ? cachedSnapshot
+                    : await _accountSnapshotCache.GetOrCreateAsync(
+                        snapshotKey,
+                        cancellationToken => _accountSnapshotLoader.LoadAsync(selected, queryRange, snapshotKey, cancellationToken),
+                        CancellationToken.None);
+                donationDataSource = snapshotWasCached ? "snapshot-cache" : "snapshot-load";
+            }
 
             // Build sub-account options for the selected account when Separate sub-accounts exist.
             var separateSubAccounts = new List<Cya2.Core.Entities.SubAccount>();
             if (selected != null && !selectedIsInternAccount)
             {
-                var allSubAccounts = await _donationReadRepository.GetSubAccountsByAccountIdAsync(selected.AccountId);
+                var allSubAccounts = accountSnapshot?.SubAccounts
+                    .Select(sa => new Cya2.Core.Entities.SubAccount
+                    {
+                        Id = sa.Id,
+                        AccountId = sa.AccountId,
+                        SubFund = sa.SubFund,
+                        Kind = sa.Kind
+                    })
+                    .ToList()
+                    ?? await _donationReadRepository.GetSubAccountsByAccountIdAsync(selected.AccountId);
                 separateSubAccounts = allSubAccounts
                     .Where(sa => string.Equals(sa.Kind, "Separate", StringComparison.OrdinalIgnoreCase) && !string.IsNullOrWhiteSpace(sa.SubFund))
                     .ToList();
@@ -185,7 +218,8 @@ public class DonationService : IDonationService
             fundsToQuery = fundsToQuery.Where(f => !string.IsNullOrWhiteSpace(f)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
 
             // If we have a cache and caller requested a single fund, try cache first (this covers initial load where Home may have pre-cached)
-            if (!forceRefresh && !bypassSubAccountCache && !string.IsNullOrWhiteSpace(result.SelectedAccount) && _donationCache != null)
+            if (!forceRefresh && !bypassSubAccountCache && !string.IsNullOrWhiteSpace(result.SelectedAccount) && _donationCache != null &&
+                accountSnapshot == null)
             {
                 if (_donationCache.TryGetDonationData(userId, result.SelectedAccount, out var cached) &&
                     CacheCoversRequestedRange(cached, dateRange))
@@ -219,7 +253,7 @@ public class DonationService : IDonationService
                 if (cached != null)
                 {
                     _logger.LogInformation(
-                        "Donation data cache range mismatch user='{UserId}' selectedAccount='{SelectedAccount}' requested={RequestedStart:yyyy-MM-dd}..{RequestedEnd:yyyy-MM-dd} cached={CachedStart:yyyy-MM-dd}..{CachedEnd:yyyy-MM-dd} bypassSubAccountCache={BypassSubAccountCache} forceRefresh={ForceRefresh}",
+                        "Donation data cache miss user='{UserId}' selectedAccount='{SelectedAccount}' reason=date-range-mismatch requested={RequestedStart:yyyy-MM-dd}..{RequestedEnd:yyyy-MM-dd} cached={CachedStart:yyyy-MM-dd}..{CachedEnd:yyyy-MM-dd} bypassSubAccountCache={BypassSubAccountCache} forceRefresh={ForceRefresh}",
                         userId,
                         result.SelectedAccount,
                         dateRange.StartDate,
@@ -240,10 +274,24 @@ public class DonationService : IDonationService
                 forceRefresh,
                 normalizedSubSelection);
 
-            // Query donation records from read repository
+            // Query donation records from the shared snapshot when available; retain the existing repository path otherwise.
             var donationRecords = new List<Cya2.Core.ReadModels.DonationRecord>();
-            var queryRange = bypassSubAccountCache ? dateRange : cacheQueryRange;
-            if (selected != null && !string.IsNullOrWhiteSpace(selected.Fund))
+            if (accountSnapshot != null && selected != null && !selectedIsInternAccount &&
+                (!result.ShowSubAccountDropdown || string.Equals(result.SelectedSubAccount, "Primary", StringComparison.OrdinalIgnoreCase)))
+            {
+                var snapshotDonations = accountSnapshot.Donations
+                    .Select(ToDonationRecord)
+                    .Where(r => r.Date.Date >= dateRange.StartDate.Date && r.Date.Date <= dateRange.EndDate.Date);
+                donationRecords = snapshotDonations.ToList();
+            }
+            else if (accountSnapshot != null && selectedIsInternAccount)
+            {
+                donationRecords = accountSnapshot.Donations
+                    .Select(ToDonationRecord)
+                    .Where(r => r.Date.Date >= dateRange.StartDate.Date && r.Date.Date <= dateRange.EndDate.Date)
+                    .ToList();
+            }
+            else if (selected != null && !string.IsNullOrWhiteSpace(selected.Fund))
             {
                 if (selectedIsInternAccount)
                 {
@@ -302,7 +350,8 @@ public class DonationService : IDonationService
             }
 
             _logger.LogInformation(
-                "Donation data source=db loaded for user '{UserId}': selectedAccount='{SelectedAccount}', requestedAccount='{RequestedAccount}', fundsQueried={FundCount}, rows={RowCount}, requestedRange={RequestedStart:yyyy-MM-dd}..{RequestedEnd:yyyy-MM-dd}, queriedRange={QueryStart:yyyy-MM-dd}..{QueryEnd:yyyy-MM-dd}, elapsedMs={ElapsedMs}",
+                "Donation data source={DataSource} for user '{UserId}': selectedAccount='{SelectedAccount}', requestedAccount='{RequestedAccount}', fundsQueried={FundCount}, rows={RowCount}, requestedRange={RequestedStart:yyyy-MM-dd}..{RequestedEnd:yyyy-MM-dd}, queriedRange={QueryStart:yyyy-MM-dd}..{QueryEnd:yyyy-MM-dd}, elapsedMs={ElapsedMs}",
+                donationDataSource,
                 userId,
                 result.SelectedAccount,
                 accountName,
@@ -361,6 +410,100 @@ public class DonationService : IDonationService
         return result;
     }
 
+    private async Task<AccountDataSnapshot> LoadAccountSnapshotAsync(
+        UserAccountContextAccount account,
+        DateRange queryRange,
+        AccountSnapshotKey key)
+    {
+        var donations = InternAccountUtility.IsInternFund(account.Fund) &&
+                        InternAccountUtility.TryGetInternDesignationName(account.Fund, out var designation)
+            ? await _donationReadRepository.GetInternDonationsByDesignationAndDateRangeAsync(
+                designation,
+                queryRange.StartDate,
+                queryRange.EndDate)
+            : await _donationReadRepository.GetDonationsByAccountAndDateRangeAsync(
+                account.AccountId,
+                account.Fund,
+                queryRange.StartDate,
+                queryRange.EndDate);
+
+        var subAccounts = InternAccountUtility.IsInternFund(account.Fund)
+            ? new List<Cya2.Core.Entities.SubAccount>()
+            : await _donationReadRepository.GetSubAccountsByAccountIdAsync(account.AccountId);
+
+        var donationSnapshots = (donations ?? [])
+            .Select(ToDonationSnapshot)
+            .ToList();
+        var subAccountSnapshots = (subAccounts ?? [])
+            .Select(sa => new SubAccountSnapshot(sa.Id, sa.AccountId, sa.SubFund, sa.Kind))
+            .ToList();
+
+        return new AccountDataSnapshot(
+            key,
+            donationSnapshots,
+            [],
+            subAccountSnapshots,
+            DateTime.UtcNow,
+            EstimateSnapshotBytes(donationSnapshots, subAccountSnapshots));
+    }
+
+    private static DonationSnapshot ToDonationSnapshot(Cya2.Core.ReadModels.DonationRecord record)
+        => new(
+            record.Id,
+            record.Date,
+            record.Frequency,
+            record.AccountName,
+            record.PaymentMethod,
+            record.GiftType,
+            record.Amount,
+            record.Fund,
+            record.Intern,
+            record.HonorMemorialName,
+            record.Addressee,
+            record.SoftCreditName,
+            record.Address,
+            record.City,
+            record.State,
+            record.PostalCode,
+            record.Country,
+            record.Email,
+            record.PhoneFixed,
+            record.PhoneMobile,
+            record.DateCreated,
+            record.IsAnonymous);
+
+    private static Cya2.Core.ReadModels.DonationRecord ToDonationRecord(DonationSnapshot snapshot)
+        => new()
+        {
+            Id = snapshot.Id,
+            Date = snapshot.Date,
+            Frequency = snapshot.Frequency,
+            AccountName = snapshot.AccountName,
+            PaymentMethod = snapshot.PaymentMethod,
+            GiftType = snapshot.GiftType,
+            Amount = snapshot.Amount,
+            Fund = snapshot.Fund,
+            Intern = snapshot.Intern,
+            HonorMemorialName = snapshot.HonorMemorialName,
+            Addressee = snapshot.Addressee,
+            SoftCreditName = snapshot.SoftCreditName,
+            Address = snapshot.Address,
+            City = snapshot.City,
+            State = snapshot.State,
+            PostalCode = snapshot.PostalCode,
+            Country = snapshot.Country,
+            Email = snapshot.Email,
+            PhoneFixed = snapshot.PhoneFixed,
+            PhoneMobile = snapshot.PhoneMobile,
+            DateCreated = snapshot.DateCreated,
+            IsAnonymous = snapshot.IsAnonymous
+        };
+
+    private static long EstimateSnapshotBytes(
+        IReadOnlyCollection<DonationSnapshot> donations,
+        IReadOnlyCollection<SubAccountSnapshot> subAccounts)
+        => (donations.Count * 512L) + (subAccounts.Count * 128L);
+
     private static bool CacheCoversRequestedRange(DonationDataDto cached, DateRange requested)
     {
         if (cached == null) return false;
@@ -385,6 +528,13 @@ public class DonationService : IDonationService
         }
 
         return new DateRange(start, end);
+    }
+
+    private static bool IsCanonicalSnapshotRange(DateRange range)
+    {
+        var now = DateTime.UtcNow;
+        return range.StartDate.Date == new DateTime(now.Year - 2, 1, 1) &&
+               range.EndDate.Date == new DateTime(now.Year, 12, 31);
     }
 
     private static string GetFrequencyLabel(Cya2.Core.Enums.DonorFrequency? frequency) => frequency switch

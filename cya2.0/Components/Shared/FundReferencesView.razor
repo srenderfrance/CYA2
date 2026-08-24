@@ -1,7 +1,7 @@
 @using Cya2.Core.Entities
-@using Cya2.Application.Services
+@using Cya2.Application.Interfaces
 @inject IStringLocalizer<Resource> Localizer
-@inject AdminFundReadService AdminFundReadService
+@inject IAdminPreloadService AdminPreloadService
 @inject IJSRuntime JS
 
 <RadzenStack Orientation="Orientation.Vertical" Gap="1rem" Class="rz-p-3" Style="overflow:auto;">
@@ -49,7 +49,7 @@
     {
         try
         {
-            accounts = (await AdminFundReadService.GetAllAccountsAsync() ?? new List<Account>())
+            accounts = (await AdminPreloadService.GetAccountsAsync())
                 .OrderBy(a => a.Fund)
                 .ToList();
         }

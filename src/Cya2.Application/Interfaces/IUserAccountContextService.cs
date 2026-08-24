@@ -11,6 +11,7 @@ public sealed class UserAccountContext
     public int UserId { get; set; }
     public bool IsAdminOrViewer { get; set; }
     public int? DefaultAccountId { get; set; }
+    public long CacheVersion { get; set; }
     public List<UserAccountContextAccount> Accounts { get; set; } = new();
 }
 

@@ -4,6 +4,7 @@
 @using cya2.Components.Shared
 @attribute [Authorize(Roles = "Admin")]
 @inject Cya2.Application.Interfaces.ISessionUserStateService SessionUserStateService
+@inject Cya2.Application.Interfaces.IUserSelectionService UserSelectionService
 @inject Cya2.Application.Interfaces.ISessionImportProgressService SessionImportProgressService
 @inject NavigationManager Navigation
 @inject AuthenticationStateProvider AuthStateProvider
@@ -12,7 +13,7 @@
 @using Cya2.Core.Entities
 @using System.ComponentModel.DataAnnotations
 @inject ILogger<Admin> _logger
-@rendermode InteractiveServer
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
 @using Radzen.Blazor
 @using Radzen
 @using Cya2.Shared.Utilities
@@ -27,6 +28,10 @@
 @inject IDonationImportService DonationImportService
 @inject Cya2.Application.Services.UserManagementService UserManagementService
 @inject Cya2.Application.Services.AdminFundReadService AdminFundReadService
+@inject IAdminPreloadService AdminPreloadService
+@inject IAdminRecentAccountSnapshotService AdminRecentAccountSnapshotService
+@inject IUserAccountContextService UserAccountContextService
+@inject IImportCacheInvalidator ImportCacheInvalidator
 @inject Cya2.Application.Services.AdminFundWriteService AdminFundWriteService
 @inject Cya2.Application.Interfaces.IUserIdResolver UserIdResolver
 
@@ -673,6 +678,10 @@
                     throw new ArgumentException("Invalid import type");
                 }
 
+                AdminPreloadService.Invalidate();
+                AdminRecentAccountSnapshotService.Invalidate();
+                ImportCacheInvalidator.InvalidateAll();
+
                 if (result == null || string.IsNullOrWhiteSpace(result.ProgressId))
                 {
                     NotificationService.Notify(new NotificationMessage
@@ -913,6 +922,18 @@
                     LoadAllStaff(),
                     LoadSubAccounts(null)
                 );
+
+                var userContext = await UserAccountContextService.GetContextAsync(resolvedUserId, isAdminOrViewerHint: true);
+                if (userContext?.DefaultAccountId is int defaultAccountId)
+                {
+                    var defaultAccount = allAccounts.FirstOrDefault(a => a.AccountId == defaultAccountId);
+                    if (defaultAccount is not null)
+                    {
+                        AdminRecentAccountSnapshotService.WarmDefaultAccount(defaultAccount);
+                    }
+                }
+
+                _ = AdminPreloadService.PreloadAsync(resolvedUserId);
 
                 RefreshAccountsOptions();
                 
@@ -1395,6 +1416,10 @@
                 }
 
                 fundUpdateSuccess = op.Message;
+                AdminPreloadService.Invalidate();
+                AdminRecentAccountSnapshotService.Invalidate();
+                    ImportCacheInvalidator.InvalidateAll();
+                ImportCacheInvalidator.InvalidateAll();
 
                 // Refresh funds and reset selection
                 await LoadAllAccounts();
@@ -1449,6 +1474,9 @@
                 }
 
                 fundUpdateSuccess = op.Message;
+                AdminPreloadService.Invalidate();
+                AdminRecentAccountSnapshotService.Invalidate();
+                ImportCacheInvalidator.InvalidateAll();
 
                 ClearFundInputFields();
                 await LoadAllAccounts();
@@ -1511,6 +1539,8 @@
                     }
 
                     fundUpdateSuccess = op.Message;
+                    AdminPreloadService.Invalidate();
+                    AdminRecentAccountSnapshotService.Invalidate();
 
                     subAccountNameEdit = string.Empty;
                     subAccountKindEdit = subFundKinds.FirstOrDefault() ?? "Merged";
@@ -1581,6 +1611,10 @@
 
                 fundUpdateSuccess = op.Message;
 
+                AdminPreloadService.Invalidate();
+                AdminRecentAccountSnapshotService.Invalidate();
+                ImportCacheInvalidator.InvalidateAll();
+
                 ClearFundInputFields();
                 await LoadAllAccounts();
                 allFunds = allAccounts;
@@ -1612,9 +1646,9 @@
             subAccountKindEdit = "Merged";
         }
 
-        public Task fundSelection(string displayText)
+        public async Task fundSelection(string displayText)
         {
-            if (string.IsNullOrEmpty(displayText)) return Task.CompletedTask;
+            if (string.IsNullOrEmpty(displayText)) return;
 
             selectedFund = displayText;
 
@@ -1630,7 +1664,7 @@
                 // Clear input fields for new fund entry
                 ClearFundInputFields();
                 StateHasChanged(); // Trigger UI update for HasSecondaryFunds indicator
-                return Task.CompletedTask;
+                return;
             }
 
             // Find the FundDisplayItem by matching the display text
@@ -1639,6 +1673,12 @@
             {
                 selectedFundAccount = selectedItem.Account;
                 selectedAccountId = selectedItem.Account.AccountId;
+                SessionUserStateService.SelectedAccountFund = selectedItem.Account.Fund ?? string.Empty;
+                var resolvedUserId = UserIdResolver.ResolveUserId(
+                    (await AuthStateProvider.GetAuthenticationStateAsync()).User,
+                    SessionUserStateService.CurrentUserId);
+                UserSelectionService.SetSelectedAccount(resolvedUserId, selectedItem.Account.Fund ?? string.Empty);
+                AdminRecentAccountSnapshotService.RecordSelection(selectedItem.Account);
                 
                 // Populate form fields with existing account data
                 newFundName = selectedItem.Account.Fund;
@@ -1662,15 +1702,15 @@
             }
 
             StateHasChanged(); // Trigger UI update for HasSecondaryFunds indicator
-            return Task.CompletedTask;
+            return;
         }
 
         private async Task LoadAllAccounts()
         {
             try
             {
-                var result = await AdminFundReadService.GetAllAccountsAsync();
-                allAccounts = result ?? new List<Account>();
+                var result = await AdminPreloadService.GetAccountsAsync();
+                allAccounts = result.ToList();
                 sharedAccountsBool = new List<SharedAccountBool>();
             }
             catch (Exception ex)
@@ -1686,7 +1726,7 @@
             try
             {
                 _logger.LogInformation("Admin.LoadAllStaff: starting user load.");
-                var users = await UserManagementService.GetAdminUsersAsync();
+                var users = await AdminPreloadService.GetStaffAsync();
                 _logger.LogInformation("Admin.LoadAllStaff: service returned {Count} users.", users?.Count ?? 0);
 
                 staff = (users ?? new List<Cya2.Application.DTOs.AdminUserDto>())
@@ -1984,6 +2024,8 @@
                 if (result.Success)
                 {
                     rollbackStatus = result.Message;
+                    AdminPreloadService.Invalidate();
+                    AdminRecentAccountSnapshotService.Invalidate();
                     
                     // Auto-close dialog after success and show notification
                     await Task.Delay(3000);
@@ -2048,8 +2090,10 @@
         {
             try
             {
-                var data = await AdminFundReadService.GetSubAccountsAsync(accountId);
-                subAccounts = data ?? new List<SubAccount>();
+                var data = accountId.HasValue && accountId.Value > 0
+                    ? await AdminFundReadService.GetSubAccountsAsync(accountId)
+                    : await AdminPreloadService.GetSubAccountsAsync();
+                subAccounts = data?.ToList() ?? new List<SubAccount>();
                 RefreshFilteredSubAccounts();
             }
             catch (Exception ex)
@@ -2138,6 +2182,9 @@
                 }
 
                 subAccountUpdateSuccess = op.Message;
+                AdminPreloadService.Invalidate();
+                AdminRecentAccountSnapshotService.Invalidate();
+                ImportCacheInvalidator.InvalidateAll();
                 await LoadSubAccounts(selectedSubAccount.AccountId);
                 selectedPrincipleAccountId = selectedSubAccount.AccountId;
                 RefreshFilteredSubAccounts();
@@ -2173,6 +2220,9 @@
                 }
 
                 subAccountUpdateSuccess = op.Message;
+                AdminPreloadService.Invalidate();
+                AdminRecentAccountSnapshotService.Invalidate();
+                ImportCacheInvalidator.InvalidateAll();
                 var accountId = selectedSubAccount.AccountId;
                 await LoadSubAccounts(accountId);
                 selectedPrincipleAccountId = accountId;

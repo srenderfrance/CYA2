@@ -18,8 +18,9 @@
 @inject Cya2.Application.Interfaces.IUserSelectionService UserSelectionService
 @inject Cya2.Application.Interfaces.IUserDateRangeSelectionService DateRangeSelectionService
 @inject cya2.Services.UserSessionHydrationService SessionHydrationService
+@inject cya2.Services.Diagnostics.PageLoadCorrelationContext PageLoadCorrelation
 
-@rendermode InteractiveServer
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
 @attribute [StreamRendering]
 @attribute [Authorize(Policy = "CanAccessExpenses")]
 @inject IStringLocalizer<Resource> Localizer
@@ -274,6 +275,7 @@
 
     protected override async Task OnInitializedAsync()
     {
+        using var operationScope = PageLoadCorrelation.BeginOperation(Logger, nameof(Expenses), "Initialize");
         var initSw = Stopwatch.StartNew();
         try
         {
@@ -282,8 +284,6 @@
             var user = authState.User;
 
             userId = SessionHydrationService.HydrateForUser(user);
-
-            Console.WriteLine($"[Expenses] OnInitializedAsync: resolved userId='{userId}', Session.SelectedAccountFund='{SessionUserStateService.SelectedAccountFund}', Session.DefaultAccountFund='{SessionUserStateService.DefaultAccountFund}'");
 
             var authLevel = user.FindFirstValue("AuthLevel") ?? string.Empty;
             var isAdminOrViewer = user.IsInRole("Admin") ||
@@ -331,7 +331,6 @@
                 // If the session is empty, persist the server-selected account so subsequent navigations are stable
                 if (string.IsNullOrWhiteSpace(SessionUserStateService.SelectedAccountFund) && !string.IsNullOrWhiteSpace(expenseData.SelectedAccount))
                 {
-                    Console.WriteLine($"[Expenses] Persisting server-selected account: '{expenseData.SelectedAccount}'");
                     SessionUserStateService.SelectedAccountFund = expenseData.SelectedAccount;
                     if (!string.IsNullOrWhiteSpace(userId))
                     {
@@ -347,8 +346,6 @@
             // Totals
             expenseTotal = expenseData.ExpenseTotal;
             transferTotal = expenseData.TransferTotal;
-
-            Console.WriteLine($"[Expenses] userId={userId}, accounts={expenseData.UserAccounts?.Count ?? 0}, selected={selectedAccount}, expenses={expenseData.ExpenseTransactions?.Count ?? 0}, transfers={expenseData.TransferTransactions?.Count ?? 0}");
         }
         catch (Exception ex)
         {
@@ -458,8 +455,6 @@
             // Totals
             expenseTotal = expenseData.ExpenseTotal;
             transferTotal = expenseData.TransferTotal;
-
-            Console.WriteLine($"[Expenses] userId={userId}, accounts={expenseData.UserAccounts?.Count ?? 0}, selected={selectedAccount}, expenses={expenseData.ExpenseTransactions?.Count ?? 0}, transfers={expenseData.TransferTransactions?.Count ?? 0}");
         }
         catch (Exception ex)
         {

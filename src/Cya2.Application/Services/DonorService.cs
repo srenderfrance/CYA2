@@ -4,6 +4,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using Cya2.Application.DTOs;
 using Cya2.Application.Interfaces;
+using Cya2.Application.Models;
 using Cya2.Core.Enums;
 using Cya2.Core.Interfaces;
 using Cya2.Core.ReadModels;
@@ -25,22 +26,29 @@ namespace Cya2.Application.Services
         private readonly IUserAccountContextService _userAccountContextService;
         private readonly ILogger<DonorService> _logger;
         private readonly ISessionDonorSummaryCacheService _donorSummaryCache;
+        private readonly IAccountSnapshotCache _accountSnapshotCache;
+        private readonly IAccountSnapshotLoader _accountSnapshotLoader;
         private readonly DonorFrequencyService _frequencyService;
         private readonly DonorMissingGiftService _missingGiftService;
         private string? _lastQuery;
         private static readonly ConcurrentDictionary<string, SemaphoreSlim> _queryLocks = new(StringComparer.OrdinalIgnoreCase);
         private static readonly ConcurrentDictionary<string, List<string>> _accountFundsCache = new(StringComparer.OrdinalIgnoreCase);
+        private static readonly ConcurrentDictionary<string, List<string>> _separateAccountFundsCache = new(StringComparer.OrdinalIgnoreCase);
 
         public DonorService(
             IDonationReadRepository donationReadRepository,
             IUserAccountContextService userAccountContextService,
             ILogger<DonorService> logger,
-            ISessionDonorSummaryCacheService donorSummaryCache)
+            ISessionDonorSummaryCacheService donorSummaryCache,
+            IAccountSnapshotCache accountSnapshotCache,
+            IAccountSnapshotLoader accountSnapshotLoader)
         {
             _donationReadRepository = donationReadRepository;
             _userAccountContextService = userAccountContextService;
             _logger = logger;
             _donorSummaryCache = donorSummaryCache;
+            _accountSnapshotCache = accountSnapshotCache;
+            _accountSnapshotLoader = accountSnapshotLoader;
             _frequencyService = new DonorFrequencyService();
             _missingGiftService = new DonorMissingGiftService();
         }
@@ -114,8 +122,43 @@ namespace Cya2.Application.Services
         public async Task<List<DonorSummaryDto>> GetDonorSummariesForAccountAsync(int accountId, string accountFund, DateRange dateRange)
         {
             var funds = await GetExpandedFundsForAccountAsync(accountId, accountFund);
-
             return await GetDonorSummariesAsync(funds, dateRange);
+        }
+
+        public async Task<List<DonorSummaryDto>> GetDonorSummariesForAccountAsync(AccountOptionDto account, DateRange dateRange)
+        {
+            var funds = await GetExpandedFundsForAccountAsync(account.AccountId, account.Fund);
+            if (!CanUseAccountSnapshot(dateRange))
+            {
+                return await GetDonorSummariesAsync(funds, dateRange);
+            }
+
+            var signature = BuildFundsSignature(funds);
+            if (_donorSummaryCache.TryGetDonorSummaries(signature, dateRange.StartDate, dateRange.EndDate, out var cached))
+            {
+                return cached;
+            }
+
+            var snapshotDonations = await LoadDonationsFromAccountSnapshotAsync(account, dateRange);
+            var separateFunds = _separateAccountFundsCache.TryGetValue(BuildAccountFundsKey(account.AccountId, account.Fund), out var cachedSeparateFunds)
+                ? cachedSeparateFunds
+                : new List<string>();
+
+            if (separateFunds.Count > 0)
+            {
+                var separateDonations = await _donationReadRepository.GetDonationsByFundsAndDateRangeAsync(
+                    separateFunds,
+                    dateRange.StartDate,
+                    dateRange.EndDate);
+                snapshotDonations.AddRange(separateDonations ?? []);
+            }
+
+            var result = BuildDonorSummaries(DeduplicateDonations(snapshotDonations))
+                .OrderByDescending(d => d.Total)
+                .ThenBy(d => d.Name)
+                .ToList();
+            _donorSummaryCache.SetDonorSummaries(signature, dateRange.StartDate, dateRange.EndDate, result);
+            return result;
         }
 
 
@@ -191,9 +234,112 @@ namespace Cya2.Application.Services
             funds.AddRange(subAccounts.Select(s => s.SubFund));
             funds = NormalizeFunds(funds);
 
+            _separateAccountFundsCache[key] = NormalizeFunds(
+                subAccounts
+                    .Where(s => string.Equals(s.Kind, "Separate", StringComparison.OrdinalIgnoreCase))
+                    .Select(s => s.SubFund));
+
             _accountFundsCache[key] = funds;
 
             return funds;
+        }
+
+        private async Task<List<DonationRecord>> LoadDonationsFromAccountSnapshotAsync(
+            AccountOptionDto account,
+            DateRange dateRange)
+        {
+            var key = new AccountSnapshotKey(account.AccountId, account.Fund, 0).Normalize();
+            var queryRange = GetSnapshotQueryRange();
+            var wasCached = _accountSnapshotCache.TryGet(key, out var snapshot);
+
+            if (!wasCached)
+            {
+                snapshot = await _accountSnapshotCache.GetOrCreateAsync(
+                    key,
+                    cancellationToken => LoadSnapshotAccountAsync(account, queryRange, key, cancellationToken),
+                    CancellationToken.None);
+            }
+
+            _logger.LogInformation(
+                "Donor data source={Source} account={Account} requestedRange={Start:yyyy-MM-dd}..{End:yyyy-MM-dd} queriedRange={QueriedStart:yyyy-MM-dd}..{QueriedEnd:yyyy-MM-dd} snapshotCreatedUtc={SnapshotCreatedUtc:o} donations={DonationCount}",
+                wasCached ? "snapshot-cache" : "snapshot-load",
+                account.Fund,
+                dateRange.StartDate,
+                dateRange.EndDate,
+                queryRange.StartDate,
+                queryRange.EndDate,
+                snapshot.CreatedUtc,
+                snapshot.Donations.Count);
+
+            return snapshot.Donations
+                .Where(d => d.Date.Date >= dateRange.StartDate.Date && d.Date.Date <= dateRange.EndDate.Date)
+                .Select(MapToDonationRecord)
+                .ToList();
+        }
+
+        private Task<AccountDataSnapshot> LoadSnapshotAccountAsync(
+            AccountOptionDto account,
+            DateRange queryRange,
+            AccountSnapshotKey key,
+            CancellationToken cancellationToken)
+        {
+            return _accountSnapshotLoader.LoadAsync(
+                new UserAccountContextAccount
+                {
+                    AccountId = account.AccountId,
+                    Fund = account.Fund,
+                    AccountingClass = account.AccountingClass,
+                    AccountNumber = account.AccountNumber,
+                    Overhead = account.Overhead
+                },
+                queryRange,
+                key,
+                cancellationToken);
+        }
+
+        private static string BuildAccountFundsKey(int accountId, string accountFund)
+            => $"{accountId}|{accountFund?.Trim() ?? string.Empty}";
+
+        private static bool CanUseAccountSnapshot(DateRange range)
+        {
+            var now = DateTime.UtcNow;
+            return range.StartDate.Date >= new DateTime(now.Year - 2, 1, 1) &&
+                   range.EndDate.Date <= new DateTime(now.Year, 12, 31);
+        }
+
+        private static DateRange GetSnapshotQueryRange()
+        {
+            var now = DateTime.UtcNow;
+            return new DateRange(new DateTime(now.Year - 2, 1, 1), new DateTime(now.Year, 12, 31));
+        }
+
+        private static DonationRecord MapToDonationRecord(DonationSnapshot snapshot)
+        {
+            return new DonationRecord
+            {
+                Id = snapshot.Id,
+                Date = snapshot.Date,
+                Frequency = snapshot.Frequency,
+                AccountName = snapshot.AccountName,
+                PaymentMethod = snapshot.PaymentMethod,
+                GiftType = snapshot.GiftType,
+                Amount = snapshot.Amount,
+                Fund = snapshot.Fund,
+                Intern = snapshot.Intern,
+                HonorMemorialName = snapshot.HonorMemorialName,
+                Addressee = snapshot.Addressee,
+                SoftCreditName = snapshot.SoftCreditName,
+                Address = snapshot.Address,
+                City = snapshot.City,
+                State = snapshot.State,
+                PostalCode = snapshot.PostalCode,
+                Country = snapshot.Country,
+                Email = snapshot.Email,
+                PhoneFixed = snapshot.PhoneFixed,
+                PhoneMobile = snapshot.PhoneMobile,
+                DateCreated = snapshot.DateCreated,
+                IsAnonymous = snapshot.IsAnonymous
+            };
         }
         public async Task<DonorDetailDto?> GetDonorDetailAsync(string donorName, string accountFund)
         {

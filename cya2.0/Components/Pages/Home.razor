@@ -6,7 +6,7 @@
 @using Radzen
 @using Radzen.Blazor
 @attribute [Authorize]
-@rendermode InteractiveServer
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
 @attribute [StreamRendering]
 @using System.Security.Claims
 @using System.Globalization
@@ -30,6 +30,7 @@
 @inject Cya2.Application.Interfaces.IExpenseService ExpenseService
 @inject Cya2.Application.Interfaces.IDonorService DonorService
 @inject cya2.Services.UserSessionHydrationService SessionHydrationService
+@inject cya2.Services.Diagnostics.PageLoadCorrelationContext PageLoadCorrelation
 
 <style>
     .home-account-row {
@@ -868,6 +869,7 @@ private bool showMissingGiftDialog = false;
 
     protected override async Task OnInitializedAsync()
     {
+        using var operationScope = PageLoadCorrelation.BeginOperation(Logger, nameof(Home), "Initialize");
         var initSw = Stopwatch.StartNew();
         isLoading = true;
         isAccountDataLoading = true;
@@ -979,12 +981,14 @@ private bool showMissingGiftDialog = false;
 
         try
         {
+            using var operationScope = PageLoadCorrelation.BeginOperation(Logger, nameof(Home), "AfterRenderPrefetch");
             await PrefetchDashboardsAsync(cachedUserId, pendingPrefetchFunds);
             BuildDebugMessage("prefetch-complete");
             
             // Also prefetch donation caches for those funds for a wide date range (current + 2 previous years)
             _ = Task.Run(async () =>
             {
+                using var operationScope = PageLoadCorrelation.BeginOperation(Logger, nameof(Home), "DonationPrefetch");
                 try
                 {
                     var now = DateTime.UtcNow;
@@ -1256,6 +1260,7 @@ private bool showMissingGiftDialog = false;
 
         _ = Task.Run(async () =>
         {
+            using var operationScope = PageLoadCorrelation.BeginOperation(Logger, nameof(Home), "BackgroundPrefetch");
             try
             {
                 var now = DateTime.UtcNow;
