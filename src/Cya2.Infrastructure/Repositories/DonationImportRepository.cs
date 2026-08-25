@@ -136,6 +136,20 @@ public sealed class DonationImportRepository : IDonationImportRepository
             else
             {
                 _progress.UpdateStep(progressId, "Database Backup", "No existing records found");
+
+                // Preserve the empty pre-import state as a rollback target. Without a
+                // marker, rollback selects an older populated backup and restores it.
+                var emptyBackup = conn.CreateCommand();
+                emptyBackup.Transaction = (MySqlTransaction)tx;
+                emptyBackup.CommandTimeout = 60;
+                emptyBackup.CommandText = @"
+                    INSERT INTO DonationDataBackup
+                        (BackupId, Id, BackupAt, Pinned, SourceRangeStart)
+                    VALUES
+                        (@bid, 0, UTC_TIMESTAMP(), 0, @from)";
+                emptyBackup.Parameters.Add(new MySqlParameter("@bid", backupId));
+                emptyBackup.Parameters.Add(new MySqlParameter("@from", fromDate));
+                await emptyBackup.ExecuteNonQueryAsync(ct);
             }
 
             await tx.CommitAsync(ct);

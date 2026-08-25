@@ -3,6 +3,7 @@ using cya2.Components;
 using cya2.Components.Shared;
 using cya2.Middleware;
 using cya2.Services;
+using cya2.Services.Diagnostics;
 using cya2.Services.Imports;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
@@ -11,6 +12,7 @@ using Microsoft.AspNetCore.Authentication.OAuth;
 using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Components.Server;
+using Microsoft.AspNetCore.Components.Server.Circuits;
 using Microsoft.AspNetCore.Localization;
 using Microsoft.AspNetCore.RateLimiting;
 using OfficeOpenXml;
@@ -52,15 +54,22 @@ if (!string.IsNullOrEmpty(mysqlConnStr))
 
 builder.Services.AddLogging(l =>
 {
-    l.AddConsole();
+    l.AddConsole(options => options.IncludeScopes = true);
     if (builder.Environment.IsDevelopment())
     {
         l.AddDebug();
+        l.AddFilter("Microsoft.WebTools.BrowserLink", LogLevel.Error);
+        l.AddFilter("Microsoft.AspNetCore.Watch.BrowserRefresh", LogLevel.Error);
+        l.AddFilter("Microsoft.Hosting.Lifetime", LogLevel.Warning);
+        l.AddFilter("Cya2.Infrastructure.Services.DatabaseMonitorService", LogLevel.Warning);
+        l.AddFilter("cya2.Services.CacheDataVersionMonitorService", LogLevel.Warning);
     }
 });
 
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<UserSessionHydrationService>();
+builder.Services.AddScoped<PageLoadCorrelationContext>();
+builder.Services.AddScoped<CircuitHandler, PageLoadCircuitHandler>();
 builder.Services.AddHostedService<CacheDataVersionMonitorService>();
 
 // Needed by file upload preview calls and some components/services

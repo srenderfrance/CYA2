@@ -1,13 +1,11 @@
 @using Radzen.Blazor
 @using Cya2.Application.Interfaces
-@using Cya2.Application.Services
 @using Cya2.Application.DTOs
 @using Microsoft.AspNetCore.Components.Authorization
 @using System.Security.Claims
 @inject IStringLocalizer<Resource> Localizer
 @inject AuthenticationStateProvider AuthStateProvider
-@inject AdminFundReadService AdminFundReadService
-@inject IFinancialDashboardService FinancialDashboardService
+@inject IAdminPreloadService AdminPreloadService
 @inject IJSRuntime JS
 
 <RadzenStack Orientation="Orientation.Vertical" Gap="1rem" Class="rz-p-3 accounts-overview-root" Style="overflow:auto;">
@@ -140,7 +138,6 @@
     private List<FundBalanceRow> fundBalances = new();
     private bool showDonations12m = false; // default to balance view
     private bool financialsLoaded = false;
-    private string adminUserId = string.Empty;
     private bool isLoading = true;
 
     protected override async Task OnInitializedAsync()
@@ -148,76 +145,30 @@
         try
         {
             var authState = await AuthStateProvider.GetAuthenticationStateAsync();
-            adminUserId = authState.User.FindFirstValue("UserId")
-                       ?? authState.User.FindFirstValue(ClaimTypes.Email)
-                       ?? authState.User.Identity?.Name
-                       ?? string.Empty;
-
-            var accounts = await AdminFundReadService.GetAllAccountsAsync();
+            var accounts = await AdminPreloadService.GetAccountsAsync();
 
             fundBalances = accounts
                 .OrderBy(a => a.Fund)
                 .Select(a => new FundBalanceRow { Fund = a.Fund })
                 .ToList();
 
-            _ = LoadFinancialsAsync(accounts.Select(a => a.Fund).ToList());
+            var overview = await AdminPreloadService.GetAccountOverviewAsync();
+            fundBalances = overview
+                .OrderBy(a => a.Fund)
+                .Select(a => new FundBalanceRow
+                {
+                    Fund = a.Fund,
+                    CurrentBalance = a.CurrentBalance,
+                    Last12MonthsDonations = a.Last12MonthsDonations
+                })
+                .ToList();
+            financialsLoaded = true;
+            isLoading = false;
         }
         catch (Exception ex)
         {
             errorMessage = $"Error loading accounts: {ex.Message}";
             isLoading = false;
-        }
-    }
-
-    private async Task LoadFinancialsAsync(List<string> funds)
-    {
-        try
-        {
-            var fundTasks = funds.Select(async fund =>
-            {
-                try
-                {
-                    var dashboard = await FinancialDashboardService.GetDashboardSummaryDataAsync(fund, adminUserId);
-                    return (Fund: fund, Dashboard: dashboard, Error: (Exception?)null);
-                }
-                catch (Exception ex)
-                {
-                    return (Fund: fund, Dashboard: (FinancialDashboardDto?)null, Error: ex);
-                }
-            }).ToList();
-
-            var results = await Task.WhenAll(fundTasks);
-
-            foreach (var result in results)
-            {
-                if (result.Error != null)
-                {
-                    Console.WriteLine($"Error loading financials for {result.Fund}: {result.Error.Message}");
-                    continue;
-                }
-
-                if (result.Dashboard == null)
-                {
-                    continue;
-                }
-
-                var row = fundBalances.FirstOrDefault(r => r.Fund == result.Fund);
-                if (row != null)
-                {
-                    row.CurrentBalance = result.Dashboard.CurrentYear.Balance;
-                    row.Last12MonthsDonations = result.Dashboard.CurrentYear.TotalDonations;
-                }
-            }
-
-            financialsLoaded = true;
-            isLoading = false;
-            await InvokeAsync(StateHasChanged);
-        }
-        catch (Exception ex)
-        {
-            errorMessage = $"Error loading financial data: {ex.Message}";
-            isLoading = false;
-            await InvokeAsync(StateHasChanged);
         }
     }
 

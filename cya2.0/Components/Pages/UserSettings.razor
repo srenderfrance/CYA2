@@ -68,7 +68,7 @@
                         </RadzenText>
                         
                         <RadzenDropDown TValue="string"
-                                        Data="@userAccounts"
+                                        Data="@defaultAccountOptions"
                                         TextProperty="Fund"
                                         ValueProperty="AccountingClass"
                                         Value="@selectedAccountingClass"
@@ -77,11 +77,11 @@
                                         Style="width: 100%;"
                                         Disabled="@(userAccounts == null || userAccounts.Count == 0)">
                             <ValueTemplate>
-                                @{ var sel = (userAccounts ?? Enumerable.Empty<AccountOptionDto>()).FirstOrDefault(a => a.AccountingClass == selectedAccountingClass); }
-                                @DisplayFormatter.FormatFundDisplay(sel?.Fund)
+                                @{ var sel = defaultAccountOptions.FirstOrDefault(a => a.AccountingClass == selectedAccountingClass); }
+                                @(sel?.AccountId == 0 ? Localizer["None"] : DisplayFormatter.FormatFundDisplay(sel?.Fund))
                             </ValueTemplate>
                             <Template Context="acct">
-                                @DisplayFormatter.FormatFundDisplay(acct.Fund)
+                                @(acct.AccountId == 0 ? Localizer["None"] : DisplayFormatter.FormatFundDisplay(acct.Fund))
                             </Template>
                         </RadzenDropDown>
                         
@@ -131,6 +131,16 @@
     private int userId;
     private int? currentDefaultAccountId;
     private List<AccountOptionDto> userAccounts = new();
+    private IEnumerable<AccountOptionDto> defaultAccountOptions =>
+        new[]
+        {
+            new AccountOptionDto
+            {
+                AccountId = 0,
+                Fund = Localizer["None"],
+                AccountingClass = string.Empty
+            }
+        }.Concat(userAccounts);
     private List<LanguageOption> languageOptions = new()
     {
         new LanguageOption { Value = "en-US", Text = "English" },
