@@ -10,6 +10,7 @@ public class UserAccountContextService : IUserAccountContextService
     private readonly IUserRepository _userRepository;
     private readonly IUserAccountAccessRepository _userAccountAccessRepository;
     private readonly IAccountRepository _accountRepository;
+    private readonly ICacheInvalidationVersion _cacheInvalidationVersion;
     private readonly ILogger<UserAccountContextService> _logger;
     private static readonly ConcurrentDictionary<string, UserAccountContext> _contextCache = new(StringComparer.OrdinalIgnoreCase);
 
@@ -17,11 +18,13 @@ public class UserAccountContextService : IUserAccountContextService
         IUserRepository userRepository,
         IUserAccountAccessRepository userAccountAccessRepository,
         IAccountRepository accountRepository,
+        ICacheInvalidationVersion cacheInvalidationVersion,
         ILogger<UserAccountContextService> logger)
     {
         _userRepository = userRepository;
         _userAccountAccessRepository = userAccountAccessRepository;
         _accountRepository = accountRepository;
+        _cacheInvalidationVersion = cacheInvalidationVersion;
         _logger = logger;
     }
 
@@ -33,7 +36,8 @@ public class UserAccountContextService : IUserAccountContextService
         }
 
         var normalizedUserId = userId.Trim();
-        if (_contextCache.TryGetValue(normalizedUserId, out var cachedContext))
+        if (_contextCache.TryGetValue(normalizedUserId, out var cachedContext)
+            && cachedContext.CacheVersion == _cacheInvalidationVersion.Current)
         {
             _logger.LogInformation(
                 "User account context source=cache user={UserId} isAdminOrViewer={IsAdminOrViewer} defaultAccountId={DefaultAccountId} accounts={AccountCount}",
@@ -70,6 +74,7 @@ public class UserAccountContextService : IUserAccountContextService
                 UserId = user.Id,
                 IsAdminOrViewer = canAccessAllAccounts,
                 DefaultAccountId = user.DefaultAccount,
+                CacheVersion = _cacheInvalidationVersion.Current,
                 Accounts = await GetAccountsAsync(user.Id, canAccessAllAccounts)
             };
 
@@ -158,6 +163,7 @@ public class UserAccountContextService : IUserAccountContextService
             UserId = source.UserId,
             IsAdminOrViewer = source.IsAdminOrViewer,
             DefaultAccountId = source.DefaultAccountId,
+            CacheVersion = source.CacheVersion,
             Accounts = (source.Accounts ?? new List<UserAccountContextAccount>())
                 .Select(a => new UserAccountContextAccount
                 {

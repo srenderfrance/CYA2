@@ -157,7 +157,12 @@ WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = @TableName AND COLUMN_NAME = @C
                     using var reader = await getLatestBackupCmd.ExecuteReaderAsync(cancellationToken);
                     if (await reader.ReadAsync())
                     {
-                        latestBackupId = reader.GetGuid(0).ToString();  // BackupId - convert GUID to string
+                        latestBackupId = reader.GetValue(0) switch
+                        {
+                            Guid value => value.ToString(),
+                            string value => value,
+                            var value => Convert.ToString(value, System.Globalization.CultureInfo.InvariantCulture)
+                        };
                         backupDate = reader.GetDateTime(1);    // BackupAt  
                         backupRecordCount = reader.GetInt32(2); // RecordCount
                     }
@@ -208,9 +213,10 @@ WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = @TableName AND COLUMN_NAME = @C
                     restoreCmd.CommandText = $@"
                         INSERT INTO DonationData
                         ({restoreColumns})
-                        SELECT {restoreSelect}
-                        FROM DonationDataBackup
-                        WHERE BackupId = @BackupId";
+                         SELECT {restoreSelect}
+                         FROM DonationDataBackup
+                         WHERE BackupId = @BackupId
+                           AND Id <> 0";
                     restoreCmd.Parameters.Add(new MySqlParameter("@BackupId", latestBackupId));
                     
                     var restoredRows = await restoreCmd.ExecuteNonQueryAsync(cancellationToken);

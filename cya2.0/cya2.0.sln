@@ -1,7 +1,7 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
-# Visual Studio Version 17
-VisualStudioVersion = 17.13.36105.23
+# Visual Studio Version 18
+VisualStudioVersion = 18.9.12112.369 stable
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution Items", "{8EC462FD-D22E-90A8-E5CE-7E832BA40C5D}"
 	ProjectSection(SolutionItems) = preProject
@@ -17,6 +17,8 @@ EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Cya2.Infrastructure", "..\src\Cya2.Infrastructure\Cya2.Infrastructure.csproj", "{60235B4D-35B2-C5D5-E443-C1DAE581E2B9}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "cya2", "cya2.csproj", "{898CF7CA-82AB-66C0-4B9B-8A6ECEAF2B94}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Cya2.Application.Tests", "..\tests\Cya2.Application.Tests\Cya2.Application.Tests.csproj", "{FB0B988B-00FF-B5A6-1BDC-2F1643866DF1}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -44,6 +46,10 @@ Global
 		{898CF7CA-82AB-66C0-4B9B-8A6ECEAF2B94}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{898CF7CA-82AB-66C0-4B9B-8A6ECEAF2B94}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{898CF7CA-82AB-66C0-4B9B-8A6ECEAF2B94}.Release|Any CPU.Build.0 = Release|Any CPU
+		{FB0B988B-00FF-B5A6-1BDC-2F1643866DF1}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{FB0B988B-00FF-B5A6-1BDC-2F1643866DF1}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{FB0B988B-00FF-B5A6-1BDC-2F1643866DF1}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{FB0B988B-00FF-B5A6-1BDC-2F1643866DF1}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

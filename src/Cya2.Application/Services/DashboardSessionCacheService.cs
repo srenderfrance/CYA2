@@ -10,24 +10,37 @@ public class DashboardSessionCacheService : ISessionAccountDataCacheService
 {
     private readonly IExpenseReadRepository _expenseReadRepository;
     private readonly IDonationReadRepository _donationReadRepository;
+    private readonly ICacheInvalidationVersion _cacheInvalidationVersion;
     private readonly ILogger<DashboardSessionCacheService> _logger;
 
     private readonly Dictionary<string, DashboardAccountCacheData> _cache = new(StringComparer.OrdinalIgnoreCase);
+    private long _cacheVersion;
     private string? _defaultFund;
     private string? _recentNonDefaultFund;
 
     public DashboardSessionCacheService(
         IExpenseReadRepository expenseReadRepository,
         IDonationReadRepository donationReadRepository,
+        ICacheInvalidationVersion cacheInvalidationVersion,
         ILogger<DashboardSessionCacheService> logger)
     {
         _expenseReadRepository = expenseReadRepository;
         _donationReadRepository = donationReadRepository;
+        _cacheInvalidationVersion = cacheInvalidationVersion;
         _logger = logger;
     }
 
     public async Task<DashboardAccountCacheData> GetOrLoadAccountDataAsync(UserAccountContextAccount account, DateTime windowStart, DateTime windowEnd, bool isDefaultAccount)
     {
+        var currentVersion = _cacheInvalidationVersion.Current;
+        if (_cacheVersion != currentVersion)
+        {
+            _cache.Clear();
+            _defaultFund = null;
+            _recentNonDefaultFund = null;
+            _cacheVersion = currentVersion;
+        }
+
         if (_cache.TryGetValue(account.Fund, out var existing)
             && existing.WindowStart == windowStart
             && existing.WindowEnd == windowEnd)
@@ -36,6 +49,7 @@ public class DashboardSessionCacheService : ISessionAccountDataCacheService
             {
                 _defaultFund = account.Fund;
             }
+
             else
             {
                 _recentNonDefaultFund = account.Fund;

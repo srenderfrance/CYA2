@@ -10,7 +10,7 @@
 @inject Cya2.Application.Interfaces.ISessionUserStateService SessionUserStateService
 @inject DialogService DialogService
 @inject Cya2.Application.Interfaces.IUserIdResolver UserIdResolver
-@rendermode InteractiveServer
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
 @inject IStringLocalizer<Resource> Localizer
 @inject ILogger<Donations> Logger
 @inject Cya2.Application.Interfaces.IUserSelectionService UserSelectionService
@@ -29,6 +29,7 @@
 @inject IUserAccountContextService UserAccountContextService
 @inject IDateRangeStateService DateRangeStateService
 @inject Cya2.Application.Interfaces.ISessionDashboardDtoCacheService SessionDashboardDtoCacheService
+@inject cya2.Services.Diagnostics.PageLoadCorrelationContext PageLoadCorrelation
 
 @attribute [StreamRendering]
 
@@ -741,6 +742,7 @@
 
     protected override async Task OnInitializedAsync()
     {
+        using var operationScope = PageLoadCorrelation.BeginOperation(Logger, nameof(Donations), "Initialize");
         var initSw = Stopwatch.StartNew();
         try
         {
