@@ -33,7 +33,6 @@ namespace Cya2.Application.Services
         private string? _lastQuery;
         private static readonly ConcurrentDictionary<string, SemaphoreSlim> _queryLocks = new(StringComparer.OrdinalIgnoreCase);
         private static readonly ConcurrentDictionary<string, List<string>> _accountFundsCache = new(StringComparer.OrdinalIgnoreCase);
-        private static readonly ConcurrentDictionary<string, List<string>> _separateAccountFundsCache = new(StringComparer.OrdinalIgnoreCase);
 
         public DonorService(
             IDonationReadRepository donationReadRepository,
@@ -140,18 +139,6 @@ namespace Cya2.Application.Services
             }
 
             var snapshotDonations = await LoadDonationsFromAccountSnapshotAsync(account, dateRange);
-            var separateFunds = _separateAccountFundsCache.TryGetValue(BuildAccountFundsKey(account.AccountId, account.Fund), out var cachedSeparateFunds)
-                ? cachedSeparateFunds
-                : new List<string>();
-
-            if (separateFunds.Count > 0)
-            {
-                var separateDonations = await _donationReadRepository.GetDonationsByFundsAndDateRangeAsync(
-                    separateFunds,
-                    dateRange.StartDate,
-                    dateRange.EndDate);
-                snapshotDonations.AddRange(separateDonations ?? []);
-            }
 
             var result = BuildDonorSummaries(DeduplicateDonations(snapshotDonations))
                 .OrderByDescending(d => d.Total)
@@ -234,11 +221,6 @@ namespace Cya2.Application.Services
             funds.AddRange(subAccounts.Select(s => s.SubFund));
             funds = NormalizeFunds(funds);
 
-            _separateAccountFundsCache[key] = NormalizeFunds(
-                subAccounts
-                    .Where(s => string.Equals(s.Kind, "Separate", StringComparison.OrdinalIgnoreCase))
-                    .Select(s => s.SubFund));
-
             _accountFundsCache[key] = funds;
 
             return funds;
@@ -296,9 +278,6 @@ namespace Cya2.Application.Services
                 key,
                 cancellationToken);
         }
-
-        private static string BuildAccountFundsKey(int accountId, string accountFund)
-            => $"{accountId}|{accountFund?.Trim() ?? string.Empty}";
 
         private static bool CanUseAccountSnapshot(DateRange range)
         {

@@ -1418,7 +1418,6 @@
                 fundUpdateSuccess = op.Message;
                 AdminPreloadService.Invalidate();
                 AdminRecentAccountSnapshotService.Invalidate();
-                    ImportCacheInvalidator.InvalidateAll();
                 ImportCacheInvalidator.InvalidateAll();
 
                 // Refresh funds and reset selection
@@ -1541,6 +1540,7 @@
                     fundUpdateSuccess = op.Message;
                     AdminPreloadService.Invalidate();
                     AdminRecentAccountSnapshotService.Invalidate();
+                    ImportCacheInvalidator.InvalidateAll();
 
                     subAccountNameEdit = string.Empty;
                     subAccountKindEdit = subFundKinds.FirstOrDefault() ?? "Merged";

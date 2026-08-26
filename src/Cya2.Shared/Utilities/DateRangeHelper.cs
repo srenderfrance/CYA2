@@ -8,12 +8,12 @@ namespace Cya2.Shared.Utilities;
 /// </summary>
 public static class DateRangeHelper
 {
-    public enum DateRangePreset 
-    { 
+    public enum DateRangePreset
+    {
         AllDates,
-        ThisYear, 
-        Previous12Months, 
-        LastYear, 
+        ThisYear,
+        Previous12Months,
+        LastYear,
         ThisMonth,
         LastMonth,
         Custom
@@ -25,7 +25,7 @@ public static class DateRangeHelper
     public static (DateTime start, DateTime end) GetPresetDateRange(DateRangePreset preset)
     {
         var now = DateTime.Now;
-        
+
         return preset switch
         {
             DateRangePreset.AllDates => (new DateTime(1900, 1, 1), now),
@@ -34,7 +34,7 @@ public static class DateRangeHelper
             DateRangePreset.ThisMonth => (new DateTime(now.Year, now.Month, 1), now),
             DateRangePreset.LastMonth => GetLastMonthRange(),
             DateRangePreset.Previous12Months => GetPrevious12MonthsRange(),
-            _ => (now.AddDays(-30), now) // Default fallback
+            _ => (now.AddDays(-30), now)
         };
     }
 
@@ -45,7 +45,7 @@ public static class DateRangeHelper
     {
         var now = DateTime.Now;
         var lastCompleteMonth = new DateTime(now.Year, now.Month, 1).AddMonths(-1);
-        var end = new DateTime(lastCompleteMonth.Year, lastCompleteMonth.Month, 
+        var end = new DateTime(lastCompleteMonth.Year, lastCompleteMonth.Month,
                               DateTime.DaysInMonth(lastCompleteMonth.Year, lastCompleteMonth.Month));
         var start = end.AddMonths(-11);
         start = new DateTime(start.Year, start.Month, 1);
@@ -59,7 +59,7 @@ public static class DateRangeHelper
     {
         var now = DateTime.Now;
         var firstDayOfLastMonth = new DateTime(now.Year, now.Month, 1).AddMonths(-1);
-        var lastDayOfLastMonth = new DateTime(firstDayOfLastMonth.Year, firstDayOfLastMonth.Month, 
+        var lastDayOfLastMonth = new DateTime(firstDayOfLastMonth.Year, firstDayOfLastMonth.Month,
                                              DateTime.DaysInMonth(firstDayOfLastMonth.Year, firstDayOfLastMonth.Month));
         return (firstDayOfLastMonth, lastDayOfLastMonth);
     }
@@ -69,10 +69,10 @@ public static class DateRangeHelper
     /// </summary>
     public static DateRangePreset DetectPreset(DateTime start, DateTime end)
     {
-        var presets = new[] 
+        var presets = new[]
         {
             DateRangePreset.AllDates,
-            DateRangePreset.LastYear, // Check Last Year before Previous12Months for January clarity
+            DateRangePreset.LastYear,
             DateRangePreset.ThisYear,
             DateRangePreset.ThisMonth,
             DateRangePreset.LastMonth,
