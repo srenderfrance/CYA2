@@ -25,18 +25,6 @@ public sealed class AccountSnapshotLoader : IAccountSnapshotLoader
         AccountSnapshotKey key,
         CancellationToken cancellationToken = default)
     {
-        var donations = InternAccountUtility.IsInternFund(account.Fund) &&
-                        InternAccountUtility.TryGetInternDesignationName(account.Fund, out var designation)
-            ? await _donationReadRepository.GetInternDonationsByDesignationAndDateRangeAsync(
-                designation,
-                queryRange.StartDate,
-                queryRange.EndDate)
-            : await _donationReadRepository.GetDonationsByAccountAndDateRangeAsync(
-                account.AccountId,
-                account.Fund,
-                queryRange.StartDate,
-                queryRange.EndDate);
-
         var accounting = await _expenseReadRepository.GetAccountingDataByClassAndDateAsync(
             account.AccountingClass,
             queryRange.StartDate,
@@ -45,6 +33,23 @@ public sealed class AccountSnapshotLoader : IAccountSnapshotLoader
         var subAccounts = InternAccountUtility.IsInternFund(account.Fund)
             ? []
             : await _donationReadRepository.GetSubAccountsByAccountIdAsync(account.AccountId);
+
+        var donations = InternAccountUtility.IsInternFund(account.Fund) &&
+                        InternAccountUtility.TryGetInternDesignationName(account.Fund, out var designation)
+            ? await _donationReadRepository.GetInternDonationsByDesignationAndDateRangeAsync(
+                designation,
+                queryRange.StartDate,
+                queryRange.EndDate)
+            : subAccounts is { Count: > 0 }
+                ? await _donationReadRepository.GetDonationsByFundsAndDateRangeAsync(
+                    new[] { account.Fund }.Concat(subAccounts.Select(subAccount => subAccount.SubFund)),
+                    queryRange.StartDate,
+                    queryRange.EndDate)
+                : await _donationReadRepository.GetDonationsByAccountAndDateRangeAsync(
+                    account.AccountId,
+                    account.Fund,
+                    queryRange.StartDate,
+                    queryRange.EndDate);
 
         var donationSnapshots = (donations ?? [])
             .Select(record => new DonationSnapshot(
