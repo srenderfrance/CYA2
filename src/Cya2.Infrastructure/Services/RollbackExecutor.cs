@@ -8,76 +8,31 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace cya2.Services.Imports
+namespace Cya2.Infrastructure.Services
 {
-    public class RollbackService : IRollbackService
+    public sealed class RollbackExecutor : IRollbackExecutor
     {
         private readonly IConfiguration _config;
-        private readonly ILogger<RollbackService> _logger;
+        private readonly ILogger<RollbackExecutor> _logger;
         private readonly IRollbackRepository _rollbackRepository;
-        private readonly ISessionDashboardDtoCacheService _dashboardCache;
-        private readonly IImportCacheInvalidator _cacheInvalidator;
 
-        public RollbackService(
+        public RollbackExecutor(
             IConfiguration config,
-            ILogger<RollbackService> logger,
-            IRollbackRepository rollbackRepository,
-            ISessionDashboardDtoCacheService dashboardCache,
-            IImportCacheInvalidator cacheInvalidator)
+            ILogger<RollbackExecutor> logger,
+            IRollbackRepository rollbackRepository)
         {
             _config = config;
             _logger = logger;
             _rollbackRepository = rollbackRepository;
-            _dashboardCache = dashboardCache;
-            _cacheInvalidator = cacheInvalidator;
         }
 
-        public async Task<RollbackResult> ExecuteRollbackAsync(string target, CancellationToken cancellationToken = default)
-        {
-            var result = new RollbackResult();
+        public Task<RollbackResult> RollbackDonationsAsync(CancellationToken cancellationToken = default)
+            => RollbackDonationsCoreAsync(cancellationToken);
 
-            try
-            {
-                switch (target.ToLowerInvariant())
-                {
-                    case "donations":
-                        result = await RollbackDonationsAsync(cancellationToken);
-                        break;
-                    case "accounting":
-                        result = await RollbackAccountingAsync(cancellationToken);
-                        break;
-                    case "both":
-                        var donationResult = await RollbackDonationsAsync(cancellationToken);
-                        var accountingResult = await RollbackAccountingAsync(cancellationToken);
+        public Task<RollbackResult> RollbackAccountingAsync(CancellationToken cancellationToken = default)
+            => RollbackAccountingCoreAsync(cancellationToken);
 
-                        result.Success = donationResult.Success && accountingResult.Success;
-                        result.Message = $"Donations: {donationResult.Message}, Accounting: {accountingResult.Message}";
-                        result.DonationRowsRestored = donationResult.DonationRowsRestored;
-                        result.AccountingRowsRestored = accountingResult.AccountingRowsRestored;
-
-                        if (!donationResult.Success || !accountingResult.Success)
-                            result.ErrorMessage = $"Errors: {donationResult.ErrorMessage} {accountingResult.ErrorMessage}".Trim();
-                        break;
-                    default:
-                        result.Success = false;
-                        result.ErrorMessage = $"Invalid rollback target: {target}";
-                        break;
-                }
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error executing rollback for target: {Target}", target);
-                result.Success = false;
-                result.ErrorMessage = $"Rollback failed: {ex.Message}";
-            }
-
-            if (result.Success)
-                _cacheInvalidator.InvalidateAll();
-
-            return result;
-        }
-
-        private async Task<RollbackResult> RollbackDonationsAsync(CancellationToken cancellationToken)
+        private async Task<RollbackResult> RollbackDonationsCoreAsync(CancellationToken cancellationToken)
         {
             var result = new RollbackResult();
             var connStr = _config.GetConnectionString("default") ?? string.Empty;
@@ -256,7 +211,7 @@ WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = @TableName AND COLUMN_NAME = @C
             return result;
         }
 
-        private async Task<RollbackResult> RollbackAccountingAsync(CancellationToken cancellationToken)
+        private async Task<RollbackResult> RollbackAccountingCoreAsync(CancellationToken cancellationToken)
         {
             var result = new RollbackResult();
             var connStr = _config.GetConnectionString("default") ?? string.Empty;

@@ -51,6 +51,7 @@ public class DonationService : IDonationService
                 if (_donationCache.TryGetDonationData(userId, accountName, out var directCached) &&
                     CacheCoversRequestedRange(directCached, dateRange))
                 {
+                    var cachedDonationData = directCached!;
                     if (requestedInternAccount && (directCached?.Donations?.Count ?? 0) == 0)
                     {
                         _logger.LogInformation(
@@ -65,12 +66,12 @@ public class DonationService : IDonationService
                     _logger.LogInformation(
                         "Donation data source=cache-direct user='{UserId}' selectedAccount='{SelectedAccount}' rows={RowCount} range={StartDate:yyyy-MM-dd}..{EndDate:yyyy-MM-dd} elapsedMs={ElapsedMs}",
                         userId,
-                        directCached.SelectedAccount,
-                        directCached.Donations?.Count ?? 0,
+                        cachedDonationData.SelectedAccount,
+                        cachedDonationData.Donations?.Count ?? 0,
                         dateRange.StartDate,
                         dateRange.EndDate,
                         sw.ElapsedMilliseconds);
-                    return directCached;
+                    return cachedDonationData;
                     }
                 }
 
@@ -124,7 +125,7 @@ public class DonationService : IDonationService
 
             result.SelectedSubAccount = normalizedSubSelection;
             var selectedIsInternAccount = selected != null && InternAccountUtility.IsInternFund(selected.Fund);
-            var queryRange = bypassSubAccountCache ? dateRange : cacheQueryRange;
+            var queryRange = cacheQueryRange;
             AccountDataSnapshot? accountSnapshot = null;
             var donationDataSource = "repository";
 
@@ -224,6 +225,7 @@ public class DonationService : IDonationService
                 if (_donationCache.TryGetDonationData(userId, result.SelectedAccount, out var cached) &&
                     CacheCoversRequestedRange(cached, dateRange))
                 {
+                    var cachedDonationData = cached!;
                     if (selectedIsInternAccount && (cached?.Donations?.Count ?? 0) == 0)
                     {
                         _logger.LogInformation(
@@ -236,17 +238,17 @@ public class DonationService : IDonationService
                     else
                     {
                     // Use cached DTO but still ensure UserAccounts & selection are present
-                    cached.UserAccounts = result.UserAccounts;
-                    cached.SelectedAccount = result.SelectedAccount;
+                    cachedDonationData.UserAccounts = result.UserAccounts;
+                    cachedDonationData.SelectedAccount = result.SelectedAccount;
                     _logger.LogInformation(
                         "Donation data source=cache user='{UserId}' selectedAccount='{SelectedAccount}' rows={RowCount} range={StartDate:yyyy-MM-dd}..{EndDate:yyyy-MM-dd} elapsedMs={ElapsedMs}",
                         userId,
-                        cached.SelectedAccount,
-                        cached.Donations?.Count ?? 0,
+                        cachedDonationData.SelectedAccount,
+                        cachedDonationData.Donations?.Count ?? 0,
                         dateRange.StartDate,
                         dateRange.EndDate,
                         sw.ElapsedMilliseconds);
-                    return cached;
+                    return cachedDonationData;
                     }
                 }
 
@@ -276,11 +278,40 @@ public class DonationService : IDonationService
 
             // Query donation records from the shared snapshot when available; retain the existing repository path otherwise.
             var donationRecords = new List<Cya2.Core.ReadModels.DonationRecord>();
-            if (accountSnapshot != null && selected != null && !selectedIsInternAccount &&
-                (!result.ShowSubAccountDropdown || string.Equals(result.SelectedSubAccount, "Primary", StringComparison.OrdinalIgnoreCase)))
+            if (accountSnapshot != null && selected != null && !selectedIsInternAccount)
             {
+                var snapshotFunds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                if (!result.ShowSubAccountDropdown ||
+                    string.Equals(result.SelectedSubAccount, "Primary", StringComparison.OrdinalIgnoreCase))
+                {
+                    snapshotFunds.Add(selected.Fund);
+                }
+                else if (string.Equals(result.SelectedSubAccount, "All", StringComparison.OrdinalIgnoreCase))
+                {
+                    snapshotFunds.Add(selected.Fund);
+                    foreach (var subAccount in separateSubAccounts)
+                    {
+                        snapshotFunds.Add(subAccount.SubFund);
+                    }
+                }
+                else if (result.SelectedSubAccount.StartsWith("Sub_", StringComparison.OrdinalIgnoreCase) &&
+                         int.TryParse(result.SelectedSubAccount[4..], out var subAccountId))
+                {
+                    var selectedSubAccount = separateSubAccounts.FirstOrDefault(sa => sa.Id == subAccountId);
+                    if (selectedSubAccount != null)
+                    {
+                        snapshotFunds.Add(selectedSubAccount.SubFund);
+                    }
+                }
+
+                if (snapshotFunds.Count == 0)
+                {
+                    snapshotFunds.Add(selected.Fund);
+                }
+
                 var snapshotDonations = accountSnapshot.Donations
                     .Select(ToDonationRecord)
+                    .Where(r => snapshotFunds.Contains(r.Fund))
                     .Where(r => r.Date.Date >= dateRange.StartDate.Date && r.Date.Date <= dateRange.EndDate.Date);
                 donationRecords = snapshotDonations.ToList();
             }

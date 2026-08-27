@@ -1,5 +1,3 @@
-@using cya2.Services.Imports
-@using System.IO
 @inject DialogService DialogService
 @inject IStringLocalizer<Resource> Localizer
 
@@ -53,7 +51,7 @@
 </style>
 
 @code {
-    [Parameter] public FilePreviewResult? Preview { get; set; }
+    [Parameter] public Cya2.Application.Interfaces.FilePreviewResult? Preview { get; set; }
 
     private static string FormatSize(long bytes)
     {
@@ -66,7 +64,7 @@
         return $"{gb:F1} GB";
     }
 
-    private static bool IsLikelyExcelFile(FilePreviewResult preview)
+    private static bool IsLikelyExcelFile(Cya2.Application.Interfaces.FilePreviewResult preview)
     {
         var ext = Path.GetExtension(preview.FileName ?? string.Empty);
         var hasXlsxExtension = string.Equals(ext, ".xlsx", StringComparison.OrdinalIgnoreCase);

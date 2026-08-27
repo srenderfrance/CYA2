@@ -54,7 +54,7 @@ if (!string.IsNullOrEmpty(mysqlConnStr))
 
 builder.Services.AddLogging(l =>
 {
-    l.AddConsole(options => options.IncludeScopes = true);
+    l.AddSimpleConsole(options => options.IncludeScopes = true);
     if (builder.Environment.IsDevelopment())
     {
         l.AddDebug();
@@ -77,9 +77,6 @@ builder.Services.AddHttpClient();
 
 builder.Services.AddSingleton<Cya2.Core.Interfaces.IDatabaseGuard, DatabaseGuardAdapter>();
 
-        builder.Services.AddScoped<IDonationImportService, DonationImportService>();
-        builder.Services.AddScoped<IAccountingImportService, AccountingImportService>();
-        builder.Services.AddScoped<IRollbackService, RollbackService>();
         builder.Services.AddSingleton<ImportProgressService>();
         builder.Services.AddSingleton<Cya2.Core.Interfaces.IImportProgressService>(sp => sp.GetRequiredService<ImportProgressService>());
 
