@@ -21,6 +21,12 @@ public sealed class PageLoadCorrelationContext
             operation,
             Guid.NewGuid().ToString("N"),
             CircuitId ?? "prerender",
-            _scopeId);
+            _scopeId) ?? NullScope.Instance;
+    }
+
+    private sealed class NullScope : IDisposable
+    {
+        public static readonly NullScope Instance = new();
+        public void Dispose() { }
     }
 }

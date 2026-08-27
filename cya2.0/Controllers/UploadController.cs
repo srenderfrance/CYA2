@@ -1,6 +1,6 @@
 using System.Threading;
 using System.Threading.Tasks;
-using cya2.Services.Imports;
+using Cya2.Application.Interfaces;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -13,17 +13,14 @@ namespace cya2.Controllers
     [Authorize(Roles = "Admin")]
     public sealed class UploadController : ControllerBase
     {
-        private readonly IDonationImportService _donationService;
-        private readonly IAccountingImportService _accountingService;
+        private readonly IImportOrchestrationService _importService;
         private readonly ILogger<UploadController> _logger;
 
         public UploadController(
-            IDonationImportService donationService,
-            IAccountingImportService accountingService,
+            IImportOrchestrationService importService,
             ILogger<UploadController> logger)
         {
-            _donationService = donationService;
-            _accountingService = accountingService;
+            _importService = importService;
             _logger = logger;
         }
 
@@ -40,7 +37,7 @@ namespace cya2.Controllers
                 file.FileName, file.Length, file.ContentType ?? "");
 
             await using var stream = file.OpenReadStream();
-            var preview = await _donationService.PreviewAsync(stream, file.FileName, file.ContentType ?? string.Empty, ct);
+            var preview = await _importService.PreviewAsync(stream, "donations", file.FileName, file.ContentType ?? string.Empty, ct);
             return Ok(preview);
         }
 
@@ -53,7 +50,7 @@ namespace cya2.Controllers
             }
 
             _logger.LogInformation("Confirming donation import for preview {PreviewId}", request.PreviewId);
-            var result = await _donationService.ImportFromPreviewAsync(request.PreviewId, ct);
+            var result = await _importService.ImportFromPreviewAsync(request.PreviewId, "donations", ct);
             return Ok(result);
         }
 
@@ -70,7 +67,7 @@ namespace cya2.Controllers
                 file.FileName, file.Length, file.ContentType ?? "");
 
             await using var stream = file.OpenReadStream();
-            var preview = await _accountingService.PreviewAsync(stream, file.FileName, file.ContentType ?? string.Empty, ct);
+            var preview = await _importService.PreviewAsync(stream, "accounting", file.FileName, file.ContentType ?? string.Empty, ct);
             return Ok(preview);
         }
 
@@ -83,7 +80,7 @@ namespace cya2.Controllers
             }
 
             _logger.LogInformation("Confirming accounting import for preview {PreviewId}", request.PreviewId);
-            var result = await _accountingService.ImportFromPreviewAsync(request.PreviewId, ct);
+            var result = await _importService.ImportFromPreviewAsync(request.PreviewId, "accounting", ct);
             return Ok(result);
         }
     }

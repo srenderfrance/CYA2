@@ -1,4 +1,5 @@
 using Cya2.Core.Interfaces;
+using Cya2.Application.Interfaces;
 using Cya2.Infrastructure.Repositories;
 using Cya2.Infrastructure.Services;
 using Microsoft.Extensions.DependencyInjection;
@@ -24,6 +25,10 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IDonationImportRepository, DonationImportRepository>();
         services.AddScoped<IAccountingImportRepository, AccountingImportRepository>();
         services.AddScoped<IRollbackRepository, RollbackRepository>();
+        services.AddScoped<IImportProcessor, DonationImportProcessor>();
+        services.AddScoped<IImportProcessor, AccountingImportProcessor>();
+        services.AddScoped<IDonationImportMaintenanceService, DonationImportProcessor>();
+        services.AddScoped<IRollbackExecutor, RollbackExecutor>();
 
         return services;
     }

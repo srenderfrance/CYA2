@@ -23,9 +23,6 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IAccountSnapshotCache, AccountSnapshotCache>();
         services.AddScoped<IAccountSnapshotLoader, AccountSnapshotLoader>();
 
-        // Donor analytics service
-        services.AddScoped<IDonorAnalyticsService, DonorAnalyticsService>();
-        
         // Common business services - working implementations
         // These services bridge clean architecture with existing legacy data patterns
         
@@ -53,6 +50,8 @@ public static class ServiceCollectionExtensions
 
         // Cache invalidation — clears all session caches after import or rollback
         services.AddSingleton<IImportCacheInvalidator, ImportCacheInvalidator>();
+        services.AddScoped<IImportOrchestrationService, ImportOrchestrationService>();
+        services.AddScoped<IRollbackService, RollbackOrchestrationService>();
 
         return services;
     }

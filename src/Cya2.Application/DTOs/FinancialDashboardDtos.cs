@@ -63,11 +63,3 @@ public class UserAccountDto
     public bool IsDefault { get; set; }
 }
 
-/// <summary>
-/// Simple test DTO to verify namespace compilation
-/// </summary>
-public class SimpleTestDto
-{
-    public int Id { get; set; }
-    public string Name { get; set; } = string.Empty;
-}

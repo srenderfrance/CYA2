@@ -1,7 +1,7 @@
 using System;
 using System.Globalization;
 
-namespace cya2.Services.Imports
+namespace Cya2.Infrastructure.Services
 {
     internal static class ExcelParsingHelpers
     {

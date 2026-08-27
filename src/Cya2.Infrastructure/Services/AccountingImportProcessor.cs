@@ -9,107 +9,36 @@ using OfficeOpenXml;
 using Cya2.Application.Interfaces;
 using Cya2.Core.DTOs;
 using Cya2.Core.Interfaces;
+using ImportResult = Cya2.Application.Interfaces.ImportResult;
 
-namespace cya2.Services.Imports
+namespace Cya2.Infrastructure.Services
 {
-    internal sealed class AccountingImportService : IAccountingImportService
+    internal sealed class AccountingImportProcessor : IImportProcessor
     {
-        private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, (byte[] Data, string FileName, string ContentType, DateTime CreatedAt)> _previews = new();
-
         private readonly IConfiguration _config;
-        private readonly ILogger<AccountingImportService> _logger;
+        private readonly ILogger<AccountingImportProcessor> _logger;
         private readonly IImportProgressService _progressService;
         private readonly IAccountingImportRepository _repository;
-        private readonly ISessionDashboardDtoCacheService _dashboardCache;
         private readonly IImportCacheInvalidator _cacheInvalidator;
 
-        public AccountingImportService(
+        public string ImportType => "accounting";
+
+        public AccountingImportProcessor(
             IConfiguration config,
-            ILogger<AccountingImportService> logger,
+            ILogger<AccountingImportProcessor> logger,
             IImportProgressService progressService,
             IAccountingImportRepository repository,
-            ISessionDashboardDtoCacheService dashboardCache,
             IImportCacheInvalidator cacheInvalidator)
         {
             _config = config;
             _logger = logger;
             _progressService = progressService;
             _repository = repository;
-            _dashboardCache = dashboardCache;
             _cacheInvalidator = cacheInvalidator;
         }
 
-        public async Task<ImportResult> ImportAsync(Stream file, CancellationToken ct)
-        {
-            var progressId = Guid.NewGuid().ToString("N");
-            _progressService.Start(progressId, "Accounting");
-            return await ProcessAsync(file, ct, progressId);
-        }
-
-        public async Task<ImportResult> StartImportAsync(Stream file, CancellationToken ct)
-        {
-            var result = new ImportResult();
-            var progressId = Guid.NewGuid().ToString("N");
-            _progressService.Start(progressId, "Accounting");
-            result.ProgressId = progressId;
-
-            byte[] data;
-            using (var ms = new MemoryStream()) { await file.CopyToAsync(ms, ct); data = ms.ToArray(); }
-
-            _ = Task.Run(async () =>
-            {
-                try { using var ms = new MemoryStream(data, writable: false); await ProcessAsync(ms, CancellationToken.None, progressId); }
-                catch (Exception ex) { _progressService.SetStatus(progressId, $"Error: {ex.Message}"); }
-            });
-
-            return result;
-        }
-
-        public async Task<FilePreviewResult> PreviewAsync(Stream file, string fileName, string contentType, CancellationToken ct)
-        {
-            if (file == null) throw new ArgumentNullException(nameof(file));
-
-            byte[] data;
-            using (var ms = new MemoryStream()) { await file.CopyToAsync(ms, ct); data = ms.ToArray(); }
-
-            var previewId = Guid.NewGuid().ToString("N");
-            _previews[previewId] = (data, fileName, contentType, DateTime.UtcNow);
-            _logger.LogInformation("Created accounting preview {PreviewId} for {FileName} ({Size} bytes)", previewId, fileName, data.LongLength);
-
-            return new FilePreviewResult { PreviewId = previewId, FileName = fileName ?? string.Empty, FileSizeBytes = data.LongLength, ContentType = contentType ?? string.Empty };
-        }
-
-        public async Task<ImportResult> ImportFromPreviewAsync(string previewId, CancellationToken ct)
-        {
-            if (string.IsNullOrWhiteSpace(previewId)) throw new ArgumentException("PreviewId is required", nameof(previewId));
-            if (!_previews.TryRemove(previewId, out var entry))
-            {
-                _logger.LogWarning("Accounting preview {PreviewId} not found or expired", previewId);
-                var res = new ImportResult(); res.Errors.Add("Preview session expired. Please upload the file again."); return res;
-            }
-            using var ms = new MemoryStream(entry.Data, writable: false);
-            return await ImportAsync(ms, ct);
-        }
-
-        public Task<ImportResult> StartImportFromPreviewAsync(string previewId, string progressId)
-        {
-            var result = new ImportResult();
-            var pId = string.IsNullOrWhiteSpace(progressId) ? Guid.NewGuid().ToString("N") : progressId;
-            _progressService.Start(pId, "Accounting");
-            result.ProgressId = pId;
-
-            if (string.IsNullOrWhiteSpace(previewId)) { result.Errors.Add("PreviewId is required"); _progressService.SetStatus(pId, "PreviewId is required"); return Task.FromResult(result); }
-            if (!_previews.TryRemove(previewId, out var entry)) { result.Errors.Add("Preview session expired. Please upload the file again."); _progressService.SetStatus(pId, "Preview session expired"); return Task.FromResult(result); }
-
-            var data = entry.Data;
-            _ = Task.Run(async () =>
-            {
-                try { using var ms = new MemoryStream(data, writable: false); await ProcessAsync(ms, CancellationToken.None, pId); }
-                catch (Exception ex) { _progressService.SetStatus(pId, $"Error: {ex.Message}"); _logger.LogError(ex, "Background accounting import failed for preview {PreviewId}", previewId); }
-            });
-
-            return Task.FromResult(result);
-        }
+        public Task<ImportResult> ProcessAsync(Stream file, string progressId, CancellationToken cancellationToken)
+            => ProcessAsync(file, cancellationToken, progressId);
 
         private async Task<ImportResult> ProcessAsync(Stream file, CancellationToken ct, string progressId)
         {

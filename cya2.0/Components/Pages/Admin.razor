@@ -1,6 +1,5 @@
 @page "/admin"
 @using Microsoft.AspNetCore.Authorization
-@using static Microsoft.AspNetCore.Components.Web.RenderMode
 @using cya2.Components.Shared
 @attribute [Authorize(Roles = "Admin")]
 @inject Cya2.Application.Interfaces.ISessionUserStateService SessionUserStateService
@@ -23,9 +22,9 @@
 @using cya2.Services.Imports
 @using Cya2.Application.Interfaces
 @inject IRollbackService RollbackService
-@inject IAccountingImportService AccountingImportService
+@inject IImportOrchestrationService ImportOrchestrationService
 @using Microsoft.AspNetCore.Components.Forms
-@inject IDonationImportService DonationImportService
+@inject IDonationImportMaintenanceService DonationImportMaintenanceService
 @inject Cya2.Application.Services.UserManagementService UserManagementService
 @inject Cya2.Application.Services.AdminFundReadService AdminFundReadService
 @inject IAdminPreloadService AdminPreloadService
@@ -667,11 +666,11 @@
                 ImportResult result;
                 if (importType == "donations")
                 {
-                    result = await DonationImportService.StartImportFromPreviewAsync(previewId, localProgressId);
+                    result = await ImportOrchestrationService.StartImportFromPreviewAsync(previewId, "donations", localProgressId);
                 }
                 else if (importType == "accounting")
                 {
-                    result = await AccountingImportService.StartImportFromPreviewAsync(previewId, localProgressId);
+                    result = await ImportOrchestrationService.StartImportFromPreviewAsync(previewId, "accounting", localProgressId);
                 }
                 else
                 {
@@ -739,8 +738,8 @@
                 const long maxAllowedBytes = 512L * 1024 * 1024;
                 await using var stream = file.OpenReadStream(maxAllowedBytes);
 
-                var preview = await DonationImportService.PreviewAsync(
-                    stream, file.Name, file.ContentType ?? string.Empty, CancellationToken.None);
+                var preview = await ImportOrchestrationService.PreviewAsync(
+                    stream, "donations", file.Name, file.ContentType ?? string.Empty, CancellationToken.None);
 
                 var raw = System.Text.Json.JsonSerializer.Serialize(preview);
                 var args = new UploadCompleteEventArgs { RawResponse = raw };
@@ -769,8 +768,8 @@
                 const long maxAllowedBytes = 512L * 1024 * 1024;
                 await using var stream = file.OpenReadStream(maxAllowedBytes);
 
-                var preview = await AccountingImportService.PreviewAsync(
-                    stream, file.Name, file.ContentType ?? string.Empty, CancellationToken.None);
+                var preview = await ImportOrchestrationService.PreviewAsync(
+                    stream, "accounting", file.Name, file.ContentType ?? string.Empty, CancellationToken.None);
 
                 var raw = System.Text.Json.JsonSerializer.Serialize(preview);
                 var args = new UploadCompleteEventArgs { RawResponse = raw };
@@ -1681,9 +1680,9 @@
                 AdminRecentAccountSnapshotService.RecordSelection(selectedItem.Account);
                 
                 // Populate form fields with existing account data
-                newFundName = selectedItem.Account.Fund;
-                accountNumber = selectedItem.Account.AccountNumber;
-                softCredit = selectedItem.Account.SoftCredit;
+                newFundName = selectedItem.Account.Fund ?? string.Empty;
+                accountNumber = selectedItem.Account.AccountNumber ?? string.Empty;
+                softCredit = selectedItem.Account.SoftCredit ?? string.Empty;
                 balanceAdjustment = selectedItem.Account.BalanceAdjustment;
                 
 
@@ -1926,7 +1925,7 @@
                 if (confirmed != true)
                     return;
 
-                var result = await DonationImportService.RecategorizeAllDonationsAsync(CancellationToken.None);
+                var result = await DonationImportMaintenanceService.RecategorizeAllDonationsAsync(CancellationToken.None);
 
                 NotificationService.Notify(new NotificationMessage
                 {
