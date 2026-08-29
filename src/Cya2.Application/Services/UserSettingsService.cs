@@ -79,6 +79,11 @@ public class UserSettingsService : IUserSettingsService
                 cached.DefaultAccountId = defaultAccountId;
             }
 
+            if (updated)
+            {
+                _userAccountContextService.Invalidate(userId.ToString());
+            }
+
             return updated;
         }
         catch (Exception ex)

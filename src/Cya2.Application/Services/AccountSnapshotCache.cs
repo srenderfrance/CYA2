@@ -112,6 +112,23 @@ public sealed class AccountSnapshotCache : IAccountSnapshotCache
         return false;
     }
 
+    public bool Remove(AccountSnapshotKey key)
+    {
+        key = key.Normalize();
+
+        lock (_sync)
+        {
+            if (!_entries.Remove(key, out var entry))
+            {
+                return false;
+            }
+
+            _lru.Remove(entry.Node);
+            _currentBytes -= entry.Snapshot.ApproximateBytes;
+            return true;
+        }
+    }
+
     public void InvalidateAll()
     {
         lock (_sync)

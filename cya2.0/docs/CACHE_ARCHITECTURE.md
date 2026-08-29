@@ -66,6 +66,10 @@ The current registrations are:
 
 All of these caches expose `InvalidateAll()` and are cleared by `ImportCacheInvalidator`.
 
+`SessionDonorSummaryCacheService` is also the cache-aware boundary for the Donors page. Donor summaries are keyed by the normalized funds signature and requested date range. `DonorService` performs a cache lookup before entering the per-request single-flight query lock, then checks again after acquiring the lock so concurrent requests do not duplicate repository work.
+
+The Donors UI prepares the cached summary rows once after loading by populating `DisplayName`, `DisplayAddress`, and `FrequencyLabel`. The grid uses property-only columns for these values rather than repeating formatting logic in cell templates.
+
 ### 3. Scoped dashboard account-data cache
 
 **Primary types:**
@@ -183,7 +187,16 @@ Use the account snapshot for aggregate, expense-only, transfer-only, and summary
 
 ### Donors
 
-Use the shared donation snapshot for the normal account-range summary path. Preserve separate queries for `All`, explicit subaccounts, donor detail, search, and other paths whose data is not included in the primary account snapshot.
+Use the shared complete account snapshot for the normal bounded account-range path. The snapshot supplies the primary and subaccount fund metadata and donation records; derive `All`, `Primary`, and valid explicit subaccount selections by filtering the immutable snapshot data in memory. Cache the resulting donor summaries by funds signature and requested date range. Preserve the database path for `All Dates` (which must include donors outside snapshot coverage), out-of-coverage ranges, donor detail, search, and other unsupported request shapes.
+
+The Donors page is cache-aware at the presentation boundary as well as in the application services:
+
+- The initial page state does not force a loading boundary before the asynchronous initialization completes. This prevents a loading bar from being shown merely because a new page component instance was created.
+- After the first result, the page retains the grid while account or date-range data is refreshed. The loading boundary is only active when `isLoading` is true and no donor result has yet been displayed.
+- Cached donor summaries are still loaded through `IDonorService`; the page does not access the cache implementation directly.
+- A cache hit avoids repository work, but the page still performs the normal authorization, account-context, subaccount, and component initialization lifecycle.
+
+This distinction is important: cache hits reduce data access latency, while retaining the rendered grid prevents a cached refresh from replacing the grid with a loading indicator.
 
 ### Home and Account Summaries
 
@@ -269,6 +282,8 @@ When validating a new feature, inspect logs for:
 - Cache invalidation.
 - Cache generation changes.
 - Account-context source `db` versus `cache`.
+- Donors page initialization and data-load elapsed time, including cache-hit loads.
+- Whether a Donors loading boundary is being shown because there is no prior result, rather than because the donor query missed its cache.
 - Page, operation, circuit, and scope correlation values.
 
 A performance improvement is not valid if it produces stale or unauthorized data. Correctness and invalidation behavior take priority over reducing database calls.

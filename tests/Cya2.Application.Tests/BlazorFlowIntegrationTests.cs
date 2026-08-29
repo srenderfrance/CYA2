@@ -97,6 +97,7 @@ public sealed class BlazorFlowIntegrationTests
         public int Count => 0;
         public Task<Cya2.Application.Models.AccountDataSnapshot> GetOrCreateAsync(Cya2.Application.Models.AccountSnapshotKey key, Func<CancellationToken, Task<Cya2.Application.Models.AccountDataSnapshot>> factory, CancellationToken cancellationToken = default) => factory(cancellationToken);
         public bool TryGet(Cya2.Application.Models.AccountSnapshotKey key, out Cya2.Application.Models.AccountDataSnapshot snapshot) { snapshot = null!; return false; }
+        public bool Remove(Cya2.Application.Models.AccountSnapshotKey key) => false;
         public void InvalidateAll() => InvalidationCount++;
     }
 }

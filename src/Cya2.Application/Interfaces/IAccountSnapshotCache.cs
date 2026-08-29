@@ -11,6 +11,8 @@ public interface IAccountSnapshotCache
 
     bool TryGet(AccountSnapshotKey key, out AccountDataSnapshot snapshot);
 
+    bool Remove(AccountSnapshotKey key);
+
     void InvalidateAll();
 
     int Count { get; }

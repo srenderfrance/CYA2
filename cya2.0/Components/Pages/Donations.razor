@@ -1,5 +1,4 @@
 ﻿@page "/donations"
-@using static Microsoft.AspNetCore.Components.Web.RenderMode
 @using Cya2.Shared.Utilities
 @using Radzen
 @using Microsoft.AspNetCore.Components.Authorization
@@ -16,6 +15,7 @@
 @inject Cya2.Application.Interfaces.IUserSelectionService UserSelectionService
 @inject Cya2.Application.Interfaces.IUserDateRangeSelectionService DateRangeSelectionService
 @inject cya2.Services.UserSessionHydrationService SessionHydrationService
+@inject Cya2.Application.Interfaces.IAccountSnapshotWarmupService AccountSnapshotWarmupService
 @implements IDisposable
 
 @* CLEAN ARCHITECTURE INTEGRATION *@
@@ -1051,6 +1051,18 @@
         SessionUserStateService.SelectedAccountFund = accountName;
 
         currentAccount = donationData.UserAccounts.FirstOrDefault(a => a.Fund == selectedAccount);
+        if (currentAccount is not null)
+        {
+            await AccountSnapshotWarmupService.WarmSelectedAccountAsync(new UserAccountContextAccount
+            {
+                AccountId = currentAccount.AccountId,
+                Fund = currentAccount.Fund,
+                AccountingClass = currentAccount.AccountingClass,
+                AccountNumber = currentAccount.AccountNumber,
+                Overhead = currentAccount.Overhead
+            }, userId, isAdminOrViewer);
+        }
+
         await LoadDonationsData(selectedAccount, selectedSubAccount, explicitSelection: true);
     }
 
