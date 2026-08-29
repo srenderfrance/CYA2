@@ -873,8 +873,10 @@ private bool showMissingGiftDialog = false;
 
         try
         {
+            Logger.LogInformation("Home init phase=auth-start elapsedMs={ElapsedMs}", initSw.ElapsedMilliseconds);
             var authState = await AuthStateProvider.GetAuthenticationStateAsync();
             var user = authState.User;
+            Logger.LogInformation("Home init phase=auth-complete elapsedMs={ElapsedMs} authenticated={Authenticated}", initSw.ElapsedMilliseconds, user.Identity?.IsAuthenticated == true);
 
             if (user.Identity?.IsAuthenticated != true)
             {
@@ -892,6 +894,7 @@ private bool showMissingGiftDialog = false;
                       "User";
 
             cachedUserId = SessionHydrationService.HydrateForUser(user);
+            Logger.LogInformation("Home init phase=session-hydrated elapsedMs={ElapsedMs} user={UserId}", initSw.ElapsedMilliseconds, cachedUserId);
 
             visualizationPresetOptions = DateRangeHelper.GetPresetOptions(Localizer)
                 .Select(p => new DatePresetOption { Value = p.preset, Text = p.displayName })
@@ -910,6 +913,7 @@ private bool showMissingGiftDialog = false;
             FinancialDashboardDto requestedCachedDashboard = new();
             var hasRequestedCache = !string.IsNullOrWhiteSpace(requestedFund) &&
                                     SessionDashboardDtoCacheService.TryGetDashboard(cachedUserId, requestedFund, out requestedCachedDashboard);
+            Logger.LogInformation("Home init phase=dashboard-cache-checked elapsedMs={ElapsedMs} cacheHit={CacheHit} requestedFund={RequestedFund}", initSw.ElapsedMilliseconds, hasRequestedCache, requestedFund);
 
             if (hasRequestedCache)
             {
@@ -919,10 +923,12 @@ private bool showMissingGiftDialog = false;
             }
             else
             {
-                dashboardData = await DashboardService.GetDashboardDataAsync(requestedFund ?? string.Empty, cachedUserId);
+                Logger.LogInformation("Home init phase=dashboard-load-start elapsedMs={ElapsedMs}", initSw.ElapsedMilliseconds);
+                dashboardData = await DashboardService.GetDashboardSummaryDataAsync(requestedFund ?? string.Empty, cachedUserId);
+                Logger.LogInformation("Home init phase=dashboard-load-complete elapsedMs={ElapsedMs} accounts={AccountCount}", initSw.ElapsedMilliseconds, dashboardData.UserAccounts?.Count ?? 0);
                 selectedAccount = ResolveSelectedAccount(dashboardData);
                 CacheDashboard(selectedAccount, dashboardData, prioritize: true);
-                BuildDebugMessage(string.IsNullOrWhiteSpace(requestedFund) ? "initial-load" : "initial-load-requested-fund");
+                BuildDebugMessage(string.IsNullOrWhiteSpace(requestedFund) ? "initial-summary-load" : "initial-summary-load-requested-fund");
             }
 
             var defaultFundFromDto = dashboardData.UserAccounts.FirstOrDefault(a => a.IsDefault)?.Fund;
@@ -934,6 +940,7 @@ private bool showMissingGiftDialog = false;
             SessionUserStateService.SelectedAccountFund = selectedAccount;
             SessionUserStateService.DefaultAccountFund = defaultFundFromDto;
             RefreshSelectedAccountMode();
+            Logger.LogInformation("Home init phase=state-prepared elapsedMs={ElapsedMs} selectedAccount={SelectedAccount}", initSw.ElapsedMilliseconds, selectedAccount);
 
             if (!string.IsNullOrWhiteSpace(cachedUserId) && !string.IsNullOrWhiteSpace(selectedAccount))
             {
@@ -945,6 +952,62 @@ private bool showMissingGiftDialog = false;
                 {
                     Logger.LogWarning(ex, "Home: failed to persist initial selected account");
                 }
+            }
+
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Home.OnInitializedAsync failed");
+            BuildDebugMessage("initial-load-error", ex.Message);
+        }
+        finally
+        {
+            isLoading = false;
+            isAccountDataLoading = false;
+            ScheduleInitialDeferredWork();
+            Logger.LogInformation(
+                "Home init complete user={UserId} selectedAccount={SelectedAccount} userAccounts={AccountCount} elapsedMs={ElapsedMs}",
+                cachedUserId,
+                selectedAccount,
+                dashboardData.UserAccounts?.Count ?? 0,
+                initSw.ElapsedMilliseconds);
+        }
+    }
+
+    protected override Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            Logger.LogInformation("Home first render complete; starting account warmup");
+            ScheduleInitialWarmup();
+        }
+
+        return Task.CompletedTask;
+    }
+
+    private void ScheduleInitialDeferredWork()
+    {
+        _ = InvokeAsync(async () =>
+        {
+            await Task.Delay(TimeSpan.FromMilliseconds(100));
+
+            await ComputeMissingGiftAlertsAsync();
+            if (showVisualizations)
+            {
+                await LoadVisualizationDataAsync();
+            }
+
+            await InvokeAsync(StateHasChanged);
+        });
+    }
+
+    private void ScheduleInitialWarmup()
+    {
+        _ = InvokeAsync(async () =>
+        {
+            if (dashboardData.UserAccounts.Count == 0)
+            {
+                return;
             }
 
             var defaultAccountId = dashboardData.UserAccounts.FirstOrDefault(account => account.IsDefault)?.AccountId;
@@ -963,23 +1026,7 @@ private bool showMissingGiftDialog = false;
                 cachedUserId,
                 isAdminUser,
                 GetDonorSummaryWarmupRange());
-        }
-        catch (Exception ex)
-        {
-            Logger.LogError(ex, "Home.OnInitializedAsync failed");
-            BuildDebugMessage("initial-load-error", ex.Message);
-        }
-        finally
-        {
-            isLoading = false;
-            isAccountDataLoading = false;
-            Logger.LogInformation(
-                "Home init complete user={UserId} selectedAccount={SelectedAccount} userAccounts={AccountCount} elapsedMs={ElapsedMs}",
-                cachedUserId,
-                selectedAccount,
-                dashboardData.UserAccounts?.Count ?? 0,
-                initSw.ElapsedMilliseconds);
-        }
+        });
     }
 
     private Cya2.Core.ValueObjects.DateRange? GetDonorSummaryWarmupRange()
@@ -1044,11 +1091,6 @@ private bool showMissingGiftDialog = false;
                     AccountNumber = selectedAccountDto.AccountNumber,
                     Overhead = selectedAccountDto.Overhead
                 }, cachedUserId, isAdminUser);
-            }
-            await ComputeMissingGiftAlertsAsync();
-            if (showVisualizations)
-            {
-                await LoadVisualizationDataAsync();
             }
             try
             {
