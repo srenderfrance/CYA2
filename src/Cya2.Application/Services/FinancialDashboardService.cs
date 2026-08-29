@@ -43,10 +43,13 @@ public class FinancialDashboardService : IFinancialDashboardService
 
     private async Task<FinancialDashboardDto> GetDashboardDataInternalAsync(string accountFund, string userId, bool useSessionAccountDataCache)
     {
+        var stopwatch = System.Diagnostics.Stopwatch.StartNew();
         try
         {
             var dashboard = new FinancialDashboardDto();
+            _logger.LogInformation("Dashboard load phase=context-start user={UserId} accountFund={AccountFund} summaryOnly={SummaryOnly}", userId, accountFund, !useSessionAccountDataCache);
             var userContext = await _userAccountContextService.GetContextAsync(userId);
+            _logger.LogInformation("Dashboard load phase=context-complete elapsedMs={ElapsedMs} accounts={AccountCount}", stopwatch.ElapsedMilliseconds, userContext?.Accounts?.Count ?? 0);
             if (userContext == null)
             {
                 _logger.LogWarning("Dashboard user context could not be resolved for user identifier '{UserId}'", userId);
@@ -83,51 +86,57 @@ public class FinancialDashboardService : IFinancialDashboardService
             dashboard.HasAccountData = true;
             var isInternAccount = InternAccountUtility.IsInternFund(dashboard.SelectedAccount);
 
-            // Embed full-range donation payloads for selected and default accounts so client receives them on initial load
-            try
+            // Full-range donation payloads are only needed by complete dashboard loads.
+            // Summary loads keep the initial Home request small while snapshot warmup prepares
+            // the data for Donations, Expenses, and Donors in the background.
+            if (useSessionAccountDataCache)
             {
-                var now = DateTime.UtcNow;
-                var start = new DateTime(now.Year - 2, 1, 1);
-                var end = new DateTime(now.Year, 12, 31);
-
-                if (!string.IsNullOrWhiteSpace(dashboard.SelectedAccount))
+                try
                 {
-                    try
+                    var now = DateTime.UtcNow;
+                    var start = new DateTime(now.Year - 2, 1, 1);
+                    var end = new DateTime(now.Year, 12, 31);
+
+                    if (!string.IsNullOrWhiteSpace(dashboard.SelectedAccount))
                     {
-                        var selDto = await _donationService.GetDonationDataAsync(
-                            dashboard.SelectedAccount,
-                            "All",
-                            new Core.ValueObjects.DateRange(start, end),
-                            userId);
-                        dashboard.SelectedAccountDonations = selDto;
+                        try
+                        {
+                            var selDto = await _donationService.GetDonationDataAsync(
+                                dashboard.SelectedAccount,
+                                "All",
+                                new Core.ValueObjects.DateRange(start, end),
+                                userId);
+                            dashboard.SelectedAccountDonations = selDto;
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.LogWarning(ex, "Failed to preload donations for selected account {Account}", dashboard.SelectedAccount);
+                        }
                     }
-                    catch (Exception ex)
+
+                    var defaultAcc = dashboard.UserAccounts.FirstOrDefault(a => a.IsDefault)?.Fund;
+                    if (!string.IsNullOrWhiteSpace(defaultAcc) && !string.Equals(defaultAcc, dashboard.SelectedAccount, StringComparison.OrdinalIgnoreCase))
                     {
-                        _logger.LogWarning(ex, "Failed to preload donations for selected account {Account}", dashboard.SelectedAccount);
+                        try
+                        {
+                            var defDto = await _donationService.GetDonationDataAsync(defaultAcc, "All", new Core.ValueObjects.DateRange(start, end), userId);
+                            dashboard.DefaultAccountDonations = defDto;
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.LogWarning(ex, "Failed to preload donations for default account {Account}", defaultAcc);
+                        }
                     }
                 }
-
-                var defaultAcc = dashboard.UserAccounts.FirstOrDefault(a => a.IsDefault)?.Fund;
-                if (!string.IsNullOrWhiteSpace(defaultAcc) && !string.Equals(defaultAcc, dashboard.SelectedAccount, StringComparison.OrdinalIgnoreCase))
+                catch (Exception ex)
                 {
-                    try
-                    {
-                        var defDto = await _donationService.GetDonationDataAsync(defaultAcc, "All", new Core.ValueObjects.DateRange(start, end), userId);
-                        dashboard.DefaultAccountDonations = defDto;
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger.LogWarning(ex, "Failed to preload donations for default account {Account}", defaultAcc);
-                    }
+                    _logger.LogWarning(ex, "Error preloading embedded donation payloads for dashboard");
                 }
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex, "Error preloading embedded donation payloads for dashboard");
             }
 
             if (isInternAccount)
             {
+                _logger.LogInformation("Dashboard load phase=summary-start elapsedMs={ElapsedMs} account={Account} summaryType=intern", stopwatch.ElapsedMilliseconds, dashboard.SelectedAccount);
                 await PopulateInternSummariesAsync(dashboard, selectedContextAccount);
             }
             else if (useSessionAccountDataCache)
@@ -137,8 +146,11 @@ public class FinancialDashboardService : IFinancialDashboardService
             }
             else
             {
+                _logger.LogInformation("Dashboard load phase=summary-start elapsedMs={ElapsedMs} account={Account} summaryType=direct", stopwatch.ElapsedMilliseconds, dashboard.SelectedAccount);
                 await PopulateSummariesDirectAsync(dashboard, selectedContextAccount);
             }
+
+            _logger.LogInformation("Dashboard load phase=complete elapsedMs={ElapsedMs} account={Account}", stopwatch.ElapsedMilliseconds, dashboard.SelectedAccount);
 
             return dashboard;
         }
@@ -352,21 +364,38 @@ public class FinancialDashboardService : IFinancialDashboardService
         var priorYearStart = new DateTime(now.Year - 1, 1, 1);
         var priorYearEnd = new DateTime(now.Year - 1, 12, 31);
 
-        dashboard.CurrentMonth = await BuildSummaryFromAggregatesAsync(selectedAccount, currentMonthStart, currentMonthEnd, now.ToString("MMMM yyyy"));
-        dashboard.PriorMonth = await BuildSummaryFromAggregatesAsync(selectedAccount, priorMonthStart, priorMonthEnd, now.AddMonths(-1).ToString("MMMM yyyy"));
-        dashboard.CurrentYear = await BuildSummaryFromAggregatesAsync(selectedAccount, currentYearStart, currentYearEnd, now.ToString("yyyy"));
-        dashboard.PriorYear = await BuildSummaryFromAggregatesAsync(selectedAccount, priorYearStart, priorYearEnd, (now.Year - 1).ToString());
+        var currentMonthTask = BuildSummaryFromAggregatesAsync(selectedAccount, currentMonthStart, currentMonthEnd, now.ToString("MMMM yyyy"));
+        var priorMonthTask = BuildSummaryFromAggregatesAsync(selectedAccount, priorMonthStart, priorMonthEnd, now.AddMonths(-1).ToString("MMMM yyyy"));
+        var currentYearTask = BuildSummaryFromAggregatesAsync(selectedAccount, currentYearStart, currentYearEnd, now.ToString("yyyy"));
+        var priorYearTask = BuildSummaryFromAggregatesAsync(selectedAccount, priorYearStart, priorYearEnd, (now.Year - 1).ToString());
+
+        await Task.WhenAll(currentMonthTask, priorMonthTask, currentYearTask, priorYearTask);
+
+        dashboard.CurrentMonth = await currentMonthTask;
+        dashboard.PriorMonth = await priorMonthTask;
+        dashboard.CurrentYear = await currentYearTask;
+        dashboard.PriorYear = await priorYearTask;
 
         SetYearAverages(dashboard, now);
     }
 
     private async Task<FinancialSummaryDto> BuildSummaryFromAggregatesAsync(UserAccountContextAccount account, DateTime startDate, DateTime endDate, string period)
     {
+        var stopwatch = System.Diagnostics.Stopwatch.StartNew();
         var repositoryAccount = ToCoreAccount(account);
-        var donationTotal = await _financialDashboardReadRepository.GetDonationTotalAsync(repositoryAccount, startDate, endDate);
-        var expenseTotal = await _financialDashboardReadRepository.GetExpenseTotalAsync(repositoryAccount, startDate, endDate);
-        var transferTotal = await _financialDashboardReadRepository.GetTransferTotalAsync(repositoryAccount, startDate, endDate);
-        var balance = await _financialDashboardReadRepository.GetBalanceAsOfAsync(repositoryAccount, endDate);
+        _logger.LogInformation("Dashboard summary period-start period={Period} account={Account} range={StartDate}..{EndDate}", period, account.Fund, startDate.ToString("yyyy-MM-dd"), endDate.ToString("yyyy-MM-dd"));
+
+        var donationTask = _financialDashboardReadRepository.GetDonationTotalAsync(repositoryAccount, startDate, endDate);
+        var expenseTask = _financialDashboardReadRepository.GetExpenseTotalAsync(repositoryAccount, startDate, endDate);
+        var transferTask = _financialDashboardReadRepository.GetTransferTotalAsync(repositoryAccount, startDate, endDate);
+        var balanceTask = _financialDashboardReadRepository.GetBalanceAsOfAsync(repositoryAccount, endDate);
+        await Task.WhenAll(donationTask, expenseTask, transferTask, balanceTask);
+
+        var donationTotal = donationTask.Result;
+        var expenseTotal = expenseTask.Result;
+        var transferTotal = transferTask.Result;
+        var balance = balanceTask.Result;
+        _logger.LogInformation("Dashboard summary period-complete period={Period} account={Account} elapsedMs={ElapsedMs}", period, account.Fund, stopwatch.ElapsedMilliseconds);
 
         return new FinancialSummaryDto
         {

@@ -50,7 +50,10 @@ public class UserAccountContextService : IUserAccountContextService
 
         try
         {
+            var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+            _logger.LogInformation("User account context phase=user-start user={UserId}", normalizedUserId);
             var user = await ResolveUserAsync(normalizedUserId);
+            _logger.LogInformation("User account context phase=user-complete elapsedMs={ElapsedMs} found={Found}", stopwatch.ElapsedMilliseconds, user is not null);
             if (user == null)
             {
                 return null;
@@ -77,6 +80,8 @@ public class UserAccountContextService : IUserAccountContextService
                 CacheVersion = _cacheInvalidationVersion.Current,
                 Accounts = await GetAccountsAsync(user.Id, canAccessAllAccounts)
             };
+
+            _logger.LogInformation("User account context phase=accounts-complete elapsedMs={ElapsedMs} accounts={AccountCount}", stopwatch.ElapsedMilliseconds, context.Accounts?.Count ?? 0);
 
             _contextCache[normalizedUserId] = CloneContext(context);
             _logger.LogInformation(

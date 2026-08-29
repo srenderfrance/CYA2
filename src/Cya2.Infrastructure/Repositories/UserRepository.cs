@@ -12,8 +12,6 @@ public sealed class UserRepository : IUserRepository
     private readonly IConfiguration _configuration;
     private readonly IDatabaseGuard _dbGuard;
     private readonly ILogger<UserRepository> _logger;
-    private bool _dateCreatedColumnEnsured;
-    private readonly SemaphoreSlim _schemaLock = new(1, 1);
 
     public UserRepository(IConfiguration configuration, IDatabaseGuard dbGuard, ILogger<UserRepository> logger)
     {
@@ -24,35 +22,15 @@ public sealed class UserRepository : IUserRepository
 
     private string ConnStr => _configuration.GetConnectionString("default") ?? string.Empty;
 
-    private async Task EnsureUsersSchemaAsync()
-    {
-        if (_dateCreatedColumnEnsured) return;
-        await _schemaLock.WaitAsync();
-        try
-        {
-            if (_dateCreatedColumnEnsured) return;
-            await using var conn = new MySqlConnection(ConnStr);
-            const string checkSql = @"SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
-WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'Users' AND COLUMN_NAME = 'DateCreated'";
-            var exists = await conn.ExecuteScalarAsync<int>(checkSql) > 0;
-            if (!exists)
-            {
-                _logger.LogWarning("Users.DateCreated column missing. Applying schema fix.");
-                await conn.ExecuteAsync("ALTER TABLE Users ADD COLUMN DateCreated DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP");
-                _logger.LogInformation("Users.DateCreated column created successfully.");
-            }
-            _dateCreatedColumnEnsured = true;
-        }
-        finally { _schemaLock.Release(); }
-    }
-
     public async Task<User?> GetByIdAsync(int id)
     {
         _dbGuard.ThrowIfUnavailable();
-        await EnsureUsersSchemaAsync();
-        const string sql = "SELECT Id, GoogleId, Email, Name, Language, AuthLevel, DefaultAccount, DateCreated FROM Users WHERE Id = @Id LIMIT 1";
+        var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+        const string sql = "SELECT Id, GoogleId, Email, Name, Language, AuthLevel, DefaultAccount FROM Users WHERE Id = @Id LIMIT 1";
         await using var conn = new MySqlConnection(ConnStr);
-        return await conn.QueryFirstOrDefaultAsync<User>(sql, new { Id = id });
+        var user = await conn.QueryFirstOrDefaultAsync<User>(sql, new { Id = id });
+        _logger.LogInformation("UserRepository.GetById phase=query-complete elapsedMs={ElapsedMs} userId={UserId} found={Found}", stopwatch.ElapsedMilliseconds, id, user is not null);
+        return user;
     }
 
     public async Task<List<User>> GetAllAsync()
@@ -60,8 +38,7 @@ WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'Users' AND COLUMN_NAME = 'Date
         _dbGuard.ThrowIfUnavailable();
         try
         {
-            await EnsureUsersSchemaAsync();
-            const string sql = "SELECT Id, GoogleId, Email, Name, Language, AuthLevel, DefaultAccount, DateCreated FROM Users ORDER BY Name";
+            const string sql = "SELECT Id, GoogleId, Email, Name, Language, AuthLevel, DefaultAccount FROM Users ORDER BY Name";
             await using var conn = new MySqlConnection(ConnStr);
             var rows = await conn.QueryAsync<User>(sql);
             return rows.ToList();
@@ -76,15 +53,14 @@ WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'Users' AND COLUMN_NAME = 'Date
     public async Task<User> AddAsync(User entity)
     {
         _dbGuard.ThrowIfUnavailable();
-        await EnsureUsersSchemaAsync();
         const string sql = @"
-INSERT INTO Users (GoogleId, Email, Name, Language, AuthLevel, DefaultAccount, DateCreated)
-VALUES (@GoogleId, @Email, @Name, @Language, @AuthLevel, @DefaultAccount, @DateCreated)";
+INSERT INTO Users (GoogleId, Email, Name, Language, AuthLevel, DefaultAccount)
+VALUES (@GoogleId, @Email, @Name, @Language, @AuthLevel, @DefaultAccount)";
         await using var conn = new MySqlConnection(ConnStr);
         await conn.ExecuteAsync(sql, new
         {
             entity.GoogleId, entity.Email, entity.Name, entity.Language,
-            entity.AuthLevel, entity.DefaultAccount, entity.DateCreated
+            entity.AuthLevel, entity.DefaultAccount
         });
         return await GetByEmailAsync(entity.Email) ?? entity;
     }
@@ -92,7 +68,6 @@ VALUES (@GoogleId, @Email, @Name, @Language, @AuthLevel, @DefaultAccount, @DateC
     public async Task<User> UpdateAsync(User entity)
     {
         _dbGuard.ThrowIfUnavailable();
-        await EnsureUsersSchemaAsync();
         const string sql = @"
 UPDATE Users SET GoogleId = @GoogleId, Email = @Email, Name = @Name,
     Language = @Language, AuthLevel = @AuthLevel, DefaultAccount = @DefaultAccount
@@ -124,8 +99,7 @@ WHERE Id = @Id";
     public async Task<User?> GetByEmailAsync(string email)
     {
         _dbGuard.ThrowIfUnavailable();
-        await EnsureUsersSchemaAsync();
-        const string sql = "SELECT Id, GoogleId, Email, Name, Language, AuthLevel, DefaultAccount, DateCreated FROM Users WHERE Email = @Email LIMIT 1";
+        const string sql = "SELECT Id, GoogleId, Email, Name, Language, AuthLevel, DefaultAccount FROM Users WHERE Email = @Email LIMIT 1";
         await using var conn = new MySqlConnection(ConnStr);
         return await conn.QueryFirstOrDefaultAsync<User>(sql, new { Email = email });
     }
@@ -133,8 +107,7 @@ WHERE Id = @Id";
     public async Task<User?> GetByExternalIdAsync(string externalId)
     {
         _dbGuard.ThrowIfUnavailable();
-        await EnsureUsersSchemaAsync();
-        const string sql = "SELECT Id, GoogleId, Email, Name, Language, AuthLevel, DefaultAccount, DateCreated FROM Users WHERE GoogleId = @GoogleId LIMIT 1";
+        const string sql = "SELECT Id, GoogleId, Email, Name, Language, AuthLevel, DefaultAccount FROM Users WHERE GoogleId = @GoogleId LIMIT 1";
         await using var conn = new MySqlConnection(ConnStr);
         return await conn.QueryFirstOrDefaultAsync<User>(sql, new { GoogleId = externalId });
     }

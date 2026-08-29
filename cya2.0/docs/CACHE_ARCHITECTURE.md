@@ -202,6 +202,10 @@ This distinction is important: cache hits reduce data access latency, while reta
 
 Home uses dashboard DTO and session account-data caches. Account Summaries embeds the Home dashboard flow, so changes affecting account metadata or dashboard data must use the central invalidator. Clearing only Admin preload data or only the account snapshot is insufficient.
 
+Home starts account warmup after its first render, once the initial Home load has completed. The default account is prioritized first; when that warmup completes, background warmup for the remaining bounded set of recent non-default accounts starts immediately. Warmup must not block the initial Home render, and it must not be implemented with a fixed timer-based delay.
+
+When a default account exists, warmup includes the default account plus up to four recent non-default accounts. When no default account exists, it includes up to five accounts. Selecting another account prioritizes that account and the warmup coordinator resumes the remaining background work afterward.
+
 ### Admin
 
 Admin selection should be persisted through `IUserSelectionService` when the existing application behavior requires the selection to follow the user to Donations, Expenses, Donors, or Home. Scoped component state alone is not sufficient for cross-circuit propagation.
