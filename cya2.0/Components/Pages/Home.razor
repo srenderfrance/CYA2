@@ -23,11 +23,11 @@
 @inject IJSRuntime JS
 @inject Cya2.Application.Interfaces.IUserIdResolver UserIdResolver
 @inject Cya2.Application.Interfaces.IUserSelectionService UserSelectionService
-@inject Cya2.Application.Interfaces.IDonationService DonationService
 @inject Cya2.Application.Interfaces.ISessionDonationDataCacheService SessionDonationDataCacheService
 @inject Cya2.Application.Interfaces.IUserDateRangeSelectionService DateRangeSelectionService
-@inject Cya2.Application.Interfaces.IExpenseService ExpenseService
 @inject Cya2.Application.Interfaces.IDonorService DonorService
+@inject Cya2.Application.Interfaces.IAccountSnapshotWarmupService AccountSnapshotWarmupService
+@inject Cya2.Application.Interfaces.IDateRangeStateService DateRangeStateService
 @inject cya2.Services.UserSessionHydrationService SessionHydrationService
 @inject cya2.Services.Diagnostics.PageLoadCorrelationContext PageLoadCorrelation
 
@@ -759,9 +759,7 @@ private string debugMessage = string.Empty;
 
 private const int MaxDashboardMemoryCacheItems = 15;
 
-private bool cacheWarmupPending;
 private string cachedUserId = string.Empty;
-private List<string> pendingPrefetchFunds = new();
 
 private bool showVisualizations;
 private bool isVisualizationLoading;
@@ -949,7 +947,22 @@ private bool showMissingGiftDialog = false;
                 }
             }
 
-            QueueBackgroundPrefetch(cachedUserId, selectedAccount, defaultFundFromDto);
+            var defaultAccountId = dashboardData.UserAccounts.FirstOrDefault(account => account.IsDefault)?.AccountId;
+            var warmupAccounts = dashboardData.UserAccounts.Select(account => new UserAccountContextAccount
+            {
+                AccountId = account.AccountId,
+                Fund = account.Fund,
+                AccountingClass = account.AccountingClass,
+                AccountNumber = account.AccountNumber,
+                Overhead = account.Overhead
+            }).ToList();
+
+            _ = AccountSnapshotWarmupService.WarmInitialAccountsAsync(
+                warmupAccounts,
+                defaultAccountId,
+                cachedUserId,
+                isAdminUser,
+                GetDonorSummaryWarmupRange());
         }
         catch (Exception ex)
         {
@@ -969,55 +982,12 @@ private bool showMissingGiftDialog = false;
         }
     }
 
-    protected override async Task OnAfterRenderAsync(bool firstRender)
+    private Cya2.Core.ValueObjects.DateRange? GetDonorSummaryWarmupRange()
     {
-        if (!cacheWarmupPending || string.IsNullOrWhiteSpace(cachedUserId))
-        {
-            return;
-        }
-
-        cacheWarmupPending = false;
-
-        try
-        {
-            using var operationScope = PageLoadCorrelation.BeginOperation(Logger, nameof(Home), "AfterRenderPrefetch");
-            await PrefetchDashboardsAsync(cachedUserId, pendingPrefetchFunds);
-            BuildDebugMessage("prefetch-complete");
-            
-            // Also prefetch donation caches for those funds for a wide date range (current + 2 previous years)
-            _ = Task.Run(async () =>
-            {
-                using var operationScope = PageLoadCorrelation.BeginOperation(Logger, nameof(Home), "DonationPrefetch");
-                try
-                {
-                    var now = DateTime.UtcNow;
-                    var start = new DateTime(now.Year - 2, 1, 1);
-                    var end = new DateTime(now.Year, 12, 31);
-                    foreach (var fund in pendingPrefetchFunds)
-                    {
-                        try
-                        {
-                            if (!SessionDonationDataCacheService.TryGetDonationData(cachedUserId, fund, out var cachedFund)
-                                || !CacheCoversRange(cachedFund, start, end))
-                            {
-                                var dto = await DonationService.GetDonationDataAsync(fund, "All", new Cya2.Core.ValueObjects.DateRange(start, end), cachedUserId);
-                                SessionDonationDataCacheService.SetDonationData(cachedUserId, fund, dto, prioritize: false);
-                            }
-                        }
-                        catch { }
-                    }
-                }
-                catch { }
-            });
-            
-            await InvokeAsync(StateHasChanged);
-        }
-        catch (Exception ex)
-        {
-            Logger.LogWarning(ex, "Home.OnAfterRenderAsync prefetch failed");
-            BuildDebugMessage("prefetch-error", ex.Message);
-            await InvokeAsync(StateHasChanged);
-        }
+        var state = DateRangeStateService.InitializeDateRange(SessionUserStateService);
+        return state.SelectedPreset == Cya2.Application.DTOs.DateRangePreset.AllDates
+            ? null
+            : new Cya2.Core.ValueObjects.DateRange(state.StartDate, state.EndDate);
     }
 
     private async Task OnAccountSelectionAsync(object args)
@@ -1058,36 +1028,23 @@ private bool showMissingGiftDialog = false;
                 CacheDashboard(selectedAccount, dashboardData, prioritize: true);
                 Logger.LogInformation("Home.accountSelection: fetched dashboard for {Account} from service", selectedAccount);
 
-                // Also preload donation cache for this selected account (wide range: current year + 2 previous years)
-                try
-                {
-                    var now2 = DateTime.UtcNow;
-                    var startPrefetch = new DateTime(now2.Year - 2, 1, 1);
-                    var endPrefetch = new DateTime(now2.Year, 12, 31);
-                    if (!SessionDonationDataCacheService.TryGetDonationData(userId, selectedAccount, out var cachedPrefetch)
-                        || !CacheCoversRange(cachedPrefetch, startPrefetch, endPrefetch))
-                    {
-                        var prefetchDto = await DonationService.GetDonationDataAsync(
-                            selectedAccount,
-                            "All",
-                            new Cya2.Core.ValueObjects.DateRange(startPrefetch, endPrefetch),
-                            userId);
-                        SessionDonationDataCacheService.SetDonationData(userId, selectedAccount, prefetchDto, prioritize: true);
-                        Logger.LogInformation("Home.accountSelection: preloaded donation cache for selectedAccount={Account}", selectedAccount);
-                    }
-                    else
-                    {
-                        Logger.LogInformation("Home.accountSelection: skipped donation preload for {Account} because cache already covers range", selectedAccount);
-                    }
-                }
-                catch (Exception ex)
-                {
-                    Logger.LogWarning(ex, "Home.accountSelection: failed to preload donation cache for {Account}", selectedAccount);
-                }
             }
 
             selectedAccount = ResolveSelectedAccount(dashboardData);
             SessionUserStateService.SelectedAccountFund = selectedAccount;
+            var selectedAccountDto = dashboardData.UserAccounts.FirstOrDefault(account =>
+                string.Equals(account.Fund, selectedAccount, StringComparison.OrdinalIgnoreCase));
+            if (selectedAccountDto is not null)
+            {
+                AccountSnapshotWarmupService.RecordSelection(new UserAccountContextAccount
+                {
+                    AccountId = selectedAccountDto.AccountId,
+                    Fund = selectedAccountDto.Fund,
+                    AccountingClass = selectedAccountDto.AccountingClass,
+                    AccountNumber = selectedAccountDto.AccountNumber,
+                    Overhead = selectedAccountDto.Overhead
+                }, cachedUserId, isAdminUser);
+            }
             await ComputeMissingGiftAlertsAsync();
             if (showVisualizations)
             {
@@ -1193,28 +1150,6 @@ private bool showMissingGiftDialog = false;
             : 0m.ToString("C0", CultureInfo.CurrentCulture);
     }
 
-    private async Task PrefetchDashboardsAsync(string userId, List<string> accountsToPrefetch)
-    {
-        foreach (var fund in accountsToPrefetch)
-        {
-            try
-            {
-                if (SessionDashboardDtoCacheService.TryGetDashboard(userId, fund, out _))
-                {
-                    continue;
-                }
-
-                var dto = await DashboardService.GetDashboardSummaryDataAsync(fund, userId);
-                CacheDashboard(fund, dto, prioritize: false);
-                Logger.LogInformation("Home.prefetch: fetched summary DTO for {Fund}", fund);
-            }
-            catch (Exception ex)
-            {
-                Logger.LogWarning(ex, "Home.prefetch: failed for {Fund}", fund);
-            }
-        }
-    }
-
     private void CacheDashboard(string fund, FinancialDashboardDto dto, bool prioritize)
     {
         if (string.IsNullOrWhiteSpace(cachedUserId) || string.IsNullOrWhiteSpace(fund) || dto == null)
@@ -1238,120 +1173,6 @@ private bool showMissingGiftDialog = false;
     private void RefreshSelectedAccountMode()
     {
         isInternAccountSelected = InternAccountUtility.IsInternFund(selectedAccount);
-    }
-
-    private static bool CacheCoversRange(DonationDataDto dto, DateTime startDate, DateTime endDate)
-    {
-        if (dto == null || dto.CachedStartDate == default || dto.CachedEndDate == default)
-        {
-            return false;
-        }
-
-        return dto.CachedStartDate.Date <= startDate.Date && dto.CachedEndDate.Date >= endDate.Date;
-    }
-
-    private void QueueBackgroundPrefetch(string userId, string selectedFund, string defaultFund)
-    {
-        if (string.IsNullOrWhiteSpace(userId))
-        {
-            return;
-        }
-
-        _ = Task.Run(async () =>
-        {
-            using var operationScope = PageLoadCorrelation.BeginOperation(Logger, nameof(Home), "BackgroundPrefetch");
-            try
-            {
-                var now = DateTime.UtcNow;
-                var donationRange = new Cya2.Core.ValueObjects.DateRange(new DateTime(now.Year - 2, 1, 1), new DateTime(now.Year, 12, 31));
-                var uiRange = ResolveActiveDateRange();
-
-                if (!string.IsNullOrWhiteSpace(selectedFund))
-                {
-                    await PrefetchFundAsync(userId, selectedFund, donationRange, new[] { uiRange }, prioritizeDonation: true);
-                }
-
-                if (!string.IsNullOrWhiteSpace(defaultFund) && !string.Equals(defaultFund, selectedFund, StringComparison.OrdinalIgnoreCase))
-                {
-                    await PrefetchFundAsync(userId, defaultFund, donationRange, BuildPresetRanges(), prioritizeDonation: false);
-                }
-
-                await InvokeAsync(async () =>
-                {
-                    await ComputeMissingGiftAlertsAsync();
-                    StateHasChanged();
-                });
-            }
-            catch (Exception ex)
-            {
-                Logger.LogWarning(ex, "Home: background prefetch failed");
-            }
-        });
-    }
-
-    private async Task PrefetchFundAsync(
-        string userId,
-        string fund,
-        Cya2.Core.ValueObjects.DateRange donationRange,
-        IEnumerable<Cya2.Core.ValueObjects.DateRange> pageRanges,
-        bool prioritizeDonation)
-    {
-        try
-        {
-            if (!SessionDonationDataCacheService.TryGetDonationData(userId, fund, out var cachedDonation)
-                || !CacheCoversRange(cachedDonation, donationRange.StartDate, donationRange.EndDate))
-            {
-                var dto = await DonationService.GetDonationDataAsync(fund, "All", donationRange, userId);
-                SessionDonationDataCacheService.SetDonationData(userId, fund, dto, prioritize: prioritizeDonation);
-            }
-        }
-        catch (Exception ex)
-        {
-            Logger.LogWarning(ex, "Home: failed donation prefetch for account={Account}", fund);
-        }
-
-        foreach (var range in pageRanges)
-        {
-            try
-            {
-                _ = await ExpenseService.GetExpenseDataAsync(fund, range, userId, isAdminUser);
-                _ = await DonorService.GetDonorSummariesAsync(fund, range);
-            }
-            catch (Exception ex)
-            {
-                Logger.LogWarning(ex,
-                    "Home: failed expense/donor prefetch for account={Account} range={Start:yyyy-MM-dd}..{End:yyyy-MM-dd}",
-                    fund,
-                    range.StartDate,
-                    range.EndDate);
-            }
-        }
-    }
-
-    private static List<Cya2.Core.ValueObjects.DateRange> BuildPresetRanges()
-    {
-        var now = DateTime.Now;
-
-        var thisYear = new Cya2.Core.ValueObjects.DateRange(new DateTime(now.Year, 1, 1), now);
-
-        var lastCompleteMonth = new DateTime(now.Year, now.Month, 1).AddMonths(-1);
-        var previous12End = new DateTime(lastCompleteMonth.Year, lastCompleteMonth.Month, DateTime.DaysInMonth(lastCompleteMonth.Year, lastCompleteMonth.Month));
-        var previous12Start = new DateTime(previous12End.AddMonths(-11).Year, previous12End.AddMonths(-11).Month, 1);
-        var previous12Months = new Cya2.Core.ValueObjects.DateRange(previous12Start, previous12End);
-
-        var lastYear = new Cya2.Core.ValueObjects.DateRange(new DateTime(now.Year - 1, 1, 1), new DateTime(now.Year - 1, 12, 31));
-
-        var thisMonth = new Cya2.Core.ValueObjects.DateRange(new DateTime(now.Year, now.Month, 1), now);
-
-        var firstDayOfLastMonth = new DateTime(now.Year, now.Month, 1).AddMonths(-1);
-        var lastMonth = new Cya2.Core.ValueObjects.DateRange(
-            firstDayOfLastMonth,
-            new DateTime(firstDayOfLastMonth.Year, firstDayOfLastMonth.Month, DateTime.DaysInMonth(firstDayOfLastMonth.Year, firstDayOfLastMonth.Month)));
-
-        return new[] { thisYear, previous12Months, lastYear, thisMonth, lastMonth }
-            .GroupBy(r => $"{r.StartDate:yyyyMMdd}-{r.EndDate:yyyyMMdd}")
-            .Select(g => g.First())
-            .ToList();
     }
 
     private Cya2.Core.ValueObjects.DateRange ResolveActiveDateRange()

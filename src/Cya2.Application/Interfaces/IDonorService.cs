@@ -1,4 +1,5 @@
 using Cya2.Application.DTOs;
+using Cya2.Core.Entities;
 using Cya2.Core.ValueObjects;
 
 namespace Cya2.Application.Interfaces;
@@ -13,6 +14,7 @@ public interface IDonorService
     Task<List<DonorSummaryDto>> GetAllDonorSummariesAsync(IEnumerable<string> fundNames);
     Task<DonorDetailDto?> GetDonorDetailAsync(string donorName, string accountFund);
     Task<List<string>> GetDonorNamesAsync(string accountFund);
+    Task<List<SubAccount>> GetSubAccountsForAccountAsync(int accountId);
     Task<string> FormatDonorContactForCopyAsync(string donorName, string accountFund);
     Task<List<DonorSummaryDto>> SearchDonorsAsync(string searchTerm, string accountFund);
     Task UpdateDonorContactInfoAsync(string donorName, string email, string phoneMobile, string phoneFixed, 

@@ -42,7 +42,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<AdminFundReadService>();
         services.AddScoped<AdminFundWriteService>();
         services.AddScoped<IAdminPreloadService, AdminPreloadService>();
-        services.AddScoped<IAdminRecentAccountSnapshotService, AdminRecentAccountSnapshotService>();
+        services.AddScoped<IAccountSnapshotWarmupService, AccountSnapshotWarmupService>();
 
         // Donor management services - enabled for Donors.razor migration
         services.AddScoped<IDonorService, DonorService>();

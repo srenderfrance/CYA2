@@ -1,5 +1,4 @@
 @page "/donors"
-@using static Microsoft.AspNetCore.Components.Web.RenderMode
 @using Cya2.Shared.Utilities
 @using Radzen
 @using Radzen.Blazor
@@ -10,10 +9,8 @@
 @using Cya2.Application.DTOs
 @using Cya2.Core.ValueObjects
 @using Cya2.Core.Enums
-@using Cya2.Core.Interfaces
 @using System.Security.Claims
 @using System.Diagnostics
-@using System.Collections.Concurrent
 @inject AuthenticationStateProvider AuthStateProvider
 @inject ISessionUserStateService SessionUserStateService
 @inject IDateRangeStateService DateRangeStateService
@@ -25,12 +22,12 @@
 @inject NotificationService NotificationService
 @inject ILogger<Donors> Logger
 @inject IDonorService DonorService
-@inject IExpenseService ExpenseService
-@inject ISubAccountRepository SubAccountRepository
+@inject IUserAccountContextService UserAccountContextService
 @inject IUserSelectionService UserSelectionService
 @inject IUserDateRangeSelectionService DateRangeSelectionService
 @inject cya2.Services.UserSessionHydrationService SessionHydrationService
 @inject cya2.Services.Diagnostics.PageLoadCorrelationContext PageLoadCorrelation
+@inject Cya2.Application.Interfaces.IAccountSnapshotWarmupService AccountSnapshotWarmupService
 
 <PageTitle>@Localizer["Donors"]</PageTitle>
 
@@ -122,7 +119,6 @@
 
     </RadzenStack>
 
-    <SectionLoadingBoundary IsLoading="isLoading" LoadingText="@Localizer["Loading"]" MinHeight="260px" UseCardSurface="false" Class="mt-3">
     <div class="rz-mt-3" style="width:100%;">
         <div class="donor-search-info-shell">
             <div class="donor-search-row" style="margin-bottom:0.75rem; width:100%;">
@@ -212,6 +208,7 @@
                     </div>
                 </div>
 
+                <SectionLoadingBoundary IsLoading="isLoading && !hasDonorResults" LoadingText="@Localizer["Loading"]" MinHeight="260px" UseCardSurface="false">
                 <div class="donors-grid-scroll">
                 <RadzenDataGrid TItem="DonorSummaryDto" 
                                 Data="@donorsInRange" 
@@ -221,17 +218,7 @@
                                 AllowVirtualization="false"
                                 RowSelect="@(async (args) => await OnDonorRowSelect(args))">
                     <Columns>
-                        <RadzenDataGridColumn TItem="DonorSummaryDto" Property="Name" Title="@Localizer["Donor"]" Width="280px" Frozen="true">
-                            <Template Context="d">
-                                <div style="display:flex;flex-direction:column;line-height:1.2;">
-                                    <span>@d.Name</span>
-                                    @if (!string.IsNullOrWhiteSpace(d.SourceSummary))
-                                    {
-                                        <small style="color:#6c757d;">@d.SourceSummary</small>
-                                    }
-                                </div>
-                            </Template>
-                        </RadzenDataGridColumn>
+                        <RadzenDataGridColumn TItem="DonorSummaryDto" Property="DisplayName" Title="@Localizer["Donor"]" Width="280px" Frozen="true" />
                         @if (showEmail)
                         {
                             <RadzenDataGridColumn TItem="DonorSummaryDto" Property="Email" Title="@Localizer["Email"]" Width="260px" />
@@ -242,19 +229,11 @@
                         }
                         @if (showAddress)
                         {
-                            <RadzenDataGridColumn TItem="DonorSummaryDto" Title="@Localizer["Address"]" Width="380px">
-                                <Template Context="d">
-                                    <div title="@FormatMailingAddress(d, includeCountry: true)" style="white-space: normal; overflow-wrap: anywhere; line-height: 1.2;">
-                                        @FormatMailingAddress(d, showCountry)
-                                    </div>
-                                </Template>
-                            </RadzenDataGridColumn>
+                            <RadzenDataGridColumn TItem="DonorSummaryDto" Property="DisplayAddress" Title="@Localizer["Address"]" Width="380px" />
                         }
                         @if (showFrequency)
                         {
-                            <RadzenDataGridColumn TItem="DonorSummaryDto" Property="Frequency" Title="@Localizer["Frequency"]" Width="130px">
-                                <Template Context="d">@GetFrequencyLabel(d.Frequency)</Template>
-                            </RadzenDataGridColumn>
+                            <RadzenDataGridColumn TItem="DonorSummaryDto" Property="FrequencyLabel" Title="@Localizer["Frequency"]" Width="130px" />
                         }
                         @if (showTotal)
                         {
@@ -263,9 +242,9 @@
                     </Columns>
                 </RadzenDataGrid>
                 </div>
+                </SectionLoadingBoundary>
             </RadzenCard>
     </div>
-    </SectionLoadingBoundary>
 
 </RadzenStack>
 
@@ -352,12 +331,13 @@
     private bool showSubAccountDropdown = false;
     private string selectedSubAccount = "All";
     private List<SubAccountOptionDto> subAccountOptions = new();
-    private static readonly ConcurrentDictionary<int, List<Cya2.Core.Entities.SubAccount>> subAccountsByAccountId = new();
+    private readonly Dictionary<int, List<Cya2.Core.Entities.SubAccount>> subAccountsByAccountId = new();
     private string? lastDonorLoadKey;
 
     private string userId = string.Empty;
     private bool isAdminOrViewer = false;
-    private bool isLoading = true;
+    private bool isLoading = false;
+    private bool hasDonorResults = false;
     private bool isRadzenSuggestionVisible = false;
 
     protected override async Task OnInitializedAsync()
@@ -386,7 +366,15 @@
                 SessionUserStateService.SelectedAccountFund,
                 SessionUserStateService.DefaultAccountFund);
 
-            userAccounts = await ExpenseService.GetUserAccountsAsync(userId, isAdminOrViewer);
+            var userContext = await UserAccountContextService.GetContextAsync(userId, isAdminOrViewer);
+            userAccounts = userContext?.Accounts.Select(account => new AccountOptionDto
+            {
+                AccountId = account.AccountId,
+                Fund = account.Fund,
+                AccountingClass = account.AccountingClass,
+                AccountNumber = account.AccountNumber,
+                Overhead = account.Overhead
+            }).ToList() ?? new List<AccountOptionDto>();
 
             if (userAccounts.Any())
             {
@@ -452,10 +440,17 @@
     private async Task LoadSubAccountOptionsAsync(int accountId)
     {
         var subAccounts = await GetSubAccountsForAccountAsync(accountId);
+        ConfigureSubAccountOptions(subAccounts);
+    }
+
+    private void ConfigureSubAccountOptions(List<Cya2.Core.Entities.SubAccount> subAccounts)
+    {
 
         var separate = subAccounts
             .Where(sa => string.Equals(sa.Kind, "Separate", StringComparison.OrdinalIgnoreCase))
             .ToList();
+
+            PrepareDonorRows(donorsInRange);
 
         showSubAccountDropdown = separate.Any();
         subAccountOptions = new List<SubAccountOptionDto>();
@@ -586,12 +581,14 @@
                 }
             }
 
+            PrepareDonorRows(donorsInRange);
             donorNames = donorsInRange
                 .Select(d => d.Name)
                 .Where(n => !string.IsNullOrWhiteSpace(n))
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .OrderBy(n => n)
                 .ToList();
+            hasDonorResults = true;
 
             SessionUserStateService.SelectedAccountFund = currentAccount.Fund;
             if (!string.IsNullOrWhiteSpace(userId))
@@ -708,14 +705,14 @@
 
     private async Task<List<Cya2.Core.Entities.SubAccount>> GetSubAccountsForAccountAsync(int accountId)
     {
-        if (subAccountsByAccountId.TryGetValue(accountId, out var cachedSubAccounts))
+        if (subAccountsByAccountId.TryGetValue(accountId, out var cached))
         {
-            return cachedSubAccounts;
+            return cached;
         }
 
-        var loadedSubAccounts = await SubAccountRepository.GetByAccountIdAsync(accountId);
-        subAccountsByAccountId[accountId] = loadedSubAccounts;
-        return loadedSubAccounts;
+        var subAccounts = await DonorService.GetSubAccountsForAccountAsync(accountId);
+        subAccountsByAccountId[accountId] = subAccounts;
+        return subAccounts;
     }
 
     private async Task OnAutocompleteChanged(object? args)
@@ -913,6 +910,25 @@
         };
     }
 
+    private static void PrepareDonorRows(IEnumerable<DonorSummaryDto> rows)
+    {
+        foreach (var donor in rows)
+        {
+            donor.DisplayName = string.IsNullOrWhiteSpace(donor.SourceSummary)
+                ? donor.Name
+                : $"{donor.Name} ({donor.SourceSummary})";
+            donor.DisplayAddress = FormatMailingAddress(donor);
+            donor.FrequencyLabel = GetFrequencyLabel(donor.Frequency);
+        }
+    }
+
+    private DateRange? GetDonorSummaryWarmupRange()
+    {
+        return dateRangeState.SelectedPreset == Cya2.Application.DTOs.DateRangePreset.AllDates
+            ? null
+            : new DateRange(dateRangeState.StartDate, dateRangeState.EndDate);
+    }
+
     private async Task accountSelection(string accountName)
     {
         if (string.IsNullOrEmpty(accountName)) return;
@@ -930,6 +946,14 @@
             currentAccount = userAccounts.FirstOrDefault(a => a.Fund == selectedAccount);
             if (currentAccount != null)
             {
+                await AccountSnapshotWarmupService.WarmSelectedAccountAsync(new UserAccountContextAccount
+                {
+                    AccountId = currentAccount.AccountId,
+                    Fund = currentAccount.Fund,
+                    AccountingClass = currentAccount.AccountingClass,
+                    AccountNumber = currentAccount.AccountNumber,
+                    Overhead = currentAccount.Overhead
+                }, userId, isAdminOrViewer, GetDonorSummaryWarmupRange());
                 lastDonorLoadKey = null;
                 await LoadSubAccountOptionsAsync(currentAccount.AccountId);
                 await BuildDonorsInRange(currentAccount);
@@ -979,7 +1003,7 @@
             parts.Add(GetFrequencyLabel(d.Frequency));
             if (showEmail) parts.Add(d.Email);
             if (showPhone) parts.Add(d.PhoneSummary);
-            if (showAddress) parts.Add(FormatMailingAddress(d, showCountry));
+            if (showAddress) parts.Add(d.DisplayAddress);
             return string.Join('\t', parts);
         });
         var payload = string.Join("\n", rows);
@@ -1028,7 +1052,7 @@
         _                       => ""
     };
 
-    private static string FormatMailingAddress(DonorSummaryDto donor, bool includeCountry)
+    private static string FormatMailingAddress(DonorSummaryDto donor)
     {
         var cityStatePostal = string.Join(", ", new[]
         {
@@ -1049,7 +1073,8 @@
             cityStatePostal
         };
 
-        if (includeCountry)
+        if (!string.IsNullOrWhiteSpace(donor.Country) &&
+            !string.Equals(donor.Country.Trim(), "United States", StringComparison.OrdinalIgnoreCase))
         {
             parts.Add(donor.Country);
         }

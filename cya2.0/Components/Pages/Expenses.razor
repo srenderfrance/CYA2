@@ -1,6 +1,5 @@
 @page "/expenses"
 @using Microsoft.AspNetCore.Authorization
-@using static Microsoft.AspNetCore.Components.Web.RenderMode
 @using Cya2.Shared.Utilities
 @using Radzen
 @using Radzen.Blazor
@@ -19,6 +18,7 @@
 @inject Cya2.Application.Interfaces.IUserDateRangeSelectionService DateRangeSelectionService
 @inject cya2.Services.UserSessionHydrationService SessionHydrationService
 @inject cya2.Services.Diagnostics.PageLoadCorrelationContext PageLoadCorrelation
+@inject Cya2.Application.Interfaces.IAccountSnapshotWarmupService AccountSnapshotWarmupService
 
 @rendermode @(new InteractiveServerRenderMode(prerender: false))
 @attribute [StreamRendering]
@@ -485,6 +485,21 @@
         {
             UserSelectionService.SetSelectedAccount(userId, accountName);
         }
+
+        var selectedAccountDto = expenseData.UserAccounts.FirstOrDefault(account =>
+            string.Equals(account.Fund, accountName, StringComparison.OrdinalIgnoreCase));
+        if (selectedAccountDto is not null)
+        {
+            await AccountSnapshotWarmupService.WarmSelectedAccountAsync(new UserAccountContextAccount
+            {
+                AccountId = selectedAccountDto.AccountId,
+                Fund = selectedAccountDto.Fund,
+                AccountingClass = selectedAccountDto.AccountingClass,
+                AccountNumber = selectedAccountDto.AccountNumber,
+                Overhead = selectedAccountDto.Overhead
+            }, userId, canAccessAllAccounts);
+        }
+
         await LoadExpenseData(canAccessAllAccounts);
     }
 

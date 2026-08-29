@@ -6,6 +6,7 @@ using Cya2.Application.DTOs;
 using Cya2.Application.Interfaces;
 using Cya2.Application.Models;
 using Cya2.Core.Enums;
+using Cya2.Core.Entities;
 using Cya2.Core.Interfaces;
 using Cya2.Core.ReadModels;
 using Cya2.Core.Services;
@@ -64,6 +65,9 @@ namespace Cya2.Application.Services
                 .OrderBy(n => n)
                 .ToList()!;
         }
+
+        public Task<List<SubAccount>> GetSubAccountsForAccountAsync(int accountId)
+            => _donationReadRepository.GetSubAccountsByAccountIdAsync(accountId);
 
         public Task<List<DonorSummaryDto>> GetDonorSummariesAsync(string accountFund, DateRange dateRange)
         {
@@ -126,26 +130,63 @@ namespace Cya2.Application.Services
 
         public async Task<List<DonorSummaryDto>> GetDonorSummariesForAccountAsync(AccountOptionDto account, DateRange dateRange)
         {
-            var funds = await GetExpandedFundsForAccountAsync(account.AccountId, account.Fund);
             if (!CanUseAccountSnapshot(dateRange))
             {
-                return await GetDonorSummariesAsync(funds, dateRange);
+                var fallbackFunds = await GetExpandedFundsForAccountAsync(account.AccountId, account.Fund);
+                return await GetDonorSummariesAsync(fallbackFunds, dateRange);
             }
 
+            var (snapshot, wasCached) = await LoadAccountSnapshotAsync(account);
+            var funds = NormalizeFunds(new[] { account.Fund }.Concat(snapshot.SubAccounts.Select(subAccount => subAccount.SubFund)));
             var signature = BuildFundsSignature(funds);
             if (_donorSummaryCache.TryGetDonorSummaries(signature, dateRange.StartDate, dateRange.EndDate, out var cached))
             {
                 return cached;
             }
 
-            var snapshotDonations = await LoadDonationsFromAccountSnapshotAsync(account, dateRange);
+            var lockKey = $"snapshot|{signature}|{dateRange.StartDate:yyyyMMdd}|{dateRange.EndDate:yyyyMMdd}";
+            var gate = _queryLocks.GetOrAdd(lockKey, _ => new SemaphoreSlim(1, 1));
+            await gate.WaitAsync();
+            try
+            {
+                if (_donorSummaryCache.TryGetDonorSummaries(signature, dateRange.StartDate, dateRange.EndDate, out cached))
+                {
+                    return cached;
+                }
 
-            var result = BuildDonorSummaries(DeduplicateDonations(snapshotDonations))
-                .OrderByDescending(d => d.Total)
-                .ThenBy(d => d.Name)
-                .ToList();
-            _donorSummaryCache.SetDonorSummaries(signature, dateRange.StartDate, dateRange.EndDate, result);
-            return result;
+                _logger.LogInformation(
+                    "Donor data source={Source} account={Account} requestedRange={Start:yyyy-MM-dd}..{End:yyyy-MM-dd} queriedRange={QueriedStart:yyyy-MM-dd}..{QueriedEnd:yyyy-MM-dd} snapshotCreatedUtc={SnapshotCreatedUtc:o} donations={DonationCount}",
+                    wasCached ? "snapshot-cache" : "snapshot-load",
+                    account.Fund,
+                    dateRange.StartDate,
+                    dateRange.EndDate,
+                    GetSnapshotQueryRange().StartDate,
+                    GetSnapshotQueryRange().EndDate,
+                    snapshot.CreatedUtc,
+                    snapshot.Donations.Count);
+
+                var snapshotFunds = funds.ToHashSet(StringComparer.OrdinalIgnoreCase);
+                var snapshotDonations = snapshot.Donations
+                    .Where(d => snapshotFunds.Contains(d.Fund))
+                    .Where(d => d.Date.Date >= dateRange.StartDate.Date && d.Date.Date <= dateRange.EndDate.Date)
+                    .Select(MapToDonationRecord)
+                    .ToList();
+
+                var result = BuildDonorSummaries(DeduplicateDonations(snapshotDonations))
+                    .OrderByDescending(d => d.Total)
+                    .ThenBy(d => d.Name)
+                    .ToList();
+                _donorSummaryCache.SetDonorSummaries(signature, dateRange.StartDate, dateRange.EndDate, result);
+                return result;
+            }
+            finally
+            {
+                gate.Release();
+                if (gate.CurrentCount == 1)
+                {
+                    _queryLocks.TryRemove(lockKey, out _);
+                }
+            }
         }
 
 
@@ -226,9 +267,8 @@ namespace Cya2.Application.Services
             return funds;
         }
 
-        private async Task<List<DonationRecord>> LoadDonationsFromAccountSnapshotAsync(
-            AccountOptionDto account,
-            DateRange dateRange)
+        private async Task<(AccountDataSnapshot Snapshot, bool WasCached)> LoadAccountSnapshotAsync(
+            AccountOptionDto account)
         {
             var key = new AccountSnapshotKey(account.AccountId, account.Fund, 0).Normalize();
             var queryRange = GetSnapshotQueryRange();
@@ -242,21 +282,7 @@ namespace Cya2.Application.Services
                     CancellationToken.None);
             }
 
-            _logger.LogInformation(
-                "Donor data source={Source} account={Account} requestedRange={Start:yyyy-MM-dd}..{End:yyyy-MM-dd} queriedRange={QueriedStart:yyyy-MM-dd}..{QueriedEnd:yyyy-MM-dd} snapshotCreatedUtc={SnapshotCreatedUtc:o} donations={DonationCount}",
-                wasCached ? "snapshot-cache" : "snapshot-load",
-                account.Fund,
-                dateRange.StartDate,
-                dateRange.EndDate,
-                queryRange.StartDate,
-                queryRange.EndDate,
-                snapshot.CreatedUtc,
-                snapshot.Donations.Count);
-
-            return snapshot.Donations
-                .Where(d => d.Date.Date >= dateRange.StartDate.Date && d.Date.Date <= dateRange.EndDate.Date)
-                .Select(MapToDonationRecord)
-                .ToList();
+            return (snapshot, wasCached);
         }
 
         private Task<AccountDataSnapshot> LoadSnapshotAccountAsync(

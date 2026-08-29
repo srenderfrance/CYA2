@@ -4,6 +4,7 @@ public interface IUserAccountContextService
 {
     Task<UserAccountContext?> GetContextAsync(string userId, bool isAdminOrViewerHint = false);
     UserAccountContextAccount? ResolveSelectedAccount(UserAccountContext context, string? preferredFund);
+    void Invalidate(string userId);
 }
 
 public sealed class UserAccountContext

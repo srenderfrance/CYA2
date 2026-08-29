@@ -9,6 +9,7 @@
 @inject Cya2.Application.Interfaces.IUserSettingsService UserSettingsService
 @inject NavigationManager NavigationManager
 @inject ISessionUserStateService SessionUserStateService
+@inject IUserAccountContextService UserAccountContextService
 @inject Cya2.Application.Interfaces.IUserIdResolver UserIdResolver
 @inject cya2.Services.UserSessionHydrationService SessionHydrationService
 @rendermode InteractiveServer
@@ -191,6 +192,7 @@
                 return;
             }
 
+            var userContext = await UserAccountContextService.GetContextAsync(userIdentifier, isAdminOnlyHint);
             var settings = await UserSettingsService.GetUserSettingsAsync(userIdentifier, isAdminOnlyHint);
             if (settings == null)
             {
@@ -202,7 +204,14 @@
             currentDefaultAccountId = settings.DefaultAccountId;
             currentLanguage = string.IsNullOrWhiteSpace(settings.Language) ? "en-US" : settings.Language;
             selectedLanguage = currentLanguage;
-            userAccounts = settings.UserAccounts ?? new List<AccountOptionDto>();
+            userAccounts = userContext?.Accounts.Select(account => new AccountOptionDto
+            {
+                AccountId = account.AccountId,
+                Fund = account.Fund,
+                AccountingClass = account.AccountingClass,
+                AccountNumber = account.AccountNumber,
+                Overhead = account.Overhead
+            }).ToList() ?? settings.UserAccounts ?? new List<AccountOptionDto>();
 
             if (currentDefaultAccountId.HasValue)
             {

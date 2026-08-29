@@ -114,6 +114,14 @@ public class UserAccountContextService : IUserAccountContextService
         return selected;
     }
 
+    public void Invalidate(string userId)
+    {
+        if (!string.IsNullOrWhiteSpace(userId))
+        {
+            _contextCache.TryRemove(userId.Trim(), out _);
+        }
+    }
+
     private async Task<Cya2.Core.Entities.User?> ResolveUserAsync(string userId)
     {
         Cya2.Core.Entities.User? user = null;

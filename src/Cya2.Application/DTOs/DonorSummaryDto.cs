@@ -18,6 +18,9 @@ public class DonorSummaryDto
     public string State { get; set; } = string.Empty;
     public string PostalCode { get; set; } = string.Empty;
     public string Country { get; set; } = string.Empty;
+    public string DisplayName { get; set; } = string.Empty;
+    public string DisplayAddress { get; set; } = string.Empty;
+    public string FrequencyLabel { get; set; } = string.Empty;
     public DonorFrequency Frequency { get; set; } = DonorFrequency.None;
     /// <summary>
     /// True when this donor is a monthly giver with one or more missing gifts
