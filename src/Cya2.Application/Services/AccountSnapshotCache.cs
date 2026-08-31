@@ -43,14 +43,14 @@ public sealed class AccountSnapshotCache : IAccountSnapshotCache
         key = key.Normalize();
         if (TryGet(key, out var cached))
         {
-            _logger.LogInformation(
-                "Account snapshot cache hit: accountId={AccountId}, fund={Fund}, generation={Generation}, donations={DonationCount}, accounting={AccountingCount}, subAccounts={SubAccountCount}",
-                key.AccountId,
-                key.Fund,
-                key.Generation,
-                cached.Donations.Count,
-                cached.Accounting.Count,
-                cached.SubAccounts.Count);
+            // _logger.LogInformation(
+            //     "Account snapshot cache hit: accountId={AccountId}, fund={Fund}, generation={Generation}, donations={DonationCount}, accounting={AccountingCount}, subAccounts={SubAccountCount}",
+            //     key.AccountId,
+            //     key.Fund,
+            //     key.Generation,
+            //     cached.Donations.Count,
+            //     cached.Accounting.Count,
+            //     cached.SubAccounts.Count);
             return cached;
         }
 
@@ -65,11 +65,11 @@ public sealed class AccountSnapshotCache : IAccountSnapshotCache
 
             if (!_inflight.TryGetValue(key, out lazy!))
             {
-                _logger.LogInformation(
-                    "Account snapshot cache miss: accountId={AccountId}, fund={Fund}, generation={Generation}, reason=missing-snapshot; loading from repository",
-                    key.AccountId,
-                    key.Fund,
-                    key.Generation);
+                // _logger.LogInformation(
+                //     "Account snapshot cache miss: accountId={AccountId}, fund={Fund}, generation={Generation}, reason=missing-snapshot; loading from repository",
+                //     key.AccountId,
+                //     key.Fund,
+                //     key.Generation);
                 var invalidationToken = _invalidationCts.Token;
                 lazy = new Lazy<Task<AccountDataSnapshot>>(
                     () => LoadAndStoreAsync(key, factory, invalidationToken),
@@ -141,7 +141,7 @@ public sealed class AccountSnapshotCache : IAccountSnapshotCache
             _invalidationCts = new CancellationTokenSource();
         }
 
-        _logger.LogInformation("Account snapshot cache invalidated");
+        // _logger.LogInformation("Account snapshot cache invalidated");
     }
 
     private async Task<AccountDataSnapshot> LoadAndStoreAsync(
@@ -173,15 +173,15 @@ public sealed class AccountSnapshotCache : IAccountSnapshotCache
             EvictIfNeeded();
         }
 
-        _logger.LogInformation(
-            "Account snapshot cache set: accountId={AccountId}, fund={Fund}, generation={Generation}, donations={DonationCount}, accounting={AccountingCount}, subAccounts={SubAccountCount}, approxBytes={ApproxBytes}",
-            key.AccountId,
-            key.Fund,
-            key.Generation,
-            snapshot.Donations.Count,
-            snapshot.Accounting.Count,
-            snapshot.SubAccounts.Count,
-            snapshot.ApproximateBytes);
+        // _logger.LogInformation(
+        //     "Account snapshot cache set: accountId={AccountId}, fund={Fund}, generation={Generation}, donations={DonationCount}, accounting={AccountingCount}, subAccounts={SubAccountCount}, approxBytes={ApproxBytes}",
+        //     key.AccountId,
+        //     key.Fund,
+        //     key.Generation,
+        //     snapshot.Donations.Count,
+        //     snapshot.Accounting.Count,
+        //     snapshot.SubAccounts.Count,
+        //     snapshot.ApproximateBytes);
 
         return snapshot;
     }

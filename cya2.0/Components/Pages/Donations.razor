@@ -16,6 +16,7 @@
 @inject Cya2.Application.Interfaces.IUserDateRangeSelectionService DateRangeSelectionService
 @inject cya2.Services.UserSessionHydrationService SessionHydrationService
 @inject Cya2.Application.Interfaces.IAccountSnapshotWarmupService AccountSnapshotWarmupService
+@inject Cya2.Application.Interfaces.IAccountSelectionCoordinator AccountSelectionCoordinator
 @implements IDisposable
 
 @* CLEAN ARCHITECTURE INTEGRATION *@
@@ -742,7 +743,7 @@
 
     protected override async Task OnInitializedAsync()
     {
-        using var operationScope = PageLoadCorrelation.BeginOperation(Logger, nameof(Donations), "Initialize");
+        // using var operationScope = PageLoadCorrelation.BeginOperation(Logger, nameof(Donations), "Initialize");
         var initSw = Stopwatch.StartNew();
         try
         {
@@ -818,7 +819,7 @@
         {
             errorMessage = $"Error loading data: {ex.Message}";
             isLoading = false;
-            Logger.LogWarning(ex, "Donations init failed after {ElapsedMs}ms", initSw.ElapsedMilliseconds);
+            // Logger.LogWarning(ex, "Donations init failed after {ElapsedMs}ms", initSw.ElapsedMilliseconds);
         }
     }
 
@@ -959,7 +960,7 @@
         catch (Exception ex)
         {
             errorMessage = $"Error loading donation data: {ex.Message}";
-            Logger.LogWarning(ex, "Donations data load failed after {ElapsedMs}ms", loadSw.ElapsedMilliseconds);
+            // Logger.LogWarning(ex, "Donations data load failed after {ElapsedMs}ms", loadSw.ElapsedMilliseconds);
         }
         finally
         {
@@ -1047,20 +1048,19 @@
     {
         if (string.IsNullOrEmpty(accountName)) return;
 
-        selectedAccount = accountName;
-        SessionUserStateService.SelectedAccountFund = accountName;
-
-        currentAccount = donationData.UserAccounts.FirstOrDefault(a => a.Fund == selectedAccount);
+        currentAccount = donationData.UserAccounts.FirstOrDefault(a => a.Fund == accountName);
         if (currentAccount is not null)
         {
-            await AccountSnapshotWarmupService.WarmSelectedAccountAsync(new UserAccountContextAccount
+            var account = new UserAccountContextAccount
             {
                 AccountId = currentAccount.AccountId,
                 Fund = currentAccount.Fund,
                 AccountingClass = currentAccount.AccountingClass,
                 AccountNumber = currentAccount.AccountNumber,
                 Overhead = currentAccount.Overhead
-            }, userId, isAdminOrViewer);
+            };
+            await AccountSelectionCoordinator.SelectAsync(account, userId, isAdminOrViewer, persistSelection: false);
+            selectedAccount = accountName;
         }
 
         await LoadDonationsData(selectedAccount, selectedSubAccount, explicitSelection: true);

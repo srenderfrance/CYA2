@@ -193,13 +193,7 @@ WHERE AccountName LIKE @SearchTerm
             return new List<DonationRecord>();
         }
 
-        var normalizedDesignation = internDesignationName.Trim();
-        var alternateDesignation = InternAccountUtility.GetAlternateDesignationName(normalizedDesignation);
-        var hasAlternateDesignation = !string.IsNullOrWhiteSpace(alternateDesignation);
-        var hasNameTokens = InternAccountUtility.TryGetFirstAndLastName(normalizedDesignation, out var firstName, out var lastName);
-        var designationLookupKey = InternAccountUtility.BuildLookupKey(normalizedDesignation);
-        var alternateLookupKey = InternAccountUtility.BuildLookupKey(alternateDesignation);
-        var hasAlternateLookupKey = !string.IsNullOrWhiteSpace(alternateLookupKey);
+        var criteria = InternAccountUtility.CreateDesignationCriteria(internDesignationName);
 
         await using var conn = new MySqlConnection(ConnStr);
 
@@ -213,10 +207,10 @@ WHERE Date >= @StartDate
             {
                 StartDate = startDate,
                 EndDate = endDate,
-                InternDesignationName = normalizedDesignation
+                InternDesignationName = criteria.InternDesignationName
             });
 
-        var alternateMatchCount = hasAlternateDesignation
+        var alternateMatchCount = criteria.HasAlternateDesignation
             ? await conn.ExecuteScalarAsync<int>(
                 @"SELECT COUNT(*)
 FROM DonationData
@@ -227,11 +221,11 @@ WHERE Date >= @StartDate
                 {
                     StartDate = startDate,
                     EndDate = endDate,
-                    AlternateDesignation = alternateDesignation
+                    AlternateDesignation = criteria.AlternateDesignation
                 })
             : 0;
 
-        var tokenMatchCount = hasNameTokens
+        var tokenMatchCount = criteria.HasNameTokens
             ? await conn.ExecuteScalarAsync<int>(
                 @"SELECT COUNT(*)
 FROM DonationData
@@ -246,8 +240,8 @@ WHERE Date >= @StartDate
                 {
                     StartDate = startDate,
                     EndDate = endDate,
-                    FirstToken = $"%{firstName}%",
-                    LastToken = $"%{lastName}%"
+                    FirstToken = $"%{criteria.FirstName}%",
+                    LastToken = $"%{criteria.LastName}%"
                 })
             : 0;
 
@@ -264,21 +258,21 @@ WHERE Date >= @StartDate
             {
                 StartDate = startDate,
                 EndDate = endDate,
-                DesignationLookupKey = designationLookupKey,
-                AlternateLookupKey = alternateLookupKey,
-                HasAlternateLookupKey = hasAlternateLookupKey ? 1 : 0
+                DesignationLookupKey = criteria.DesignationLookupKey,
+                AlternateLookupKey = criteria.AlternateLookupKey,
+                HasAlternateLookupKey = criteria.HasAlternateLookupKey ? 1 : 0
             });
 
         _logger.LogInformation(
             "Intern donation query debug: designation='{Designation}', alternate='{Alternate}', hasAlternate={HasAlternate}, firstName='{FirstName}', lastName='{LastName}', hasNameTokens={HasNameTokens}, lookupKey='{LookupKey}', alternateLookupKey='{AlternateLookupKey}', exactMatches={ExactMatches}, alternateMatches={AlternateMatches}, tokenMatches={TokenMatches}, normalizedMatches={NormalizedMatches}, range={StartDate:yyyy-MM-dd}..{EndDate:yyyy-MM-dd}",
-            normalizedDesignation,
-            alternateDesignation,
-            hasAlternateDesignation,
-            firstName,
-            lastName,
-            hasNameTokens,
-            designationLookupKey,
-            alternateLookupKey,
+            criteria.InternDesignationName,
+            criteria.AlternateDesignation,
+            criteria.HasAlternateDesignation,
+            criteria.FirstName,
+            criteria.LastName,
+            criteria.HasNameTokens,
+            criteria.DesignationLookupKey,
+            criteria.AlternateLookupKey,
             exactMatchCount,
             alternateMatchCount,
             tokenMatchCount,
@@ -350,15 +344,15 @@ WHERE Date >= @StartDate
             {
                 StartDate = startDate,
                 EndDate = endDate,
-                InternDesignationName = normalizedDesignation,
-                AlternateDesignation = alternateDesignation,
-                HasAlternateDesignation = hasAlternateDesignation ? 1 : 0,
-                HasNameTokens = hasNameTokens ? 1 : 0,
-                FirstToken = $"%{firstName}%",
-                LastToken = $"%{lastName}%",
-                DesignationLookupKey = designationLookupKey,
-                AlternateLookupKey = alternateLookupKey,
-                HasAlternateLookupKey = hasAlternateLookupKey ? 1 : 0
+                InternDesignationName = criteria.InternDesignationName,
+                AlternateDesignation = criteria.AlternateDesignation,
+                HasAlternateDesignation = criteria.HasAlternateDesignation ? 1 : 0,
+                HasNameTokens = criteria.HasNameTokens ? 1 : 0,
+                FirstToken = $"%{criteria.FirstName}%",
+                LastToken = $"%{criteria.LastName}%",
+                DesignationLookupKey = criteria.DesignationLookupKey,
+                AlternateLookupKey = criteria.AlternateLookupKey,
+                HasAlternateLookupKey = criteria.HasAlternateLookupKey ? 1 : 0
             });
 
         var rowList = rows.ToList();
@@ -388,8 +382,8 @@ LIMIT 5",
         _logger.LogInformation(
             "Intern donation query returned {RowCount} rows for designation='{Designation}' (alternate='{Alternate}')",
             rowList.Count,
-            normalizedDesignation,
-            alternateDesignation);
+            criteria.InternDesignationName,
+            criteria.AlternateDesignation);
 
         return rowList;
     }

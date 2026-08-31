@@ -24,6 +24,9 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Folder Include="src\Cya2.Application\Interfaces\" />
+    <Folder Include="src\Cya2.Application\Services\" />
+    <Folder Include="src\Cya2.Infrastructure\Services\" />
   </ItemGroup>
 
   <ItemGroup>

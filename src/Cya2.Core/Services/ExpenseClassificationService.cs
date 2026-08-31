@@ -38,12 +38,12 @@ public class ExpenseClassificationService
     {
         if (transaction == null) return false;
 
-        return transaction.Type == "Payroll Check" ||
-               transaction.Type == "Expense" ||
+        return string.Equals(transaction.Type, "Payroll Check", StringComparison.OrdinalIgnoreCase) ||
+               string.Equals(transaction.Type, "Expense", StringComparison.OrdinalIgnoreCase) ||
                (transaction.Account != null &&
-                   (transaction.Account.Contains("Expenses:") ||
-                    transaction.Account.Contains("Payroll:") ||
-                    transaction.Account.Contains("Administration:")));
+                   (transaction.Account.Contains("Expenses:", StringComparison.OrdinalIgnoreCase) ||
+                    transaction.Account.Contains("Payroll:", StringComparison.OrdinalIgnoreCase) ||
+                    transaction.Account.Contains("Administration:", StringComparison.OrdinalIgnoreCase)));
     }
 
     /// <summary>
@@ -53,7 +53,7 @@ public class ExpenseClassificationService
     {
         if (transaction == null) return false;
 
-        return transaction.Account != null && transaction.Account.Contains("Transfer");
+        return transaction.Account != null && transaction.Account.Contains("Transfer", StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>

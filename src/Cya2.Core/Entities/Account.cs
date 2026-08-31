@@ -35,14 +35,6 @@ public class Account : BaseEntity
         Overhead = overhead;
     }
 
-    // Display helper - incorporates existing FundDisplayHelper logic
-    public string GetDisplayName()
-    {
-        // This will use the same logic as your existing FundDisplayHelper.GetDisplay(Fund)
-        // For now, return Fund directly - this can be enhanced with the actual helper logic
-        return string.IsNullOrWhiteSpace(Fund) ? "Unknown Account" : Fund;
-    }
-
     // Simple business methods
     public decimal CalculateOverheadAmount(decimal donationTotal)
     {
@@ -98,19 +90,4 @@ public class Account : BaseEntity
                !string.IsNullOrWhiteSpace(AccountNumber);
     }
 
-    public List<string> GetValidationErrors()
-    {
-        var errors = new List<string>();
-        
-        if (string.IsNullOrWhiteSpace(Fund))
-            errors.Add("Fund is required");
-            
-        if (string.IsNullOrWhiteSpace(AccountingClass))
-            errors.Add("Accounting Class is required");
-            
-        if (string.IsNullOrWhiteSpace(AccountNumber))
-            errors.Add("Account Number is required");
-        
-        return errors;
-    }
 }

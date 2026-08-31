@@ -23,12 +23,12 @@ public class SessionDonorSummaryCacheService : ISessionDonorSummaryCacheService
         {
             if (!_cache.TryGetValue(key, out var cached))
             {
-                _logger.LogInformation("Donor summary cache miss: funds={Funds}, range={Start:yyyy-MM-dd}..{End:yyyy-MM-dd}", fundsSignature, startDate, endDate);
+                // _logger.LogInformation("Donor summary cache miss: funds={Funds}, range={Start:yyyy-MM-dd}..{End:yyyy-MM-dd}", fundsSignature, startDate, endDate);
                 return false;
             }
 
             data = cached;
-            _logger.LogInformation("Donor summary cache hit: funds={Funds}, range={Start:yyyy-MM-dd}..{End:yyyy-MM-dd}, rows={Rows}", fundsSignature, startDate, endDate, cached.Count);
+            // _logger.LogInformation("Donor summary cache hit: funds={Funds}, range={Start:yyyy-MM-dd}..{End:yyyy-MM-dd}, rows={Rows}", fundsSignature, startDate, endDate, cached.Count);
             return true;
         }
     }
@@ -41,7 +41,7 @@ public class SessionDonorSummaryCacheService : ISessionDonorSummaryCacheService
             _cache[key] = data;
         }
 
-        _logger.LogInformation("Donor summary cache set: funds={Funds}, range={Start:yyyy-MM-dd}..{End:yyyy-MM-dd}, rows={Rows}", fundsSignature, startDate, endDate, data?.Count ?? 0);
+        // _logger.LogInformation("Donor summary cache set: funds={Funds}, range={Start:yyyy-MM-dd}..{End:yyyy-MM-dd}, rows={Rows}", fundsSignature, startDate, endDate, data?.Count ?? 0);
     }
 
     public void InvalidateAll()

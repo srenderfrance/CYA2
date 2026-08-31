@@ -22,6 +22,7 @@ namespace Cya2.Infrastructure.Services
         private readonly IImportProgressService _progressService;
         private readonly IDonationImportRepository _repository;
         private readonly IImportCacheInvalidator _cacheInvalidator;
+        private readonly DonorFrequencyService _frequencyService;
 
         public string ImportType => "donations";
 
@@ -30,13 +31,15 @@ namespace Cya2.Infrastructure.Services
             ILogger<DonationImportProcessor> logger,
             IImportProgressService progressService,
             IDonationImportRepository repository,
-            IImportCacheInvalidator cacheInvalidator)
+            IImportCacheInvalidator cacheInvalidator,
+            DonorFrequencyService frequencyService)
         {
             _config = config;
             _logger = logger;
             _progressService = progressService;
             _repository = repository;
             _cacheInvalidator = cacheInvalidator;
+            _frequencyService = frequencyService;
         }
 
         public Task<ImportResult> ProcessAsync(Stream file, string progressId, CancellationToken cancellationToken)
@@ -68,8 +71,6 @@ namespace Cya2.Infrastructure.Services
         private async Task<ImportResult> ProcessAsync(Stream file, CancellationToken ct, string progressId)
         {
             var result = new ImportResult { ProgressId = progressId };
-            var frequencyService = new DonorFrequencyService();
-
             using var package = new ExcelPackage(file);
             var ws = package.Workbook.Worksheets[0];
             if (ws == null)
@@ -264,7 +265,7 @@ namespace Cya2.Infrastructure.Services
 
                     // Classify using DonorFrequencyService with full merged history as context.
                     var giftRecord = new DonorGiftRecord { Date = row.Date, Amount = Convert.ToDecimal(row.Amount) };
-                    var classification = frequencyService.ClassifyGift(giftRecord, allGifts);
+                    var classification = _frequencyService.ClassifyGift(giftRecord, allGifts);
                     row.Frequency = classification.Frequency;
                 }
             }

@@ -10,6 +10,22 @@ public static class InternAccountUtility
                fund.TrimStart().StartsWith(InternFundPrefix, StringComparison.OrdinalIgnoreCase);
     }
 
+    public static InternDesignationCriteria CreateDesignationCriteria(string? internDesignationName)
+    {
+        var normalizedDesignation = NormalizeWhitespace(internDesignationName);
+        var alternateDesignation = GetAlternateDesignationName(normalizedDesignation);
+        var hasNameTokens = TryGetFirstAndLastName(normalizedDesignation, out var firstName, out var lastName);
+
+        return new InternDesignationCriteria(
+            normalizedDesignation,
+            alternateDesignation,
+            hasNameTokens,
+            firstName,
+            lastName,
+            BuildLookupKey(normalizedDesignation),
+            BuildLookupKey(alternateDesignation));
+    }
+
     public static bool TryGetInternDesignationName(string? fund, out string internDesignationName)
     {
         internDesignationName = string.Empty;
@@ -26,6 +42,19 @@ public static class InternAccountUtility
         internDesignationName = suffix.Trim();
         return !string.IsNullOrWhiteSpace(internDesignationName);
     }
+
+public sealed record InternDesignationCriteria(
+    string InternDesignationName,
+    string AlternateDesignation,
+    bool HasNameTokens,
+    string FirstName,
+    string LastName,
+    string DesignationLookupKey,
+    string AlternateLookupKey)
+{
+    public bool HasAlternateDesignation => !string.IsNullOrWhiteSpace(AlternateDesignation);
+    public bool HasAlternateLookupKey => !string.IsNullOrWhiteSpace(AlternateLookupKey);
+}
 
     public static string BuildInternFund(string internDesignationName)
     {

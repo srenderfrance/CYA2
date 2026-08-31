@@ -12,6 +12,7 @@ public sealed class ImportCacheInvalidator : IImportCacheInvalidator
 {
     private readonly ISessionDonationDataCacheService _donationCache;
     private readonly ISessionDonorSummaryCacheService _donorCache;
+    private readonly ISessionMissingGiftCacheService _missingGiftCache;
     private readonly ISessionExpenseDataCacheService _expenseCache;
     private readonly ISessionDashboardDtoCacheService _dashboardCache;
     private readonly IAccountSnapshotCache _accountSnapshotCache;
@@ -21,6 +22,7 @@ public sealed class ImportCacheInvalidator : IImportCacheInvalidator
     public ImportCacheInvalidator(
         ISessionDonationDataCacheService donationCache,
         ISessionDonorSummaryCacheService donorCache,
+        ISessionMissingGiftCacheService missingGiftCache,
         ISessionExpenseDataCacheService expenseCache,
         ISessionDashboardDtoCacheService dashboardCache,
         IAccountSnapshotCache accountSnapshotCache,
@@ -29,6 +31,7 @@ public sealed class ImportCacheInvalidator : IImportCacheInvalidator
     {
         _donationCache = donationCache;
         _donorCache    = donorCache;
+        _missingGiftCache = missingGiftCache;
         _expenseCache  = expenseCache;
         _dashboardCache = dashboardCache;
         _accountSnapshotCache = accountSnapshotCache;
@@ -40,6 +43,7 @@ public sealed class ImportCacheInvalidator : IImportCacheInvalidator
     {
         _donationCache.InvalidateAll();
         _donorCache.InvalidateAll();
+        _missingGiftCache.InvalidateAll();
         _expenseCache.InvalidateAll();
         _dashboardCache.InvalidateAll();
         _accountSnapshotCache.InvalidateAll();

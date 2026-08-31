@@ -1,6 +1,7 @@
 using Cya2.Application.Interfaces;
 using Cya2.Application.Services;
 using Cya2.Core.Interfaces;
+using Cya2.Core.Services;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Cya2.Application.Extensions;
@@ -13,6 +14,9 @@ public static class ServiceCollectionExtensions
         // Financial dashboard service for Home.razor transformation  
         services.AddScoped<IFinancialDashboardService, FinancialDashboardService>();
         services.AddScoped<IAccountCalculationService, AccountCalculationService>();
+        services.AddSingleton<ExpenseClassificationService>();
+        services.AddSingleton<DonorFrequencyService>();
+        services.AddSingleton<DonorMissingGiftService>();
         services.AddScoped<ISessionAccountDataCacheService, DashboardSessionCacheService>();
         services.AddSingleton<ISessionDashboardDtoCacheService, SessionDashboardDtoCacheService>();
         services.AddScoped<ISessionUserStateService, SessionUserStateService>();
@@ -22,6 +26,7 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<ICacheInvalidationVersion, CacheInvalidationVersion>();
         services.AddSingleton<IAccountSnapshotCache, AccountSnapshotCache>();
         services.AddScoped<IAccountSnapshotLoader, AccountSnapshotLoader>();
+        services.AddScoped<IAccountSelectionCoordinator, AccountSelectionCoordinator>();
 
         // Common business services - working implementations
         // These services bridge clean architecture with existing legacy data patterns
@@ -38,6 +43,7 @@ public static class ServiceCollectionExtensions
 
         // User settings service - enabled for UserSettings.razor migration
         services.AddScoped<IUserSettingsService, UserSettingsService>();
+        services.AddScoped<IGoogleSignInService, GoogleSignInService>();
         services.AddScoped<UserManagementService>();
         services.AddScoped<AdminFundReadService>();
         services.AddScoped<AdminFundWriteService>();
@@ -46,7 +52,9 @@ public static class ServiceCollectionExtensions
 
         // Donor management services - enabled for Donors.razor migration
         services.AddScoped<IDonorService, DonorService>();
+        services.AddScoped<IDonorExportService, DonorExportService>();
         services.AddSingleton<ISessionDonorSummaryCacheService, SessionDonorSummaryCacheService>();
+        services.AddSingleton<ISessionMissingGiftCacheService, SessionMissingGiftCacheService>();
 
         // Cache invalidation — clears all session caches after import or rollback
         services.AddSingleton<IImportCacheInvalidator, ImportCacheInvalidator>();

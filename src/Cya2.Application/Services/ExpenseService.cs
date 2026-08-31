@@ -29,7 +29,8 @@ public class ExpenseService : IExpenseService
         IUserAccountContextService userAccountContextService,
         ISessionExpenseDataCacheService expenseCache,
         IAccountSnapshotCache accountSnapshotCache,
-        IAccountSnapshotLoader accountSnapshotLoader)
+        IAccountSnapshotLoader accountSnapshotLoader,
+        ExpenseClassificationService classifier)
     {
         _expenseReadRepository = expenseReadRepository;
         _logger = logger;
@@ -37,7 +38,7 @@ public class ExpenseService : IExpenseService
         _expenseCache = expenseCache;
         _accountSnapshotCache = accountSnapshotCache;
         _accountSnapshotLoader = accountSnapshotLoader;
-        _classifier = new ExpenseClassificationService();
+        _classifier = classifier;
     }
 
     public async Task<List<AccountOptionDto>> GetUserAccountsAsync(string userId, bool isAdminOrViewer = false)
@@ -66,15 +67,15 @@ public class ExpenseService : IExpenseService
                 _expenseCache.TryGetExpenseData(userId, accountName, dateRange.StartDate, dateRange.EndDate, out var directCached))
             {
                 directCached.SelectedAccount = accountName;
-                _logger.LogInformation(
-                    "Expense data source=cache-direct user={UserId} account={Account} range={Start:yyyy-MM-dd}..{End:yyyy-MM-dd} expenses={ExpenseCount} transfers={TransferCount} elapsedMs={ElapsedMs}",
-                    userId,
-                    directCached.SelectedAccount,
-                    dateRange.StartDate,
-                    dateRange.EndDate,
-                    directCached.ExpenseTransactions?.Count ?? 0,
-                    directCached.TransferTransactions?.Count ?? 0,
-                    sw.ElapsedMilliseconds);
+                // _logger.LogInformation(
+                //     "Expense data source=cache-direct user={UserId} account={Account} range={Start:yyyy-MM-dd}..{End:yyyy-MM-dd} expenses={ExpenseCount} transfers={TransferCount} elapsedMs={ElapsedMs}",
+                //     userId,
+                //     directCached.SelectedAccount,
+                //     dateRange.StartDate,
+                //     dateRange.EndDate,
+                //     directCached.ExpenseTransactions?.Count ?? 0,
+                //     directCached.TransferTransactions?.Count ?? 0,
+                //     sw.ElapsedMilliseconds);
                 return directCached;
             }
 
@@ -100,15 +101,15 @@ public class ExpenseService : IExpenseService
             {
                 cached.UserAccounts = contextAccounts.Select(MapToAccountOptionDto).ToList();
                 cached.SelectedAccount = selectedAccount.Fund ?? string.Empty;
-                _logger.LogInformation(
-                    "Expense data source=cache user={UserId} account={Account} range={Start:yyyy-MM-dd}..{End:yyyy-MM-dd} expenses={ExpenseCount} transfers={TransferCount} elapsedMs={ElapsedMs}",
-                    userId,
-                    cached.SelectedAccount,
-                    dateRange.StartDate,
-                    dateRange.EndDate,
-                    cached.ExpenseTransactions?.Count ?? 0,
-                    cached.TransferTransactions?.Count ?? 0,
-                    sw.ElapsedMilliseconds);
+                // _logger.LogInformation(
+                //     "Expense data source=cache user={UserId} account={Account} range={Start:yyyy-MM-dd}..{End:yyyy-MM-dd} expenses={ExpenseCount} transfers={TransferCount} elapsedMs={ElapsedMs}",
+                //     userId,
+                //     cached.SelectedAccount,
+                //     dateRange.StartDate,
+                //     dateRange.EndDate,
+                //     cached.ExpenseTransactions?.Count ?? 0,
+                //     cached.TransferTransactions?.Count ?? 0,
+                //     sw.ElapsedMilliseconds);
                 return cached;
             }
 
@@ -137,27 +138,26 @@ public class ExpenseService : IExpenseService
 
             _expenseCache.SetExpenseData(userId, selectedAccount.Fund ?? string.Empty, dateRange.StartDate, dateRange.EndDate, result);
 
-            _logger.LogInformation(
-                "Expense data source={Source} user={UserId} account={Account} range={Start:yyyy-MM-dd}..{End:yyyy-MM-dd} expenses={ExpenseCount} transfers={TransferCount} elapsedMs={ElapsedMs}",
-                useSnapshot ? "snapshot" : "repository",
-                userId,
-                result.SelectedAccount,
-                dateRange.StartDate,
-                dateRange.EndDate,
-                result.ExpenseTransactions?.Count ?? 0,
-                result.TransferTransactions?.Count ?? 0,
-                sw.ElapsedMilliseconds);
+            // _logger.LogInformation(
+            //     "Expense data source={Source} user={UserId} account={Account} range={Start:yyyy-MM-dd}..{End:yyyy-MM-dd} expenses={ExpenseCount} transfers={TransferCount} elapsedMs={ElapsedMs}",
+            //     useSnapshot ? "snapshot" : "repository",
+            //     userId,
+            //     result.SelectedAccount,
+            //     dateRange.StartDate,
+            //     dateRange.EndDate,
+            //     result.ExpenseTransactions?.Count ?? 0,
+            //     result.TransferTransactions?.Count ?? 0,
+            //     sw.ElapsedMilliseconds);
             return result;
         }
         catch (Exception ex)
         {
             _logger.LogError(ex,
-                "Error getting expense data for account={AccountName} user={UserId} range={Start:yyyy-MM-dd}..{End:yyyy-MM-dd} elapsedMs={ElapsedMs}",
+                "Error getting expense data for account={AccountName} user={UserId} range={Start:yyyy-MM-dd}..{End:yyyy-MM-dd}",
                 accountName,
                 userId,
                 dateRange.StartDate,
-                dateRange.EndDate,
-                sw.ElapsedMilliseconds);
+                dateRange.EndDate);
             var fallbackAccounts = await GetUserAccountsAsync(userId, isAdminOrViewer);
             return new ExpenseDataDto
             {
@@ -189,7 +189,7 @@ public class ExpenseService : IExpenseService
             .ToList();
 
         _logger.LogInformation(
-            "Expense data source={Source} account={Account} requestedRange={Start:yyyy-MM-dd}..{End:yyyy-MM-dd} queriedRange={QueriedStart:yyyy-MM-dd}..{QueriedEnd:yyyy-MM-dd} snapshotCreatedUtc={SnapshotCreatedUtc:o} accountingRows={AccountingCount} elapsedMs={ElapsedMs}",
+            "Expense data source={Source} account={Account} requestedRange={Start:yyyy-MM-dd}..{End:yyyy-MM-dd} queriedRange={QueriedStart:yyyy-MM-dd}..{QueriedEnd:yyyy-MM-dd} snapshotCreatedUtc={SnapshotCreatedUtc:o} accountingRows={AccountingCount}",
             wasCached ? "snapshot-cache" : "snapshot-load",
             account.Fund,
             dateRange.StartDate,
@@ -197,8 +197,7 @@ public class ExpenseService : IExpenseService
             snapshotQueryRange.StartDate,
             snapshotQueryRange.EndDate,
             snapshot.CreatedUtc,
-            accounting.Count,
-            stopwatch.ElapsedMilliseconds);
+            accounting.Count);
 
         return accounting;
     }

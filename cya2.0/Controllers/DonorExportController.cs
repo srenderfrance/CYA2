@@ -18,21 +18,18 @@ namespace cya2.Controllers
     [Authorize]
     public class DonorExportController : ControllerBase
     {
-        private readonly IDonorService _donorService;
-        private readonly IUserAccountContextService _userAccountContextService;
+        private readonly IDonorExportService _donorExportService;
         private readonly IUserIdResolver _userIdResolver;
         private readonly ILogger<DonorExportController> _logger;
         private readonly IAntiforgery _antiforgery;
 
         public DonorExportController(
-            IDonorService donorService,
-            IUserAccountContextService userAccountContextService,
+            IDonorExportService donorExportService,
             IUserIdResolver userIdResolver,
             ILogger<DonorExportController> logger,
             IAntiforgery antiforgery)
         {
-            _donorService = donorService;
-            _userAccountContextService = userAccountContextService;
+            _donorExportService = donorExportService;
             _userIdResolver = userIdResolver;
             _logger = logger;
             _antiforgery = antiforgery;
@@ -116,13 +113,7 @@ namespace cya2.Controllers
                     return BadRequest("No export data provided.");
                 }
 
-                var requestedFunds = (req.Funds ?? new List<string>())
-                    .Where(f => !string.IsNullOrWhiteSpace(f))
-                    .Select(f => f.Trim())
-                    .Distinct(StringComparer.OrdinalIgnoreCase)
-                    .ToList();
-
-                if (!requestedFunds.Any())
+                if (req.Funds == null || !req.Funds.Any(f => !string.IsNullOrWhiteSpace(f)))
                 {
                     return BadRequest("At least one fund is required.");
                 }
@@ -138,34 +129,28 @@ namespace cya2.Controllers
                     || string.Equals(authLevel, "Admin", StringComparison.OrdinalIgnoreCase)
                     || string.Equals(authLevel, "Viewer", StringComparison.OrdinalIgnoreCase);
 
-                var context = await _userAccountContextService.GetContextAsync(userId, isAdminOrViewerHint);
-                if (context == null)
+                var exportData = await _donorExportService.GetExportDataAsync(
+                    userId,
+                    isAdminOrViewerHint,
+                    req.Funds,
+                    req.AllDates,
+                    req.StartDate,
+                    req.EndDate);
+                if (!exportData.UserContextFound)
                 {
                     return Forbid();
                 }
-
-                var allowedFunds = context.Accounts
-                    .Select(a => a.Fund)
-                    .Where(f => !string.IsNullOrWhiteSpace(f))
-                    .Distinct(StringComparer.OrdinalIgnoreCase)
-                    .ToHashSet(StringComparer.OrdinalIgnoreCase);
-
-                if (requestedFunds.Any(f => !allowedFunds.Contains(f)))
+                if (!exportData.FundsAuthorized)
                 {
                     _logger.LogWarning("ExportData denied. TraceId={TraceId}, UserId={UserId}, RequestedFundCount={RequestedFundCount}",
                         HttpContext.TraceIdentifier,
                         userId,
-                        requestedFunds.Count);
+                        exportData.RequestedFunds.Count);
                     return Forbid();
                 }
 
-                var donorRows = req.AllDates
-                    ? await _donorService.GetAllDonorSummariesAsync(requestedFunds)
-                    : await _donorService.GetDonorSummariesAsync(
-                        requestedFunds,
-                        new DateRange(
-                            req.StartDate ?? DateTime.MinValue,
-                            req.EndDate ?? DateTime.MaxValue));
+                var requestedFunds = exportData.RequestedFunds.ToList();
+                var donorRows = exportData.Donors;
 
                 if (donorRows == null || donorRows.Count == 0)
                 {

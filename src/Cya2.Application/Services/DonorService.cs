@@ -27,6 +27,7 @@ namespace Cya2.Application.Services
         private readonly IUserAccountContextService _userAccountContextService;
         private readonly ILogger<DonorService> _logger;
         private readonly ISessionDonorSummaryCacheService _donorSummaryCache;
+        private readonly ISessionMissingGiftCacheService _missingGiftCache;
         private readonly IAccountSnapshotCache _accountSnapshotCache;
         private readonly IAccountSnapshotLoader _accountSnapshotLoader;
         private readonly DonorFrequencyService _frequencyService;
@@ -40,17 +41,117 @@ namespace Cya2.Application.Services
             IUserAccountContextService userAccountContextService,
             ILogger<DonorService> logger,
             ISessionDonorSummaryCacheService donorSummaryCache,
+            ISessionMissingGiftCacheService missingGiftCache,
             IAccountSnapshotCache accountSnapshotCache,
-            IAccountSnapshotLoader accountSnapshotLoader)
+            IAccountSnapshotLoader accountSnapshotLoader,
+            DonorFrequencyService frequencyService,
+            DonorMissingGiftService missingGiftService)
         {
             _donationReadRepository = donationReadRepository;
             _userAccountContextService = userAccountContextService;
             _logger = logger;
             _donorSummaryCache = donorSummaryCache;
+            _missingGiftCache = missingGiftCache;
             _accountSnapshotCache = accountSnapshotCache;
             _accountSnapshotLoader = accountSnapshotLoader;
-            _frequencyService = new DonorFrequencyService();
-            _missingGiftService = new DonorMissingGiftService();
+            _frequencyService = frequencyService;
+            _missingGiftService = missingGiftService;
+        }
+
+        public async Task<List<DonorSummaryDto>> GetDonorSummariesForSelectionAsync(
+            AccountOptionDto account,
+            string selectedSubAccount,
+            DateRange? dateRange)
+        {
+            var subAccounts = await GetSubAccountsForAccountAsync(account.AccountId);
+            var separateFunds = subAccounts
+                .Where(subAccount => subAccount.IsSeparate())
+                .Select(subAccount => subAccount.SubFund)
+                .Where(fund => !string.IsNullOrWhiteSpace(fund))
+                .ToList();
+
+            if (string.Equals(selectedSubAccount, "Primary", StringComparison.OrdinalIgnoreCase))
+            {
+                return dateRange is null
+                    ? await GetAllDonorSummariesAsync(new[] { account.Fund })
+                    : await GetDonorSummariesAsync(new[] { account.Fund }, dateRange!);
+            }
+
+            if (string.Equals(selectedSubAccount, "All", StringComparison.OrdinalIgnoreCase))
+            {
+                if (separateFunds.Count == 0)
+                {
+                    return dateRange is null
+                        ? await GetAllDonorSummariesAsync(account.AccountId, account.Fund)
+                        : await GetDonorSummariesForAccountAsync(account, dateRange!);
+                }
+
+                var funds = new[] { account.Fund }.Concat(separateFunds);
+                return dateRange is null
+                    ? await GetAllDonorSummariesAsync(funds)
+                    : await GetDonorSummariesAsync(funds, dateRange!);
+            }
+
+            if (selectedSubAccount.StartsWith("Sub_", StringComparison.OrdinalIgnoreCase) &&
+                int.TryParse(selectedSubAccount[4..], out var subAccountId))
+            {
+                var selectedFund = subAccounts
+                    .Where(subAccount => subAccount.IsSeparate() && subAccount.Id == subAccountId)
+                    .Select(subAccount => subAccount.SubFund)
+                    .FirstOrDefault();
+
+                if (!string.IsNullOrWhiteSpace(selectedFund))
+                {
+                    return dateRange is null
+                        ? await GetAllDonorSummariesAsync(new[] { selectedFund })
+                        : await GetDonorSummariesAsync(new[] { selectedFund }, dateRange!);
+                }
+            }
+
+            return dateRange is null
+                ? await GetAllDonorSummariesAsync(account.AccountId, account.Fund)
+                : await GetDonorSummariesForAccountAsync(account, dateRange!);
+        }
+
+        public async Task<List<DonorSummaryDto>> GetMissingGiftDonorsAsync(AccountOptionDto account, DateRange dateRange)
+        {
+            if (account == null || string.IsNullOrWhiteSpace(account.Fund))
+            {
+                return new List<DonorSummaryDto>();
+            }
+
+            if (_missingGiftCache.TryGetMissingGiftDonors(
+                    account.AccountId,
+                    account.Fund,
+                    dateRange.StartDate,
+                    dateRange.EndDate,
+                    out var cached))
+            {
+                return cached;
+            }
+
+            var summaries = await GetDonorSummariesForAccountAsync(account, dateRange);
+
+            var missingGiftDonors = summaries
+                .Where(summary => summary.HasMissingGiftAlert)
+                .Select(summary => new DonorSummaryDto
+                {
+                    Name = summary.Name,
+                    Frequency = summary.Frequency,
+                    HasMissingGiftAlert = true,
+                    MissingMonths = summary.MissingMonths.ToList()
+                })
+                .Where(summary => summary.MissingMonths.Count > 0)
+                .ToList();
+
+            _missingGiftCache.SetMissingGiftDonors(
+                account.AccountId,
+                account.Fund,
+                dateRange.StartDate,
+                dateRange.EndDate,
+                missingGiftDonors);
+
+            return missingGiftDonors;
         }
 
         public async Task<List<string>> GetDonorNamesAsync(string accountFund)
@@ -76,7 +177,7 @@ namespace Cya2.Application.Services
 
         public async Task<List<DonorSummaryDto>> GetDonorSummariesAsync(IEnumerable<string> fundNames, DateRange dateRange)
         {
-            var sw = Stopwatch.StartNew();
+            // var sw = Stopwatch.StartNew();
             var funds = NormalizeFunds(fundNames);
             if (!funds.Any()) return new List<DonorSummaryDto>();
 
@@ -192,7 +293,7 @@ namespace Cya2.Application.Services
 
         public async Task<List<DonorSummaryDto>> GetAllDonorSummariesAsync(IEnumerable<string> fundNames)
         {
-        var sw = Stopwatch.StartNew();
+        // var sw = Stopwatch.StartNew();
             var funds = NormalizeFunds(fundNames);
             if (!funds.Any()) return new List<DonorSummaryDto>();
 
@@ -265,6 +366,33 @@ namespace Cya2.Application.Services
             _accountFundsCache[key] = funds;
 
             return funds;
+        }
+
+        public async Task<DonorDetailDto?> GetDonorDetailForAccountAsync(string donorName, AccountOptionDto account)
+        {
+            var funds = await GetExpandedFundsForAccountAsync(account.AccountId, account.Fund);
+
+            foreach (var fund in funds)
+            {
+                if (string.IsNullOrWhiteSpace(fund))
+                {
+                    continue;
+                }
+
+                var donorNames = await GetDonorNamesAsync(fund);
+                if (!donorNames.Any(name => string.Equals(name, donorName, StringComparison.OrdinalIgnoreCase)))
+                {
+                    continue;
+                }
+
+                var detail = await GetDonorDetailAsync(donorName, fund);
+                if (detail != null)
+                {
+                    return detail;
+                }
+            }
+
+            return null;
         }
 
         private async Task<(AccountDataSnapshot Snapshot, bool WasCached)> LoadAccountSnapshotAsync(

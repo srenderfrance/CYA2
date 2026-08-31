@@ -1,6 +1,8 @@
 using Cya2.Application.Interfaces;
 using Cya2.Core.Interfaces;
+using Cya2.Core.Entities;
 using Cya2.Core.ReadModels;
+using Cya2.Core.Services;
 
 namespace Cya2.Application.Services;
 
@@ -12,13 +14,16 @@ public class AccountCalculationService : IAccountCalculationService
 {
     private readonly IExpenseReadRepository _expenseReadRepository;
     private readonly IDonationReadRepository _donationReadRepository;
+    private readonly ExpenseClassificationService _expenseClassificationService;
 
     public AccountCalculationService(
         IExpenseReadRepository expenseReadRepository,
-        IDonationReadRepository donationReadRepository)
+        IDonationReadRepository donationReadRepository,
+        ExpenseClassificationService expenseClassificationService)
     {
         _expenseReadRepository = expenseReadRepository;
         _donationReadRepository = donationReadRepository;
+        _expenseClassificationService = expenseClassificationService;
     }
 
     /// <summary>
@@ -63,45 +68,21 @@ public class AccountCalculationService : IAccountCalculationService
             ).ToList();
         }
 
-        bool IsExpense(AccountingRecord e)
-        {
-            var type = e.Type ?? string.Empty;
-            var accountName = e.Account ?? string.Empty;
-            return type.Equals("Payroll Check", StringComparison.OrdinalIgnoreCase)
-                || type.Equals("Expense", StringComparison.OrdinalIgnoreCase)
-                || accountName.Contains("Expenses:", StringComparison.OrdinalIgnoreCase)
-                || accountName.Contains("Payroll:", StringComparison.OrdinalIgnoreCase)
-                || accountName.Contains("Administration:", StringComparison.OrdinalIgnoreCase);
-        }
-
-        bool IsTransfer(AccountingRecord e)
-        {
-            var accountName = e.Account ?? string.Empty;
-            return accountName.Contains("Transfer", StringComparison.OrdinalIgnoreCase);
-        }
-
-        var expenseTransactions = entries.Where(IsExpense).ToList();
-        var transferTransactions = entries.Where(IsTransfer).ToList();
-        var otherTransactions = entries.Where(e => !expenseTransactions.Contains(e) && !transferTransactions.Contains(e)).ToList();
-
-        var expenseTotal = expenseTransactions.Sum(e => Convert.ToDecimal(e.Amount));
-        var transferTotal = transferTransactions.Sum(e => Convert.ToDecimal(e.Amount));
-        var otherTotal = otherTransactions.Sum(e => Convert.ToDecimal(e.Amount));
-
+        var categorized = _expenseClassificationService.Categorize(entries);
         var calculatedBalance = balanceAdjustment + entries.Sum(e =>
-            IsExpense(e)
-            ? -Convert.ToDecimal(e.Amount)
-            : Convert.ToDecimal(e.Amount));
+            _expenseClassificationService.ShouldSubtractFromBalance(e)
+                ? -Convert.ToDecimal(e.Amount)
+                : Convert.ToDecimal(e.Amount));
 
         return new BalanceCalculationResult
         {
             TotalBalance = calculatedBalance,
-            ExpenseTotal = expenseTotal,
-            TransferTotal = transferTotal,
-            OtherTotal = otherTotal,
-            ExpenseTransactions = expenseTransactions,
-            TransferTransactions = transferTransactions,
-            OtherTransactions = otherTransactions,
+            ExpenseTotal = categorized.ExpenseTotal,
+            TransferTotal = categorized.TransferTotal,
+            OtherTotal = categorized.OtherTotal,
+            ExpenseTransactions = categorized.ExpenseTransactions,
+            TransferTransactions = categorized.TransferTransactions,
+            OtherTransactions = categorized.OtherTransactions,
             AllTransactions = entries
         };
     }
@@ -169,6 +150,22 @@ public class AccountCalculationService : IAccountCalculationService
     public decimal CalculateOverheadAmount(UserAccountContextAccount account, decimal donationTotal)
     {
         if (account == null) return 0m;
-        return Math.Round(donationTotal * (account.Overhead / 100m), 2);
+        return ToCoreAccount(account).CalculateOverheadAmount(donationTotal);
+    }
+
+    private static Account ToCoreAccount(UserAccountContextAccount account)
+    {
+        return new Account
+        {
+            AccountId = account.AccountId,
+            Fund = account.Fund,
+            AccountingClass = account.AccountingClass,
+            AccountNumber = account.AccountNumber,
+            CreatedAt = account.CreatedAt,
+            Overhead = account.Overhead,
+            SoftCredit = account.SoftCredit,
+            BalanceAdjustment = account.BalanceAdjustment,
+            OtherFunds = account.OtherFunds
+        };
     }
 }

@@ -27,7 +27,7 @@ public class SessionDonationDataCacheService : ISessionDonationDataCacheService
 
     public bool TryGetDonationData(string userId, string fund, out DonationDataDto data)
     {
-        var sw = Stopwatch.StartNew();
+        // var sw = Stopwatch.StartNew();
         data = default!;
         var normalizedUserId = NormalizeKey(userId);
         var normalizedFund = NormalizeKey(fund);
@@ -37,25 +37,25 @@ public class SessionDonationDataCacheService : ISessionDonationDataCacheService
         {
             if (!_cacheByUser.TryGetValue(normalizedUserId, out var userCache))
             {
-                _logger.LogInformation("Donation cache miss: user={UserId}, fund={Fund}, reason=missing-user-cache, elapsedMs={ElapsedMs}", normalizedUserId, normalizedFund, sw.ElapsedMilliseconds);
+                // _logger.LogInformation("Donation cache miss: user={UserId}, fund={Fund}, reason=missing-user-cache, elapsedMs={ElapsedMs}", normalizedUserId, normalizedFund, sw.ElapsedMilliseconds);
                 return false;
             }
             if (!userCache.Items.TryGetValue(normalizedFund, out var dto))
             {
-                _logger.LogInformation("Donation cache miss: user={UserId}, fund={Fund}, reason=missing-fund, cachedFunds={CachedFunds}, elapsedMs={ElapsedMs}", normalizedUserId, normalizedFund, userCache.Items.Count, sw.ElapsedMilliseconds);
+                // _logger.LogInformation("Donation cache miss: user={UserId}, fund={Fund}, reason=missing-fund, cachedFunds={CachedFunds}, elapsedMs={ElapsedMs}", normalizedUserId, normalizedFund, userCache.Items.Count, sw.ElapsedMilliseconds);
                 return false;
             }
             data = dto;
             Touch(userCache, normalizedFund);
-            _logger.LogInformation(
-                "Donation cache hit: user={UserId}, fund={Fund}, rows={Rows}, range={Start:yyyy-MM-dd}..{End:yyyy-MM-dd}, approxBytes={ApproxBytes}, elapsedMs={ElapsedMs}",
-                normalizedUserId,
-                normalizedFund,
-                data.Donations?.Count ?? 0,
-                data.CachedStartDate,
-                data.CachedEndDate,
-                EstimateBytes(data),
-                sw.ElapsedMilliseconds);
+            // _logger.LogInformation(
+            //     "Donation cache hit: user={UserId}, fund={Fund}, rows={Rows}, range={Start:yyyy-MM-dd}..{End:yyyy-MM-dd}, approxBytes={ApproxBytes}, elapsedMs={ElapsedMs}",
+            //     normalizedUserId,
+            //     normalizedFund,
+            //     data.Donations?.Count ?? 0,
+            //     data.CachedStartDate,
+            //     data.CachedEndDate,
+            //     EstimateBytes(data),
+            //     sw.ElapsedMilliseconds);
             return true;
         }
     }
@@ -73,7 +73,7 @@ public class SessionDonationDataCacheService : ISessionDonationDataCacheService
 
     public void SetDonationData(string userId, string fund, DonationDataDto data, bool prioritize = false)
     {
-        var sw = Stopwatch.StartNew();
+        // var sw = Stopwatch.StartNew();
         var normalizedUserId = NormalizeKey(userId);
         var normalizedFund = NormalizeKey(fund);
         if (string.IsNullOrWhiteSpace(normalizedUserId) || string.IsNullOrWhiteSpace(normalizedFund) || data == null) return;
@@ -96,17 +96,17 @@ public class SessionDonationDataCacheService : ISessionDonationDataCacheService
                 userCache.Items.Remove(evictFund);
             }
 
-            _logger.LogInformation(
-                "Donation cache set: user={UserId}, fund={Fund}, rows={Rows}, range={Start:yyyy-MM-dd}..{End:yyyy-MM-dd}, approxBytes={ApproxBytes}, cachedFunds={CachedFunds}, prioritize={Prioritize}, elapsedMs={ElapsedMs}",
-                normalizedUserId,
-                normalizedFund,
-                data.Donations?.Count ?? 0,
-                data.CachedStartDate,
-                data.CachedEndDate,
-                EstimateBytes(data),
-                userCache.Items.Count,
-                prioritize,
-                sw.ElapsedMilliseconds);
+            // _logger.LogInformation(
+            //     "Donation cache set: user={UserId}, fund={Fund}, rows={Rows}, range={Start:yyyy-MM-dd}..{End:yyyy-MM-dd}, approxBytes={ApproxBytes}, cachedFunds={CachedFunds}, prioritize={Prioritize}, elapsedMs={ElapsedMs}",
+            //     normalizedUserId,
+            //     normalizedFund,
+            //     data.Donations?.Count ?? 0,
+            //     data.CachedStartDate,
+            //     data.CachedEndDate,
+            //     EstimateBytes(data),
+            //     userCache.Items.Count,
+            //     prioritize,
+            //     sw.ElapsedMilliseconds);
         }
     }
 

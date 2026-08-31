@@ -15,13 +15,14 @@ public sealed class PageLoadCorrelationContext
 
     public IDisposable BeginOperation(ILogger logger, string page, string operation)
     {
-        return logger.BeginScope(
-            "Page={Page} Operation={Operation} OperationId={OperationId} CircuitId={CircuitId} ScopeId={ScopeId}",
-            page,
-            operation,
-            Guid.NewGuid().ToString("N"),
-            CircuitId ?? "prerender",
-            _scopeId) ?? NullScope.Instance;
+        // return logger.BeginScope(
+        //     "Page={Page} Operation={Operation} OperationId={OperationId} CircuitId={CircuitId} ScopeId={ScopeId}",
+        //     page,
+        //     operation,
+        //     Guid.NewGuid().ToString("N"),
+        //     CircuitId ?? "prerender",
+        //     _scopeId) ?? NullScope.Instance;
+        return NullScope.Instance;
     }
 
     private sealed class NullScope : IDisposable

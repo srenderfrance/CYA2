@@ -1,5 +1,3 @@
-using Cya2.Core.Enums;
-
 namespace Cya2.Core.Entities;
 
 /// <summary>
@@ -62,40 +60,6 @@ public class SubAccount : BaseEntity
     public bool IsValidKind()
     {
         return IsMerged() || IsSeparate();
-    }
-
-    public List<string> GetValidationErrors()
-    {
-        var errors = new List<string>();
-        
-        if (AccountId <= 0)
-            errors.Add("Account ID is required");
-            
-        if (string.IsNullOrWhiteSpace(SubFund))
-            errors.Add("Sub Fund name is required");
-            
-        if (string.IsNullOrWhiteSpace(Kind))
-            errors.Add("Kind/Type is required");
-        else if (!IsValidKind())
-            errors.Add("Kind must be 'Merged' or 'Separate'");
-        
-        return errors;
-    }
-
-    // Display helpers
-    public string GetDisplayName()
-    {
-        return string.IsNullOrWhiteSpace(SubFund) ? "Unknown Sub Fund" : SubFund;
-    }
-
-    public string GetKindDisplay()
-    {
-        return Kind switch
-        {
-            "Merged" => "Merged",
-            "Separate" => "Separate",
-            _ => "Unknown"
-        };
     }
 
     // Helper for your SubAccountHelper class integration

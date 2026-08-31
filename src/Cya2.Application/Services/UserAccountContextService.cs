@@ -39,12 +39,12 @@ public class UserAccountContextService : IUserAccountContextService
         if (_contextCache.TryGetValue(normalizedUserId, out var cachedContext)
             && cachedContext.CacheVersion == _cacheInvalidationVersion.Current)
         {
-            _logger.LogInformation(
-                "User account context source=cache user={UserId} isAdminOrViewer={IsAdminOrViewer} defaultAccountId={DefaultAccountId} accounts={AccountCount}",
-                normalizedUserId,
-                cachedContext.IsAdminOrViewer,
-                cachedContext.DefaultAccountId,
-                cachedContext.Accounts?.Count ?? 0);
+            // _logger.LogInformation(
+            //     "User account context source=cache user={UserId} isAdminOrViewer={IsAdminOrViewer} defaultAccountId={DefaultAccountId} accounts={AccountCount}",
+            //     normalizedUserId,
+            //     cachedContext.IsAdminOrViewer,
+            //     cachedContext.DefaultAccountId,
+            //     cachedContext.Accounts?.Count ?? 0);
             return CloneContext(cachedContext);
         }
 
@@ -53,7 +53,7 @@ public class UserAccountContextService : IUserAccountContextService
             var stopwatch = System.Diagnostics.Stopwatch.StartNew();
             _logger.LogInformation("User account context phase=user-start user={UserId}", normalizedUserId);
             var user = await ResolveUserAsync(normalizedUserId);
-            _logger.LogInformation("User account context phase=user-complete elapsedMs={ElapsedMs} found={Found}", stopwatch.ElapsedMilliseconds, user is not null);
+            // _logger.LogInformation("User account context phase=user-complete elapsedMs={ElapsedMs} found={Found}", stopwatch.ElapsedMilliseconds, user is not null);
             if (user == null)
             {
                 return null;
@@ -81,15 +81,15 @@ public class UserAccountContextService : IUserAccountContextService
                 Accounts = await GetAccountsAsync(user.Id, canAccessAllAccounts)
             };
 
-            _logger.LogInformation("User account context phase=accounts-complete elapsedMs={ElapsedMs} accounts={AccountCount}", stopwatch.ElapsedMilliseconds, context.Accounts?.Count ?? 0);
+            // _logger.LogInformation("User account context phase=accounts-complete elapsedMs={ElapsedMs} accounts={AccountCount}", stopwatch.ElapsedMilliseconds, context.Accounts?.Count ?? 0);
 
             _contextCache[normalizedUserId] = CloneContext(context);
-            _logger.LogInformation(
-                "User account context source=db user={UserId} isAdminOrViewer={IsAdminOrViewer} defaultAccountId={DefaultAccountId} accounts={AccountCount}",
-                normalizedUserId,
-                context.IsAdminOrViewer,
-                context.DefaultAccountId,
-                context.Accounts?.Count ?? 0);
+            // _logger.LogInformation(
+            //     "User account context source=db user={UserId} isAdminOrViewer={IsAdminOrViewer} defaultAccountId={DefaultAccountId} accounts={AccountCount}",
+            //     normalizedUserId,
+            //     context.IsAdminOrViewer,
+            //     context.DefaultAccountId,
+            //     context.Accounts?.Count ?? 0);
 
             return context;
         }

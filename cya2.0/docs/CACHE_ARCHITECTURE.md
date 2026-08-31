@@ -44,6 +44,12 @@ The account snapshot is the shared, complete account-level data set used by the 
 
 The snapshot loader is the single place to create complete snapshots. Do not create partial snapshots in individual feature services.
 
+`AccountSnapshotWarmupService` uses an existing snapshot as the data source for derived-cache warming; a snapshot hit must not short-circuit dashboard, donation, expense, or donor-summary cache population. This preserves the cache-first behavior for subsequent Home and feature-page requests.
+Warmup requests for the same account are single-flight across initial loading and account selection: an active warmup is joined before an existing snapshot is used to start derived-cache warming. This prevents concurrent Home requests from duplicating derived cache loads.
+On Home initialization, the warmup coordinator loads the default account plus up to four non-default accounts. Selecting an account while this preload is running prioritizes that account but does not cancel the remaining automatic preload.
+
+The cache data-version monitor runs in the host as a background coordinator, but it reads source-data markers through `ICacheDataVersionProvider`. The MySQL implementation, including table-marker SQL, is owned by Infrastructure so database mechanics do not leak into the Blazor host.
+
 ### 2. Session data caches
 
 **Primary types:**
@@ -51,6 +57,7 @@ The snapshot loader is the single place to create complete snapshots. Do not cre
 - `ISessionDonationDataCacheService`
 - `ISessionExpenseDataCacheService`
 - `ISessionDonorSummaryCacheService`
+- `ISessionMissingGiftCacheService`
 - `ISessionDashboardDtoCacheService`
 
 The session caches store derived or presentation-oriented values. They are separate from the canonical account snapshot because not every request can use a snapshot.
@@ -62,11 +69,20 @@ The current registrations are:
 | Donation data | Singleton | User, fund, donation DTO |
 | Expense data | Singleton | User, fund, date range, expense DTO |
 | Donor summaries | Singleton | Funds signature, date range, summaries |
+| Missing-gift warnings | Singleton | Account ID, normalized fund, date range, warning donors |
 | Dashboard DTO | Singleton | User, fund, dashboard DTO |
 
 All of these caches expose `InvalidateAll()` and are cleared by `ImportCacheInvalidator`.
 
 `SessionDonorSummaryCacheService` is also the cache-aware boundary for the Donors page. Donor summaries are keyed by the normalized funds signature and requested date range. `DonorService` performs a cache lookup before entering the per-request single-flight query lock, then checks again after acquiring the lock so concurrent requests do not duplicate repository work.
+
+`SessionMissingGiftCacheService` stores the already-filtered Home warning result, keyed by account identity and requested date range. `AccountSnapshotWarmupService` populates it immediately after warming donor summaries, so account selection can reuse the result without repeating the donor-summary/database path. It is invalidated by `ImportCacheInvalidator` together with the other shared caches.
+
+Dashboard cache diagnostics identify DTO-cache hits and misses separately from scoped account-data cache hits, misses, and loads. Dashboard service logs also identify whether a request used the complete cache-backed path or the summary-direct path, making cold loads distinguishable from duplicate cache work.
+
+The Donations page may reuse an embedded `SelectedAccountDonations` payload from the dashboard DTO cache before calling `DonationService`. This is a delivery-layer integration optimization: `FinancialDashboardService` and `AccountSnapshotWarmupService` populate the dashboard DTO cache, while `DonationService` remains responsible for donation-specific session-cache, snapshot, and repository policy. Do not move dashboard DTO precedence into `DonationService` or create a second cache policy there.
+
+The Home missing-gift alert path uses `IDonorService.GetMissingGiftDonorsAsync`. This method routes account requests through the snapshot-aware donor-summary path, allowing a broad account snapshot to serve narrower reporting ranges. Missing-gift freshness is determined while summaries are built from the loaded dataset; Home does not independently inspect session donation data or apply a second freshness rule.
 
 The Donors UI prepares the cached summary rows once after loading by populating `DisplayName`, `DisplayAddress`, and `FrequencyLabel`. The grid uses property-only columns for these values rather than repeating formatting logic in cell templates.
 
@@ -204,7 +220,7 @@ Home uses dashboard DTO and session account-data caches. Account Summaries embed
 
 Home starts account warmup after its first render, once the initial Home load has completed. The default account is prioritized first; when that warmup completes, background warmup for the remaining bounded set of recent non-default accounts starts immediately. Warmup must not block the initial Home render, and it must not be implemented with a fixed timer-based delay.
 
-When a default account exists, warmup includes the default account plus up to four recent non-default accounts. When no default account exists, it includes up to five accounts. Selecting another account prioritizes that account and the warmup coordinator resumes the remaining background work afterward.
+When a default account exists, warmup includes the default account plus up to four recent non-default accounts. When no default account exists, it includes up to five accounts. The selected warning date range is passed through the complete derived-cache warmup for every account, including the default account; the warning cache is therefore ready when Home computes the alert. Selecting another account awaits that account's warmup, then the coordinator resumes the remaining background work afterward.
 
 ### Admin
 
