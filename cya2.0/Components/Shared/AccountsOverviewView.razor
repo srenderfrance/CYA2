@@ -24,6 +24,7 @@
             <RadzenButton Text="@(showDonations12m ? Localizer["CurrentBalance"] : Localizer["TotalDonationsLTM"])"
                           ButtonStyle="ButtonStyle.Primary"
                           Class="accounts-overview-btn"
+                          title="@(!showDonations12m ? "Total Donations over the last twelve months." : null)"
                           Click="@(() => { showDonations12m = !showDonations12m; })" />
         </RadzenStack>
     </RadzenStack>
