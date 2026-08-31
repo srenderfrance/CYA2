@@ -131,7 +131,7 @@
         <RadzenText TextStyle="TextStyle.Subtitle2">@GetDialogTitle()</RadzenText>
         
         @* Always reserve space for progress bar to prevent size changes *@
-        <div style="min-height: 60px;">
+        <div>
             @if (_p.ExpectedRows > 0 && _p.Steps.Any(s => s.Name == "Data Import" && s.IsActive))
             {
                 <RadzenProgressBar Value="@Percent" Max="100" ShowValue="true" />
@@ -144,12 +144,12 @@
             else
             {
                 @* Invisible spacer to maintain consistent height *@
-                <div style="height: 40px;"></div>
+                <div></div>
             }
         </div>
 
         @* Step-by-step progress - Each step gets its own permanent box *@
-        <RadzenCard Style="background-color: #f8f9fa; padding: 0.75rem; min-height: 280px;">
+        <RadzenCard Style="background-color: #f8f9fa; padding: 0.75rem;">
             <RadzenStack Orientation="Orientation.Vertical" Gap="0.5rem">
                 @* Define all possible steps with permanent display boxes *@
                 
@@ -267,7 +267,7 @@
         </div>
         
         @* Errors section - Reserve space to prevent size changes *@
-        <div style="min-height: 40px;">
+        <div>
             @if (_p.Errors?.Count > 0)
             {
                 <RadzenAlert AlertStyle="AlertStyle.Warning" Title="@GetLocalizedString("ImportWarnings", "Import Warnings")" Shade="Shade.Light">
