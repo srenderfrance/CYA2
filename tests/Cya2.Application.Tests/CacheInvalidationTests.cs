@@ -1,4 +1,5 @@
 using Cya2.Application.Interfaces;
+using Cya2.Application.DTOs;
 using Cya2.Application.Services;
 using Cya2.Core.Entities;
 using Cya2.Core.Interfaces;
@@ -84,6 +85,26 @@ public sealed class CacheInvalidationTests
         Assert.NotSame(first, refreshed);
         Assert.Equal(2, expenseRepository.CallCount);
         Assert.Equal(2, donationRepository.CallCount);
+    }
+
+    [Fact]
+    public void SessionDashboardDtoCacheService_ReusesAndInvalidatesAccountDashboard()
+    {
+        var service = new SessionDashboardDtoCacheService(
+            NullLogger<SessionDashboardDtoCacheService>.Instance);
+        var dashboard = new FinancialDashboardDto
+        {
+            SelectedAccount = " FUND-A "
+        };
+
+        service.SetDashboard(" user-1 ", " FUND-A ", dashboard);
+
+        Assert.True(service.TryGetDashboard("user-1", "FUND-A", out var cached));
+        Assert.Same(dashboard, cached);
+
+        service.InvalidateAll();
+
+        Assert.False(service.TryGetDashboard("user-1", "FUND-A", out _));
     }
 
     [Fact]

@@ -19,6 +19,7 @@
 @inject cya2.Services.UserSessionHydrationService SessionHydrationService
 @inject cya2.Services.Diagnostics.PageLoadCorrelationContext PageLoadCorrelation
 @inject Cya2.Application.Interfaces.IAccountSnapshotWarmupService AccountSnapshotWarmupService
+@inject Cya2.Application.Interfaces.IAccountSelectionCoordinator AccountSelectionCoordinator
 
 @rendermode @(new InteractiveServerRenderMode(prerender: false))
 @attribute [StreamRendering]
@@ -275,7 +276,7 @@
 
     protected override async Task OnInitializedAsync()
     {
-        using var operationScope = PageLoadCorrelation.BeginOperation(Logger, nameof(Expenses), "Initialize");
+        // using var operationScope = PageLoadCorrelation.BeginOperation(Logger, nameof(Expenses), "Initialize");
         var initSw = Stopwatch.StartNew();
         try
         {
@@ -355,13 +356,13 @@
         finally
         {
             isLoading = false;
-            Logger.LogInformation("Expenses init complete user={UserId} selectedAccount={SelectedAccount} accounts={AccountCount} expenses={ExpenseCount} transfers={TransferCount} elapsedMs={ElapsedMs}",
-                userId,
-                selectedAccount,
-                expenseData.UserAccounts?.Count ?? 0,
-                expenseData.ExpenseTransactions?.Count ?? 0,
-                expenseData.TransferTransactions?.Count ?? 0,
-                initSw.ElapsedMilliseconds);
+            // Logger.LogInformation("Expenses init complete user={UserId} selectedAccount={SelectedAccount} accounts={AccountCount} expenses={ExpenseCount} transfers={TransferCount} elapsedMs={ElapsedMs}",
+            //     userId,
+            //     selectedAccount,
+            //     expenseData.UserAccounts?.Count ?? 0,
+            //     expenseData.ExpenseTransactions?.Count ?? 0,
+            //     expenseData.TransferTransactions?.Count ?? 0,
+            //     initSw.ElapsedMilliseconds);
         }
     }
 
@@ -463,14 +464,14 @@
         finally
         {
             isLoading = false;
-            Logger.LogInformation("Expenses data load complete user={UserId} selectedAccount={SelectedAccount} range={Start:yyyy-MM-dd}..{End:yyyy-MM-dd} expenses={ExpenseCount} transfers={TransferCount} elapsedMs={ElapsedMs}",
-                userId,
-                selectedAccount,
-                dateRangeState.StartDate,
-                dateRangeState.EndDate,
-                expenseData.ExpenseTransactions?.Count ?? 0,
-                expenseData.TransferTransactions?.Count ?? 0,
-                loadSw.ElapsedMilliseconds);
+            // Logger.LogInformation("Expenses data load complete user={UserId} selectedAccount={SelectedAccount} range={Start:yyyy-MM-dd}..{End:yyyy-MM-dd} expenses={ExpenseCount} transfers={TransferCount} elapsedMs={ElapsedMs}",
+            //     userId,
+            //     selectedAccount,
+            //     dateRangeState.StartDate,
+            //     dateRangeState.EndDate,
+            //     expenseData.ExpenseTransactions?.Count ?? 0,
+            //     expenseData.TransferTransactions?.Count ?? 0,
+            //     loadSw.ElapsedMilliseconds);
             await InvokeAsync(StateHasChanged);
         }
     }
@@ -479,25 +480,20 @@
     {
         if (string.IsNullOrWhiteSpace(accountName)) return;
 
-        selectedAccount = accountName;
-        SessionUserStateService.SelectedAccountFund = accountName;
-        if (!string.IsNullOrWhiteSpace(userId))
-        {
-            UserSelectionService.SetSelectedAccount(userId, accountName);
-        }
-
         var selectedAccountDto = expenseData.UserAccounts.FirstOrDefault(account =>
             string.Equals(account.Fund, accountName, StringComparison.OrdinalIgnoreCase));
         if (selectedAccountDto is not null)
         {
-            await AccountSnapshotWarmupService.WarmSelectedAccountAsync(new UserAccountContextAccount
+            var account = new UserAccountContextAccount
             {
                 AccountId = selectedAccountDto.AccountId,
                 Fund = selectedAccountDto.Fund,
                 AccountingClass = selectedAccountDto.AccountingClass,
                 AccountNumber = selectedAccountDto.AccountNumber,
                 Overhead = selectedAccountDto.Overhead
-            }, userId, canAccessAllAccounts);
+            };
+            await AccountSelectionCoordinator.SelectAsync(account, userId, canAccessAllAccounts, persistSelection: true);
+            selectedAccount = accountName;
         }
 
         await LoadExpenseData(canAccessAllAccounts);

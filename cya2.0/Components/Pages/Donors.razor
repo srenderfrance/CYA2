@@ -28,6 +28,7 @@
 @inject cya2.Services.UserSessionHydrationService SessionHydrationService
 @inject cya2.Services.Diagnostics.PageLoadCorrelationContext PageLoadCorrelation
 @inject Cya2.Application.Interfaces.IAccountSnapshotWarmupService AccountSnapshotWarmupService
+@inject Cya2.Application.Interfaces.IAccountSelectionCoordinator AccountSelectionCoordinator
 
 <PageTitle>@Localizer["Donors"]</PageTitle>
 
@@ -342,7 +343,7 @@
 
     protected override async Task OnInitializedAsync()
     {
-        using var operationScope = PageLoadCorrelation.BeginOperation(Logger, nameof(Donors), "Initialize");
+        // using var operationScope = PageLoadCorrelation.BeginOperation(Logger, nameof(Donors), "Initialize");
         var initSw = Stopwatch.StartNew();
         try
         {
@@ -412,12 +413,12 @@
         finally
         {
             isLoading = false;
-            Logger.LogInformation("Donors init complete user={UserId} selectedAccount={SelectedAccount} accounts={AccountCount} donors={DonorCount} elapsedMs={ElapsedMs}",
-                userId,
-                selectedAccount,
-                userAccounts?.Count ?? 0,
-                donorsInRange?.Count ?? 0,
-                initSw.ElapsedMilliseconds);
+            // Logger.LogInformation("Donors init complete user={UserId} selectedAccount={SelectedAccount} accounts={AccountCount} donors={DonorCount} elapsedMs={ElapsedMs}",
+            //     userId,
+            //     selectedAccount,
+            //     userAccounts?.Count ?? 0,
+            //     donorsInRange?.Count ?? 0,
+            //     initSw.ElapsedMilliseconds);
         }
     }
 
@@ -549,37 +550,13 @@
                 dateRangeState.EndDate,
                 showSubAccountDropdown);
 
-            if (dateRangeState.SelectedPreset == Cya2.Application.DTOs.DateRangePreset.AllDates)
-            {
-                // No date filter — query all donations for the account
-                if (showSubAccountDropdown && selectedSubAccount != "All")
-                {
-                    var funds = await ResolveFundNamesAsync(currentAccount, selectedSubAccount);
-                    Logger.LogInformation("[Donors] Query path=AllDates+SubSelection funds={Funds}", string.Join("||", funds));
-                    donorsInRange = await DonorService.GetAllDonorSummariesAsync(funds);
-                }
-                else
-                {
-                    Logger.LogInformation("[Donors] Query path=AllDates+Account accountId={AccountId} fund='{Fund}'", currentAccount.AccountId, currentAccount.Fund);
-                    donorsInRange = await DonorService.GetAllDonorSummariesAsync(currentAccount.AccountId, currentAccount.Fund);
-                }
-            }
-            else
-            {
-                var range = new DateRange(dateRangeState.StartDate, dateRangeState.EndDate);
-
-                if (showSubAccountDropdown && selectedSubAccount != "All")
-                {
-                    var funds = await ResolveFundNamesAsync(currentAccount, selectedSubAccount);
-                    Logger.LogInformation("[Donors] Query path=Range+SubSelection funds={Funds} range={Start:yyyy-MM-dd}..{End:yyyy-MM-dd}", string.Join("||", funds), range.StartDate, range.EndDate);
-                    donorsInRange = await DonorService.GetDonorSummariesAsync(funds, range);
-                }
-                else
-                {
-                    Logger.LogInformation("[Donors] Query path=Range+Account accountId={AccountId} fund='{Fund}' range={Start:yyyy-MM-dd}..{End:yyyy-MM-dd}", currentAccount.AccountId, currentAccount.Fund, range.StartDate, range.EndDate);
-                    donorsInRange = await DonorService.GetDonorSummariesForAccountAsync(currentAccount, range);
-                }
-            }
+            var range = dateRangeState.SelectedPreset == Cya2.Application.DTOs.DateRangePreset.AllDates
+                ? null
+                : new DateRange(dateRangeState.StartDate, dateRangeState.EndDate);
+            donorsInRange = await DonorService.GetDonorSummariesForSelectionAsync(
+                currentAccount,
+                selectedSubAccount,
+                range);
 
             PrepareDonorRows(donorsInRange);
             donorNames = donorsInRange
@@ -595,15 +572,15 @@
                 UserSelectionService.SetSelectedAccount(userId, currentAccount.Fund);
 
             Logger.LogInformation("Loaded {Count} donors for account '{Fund}'", donorsInRange.Count, currentAccount.Fund);
-            Logger.LogInformation("Donors data load complete user={UserId} account={Account} subAccount={SubAccount} preset={Preset} range={Start:yyyy-MM-dd}..{End:yyyy-MM-dd} rows={Rows} elapsedMs={ElapsedMs}",
-                userId,
-                currentAccount.Fund,
-                selectedSubAccount,
-                dateRangeState.SelectedPreset,
-                dateRangeState.StartDate,
-                dateRangeState.EndDate,
-                donorsInRange.Count,
-                loadSw.ElapsedMilliseconds);
+            // Logger.LogInformation("Donors data load complete user={UserId} account={Account} subAccount={SubAccount} preset={Preset} range={Start:yyyy-MM-dd}..{End:yyyy-MM-dd} rows={Rows} elapsedMs={ElapsedMs}",
+            //     userId,
+            //     currentAccount.Fund,
+            //     selectedSubAccount,
+            //     dateRangeState.SelectedPreset,
+            //     dateRangeState.StartDate,
+            //     dateRangeState.EndDate,
+            //     donorsInRange.Count,
+            //     loadSw.ElapsedMilliseconds);
             lastDonorLoadKey = requestKey;
         }
         catch (Exception ex)
@@ -666,41 +643,7 @@
             return null;
         }
 
-        var funds = await ResolveAllFundsForAccountAsync(currentAccount);
-
-        foreach (var fund in funds.Where(f => !string.IsNullOrWhiteSpace(f)).Distinct(StringComparer.OrdinalIgnoreCase))
-        {
-            var donorsInFund = await DonorService.GetDonorNamesAsync(fund);
-            var hasDonorInFund = donorsInFund.Any(n => string.Equals(n, donorName, StringComparison.OrdinalIgnoreCase));
-            if (!hasDonorInFund)
-            {
-                continue;
-            }
-
-            var detail = await DonorService.GetDonorDetailAsync(donorName, fund);
-            if (detail != null)
-            {
-                return detail;
-            }
-        }
-
-        return null;
-    }
-
-    private async Task<List<string>> ResolveAllFundsForAccountAsync(AccountOptionDto account)
-    {
-        var funds = new List<string> { account.Fund };
-        var subAccounts = await GetSubAccountsForAccountAsync(account.AccountId);
-
-        funds.AddRange(subAccounts
-            .Select(sa => sa.SubFund)
-            .Where(f => !string.IsNullOrWhiteSpace(f))
-            .Cast<string>());
-
-        return funds
-            .Where(f => !string.IsNullOrWhiteSpace(f))
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToList();
+        return await DonorService.GetDonorDetailForAccountAsync(donorName, currentAccount);
     }
 
     private async Task<List<Cya2.Core.Entities.SubAccount>> GetSubAccountsForAccountAsync(int accountId)
@@ -936,24 +879,19 @@
         isLoading = true;
         try
         {
-            selectedAccount = accountName;
-            SessionUserStateService.SelectedAccountFund = accountName;
-            if (!string.IsNullOrWhiteSpace(userId))
-            {
-                UserSelectionService.SetSelectedAccount(userId, accountName);
-            }
-
-            currentAccount = userAccounts.FirstOrDefault(a => a.Fund == selectedAccount);
+            currentAccount = userAccounts.FirstOrDefault(a => a.Fund == accountName);
             if (currentAccount != null)
             {
-                await AccountSnapshotWarmupService.WarmSelectedAccountAsync(new UserAccountContextAccount
+                var account = new UserAccountContextAccount
                 {
                     AccountId = currentAccount.AccountId,
                     Fund = currentAccount.Fund,
                     AccountingClass = currentAccount.AccountingClass,
                     AccountNumber = currentAccount.AccountNumber,
                     Overhead = currentAccount.Overhead
-                }, userId, isAdminOrViewer, GetDonorSummaryWarmupRange());
+                };
+                await AccountSelectionCoordinator.SelectAsync(account, userId, isAdminOrViewer, persistSelection: true, donorSummaryRange: GetDonorSummaryWarmupRange());
+                selectedAccount = accountName;
                 lastDonorLoadKey = null;
                 await LoadSubAccountOptionsAsync(currentAccount.AccountId);
                 await BuildDonorsInRange(currentAccount);

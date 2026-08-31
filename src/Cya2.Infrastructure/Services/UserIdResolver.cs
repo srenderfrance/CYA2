@@ -9,9 +9,9 @@ public class UserIdResolver : IUserIdResolver
     {
         if (user == null) return fallbackCurrentUserId ?? string.Empty;
 
-        var resolved = user.FindFirstValue("UserId")
-                       ?? user.FindFirstValue(ClaimTypes.Email)
-                       ?? user.FindFirstValue(ClaimTypes.NameIdentifier)
+        var resolved = user.FindFirst("UserId")?.Value
+                       ?? user.FindFirst(ClaimTypes.Email)?.Value
+                       ?? user.FindFirst(ClaimTypes.NameIdentifier)?.Value
                        ?? user.Identity?.Name
                        ?? string.Empty;
 

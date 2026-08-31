@@ -79,7 +79,7 @@ public sealed class AdminRecentAccountSnapshotService : IAdminRecentAccountSnaps
 
             if (_snapshotCache.TryGet(key, out _))
             {
-                _logger.LogDebug("Admin recent account snapshot already cached: accountId={AccountId}, fund={Fund}", key.AccountId, key.Fund);
+                // _logger.LogDebug("Admin recent account snapshot already cached: accountId={AccountId}, fund={Fund}", key.AccountId, key.Fund);
                 return;
             }
 
@@ -129,12 +129,12 @@ public sealed class AdminRecentAccountSnapshotService : IAdminRecentAccountSnaps
                 cancellationToken => _snapshotLoader.LoadAsync(contextAccount, queryRange, key, cancellationToken),
                 CancellationToken.None);
 
-            _logger.LogInformation(
-                "Admin warmed account snapshot: accountId={AccountId}, fund={Fund}, range={Start:yyyy-MM-dd}..{End:yyyy-MM-dd}",
-                key.AccountId,
-                key.Fund,
-                queryRange.StartDate,
-                queryRange.EndDate);
+            // _logger.LogInformation(
+            //     "Admin warmed account snapshot: accountId={AccountId}, fund={Fund}, range={Start:yyyy-MM-dd}..{End:yyyy-MM-dd}",
+            //     key.AccountId,
+            //     key.Fund,
+            //     queryRange.StartDate,
+            //     queryRange.EndDate);
         }
         finally
         {

@@ -14,6 +14,8 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<DatabaseMonitorService>();
         services.AddSingleton<IDatabaseAvailabilityMonitor>(sp => sp.GetRequiredService<DatabaseMonitorService>());
         services.AddHostedService(sp => sp.GetRequiredService<DatabaseMonitorService>());
+        services.AddSingleton<IDatabaseStartupProbe, MySqlDatabaseStartupProbe>();
+        services.AddSingleton<ICacheDataVersionProvider, MySqlCacheDataVersionProvider>();
 
         services.AddScoped<IUserRepository, UserRepository>();
         services.AddScoped<IUserAccountAccessRepository, UserAccountAccessRepository>();

@@ -25,11 +25,11 @@ public sealed class UserRepository : IUserRepository
     public async Task<User?> GetByIdAsync(int id)
     {
         _dbGuard.ThrowIfUnavailable();
-        var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+        // var stopwatch = System.Diagnostics.Stopwatch.StartNew();
         const string sql = "SELECT Id, GoogleId, Email, Name, Language, AuthLevel, DefaultAccount FROM Users WHERE Id = @Id LIMIT 1";
         await using var conn = new MySqlConnection(ConnStr);
         var user = await conn.QueryFirstOrDefaultAsync<User>(sql, new { Id = id });
-        _logger.LogInformation("UserRepository.GetById phase=query-complete elapsedMs={ElapsedMs} userId={UserId} found={Found}", stopwatch.ElapsedMilliseconds, id, user is not null);
+        // _logger.LogInformation("UserRepository.GetById phase=query-complete elapsedMs={ElapsedMs} userId={UserId} found={Found}", stopwatch.ElapsedMilliseconds, id, user is not null);
         return user;
     }
 

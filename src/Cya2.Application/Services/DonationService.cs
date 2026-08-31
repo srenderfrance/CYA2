@@ -63,14 +63,14 @@ public class DonationService : IDonationService
                     }
                     else
                     {
-                    _logger.LogInformation(
-                        "Donation data source=cache-direct user='{UserId}' selectedAccount='{SelectedAccount}' rows={RowCount} range={StartDate:yyyy-MM-dd}..{EndDate:yyyy-MM-dd} elapsedMs={ElapsedMs}",
-                        userId,
-                        cachedDonationData.SelectedAccount,
-                        cachedDonationData.Donations?.Count ?? 0,
-                        dateRange.StartDate,
-                        dateRange.EndDate,
-                        sw.ElapsedMilliseconds);
+                    // _logger.LogInformation(
+                    //     "Donation data source=cache-direct user='{UserId}' selectedAccount='{SelectedAccount}' rows={RowCount} range={StartDate:yyyy-MM-dd}..{EndDate:yyyy-MM-dd} elapsedMs={ElapsedMs}",
+                    //     userId,
+                    //     cachedDonationData.SelectedAccount,
+                    //     cachedDonationData.Donations?.Count ?? 0,
+                    //     dateRange.StartDate,
+                    //     dateRange.EndDate,
+                    //     sw.ElapsedMilliseconds);
                     return cachedDonationData;
                     }
                 }
@@ -240,14 +240,14 @@ public class DonationService : IDonationService
                     // Use cached DTO but still ensure UserAccounts & selection are present
                     cachedDonationData.UserAccounts = result.UserAccounts;
                     cachedDonationData.SelectedAccount = result.SelectedAccount;
-                    _logger.LogInformation(
-                        "Donation data source=cache user='{UserId}' selectedAccount='{SelectedAccount}' rows={RowCount} range={StartDate:yyyy-MM-dd}..{EndDate:yyyy-MM-dd} elapsedMs={ElapsedMs}",
-                        userId,
-                        cachedDonationData.SelectedAccount,
-                        cachedDonationData.Donations?.Count ?? 0,
-                        dateRange.StartDate,
-                        dateRange.EndDate,
-                        sw.ElapsedMilliseconds);
+                    // _logger.LogInformation(
+                    //     "Donation data source=cache user='{UserId}' selectedAccount='{SelectedAccount}' rows={RowCount} range={StartDate:yyyy-MM-dd}..{EndDate:yyyy-MM-dd} elapsedMs={ElapsedMs}",
+                    //     userId,
+                    //     cachedDonationData.SelectedAccount,
+                    //     cachedDonationData.Donations?.Count ?? 0,
+                    //     dateRange.StartDate,
+                    //     dateRange.EndDate,
+                    //     sw.ElapsedMilliseconds);
                     return cachedDonationData;
                     }
                 }
@@ -268,10 +268,11 @@ public class DonationService : IDonationService
             }
 
             _logger.LogInformation(
-                "Donation data cache bypass user='{UserId}' requestedAccount='{RequestedAccount}' selectedAccount='{SelectedAccount}' bypassSubAccountCache={BypassSubAccountCache} forceRefresh={ForceRefresh} subAccountSelection='{SubAccountSelection}'",
+                "Donation data loading from snapshot or repository user='{UserId}' requestedAccount='{RequestedAccount}' selectedAccount='{SelectedAccount}' source='{Source}' bypassSubAccountCache={BypassSubAccountCache} forceRefresh={ForceRefresh} subAccountSelection='{SubAccountSelection}'",
                 userId,
                 accountName,
                 result.SelectedAccount,
+                donationDataSource,
                 bypassSubAccountCache,
                 forceRefresh,
                 normalizedSubSelection);
@@ -380,19 +381,19 @@ public class DonationService : IDonationService
                     ?? new List<Cya2.Core.ReadModels.DonationRecord>();
             }
 
-            _logger.LogInformation(
-                "Donation data source={DataSource} for user '{UserId}': selectedAccount='{SelectedAccount}', requestedAccount='{RequestedAccount}', fundsQueried={FundCount}, rows={RowCount}, requestedRange={RequestedStart:yyyy-MM-dd}..{RequestedEnd:yyyy-MM-dd}, queriedRange={QueryStart:yyyy-MM-dd}..{QueryEnd:yyyy-MM-dd}, elapsedMs={ElapsedMs}",
-                donationDataSource,
-                userId,
-                result.SelectedAccount,
-                accountName,
-                fundsToQuery.Count,
-                donationRecords.Count,
-                dateRange.StartDate,
-                dateRange.EndDate,
-                queryRange.StartDate,
-                queryRange.EndDate,
-                sw.ElapsedMilliseconds);
+            // _logger.LogInformation(
+            //     "Donation data source={DataSource} for user '{UserId}': selectedAccount='{SelectedAccount}', requestedAccount='{RequestedAccount}', fundsQueried={FundCount}, rows={RowCount}, requestedRange={RequestedStart:yyyy-MM-dd}..{RequestedEnd:yyyy-MM-dd}, queriedRange={QueryStart:yyyy-MM-dd}..{QueryEnd:yyyy-MM-dd}, elapsedMs={ElapsedMs}",
+            //     donationDataSource,
+            //     userId,
+            //     result.SelectedAccount,
+            //     accountName,
+            //     fundsToQuery.Count,
+            //     donationRecords.Count,
+            //     dateRange.StartDate,
+            //     dateRange.EndDate,
+            //     queryRange.StartDate,
+            //     queryRange.EndDate,
+            //     sw.ElapsedMilliseconds);
 
             // Map DonationRecord -> DonationRowDto (application DTO)
             result.Donations = donationRecords.Select(r => new DonationRowDto

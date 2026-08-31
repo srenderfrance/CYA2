@@ -27,7 +27,6 @@ public class SessionDashboardDtoCacheService : ISessionDashboardDtoCacheService
 
     public bool TryGetDashboard(string userId, string fund, out FinancialDashboardDto dashboard)
     {
-        var sw = Stopwatch.StartNew();
         dashboard = default!;
         var normalizedUserId = NormalizeKey(userId);
         var normalizedFund = NormalizeKey(fund);
@@ -41,27 +40,19 @@ public class SessionDashboardDtoCacheService : ISessionDashboardDtoCacheService
         {
             if (!_cacheByUser.TryGetValue(normalizedUserId, out var userCache))
             {
-                _logger.LogInformation("Dashboard DTO cache miss: user={UserId}, fund={Fund}, reason=missing-user-cache, elapsedMs={ElapsedMs}", normalizedUserId, normalizedFund, sw.ElapsedMilliseconds);
+                _logger.LogInformation("Dashboard DTO cache miss: user={UserId}, fund={Fund}, reason=missing-user-cache", normalizedUserId, normalizedFund);
                 return false;
             }
 
             if (!userCache.Items.TryGetValue(normalizedFund, out var dto))
             {
-                _logger.LogInformation("Dashboard DTO cache miss: user={UserId}, fund={Fund}, reason=missing-fund, cachedFunds={CachedFunds}, elapsedMs={ElapsedMs}", normalizedUserId, normalizedFund, userCache.Items.Count, sw.ElapsedMilliseconds);
+                _logger.LogInformation("Dashboard DTO cache miss: user={UserId}, fund={Fund}, reason=missing-fund, cachedFunds={CachedFunds}", normalizedUserId, normalizedFund, userCache.Items.Count);
                 return false;
             }
 
             dashboard = dto;
             Touch(userCache, normalizedFund);
-            _logger.LogInformation(
-                "Dashboard DTO cache hit: user={UserId}, fund={Fund}, accounts={Accounts}, selectedDonationsRows={SelectedRows}, defaultDonationsRows={DefaultRows}, approxBytes={ApproxBytes}, elapsedMs={ElapsedMs}",
-                normalizedUserId,
-                normalizedFund,
-                dashboard.UserAccounts?.Count ?? 0,
-                dashboard.SelectedAccountDonations?.Donations?.Count ?? 0,
-                dashboard.DefaultAccountDonations?.Donations?.Count ?? 0,
-                EstimateBytes(dashboard),
-                sw.ElapsedMilliseconds);
+            _logger.LogInformation("Dashboard DTO cache hit: user={UserId}, fund={Fund}, accounts={Accounts}, cachedFunds={CachedFunds}", normalizedUserId, normalizedFund, dashboard.UserAccounts?.Count ?? 0, userCache.Items.Count);
             return true;
         }
     }
@@ -87,7 +78,6 @@ public class SessionDashboardDtoCacheService : ISessionDashboardDtoCacheService
 
     public void SetDashboard(string userId, string fund, FinancialDashboardDto dashboard, bool prioritize = false)
     {
-        var sw = Stopwatch.StartNew();
         var normalizedUserId = NormalizeKey(userId);
         var normalizedFund = NormalizeKey(fund);
         if (string.IsNullOrWhiteSpace(normalizedUserId) || string.IsNullOrWhiteSpace(normalizedFund) || dashboard == null)
@@ -118,17 +108,7 @@ public class SessionDashboardDtoCacheService : ISessionDashboardDtoCacheService
                 userCache.Items.Remove(evictFund);
             }
 
-            _logger.LogInformation(
-                "Dashboard DTO cache set: user={UserId}, fund={Fund}, accounts={Accounts}, selectedDonationsRows={SelectedRows}, defaultDonationsRows={DefaultRows}, approxBytes={ApproxBytes}, cachedFunds={CachedFunds}, prioritize={Prioritize}, elapsedMs={ElapsedMs}",
-                normalizedUserId,
-                normalizedFund,
-                dashboard.UserAccounts?.Count ?? 0,
-                dashboard.SelectedAccountDonations?.Donations?.Count ?? 0,
-                dashboard.DefaultAccountDonations?.Donations?.Count ?? 0,
-                EstimateBytes(dashboard),
-                userCache.Items.Count,
-                prioritize,
-                sw.ElapsedMilliseconds);
+            _logger.LogInformation("Dashboard DTO cache set: user={UserId}, fund={Fund}, accounts={Accounts}, cachedFunds={CachedFunds}, prioritize={Prioritize}", normalizedUserId, normalizedFund, dashboard.UserAccounts?.Count ?? 0, userCache.Items.Count, prioritize);
         }
     }
 

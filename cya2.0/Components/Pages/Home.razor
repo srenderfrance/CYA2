@@ -23,7 +23,6 @@
 @inject IJSRuntime JS
 @inject Cya2.Application.Interfaces.IUserIdResolver UserIdResolver
 @inject Cya2.Application.Interfaces.IUserSelectionService UserSelectionService
-@inject Cya2.Application.Interfaces.ISessionDonationDataCacheService SessionDonationDataCacheService
 @inject Cya2.Application.Interfaces.IUserDateRangeSelectionService DateRangeSelectionService
 @inject Cya2.Application.Interfaces.IDonorService DonorService
 @inject Cya2.Application.Interfaces.IAccountSnapshotWarmupService AccountSnapshotWarmupService
@@ -804,58 +803,20 @@ private bool showMissingGiftDialog = false;
             if (string.IsNullOrWhiteSpace(selectedAccount)) return;
 
             var now = DateTime.Today;
-            var rangeStart = now.AddMonths(-6);
-            var range = new Cya2.Core.ValueObjects.DateRange(rangeStart, now);
-            var summaries = await DonorService.GetDonorSummariesAsync(selectedAccount, range);
+            var range = new Cya2.Core.ValueObjects.DateRange(now.AddMonths(-6), now);
+            var account = dashboardData.UserAccounts.FirstOrDefault(a =>
+                string.Equals(a.Fund, selectedAccount, StringComparison.OrdinalIgnoreCase));
 
-            // Determine the latest donation date in the DB for this account.
-            // Use the cached donation data if available — it already covers a wide range.
-            DateTime? latestDbDate = null;
-            if (!string.IsNullOrWhiteSpace(cachedUserId) &&
-                SessionDonationDataCacheService.TryGetDonationData(cachedUserId, selectedAccount, out var cached) &&
-                cached?.Donations != null && cached.Donations.Count > 0)
-            {
-                latestDbDate = cached.Donations.Max(d => d.Date);
-            }
-
-            // If we can't determine the latest DB date, suppress all alerts.
-            if (latestDbDate == null)
-            {
-                missingGiftDonors = new();
-                return;
-            }
-
-            // Only alert for missing months that fall on or before the month of the latest DB record.
-            // This prevents flagging months that simply haven't been uploaded yet.
-            var dbCurrentMonth = new DateTime(latestDbDate.Value.Year, latestDbDate.Value.Month, 1);
-
-            missingGiftDonors = summaries
-                .Where(d => d.HasMissingGiftAlert &&
-                            d.MissingMonths.Any(m =>
-                            {
-                                // Parse "MMMM yyyy" back to a date and check it is <= dbCurrentMonth.
-                                return DateTime.TryParseExact(m, "MMMM yyyy",
-                                    System.Globalization.CultureInfo.InvariantCulture,
-                                    System.Globalization.DateTimeStyles.None, out var missingDate)
-                                    && missingDate <= dbCurrentMonth;
-                            }))
-                .Select(d => new Cya2.Application.DTOs.DonorSummaryDto
+            missingGiftDonors = account == null
+                ? new()
+                : await DonorService.GetMissingGiftDonorsAsync(new AccountOptionDto
                 {
-                    Name            = d.Name,
-                    Frequency       = d.Frequency,
-                    HasMissingGiftAlert = true,
-                    MissingMonths   = d.MissingMonths
-                        .Where(m =>
-                        {
-                            return DateTime.TryParseExact(m, "MMMM yyyy",
-                                System.Globalization.CultureInfo.InvariantCulture,
-                                System.Globalization.DateTimeStyles.None, out var missingDate)
-                                && missingDate <= dbCurrentMonth;
-                        })
-                        .ToList()
-                })
-                .Where(d => d.MissingMonths.Count > 0)
-                .ToList();
+                    AccountId = account.AccountId,
+                    Fund = account.Fund,
+                    AccountingClass = account.AccountingClass,
+                    AccountNumber = account.AccountNumber,
+                    Overhead = account.Overhead
+                }, range);
         }
         catch (Exception ex)
         {
@@ -866,17 +827,17 @@ private bool showMissingGiftDialog = false;
 
     protected override async Task OnInitializedAsync()
     {
-        using var operationScope = PageLoadCorrelation.BeginOperation(Logger, nameof(Home), "Initialize");
-        var initSw = Stopwatch.StartNew();
+        // using var operationScope = PageLoadCorrelation.BeginOperation(Logger, nameof(Home), "Initialize");
+        // var initSw = Stopwatch.StartNew();
         isLoading = true;
         isAccountDataLoading = true;
 
         try
         {
-            Logger.LogInformation("Home init phase=auth-start elapsedMs={ElapsedMs}", initSw.ElapsedMilliseconds);
+            // Logger.LogInformation("Home init phase=auth-start elapsedMs={ElapsedMs}", initSw.ElapsedMilliseconds);
             var authState = await AuthStateProvider.GetAuthenticationStateAsync();
             var user = authState.User;
-            Logger.LogInformation("Home init phase=auth-complete elapsedMs={ElapsedMs} authenticated={Authenticated}", initSw.ElapsedMilliseconds, user.Identity?.IsAuthenticated == true);
+            // Logger.LogInformation("Home init phase=auth-complete elapsedMs={ElapsedMs} authenticated={Authenticated}", initSw.ElapsedMilliseconds, user.Identity?.IsAuthenticated == true);
 
             if (user.Identity?.IsAuthenticated != true)
             {
@@ -894,7 +855,7 @@ private bool showMissingGiftDialog = false;
                       "User";
 
             cachedUserId = SessionHydrationService.HydrateForUser(user);
-            Logger.LogInformation("Home init phase=session-hydrated elapsedMs={ElapsedMs} user={UserId}", initSw.ElapsedMilliseconds, cachedUserId);
+            // Logger.LogInformation("Home init phase=session-hydrated elapsedMs={ElapsedMs} user={UserId}", initSw.ElapsedMilliseconds, cachedUserId);
 
             visualizationPresetOptions = DateRangeHelper.GetPresetOptions(Localizer)
                 .Select(p => new DatePresetOption { Value = p.preset, Text = p.displayName })
@@ -913,7 +874,7 @@ private bool showMissingGiftDialog = false;
             FinancialDashboardDto requestedCachedDashboard = new();
             var hasRequestedCache = !string.IsNullOrWhiteSpace(requestedFund) &&
                                     SessionDashboardDtoCacheService.TryGetDashboard(cachedUserId, requestedFund, out requestedCachedDashboard);
-            Logger.LogInformation("Home init phase=dashboard-cache-checked elapsedMs={ElapsedMs} cacheHit={CacheHit} requestedFund={RequestedFund}", initSw.ElapsedMilliseconds, hasRequestedCache, requestedFund);
+            // Logger.LogInformation("Home init phase=dashboard-cache-checked elapsedMs={ElapsedMs} cacheHit={CacheHit} requestedFund={RequestedFund}", initSw.ElapsedMilliseconds, hasRequestedCache, requestedFund);
 
             if (hasRequestedCache)
             {
@@ -923,9 +884,9 @@ private bool showMissingGiftDialog = false;
             }
             else
             {
-                Logger.LogInformation("Home init phase=dashboard-load-start elapsedMs={ElapsedMs}", initSw.ElapsedMilliseconds);
+                // Logger.LogInformation("Home init phase=dashboard-load-start elapsedMs={ElapsedMs}", initSw.ElapsedMilliseconds);
                 dashboardData = await DashboardService.GetDashboardSummaryDataAsync(requestedFund ?? string.Empty, cachedUserId);
-                Logger.LogInformation("Home init phase=dashboard-load-complete elapsedMs={ElapsedMs} accounts={AccountCount}", initSw.ElapsedMilliseconds, dashboardData.UserAccounts?.Count ?? 0);
+                // Logger.LogInformation("Home init phase=dashboard-load-complete elapsedMs={ElapsedMs} accounts={AccountCount}", initSw.ElapsedMilliseconds, dashboardData.UserAccounts?.Count ?? 0);
                 selectedAccount = ResolveSelectedAccount(dashboardData);
                 CacheDashboard(selectedAccount, dashboardData, prioritize: true);
                 BuildDebugMessage(string.IsNullOrWhiteSpace(requestedFund) ? "initial-summary-load" : "initial-summary-load-requested-fund");
@@ -940,7 +901,7 @@ private bool showMissingGiftDialog = false;
             SessionUserStateService.SelectedAccountFund = selectedAccount;
             SessionUserStateService.DefaultAccountFund = defaultFundFromDto;
             RefreshSelectedAccountMode();
-            Logger.LogInformation("Home init phase=state-prepared elapsedMs={ElapsedMs} selectedAccount={SelectedAccount}", initSw.ElapsedMilliseconds, selectedAccount);
+            // Logger.LogInformation("Home init phase=state-prepared elapsedMs={ElapsedMs} selectedAccount={SelectedAccount}", initSw.ElapsedMilliseconds, selectedAccount);
 
             if (!string.IsNullOrWhiteSpace(cachedUserId) && !string.IsNullOrWhiteSpace(selectedAccount))
             {
@@ -965,12 +926,12 @@ private bool showMissingGiftDialog = false;
             isLoading = false;
             isAccountDataLoading = false;
             ScheduleInitialDeferredWork();
-            Logger.LogInformation(
-                "Home init complete user={UserId} selectedAccount={SelectedAccount} userAccounts={AccountCount} elapsedMs={ElapsedMs}",
-                cachedUserId,
-                selectedAccount,
-                dashboardData.UserAccounts?.Count ?? 0,
-                initSw.ElapsedMilliseconds);
+            // Logger.LogInformation(
+            //     "Home init complete user={UserId} selectedAccount={SelectedAccount} userAccounts={AccountCount} elapsedMs={ElapsedMs}",
+            //     cachedUserId,
+            //     selectedAccount,
+            //     dashboardData.UserAccounts?.Count ?? 0,
+            //     initSw.ElapsedMilliseconds);
         }
     }
 
@@ -978,7 +939,7 @@ private bool showMissingGiftDialog = false;
     {
         if (firstRender)
         {
-            Logger.LogInformation("Home first render complete; starting account warmup");
+            // Logger.LogInformation("Home first render complete; starting account warmup");
             ScheduleInitialWarmup();
         }
 
@@ -1020,6 +981,8 @@ private bool showMissingGiftDialog = false;
                 Overhead = account.Overhead
             }).ToList();
 
+            Logger.LogInformation("Home initial account warmup scheduled: user={UserId}, accounts={AccountCount}, selectedAccount={SelectedAccount}, warningRange={WarningStart:yyyy-MM-dd}..{WarningEnd:yyyy-MM-dd}", cachedUserId, warmupAccounts.Count, selectedAccount, GetDonorSummaryWarmupRange()?.StartDate, GetDonorSummaryWarmupRange()?.EndDate);
+
             _ = AccountSnapshotWarmupService.WarmInitialAccountsAsync(
                 warmupAccounts,
                 defaultAccountId,
@@ -1048,6 +1011,7 @@ private bool showMissingGiftDialog = false;
             }
 
             var hasImmediateCache = SessionDashboardDtoCacheService.TryGetDashboard(cachedUserId, accountName, out var cachedSelection);
+            Logger.LogInformation("Home account selection started: account={Account}, dashboardCacheHit={DashboardCacheHit}", accountName, hasImmediateCache);
             isAccountDataLoading = !hasImmediateCache;
             StateHasChanged();
 
@@ -1083,14 +1047,15 @@ private bool showMissingGiftDialog = false;
                 string.Equals(account.Fund, selectedAccount, StringComparison.OrdinalIgnoreCase));
             if (selectedAccountDto is not null)
             {
-                AccountSnapshotWarmupService.RecordSelection(new UserAccountContextAccount
+                await AccountSnapshotWarmupService.WarmSelectedAccountAsync(new UserAccountContextAccount
                 {
                     AccountId = selectedAccountDto.AccountId,
                     Fund = selectedAccountDto.Fund,
                     AccountingClass = selectedAccountDto.AccountingClass,
                     AccountNumber = selectedAccountDto.AccountNumber,
                     Overhead = selectedAccountDto.Overhead
-                }, cachedUserId, isAdminUser);
+                }, cachedUserId, isAdminUser, GetDonorSummaryWarmupRange());
+                Logger.LogInformation("Home account selection warmup completed: account={Account}", selectedAccount);
             }
             try
             {
@@ -1113,6 +1078,7 @@ private bool showMissingGiftDialog = false;
                 }
             }
             catch { }
+            await ComputeMissingGiftAlertsAsync();
             BuildDebugMessage("account-selection");
         }
         catch (Exception ex)

@@ -44,12 +44,13 @@ public class FinancialDashboardService : IFinancialDashboardService
     private async Task<FinancialDashboardDto> GetDashboardDataInternalAsync(string accountFund, string userId, bool useSessionAccountDataCache)
     {
         var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+        _logger.LogInformation("Dashboard load started: user={UserId}, fund={Fund}, mode={Mode}", userId, accountFund, useSessionAccountDataCache ? "complete-cache" : "summary-direct");
         try
         {
             var dashboard = new FinancialDashboardDto();
-            _logger.LogInformation("Dashboard load phase=context-start user={UserId} accountFund={AccountFund} summaryOnly={SummaryOnly}", userId, accountFund, !useSessionAccountDataCache);
+            // _logger.LogInformation("Dashboard load phase=context-start user={UserId} accountFund={AccountFund} summaryOnly={SummaryOnly}", userId, accountFund, !useSessionAccountDataCache);
             var userContext = await _userAccountContextService.GetContextAsync(userId);
-            _logger.LogInformation("Dashboard load phase=context-complete elapsedMs={ElapsedMs} accounts={AccountCount}", stopwatch.ElapsedMilliseconds, userContext?.Accounts?.Count ?? 0);
+            // _logger.LogInformation("Dashboard load phase=context-complete elapsedMs={ElapsedMs} accounts={AccountCount}", stopwatch.ElapsedMilliseconds, userContext?.Accounts?.Count ?? 0);
             if (userContext == null)
             {
                 _logger.LogWarning("Dashboard user context could not be resolved for user identifier '{UserId}'", userId);
@@ -112,6 +113,10 @@ public class FinancialDashboardService : IFinancialDashboardService
                         {
                             _logger.LogWarning(ex, "Failed to preload donations for selected account {Account}", dashboard.SelectedAccount);
                         }
+        finally
+        {
+            _logger.LogInformation("Dashboard load completed: user={UserId}, fund={Fund}, mode={Mode}, elapsedMs={ElapsedMs}", userId, accountFund, useSessionAccountDataCache ? "complete-cache" : "summary-direct", stopwatch.ElapsedMilliseconds);
+        }
                     }
 
                     var defaultAcc = dashboard.UserAccounts.FirstOrDefault(a => a.IsDefault)?.Fund;
@@ -136,7 +141,7 @@ public class FinancialDashboardService : IFinancialDashboardService
 
             if (isInternAccount)
             {
-                _logger.LogInformation("Dashboard load phase=summary-start elapsedMs={ElapsedMs} account={Account} summaryType=intern", stopwatch.ElapsedMilliseconds, dashboard.SelectedAccount);
+                // _logger.LogInformation("Dashboard load phase=summary-start elapsedMs={ElapsedMs} account={Account} summaryType=intern", stopwatch.ElapsedMilliseconds, dashboard.SelectedAccount);
                 await PopulateInternSummariesAsync(dashboard, selectedContextAccount);
             }
             else if (useSessionAccountDataCache)
@@ -146,11 +151,11 @@ public class FinancialDashboardService : IFinancialDashboardService
             }
             else
             {
-                _logger.LogInformation("Dashboard load phase=summary-start elapsedMs={ElapsedMs} account={Account} summaryType=direct", stopwatch.ElapsedMilliseconds, dashboard.SelectedAccount);
+                // _logger.LogInformation("Dashboard load phase=summary-start elapsedMs={ElapsedMs} account={Account} summaryType=direct", stopwatch.ElapsedMilliseconds, dashboard.SelectedAccount);
                 await PopulateSummariesDirectAsync(dashboard, selectedContextAccount);
             }
 
-            _logger.LogInformation("Dashboard load phase=complete elapsedMs={ElapsedMs} account={Account}", stopwatch.ElapsedMilliseconds, dashboard.SelectedAccount);
+            // _logger.LogInformation("Dashboard load phase=complete elapsedMs={ElapsedMs} account={Account}", stopwatch.ElapsedMilliseconds, dashboard.SelectedAccount);
 
             return dashboard;
         }
@@ -383,7 +388,7 @@ public class FinancialDashboardService : IFinancialDashboardService
     {
         var stopwatch = System.Diagnostics.Stopwatch.StartNew();
         var repositoryAccount = ToCoreAccount(account);
-        _logger.LogInformation("Dashboard summary period-start period={Period} account={Account} range={StartDate}..{EndDate}", period, account.Fund, startDate.ToString("yyyy-MM-dd"), endDate.ToString("yyyy-MM-dd"));
+        // _logger.LogInformation("Dashboard summary period-start period={Period} account={Account} range={StartDate}..{EndDate}", period, account.Fund, startDate.ToString("yyyy-MM-dd"), endDate.ToString("yyyy-MM-dd"));
 
         var donationTask = _financialDashboardReadRepository.GetDonationTotalAsync(repositoryAccount, startDate, endDate);
         var expenseTask = _financialDashboardReadRepository.GetExpenseTotalAsync(repositoryAccount, startDate, endDate);
@@ -395,7 +400,7 @@ public class FinancialDashboardService : IFinancialDashboardService
         var expenseTotal = expenseTask.Result;
         var transferTotal = transferTask.Result;
         var balance = balanceTask.Result;
-        _logger.LogInformation("Dashboard summary period-complete period={Period} account={Account} elapsedMs={ElapsedMs}", period, account.Fund, stopwatch.ElapsedMilliseconds);
+        // _logger.LogInformation("Dashboard summary period-complete period={Period} account={Account} elapsedMs={ElapsedMs}", period, account.Fund, stopwatch.ElapsedMilliseconds);
 
         return new FinancialSummaryDto
         {

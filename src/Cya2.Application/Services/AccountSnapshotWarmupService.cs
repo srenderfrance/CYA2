@@ -25,6 +25,7 @@ public sealed class AccountSnapshotWarmupService : IAccountSnapshotWarmupService
     private readonly LinkedList<AccountSnapshotKey> _recentKeys = new();
     private readonly Dictionary<AccountSnapshotKey, Task> _warmups = new();
     private readonly SemaphoreSlim _warmupGate = new(MaxConcurrentWarmups, MaxConcurrentWarmups);
+    private long _warmupSequence;
     private CancellationTokenSource _backgroundCts = new();
     private AccountSnapshotKey? _defaultKey;
     private List<UserAccountContextAccount> _initialAccounts = new();
@@ -63,6 +64,14 @@ public sealed class AccountSnapshotWarmupService : IAccountSnapshotWarmupService
             ? orderedAccounts.FirstOrDefault(account => account.AccountId == defaultAccountId.Value)
             : null;
 
+        _logger.LogInformation(
+            "Account warmup schedule: user={UserId}, accounts={AccountCount}, defaultAccountId={DefaultAccountId}, warningRange={WarningStart:yyyy-MM-dd}..{WarningEnd:yyyy-MM-dd}",
+            userId,
+            orderedAccounts.Count,
+            defaultAccountId,
+            donorSummaryRange?.StartDate,
+            donorSummaryRange?.EndDate);
+
         lock (_sync)
         {
             _initialAccounts = orderedAccounts;
@@ -78,11 +87,7 @@ public sealed class AccountSnapshotWarmupService : IAccountSnapshotWarmupService
         {
             try
             {
-                await StartWarmup(defaultAccount, CancellationToken.None);
-                if (donorSummaryRange is not null && !string.IsNullOrWhiteSpace(_userId))
-                {
-                    _ = ObserveDonorSummaryWarmupAsync(defaultAccount, donorSummaryRange);
-                }
+                await StartWarmup(defaultAccount, CancellationToken.None, donorSummaryRange);
             }
             catch (Exception ex)
             {
@@ -124,14 +129,12 @@ public sealed class AccountSnapshotWarmupService : IAccountSnapshotWarmupService
                 TouchRecent(key);
             }
 
-            _backgroundCts.Cancel();
-            _warmups.Remove(key);
         }
 
-        _logger.LogInformation("Prioritizing selected account snapshot: accountId={AccountId}, fund={Fund}; canceled background warmup", key.AccountId, key.Fund);
+        // _logger.LogInformation("Prioritizing selected account snapshot: accountId={AccountId}, fund={Fund}; canceled background warmup", key.AccountId, key.Fund);
 
         var selectedWarmup = StartWarmup(account, CancellationToken.None, donorSummaryRange);
-        _ = ResumeBackgroundWarmupAfterSelectionAsync(selectedWarmup, key);
+        _ = ResumeBackgroundWarmupAfterSelectionAsync(selectedWarmup, key, donorSummaryRange);
         return selectedWarmup;
     }
 
@@ -187,16 +190,12 @@ public sealed class AccountSnapshotWarmupService : IAccountSnapshotWarmupService
             foreach (var account in accounts)
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                await StartWarmup(account, cancellationToken);
-                if (donorSummaryRange is not null && !string.IsNullOrWhiteSpace(_userId))
-                {
-                    await WarmCachedDonorSummaryAsync(account, donorSummaryRange, cancellationToken);
-                }
+                await StartWarmup(account, cancellationToken, donorSummaryRange);
             }
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
-            _logger.LogInformation("Account snapshot background warmup canceled");
+            // _logger.LogInformation("Account snapshot background warmup canceled");
         }
         catch (Exception ex)
         {
@@ -204,7 +203,10 @@ public sealed class AccountSnapshotWarmupService : IAccountSnapshotWarmupService
         }
     }
 
-    private async Task ResumeBackgroundWarmupAfterSelectionAsync(Task selectedWarmup, AccountSnapshotKey selectedKey)
+    private async Task ResumeBackgroundWarmupAfterSelectionAsync(
+        Task selectedWarmup,
+        AccountSnapshotKey selectedKey,
+        DateRange? donorSummaryRange)
     {
         try
         {
@@ -236,74 +238,104 @@ public sealed class AccountSnapshotWarmupService : IAccountSnapshotWarmupService
                 .ToList();
         }
 
-        _logger.LogInformation("Resuming account snapshot background warmup: queuedAccounts={QueuedAccounts}", remaining.Count);
-        _ = ObserveBackgroundWarmupAsync(remaining, token);
-    }
-
-    private async Task ObserveDonorSummaryWarmupAsync(UserAccountContextAccount account, DateRange donorSummaryRange)
-    {
-        try
-        {
-            await WarmCachedDonorSummaryAsync(account, donorSummaryRange, CancellationToken.None);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "Donor summary background warmup failed: accountId={AccountId}, fund={Fund}", account.AccountId, account.Fund);
-        }
+        // _logger.LogInformation("Resuming account snapshot background warmup: queuedAccounts={QueuedAccounts}", remaining.Count);
+        _ = ObserveBackgroundWarmupAsync(remaining, token, donorSummaryRange);
     }
 
     private Task StartWarmup(UserAccountContextAccount account, CancellationToken cancellationToken, DateRange? donorSummaryRange = null)
     {
         var key = GetKey(account);
+        var requestId = Interlocked.Increment(ref _warmupSequence);
         var snapshotWasCached = false;
         lock (_sync)
         {
-            if (_snapshotCache.TryGet(key, out _))
-            {
-                TouchRecent(key);
-                EvictRecentIfNeeded();
-                snapshotWasCached = true;
-            }
-            else if (_warmups.TryGetValue(key, out var existing))
+            if (_warmups.TryGetValue(key, out var existing))
             {
                 if (!existing.IsCompleted)
                 {
+                    _logger.LogInformation(
+                        "Account warmup join: request={RequestId}, accountId={AccountId}, fund={Fund}, warningRange={WarningStart:yyyy-MM-dd}..{WarningEnd:yyyy-MM-dd}",
+                        requestId,
+                        key.AccountId,
+                        key.Fund,
+                        donorSummaryRange?.StartDate,
+                        donorSummaryRange?.EndDate);
                     return existing;
                 }
 
                 _warmups.Remove(key);
             }
 
+            if (_snapshotCache.TryGet(key, out _))
+            {
+                TouchRecent(key);
+                EvictRecentIfNeeded();
+                snapshotWasCached = true;
+            }
+
+            _logger.LogInformation(
+                "Account warmup inspect: request={RequestId}, accountId={AccountId}, fund={Fund}, snapshotCached={SnapshotCached}, warningRange={WarningStart:yyyy-MM-dd}..{WarningEnd:yyyy-MM-dd}",
+                requestId,
+                key.AccountId,
+                key.Fund,
+                snapshotWasCached,
+                donorSummaryRange?.StartDate,
+                donorSummaryRange?.EndDate);
+
             if (!snapshotWasCached)
             {
-                var warmup = WarmAsync(account, key, cancellationToken, donorSummaryRange);
-                _warmups[key] = warmup;
-                _ = ObserveWarmupAsync(key, warmup);
+                var warmup = StartTrackedWarmup(
+                    key,
+                    () => WarmAsync(account, key, cancellationToken, donorSummaryRange));
+                _logger.LogInformation("Account warmup started: request={RequestId}, accountId={AccountId}, fund={Fund}, mode=snapshot-and-derived", requestId, key.AccountId, key.Fund);
                 return warmup;
             }
         }
 
-        return donorSummaryRange is null || string.IsNullOrWhiteSpace(_userId)
-            ? Task.CompletedTask
-            : WarmCachedDonorSummaryAsync(account, donorSummaryRange, cancellationToken);
+        if (string.IsNullOrWhiteSpace(_userId))
+        {
+            return Task.CompletedTask;
+        }
+
+        lock (_sync)
+        {
+            if (_warmups.TryGetValue(key, out var existingDerived) && !existingDerived.IsCompleted)
+            {
+                return existingDerived;
+            }
+
+            var derivedWarmup = StartTrackedWarmup(
+                key,
+                () => WarmDerivedCachesAsync(account, cancellationToken, donorSummaryRange));
+            _logger.LogInformation("Account warmup started: request={RequestId}, accountId={AccountId}, fund={Fund}, mode=derived-only", requestId, key.AccountId, key.Fund);
+            return derivedWarmup;
+        }
     }
 
-    private async Task WarmCachedDonorSummaryAsync(
-        UserAccountContextAccount account,
-        DateRange donorSummaryRange,
-        CancellationToken cancellationToken)
+    private Task StartTrackedWarmup(AccountSnapshotKey key, Func<Task> warmupFactory)
     {
-        cancellationToken.ThrowIfCancellationRequested();
-        var accountOption = new Cya2.Application.DTOs.AccountOptionDto
-        {
-            AccountId = account.AccountId,
-            Fund = account.Fund,
-            AccountingClass = account.AccountingClass,
-            AccountNumber = account.AccountNumber,
-            Overhead = account.Overhead
-        };
+        var completion = new TaskCompletionSource<object?>(TaskCreationOptions.RunContinuationsAsynchronously);
+        _warmups[key] = completion.Task;
+        _ = ExecuteTrackedWarmupAsync(key, completion, warmupFactory);
+        return completion.Task;
+    }
 
-        await _donorService.GetDonorSummariesForAccountAsync(accountOption, donorSummaryRange);
+    private async Task ExecuteTrackedWarmupAsync(
+        AccountSnapshotKey key,
+        TaskCompletionSource<object?> completion,
+        Func<Task> warmupFactory)
+    {
+        try
+        {
+            await warmupFactory();
+            completion.TrySetResult(null);
+        }
+        catch (Exception ex)
+        {
+            completion.TrySetException(ex);
+        }
+
+        await ObserveWarmupAsync(key, completion.Task);
     }
 
     private async Task WarmAsync(UserAccountContextAccount account, AccountSnapshotKey key, CancellationToken cancellationToken, DateRange? donorSummaryRange = null)
@@ -322,7 +354,7 @@ public sealed class AccountSnapshotWarmupService : IAccountSnapshotWarmupService
                 EvictRecentIfNeeded();
             }
 
-            _logger.LogInformation("Warmed account snapshot: accountId={AccountId}, fund={Fund}", key.AccountId, key.Fund);
+            // _logger.LogInformation("Warmed account snapshot: accountId={AccountId}, fund={Fund}", key.AccountId, key.Fund);
 
             if (!string.IsNullOrWhiteSpace(_userId))
             {
@@ -338,6 +370,14 @@ public sealed class AccountSnapshotWarmupService : IAccountSnapshotWarmupService
     private async Task WarmDerivedCachesAsync(UserAccountContextAccount account, CancellationToken cancellationToken, DateRange? donorSummaryRange = null)
     {
         var range = GetSnapshotQueryRange();
+        _logger.LogInformation(
+            "Account derived warmup started: accountId={AccountId}, fund={Fund}, snapshotRange={SnapshotStart:yyyy-MM-dd}..{SnapshotEnd:yyyy-MM-dd}, warningRange={WarningStart:yyyy-MM-dd}..{WarningEnd:yyyy-MM-dd}",
+            account.AccountId,
+            account.Fund,
+            range.StartDate,
+            range.EndDate,
+            donorSummaryRange?.StartDate,
+            donorSummaryRange?.EndDate);
         var accountOption = new Cya2.Application.DTOs.AccountOptionDto
         {
             AccountId = account.AccountId,
@@ -357,9 +397,14 @@ public sealed class AccountSnapshotWarmupService : IAccountSnapshotWarmupService
         cancellationToken.ThrowIfCancellationRequested();
         await _donationService.GetDonationDataAsync(account.Fund, "All", range, _userId, _isAdminOrViewer);
         cancellationToken.ThrowIfCancellationRequested();
+        _logger.LogInformation("Account derived warmup expense load: accountId={AccountId}, fund={Fund}, range={Start:yyyy-MM-dd}..{End:yyyy-MM-dd}", account.AccountId, account.Fund, range.StartDate, range.EndDate);
         await _expenseService.GetExpenseDataAsync(account.Fund, range, _userId, _isAdminOrViewer);
         cancellationToken.ThrowIfCancellationRequested();
-        await _donorService.GetDonorSummariesForAccountAsync(accountOption, donorSummaryRange ?? range);
+        var effectiveDonorSummaryRange = donorSummaryRange ?? range;
+        await _donorService.GetDonorSummariesForAccountAsync(accountOption, effectiveDonorSummaryRange);
+        cancellationToken.ThrowIfCancellationRequested();
+        await _donorService.GetMissingGiftDonorsAsync(accountOption, effectiveDonorSummaryRange);
+        _logger.LogInformation("Account derived warmup completed: accountId={AccountId}, fund={Fund}", account.AccountId, account.Fund);
     }
 
     private async Task ObserveWarmupAsync(AccountSnapshotKey key, Task warmup)
@@ -416,7 +461,7 @@ public sealed class AccountSnapshotWarmupService : IAccountSnapshotWarmupService
 
             _recentKeys.Remove(node);
             _snapshotCache.Remove(node.Value);
-            _logger.LogInformation("Evicted non-default account snapshot: accountId={AccountId}, fund={Fund}", node.Value.AccountId, node.Value.Fund);
+                // _logger.LogInformation("Evicted non-default account snapshot: accountId={AccountId}, fund={Fund}", node.Value.AccountId, node.Value.Fund);
         }
     }
 

@@ -21,9 +21,6 @@ public class Donation : BaseEntity
     public string? PhoneMobile { get; private set; }
     public bool IsAnonymous { get; private set; } = false;
 
-    // Import tracking for error reporting
-    public int? ImportRowNumber { get; private set; }
-
     // Navigation properties
     public Account? Account { get; private set; }
     public int? AccountId { get; private set; }
@@ -48,17 +45,6 @@ public class Donation : BaseEntity
         {
             EnsureAnonymityProtection();
         }
-    }
-
-    // Factory method for import with validation
-    public static Donation CreateFromImportRow(double amount, DateTime date, string accountName, 
-                                             string fund, string paymentMethod, string giftType, 
-                                             bool isAnonymous, int? excelRowNumber = null)
-    {
-        var donation = new Donation(amount, date, accountName, fund, paymentMethod, giftType, isAnonymous);
-        donation.ImportRowNumber = excelRowNumber;
-        
-        return donation;
     }
 
     // Enhanced anonymity protection with double safeguards
@@ -88,15 +74,6 @@ public class Donation : BaseEntity
         SetModified();
     }
 
-    public string GetSafeDisplayName()
-    {
-        // Always check both the flag AND the data for safety (double protection)
-        if (IsAnonymous || AccountName == "Anonymous")
-            return "Anonymous";
-        
-        return string.IsNullOrWhiteSpace(AccountName) ? "Unknown" : AccountName;
-    }
-
     public bool HasAnyPersonalData()
     {
         // Helper to identify donations that might need anonymization
@@ -105,57 +82,6 @@ public class Donation : BaseEntity
                !string.IsNullOrWhiteSpace(PhoneFixed) ||
                !string.IsNullOrWhiteSpace(Address) ||
                !string.IsNullOrWhiteSpace(SoftCreditName);
-    }
-
-    // Import validation for Excel error reporting
-    public ImportValidationResult ValidateForImport()
-    {
-        var result = new ImportValidationResult { RowNumber = ImportRowNumber };
-        
-        // Critical errors that should stop import
-        if (string.IsNullOrWhiteSpace(Fund))
-            result.Errors.Add("Missing fund information");
-        
-        if (Date == default)
-            result.Errors.Add("Missing date information");
-            
-        if (Date < new DateTime(1900, 1, 1))
-            result.Errors.Add("Date is not formatted correctly or invalid");
-        
-        // Warnings that user should review but don't stop import
-        if (Date > DateTime.Today)
-            result.Warnings.Add("Future date");
-        
-        if (Amount == 0)
-            result.Warnings.Add("Zero amount donation");
-        
-        if (string.IsNullOrWhiteSpace(AccountName) && !IsAnonymous)
-            result.Warnings.Add("Missing donor name (not marked anonymous)");
-            
-        // Critical: Check for anonymity data leaks (should be error)
-        if (IsAnonymous && HasAnyPersonalData())
-            result.Errors.Add("Anonymous donation contains personal data");
-        
-        return result;
-    }
-
-    // Query helpers that match current filtering logic
-    public bool MatchesFundCriteria(IEnumerable<string> acceptableFundNames)
-    {
-        return acceptableFundNames.Contains(Fund, StringComparer.OrdinalIgnoreCase);
-    }
-    
-    public bool IsInDateRange(DateTime start, DateTime end)
-    {
-        return Date.Date >= start.Date && Date.Date <= end.Date;
-    }
-    
-    public bool MatchesDonorSearch(string searchTerm)
-    {
-        if (string.IsNullOrWhiteSpace(searchTerm)) return true;
-        
-        var displayName = GetSafeDisplayName();
-        return displayName.Contains(searchTerm, StringComparison.OrdinalIgnoreCase);
     }
 
     public void ChangeAmount(double newAmount)

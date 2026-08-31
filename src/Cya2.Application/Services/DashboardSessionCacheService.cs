@@ -35,6 +35,7 @@ public class DashboardSessionCacheService : ISessionAccountDataCacheService
         var currentVersion = _cacheInvalidationVersion.Current;
         if (_cacheVersion != currentVersion)
         {
+            _logger.LogInformation("Dashboard account-data cache reset: previousVersion={PreviousVersion}, currentVersion={CurrentVersion}", _cacheVersion, currentVersion);
             _cache.Clear();
             _defaultFund = null;
             _recentNonDefaultFund = null;
@@ -55,9 +56,11 @@ public class DashboardSessionCacheService : ISessionAccountDataCacheService
                 _recentNonDefaultFund = account.Fund;
             }
 
+            _logger.LogInformation("Dashboard account-data cache hit: fund={Fund}, range={Start:yyyy-MM-dd}..{End:yyyy-MM-dd}, isDefault={IsDefault}, accountsCached={AccountsCached}", account.Fund, windowStart, windowEnd, isDefaultAccount, _cache.Count);
             return existing;
         }
 
+        _logger.LogInformation("Dashboard account-data cache miss: fund={Fund}, range={Start:yyyy-MM-dd}..{End:yyyy-MM-dd}, isDefault={IsDefault}, accountsCached={AccountsCached}", account.Fund, windowStart, windowEnd, isDefaultAccount, _cache.Count);
         var loaded = await LoadAccountDataAsync(account, windowStart, windowEnd);
         _cache[account.Fund] = loaded;
 
@@ -82,12 +85,12 @@ public class DashboardSessionCacheService : ISessionAccountDataCacheService
         var totalAccounting = _cache.Values.Sum(v => v.AccountingData.Count);
         var totalDonations = _cache.Values.Sum(v => v.DonationData.Count);
 
-        _logger.LogInformation(
-            "Dashboard session cache: AccountsCached={Accounts}, AccountingRows={AccountingRows}, DonationRows={DonationRows}, ApproxBytes={ApproxBytes}",
-            _cache.Count,
-            totalAccounting,
-            totalDonations,
-            totalBytes);
+        // _logger.LogInformation(
+        //     "Dashboard session cache: AccountsCached={Accounts}, AccountingRows={AccountingRows}, DonationRows={DonationRows}, ApproxBytes={ApproxBytes}",
+        //     _cache.Count,
+        //     totalAccounting,
+        //     totalDonations,
+        //     totalBytes);
     }
 
     private async Task<DashboardAccountCacheData> LoadAccountDataAsync(UserAccountContextAccount account, DateTime windowStart, DateTime windowEnd)
@@ -115,14 +118,7 @@ public class DashboardSessionCacheService : ISessionAccountDataCacheService
 
         payload.ApproximateBytes = EstimateBytes(payload);
 
-        _logger.LogInformation(
-            "Loaded dashboard cache for Fund={Fund}, AccountingRows={AccountingRows}, DonationRows={DonationRows}, Window={Start:yyyy-MM-dd}..{End:yyyy-MM-dd}, ApproxBytes={ApproxBytes}",
-            payload.Fund,
-            payload.AccountingData.Count,
-            payload.DonationData.Count,
-            payload.WindowStart,
-            payload.WindowEnd,
-            payload.ApproximateBytes);
+        _logger.LogInformation("Dashboard account-data cache loaded: fund={Fund}, accountingRows={AccountingRows}, donationRows={DonationRows}, range={Start:yyyy-MM-dd}..{End:yyyy-MM-dd}, approxBytes={ApproxBytes}", payload.Fund, payload.AccountingData.Count, payload.DonationData.Count, payload.WindowStart, payload.WindowEnd, payload.ApproximateBytes);
 
         return payload;
     }

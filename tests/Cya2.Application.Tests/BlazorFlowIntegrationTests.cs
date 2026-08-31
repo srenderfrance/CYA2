@@ -25,6 +25,7 @@ public sealed class BlazorFlowIntegrationTests
     {
         var donation = new TrackingDonationCache();
         var donor = new TrackingDonorCache();
+        var missingGift = new TrackingMissingGiftCache();
         var expense = new TrackingExpenseCache();
         var dashboard = new TrackingDashboardCache();
         var snapshots = new TrackingSnapshotCache();
@@ -32,6 +33,7 @@ public sealed class BlazorFlowIntegrationTests
         var invalidator = new ImportCacheInvalidator(
             donation,
             donor,
+            missingGift,
             expense,
             dashboard,
             snapshots,
@@ -43,10 +45,19 @@ public sealed class BlazorFlowIntegrationTests
 
         Assert.Equal(1, donation.InvalidationCount);
         Assert.Equal(1, donor.InvalidationCount);
+        Assert.Equal(1, missingGift.InvalidationCount);
         Assert.Equal(1, expense.InvalidationCount);
         Assert.Equal(1, dashboard.InvalidationCount);
         Assert.Equal(1, snapshots.InvalidationCount);
         Assert.Equal(initialVersion + 1, version.Current);
+    }
+
+    private sealed class TrackingMissingGiftCache : ISessionMissingGiftCacheService
+    {
+        public int InvalidationCount { get; private set; }
+        public bool TryGetMissingGiftDonors(int accountId, string fund, DateTime startDate, DateTime endDate, out List<DonorSummaryDto> data) { data = []; return false; }
+        public void SetMissingGiftDonors(int accountId, string fund, DateTime startDate, DateTime endDate, List<DonorSummaryDto> data) { }
+        public void InvalidateAll() => InvalidationCount++;
     }
 
     private sealed class InMemoryUserSelectionStore

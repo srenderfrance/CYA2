@@ -10,9 +10,12 @@ public interface IDonorService
     Task<List<DonorSummaryDto>> GetDonorSummariesAsync(IEnumerable<string> fundNames, DateRange dateRange);
     Task<List<DonorSummaryDto>> GetDonorSummariesForAccountAsync(int accountId, string accountFund, DateRange dateRange);
     Task<List<DonorSummaryDto>> GetDonorSummariesForAccountAsync(AccountOptionDto account, DateRange dateRange);
+    Task<List<DonorSummaryDto>> GetDonorSummariesForSelectionAsync(AccountOptionDto account, string selectedSubAccount, DateRange? dateRange);
+    Task<List<DonorSummaryDto>> GetMissingGiftDonorsAsync(AccountOptionDto account, DateRange dateRange);
     Task<List<DonorSummaryDto>> GetAllDonorSummariesAsync(int accountId, string accountFund);
     Task<List<DonorSummaryDto>> GetAllDonorSummariesAsync(IEnumerable<string> fundNames);
     Task<DonorDetailDto?> GetDonorDetailAsync(string donorName, string accountFund);
+    Task<DonorDetailDto?> GetDonorDetailForAccountAsync(string donorName, AccountOptionDto account);
     Task<List<string>> GetDonorNamesAsync(string accountFund);
     Task<List<SubAccount>> GetSubAccountsForAccountAsync(int accountId);
     Task<string> FormatDonorContactForCopyAsync(string donorName, string accountFund);

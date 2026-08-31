@@ -45,13 +45,7 @@ WHERE Date >= @StartDate
     public Task<decimal> GetInternDonationTotalAsync(string internDesignationName, DateTime startDate, DateTime endDate)
     {
         _dbGuard.ThrowIfUnavailable();
-        var normalizedDesignation = internDesignationName?.Trim() ?? string.Empty;
-        var alternateDesignation = InternAccountUtility.GetAlternateDesignationName(normalizedDesignation);
-        var hasAlternateDesignation = !string.IsNullOrWhiteSpace(alternateDesignation);
-        var hasNameTokens = InternAccountUtility.TryGetFirstAndLastName(normalizedDesignation, out var firstName, out var lastName);
-        var designationLookupKey = InternAccountUtility.BuildLookupKey(normalizedDesignation);
-        var alternateLookupKey = InternAccountUtility.BuildLookupKey(alternateDesignation);
-        var hasAlternateLookupKey = !string.IsNullOrWhiteSpace(alternateLookupKey);
+        var criteria = InternAccountUtility.CreateDesignationCriteria(internDesignationName);
         const string sql = @"
 SELECT COALESCE(SUM(Amount), 0)
 FROM DonationData
@@ -94,14 +88,14 @@ WHERE Date >= @StartDate
 
         _logger.LogInformation(
             "Intern dashboard total query debug: designation='{Designation}', alternate='{Alternate}', hasAlternate={HasAlternate}, firstName='{FirstName}', lastName='{LastName}', hasNameTokens={HasNameTokens}, lookupKey='{LookupKey}', alternateLookupKey='{AlternateLookupKey}', range={StartDate:yyyy-MM-dd}..{EndDate:yyyy-MM-dd}",
-            normalizedDesignation,
-            alternateDesignation,
-            hasAlternateDesignation,
-            firstName,
-            lastName,
-            hasNameTokens,
-            designationLookupKey,
-            alternateLookupKey,
+            criteria.InternDesignationName,
+            criteria.AlternateDesignation,
+            criteria.HasAlternateDesignation,
+            criteria.FirstName,
+            criteria.LastName,
+            criteria.HasNameTokens,
+            criteria.DesignationLookupKey,
+            criteria.AlternateLookupKey,
             startDate,
             endDate);
 
@@ -109,15 +103,15 @@ WHERE Date >= @StartDate
         {
             StartDate = startDate,
             EndDate = endDate,
-            InternDesignationName = normalizedDesignation,
-            AlternateDesignation = alternateDesignation,
-            HasAlternateDesignation = hasAlternateDesignation ? 1 : 0,
-            HasNameTokens = hasNameTokens ? 1 : 0,
-            FirstToken = $"%{firstName}%",
-            LastToken = $"%{lastName}%",
-            DesignationLookupKey = designationLookupKey,
-            AlternateLookupKey = alternateLookupKey,
-            HasAlternateLookupKey = hasAlternateLookupKey ? 1 : 0
+            InternDesignationName = criteria.InternDesignationName,
+            AlternateDesignation = criteria.AlternateDesignation,
+            HasAlternateDesignation = criteria.HasAlternateDesignation ? 1 : 0,
+            HasNameTokens = criteria.HasNameTokens ? 1 : 0,
+            FirstToken = $"%{criteria.FirstName}%",
+            LastToken = $"%{criteria.LastName}%",
+            DesignationLookupKey = criteria.DesignationLookupKey,
+            AlternateLookupKey = criteria.AlternateLookupKey,
+            HasAlternateLookupKey = criteria.HasAlternateLookupKey ? 1 : 0
         });
     }
 
