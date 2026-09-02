@@ -9,7 +9,6 @@
 @attribute [StreamRendering]
 @using System.Security.Claims
 @using System.Globalization
-@using System.Diagnostics
 @using Cya2.Shared.Utilities
 @using Cya2.Core.Utilities
 @inject AuthenticationStateProvider AuthStateProvider
@@ -222,8 +221,10 @@
         </h1>
 
         <RadzenStack Orientation="Orientation.Vertical" Gap="0.15rem" AlignItems="AlignItems.Center" Class="home-header-toggle">
-            <RadzenSwitch Class="home-visualization-switch" @bind-Value="showVisualizations" Change="OnVisualizationToggleChanged" />
-            <RadzenLabel Text="@(showVisualizations ? Localizer["AccountVisualizations"] : Localizer["AccountSummaries"])" />
+            <RadzenButton Text="@(showVisualizations ? Localizer["AccountSummaries"] : Localizer["AccountGraphs"])"
+                          Click="OnVisualizationButtonClicked"
+                          ButtonStyle="ButtonStyle.Primary"
+                          Size="ButtonSize.Small" />
         </RadzenStack>
     </div>
 }
@@ -288,7 +289,7 @@ else
         {
             <RadzenCard class="mt-3" Style="border: 1px solid var(--rz-danger); background: var(--rz-base-background-color);">
                 <RadzenStack Orientation="Orientation.Horizontal" JustifyContent="JustifyContent.SpaceBetween" AlignItems="AlignItems.Center" Gap="0.5rem" Class="mb-2">
-                    <RadzenText TextStyle="TextStyle.Subtitle1" Style="font-weight:600;" Class="home-missing-gift-title">Missing Monthly Donations — Last 6 Months</RadzenText>
+                    <RadzenText TextStyle="TextStyle.Subtitle1" Style="font-weight:600;" Class="home-missing-gift-title">Missing donations during @GetMissingGiftMonthsText().</RadzenText>
                     <RadzenButton Icon="close" ButtonStyle="ButtonStyle.Light" Size="ButtonSize.ExtraSmall" Click="@(() => showMissingGiftDialog = false)" />
                 </RadzenStack>
                 <RadzenDataGrid TItem="Cya2.Application.DTOs.DonorSummaryDto"
@@ -305,6 +306,7 @@ else
                         </RadzenDataGridColumn>
                     </Columns>
                 </RadzenDataGrid>
+                <RadzenText TextStyle="TextStyle.Caption" Class="mt-2">* Donations are considered missing based on giving history, and may or may not be related to giver intent.</RadzenText>
             </RadzenCard>
         }
     </RadzenCard>
@@ -796,6 +798,42 @@ private sealed class VisualizationGraphTypeOption
 private List<Cya2.Application.DTOs.DonorSummaryDto> missingGiftDonors = new();
 private bool showMissingGiftDialog = false;
 
+    private string GetMissingGiftMonthsText()
+    {
+        var months = missingGiftDonors
+            .SelectMany(d => d.MissingMonths)
+            .Select(month => DateTime.TryParseExact(month, "MMMM yyyy", CultureInfo.InvariantCulture, DateTimeStyles.None, out var parsed)
+                ? parsed
+                : (DateTime?)null)
+            .Where(month => month.HasValue)
+            .Select(month => new DateTime(month!.Value.Year, month.Value.Month, 1))
+            .Distinct()
+            .OrderBy(month => month)
+            .ToList();
+
+        if (months.Count == 0)
+            return "the reported period";
+
+        var yearGroups = months
+            .GroupBy(month => month.Year)
+            .OrderBy(group => group.Key)
+            .Select(group => JoinWithAnd(group.Select(month => month.ToString("MMMM", CultureInfo.InvariantCulture)).ToList()) + $" {group.Key}")
+            .ToList();
+
+        return JoinWithAnd(yearGroups);
+    }
+
+    private static string JoinWithAnd(IReadOnlyList<string> values)
+    {
+        return values.Count switch
+        {
+            0 => string.Empty,
+            1 => values[0],
+            2 => $"{values[0]} and {values[1]}",
+            _ => $"{string.Join(", ", values.Take(values.Count - 1))} and {values[^1]}"
+        };
+    }
+
     private async Task ComputeMissingGiftAlertsAsync()
     {
         try
@@ -1093,9 +1131,9 @@ private bool showMissingGiftDialog = false;
         }
     }
 
-    private async Task OnVisualizationToggleChanged(bool isChecked)
+    private async Task OnVisualizationButtonClicked()
     {
-        showVisualizations = isChecked;
+        showVisualizations = !showVisualizations;
         if (showVisualizations)
         {
             await LoadVisualizationDataAsync();

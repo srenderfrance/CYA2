@@ -642,6 +642,9 @@
   <data name="AccountVisualizations" xml:space="preserve">
     <value>Visualizaciones de Cuenta</value>
   </data>
+  <data name="AccountGraphs" xml:space="preserve">
+    <value>Gráficos de Cuenta</value>
+  </data>
   <data name="CompactView" xml:space="preserve">
     <value>Vista Compacta</value>
   </data>

@@ -136,13 +136,11 @@ public static class DateRangeHelper
     {
         var options = new List<(DateRangePreset, string)>
         {
-            (DateRangePreset.AllDates, localizer?["AllDates"] ?? "All Dates"),
             (DateRangePreset.ThisYear, localizer?["ThisYear"] ?? "This Year"),
-            (DateRangePreset.Previous12Months, localizer?["Previous12Months"] ?? "Previous 12 Months"),
             (DateRangePreset.LastYear, localizer?["LastYear"] ?? "Last Year"),
-            (DateRangePreset.ThisMonth, localizer?["ThisMonth"] ?? "This Month"),
-            (DateRangePreset.LastMonth, localizer?["LastMonth"] ?? "Last Month"),
-            (DateRangePreset.Custom, localizer?["CustomRange"] ?? "Custom Range")
+            (DateRangePreset.Previous12Months, localizer?["Previous12Months"] ?? "Previous 12 Months"),
+            (DateRangePreset.Custom, localizer?["CustomRange"] ?? "Custom Range"),
+            (DateRangePreset.AllDates, localizer?["AllDates"] ?? "All Dates")
         };
 
         return options;
