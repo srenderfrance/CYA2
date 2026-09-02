@@ -32,6 +32,7 @@
 @inject IImportCacheInvalidator ImportCacheInvalidator
 @inject Cya2.Application.Services.AdminFundWriteService AdminFundWriteService
 @inject Cya2.Application.Interfaces.IUserIdResolver UserIdResolver
+@inject IAccountImportService AccountImportService
 
 <RadzenStack Orientation="Orientation.Vertical" Gap="1rem" Class="rz-pt-0 rz-px-4 rz-pb-4" Style="max-width:100%; overflow-x:hidden; box-sizing:border-box;">
     <!-- Top row: accounts buttons on the left, upload buttons on the right -->
@@ -335,6 +336,40 @@
                 </div>
             }
         </RadzenCard>
+
+         @* One-time local account import section temporarily disabled.
+         <RadzenCard>
+             <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" JustifyContent="JustifyContent.SpaceBetween" Gap="0.5rem" Class="rz-mt-1 rz-mb-4">
+                 <RadzenText TextStyle="TextStyle.H5" Style="font-weight: 800; color: #1f2937;">Import Accounts from Local Excel</RadzenText>
+                 <RadzenButton Text="Load Preview" ButtonStyle="ButtonStyle.Primary" Click="LoadAccountImportPreview" Disabled="@accountImportBusy" />
+             </RadzenStack>
+             <RadzenText TextStyle="TextStyle.Body2">Place one .xlsx file containing Account Number, Fund, Class, and Overhead in the AccountImports folder, then load the preview.</RadzenText>
+             @if (accountImportBusy)
+             {
+                 <RadzenProgressBar Mode="ProgressBarMode.Indeterminate" Class="rz-mt-3" />
+             }
+             @if (!string.IsNullOrWhiteSpace(accountImportMessage))
+             {
+                 <RadzenAlert AlertStyle="@(accountImportPreview?.CanImport == true ? AlertStyle.Success : AlertStyle.Danger)" ShowIcon="true" Variant="Variant.Filled" Class="rz-mt-3">@accountImportMessage</RadzenAlert>
+             }
+             @if (accountImportPreview is not null && accountImportPreview.Rows.Count > 0)
+             {
+                 <RadzenText TextStyle="TextStyle.Body2" Class="rz-mt-3">File: @accountImportPreview.FileName — @accountImportPreview.Rows.Count row(s)</RadzenText>
+                 <div style="overflow-x:auto; max-height:360px;">
+                     <table class="rz-grid-table rz-grid-table-striped" style="width:100%;">
+                         <thead><tr><th>Row</th><th>Account Number</th><th>Fund</th><th>Class</th><th>Overhead</th></tr></thead>
+                         <tbody>
+                         @foreach (var row in accountImportPreview.Rows)
+                         {
+                             <tr><td>@row.RowNumber</td><td>@row.AccountNumber</td><td>@row.Fund</td><td>@row.AccountingClass</td><td>@row.Overhead.ToString("0.##")%</td></tr>
+                         }
+                         </tbody>
+                     </table>
+                 </div>
+                 <RadzenButton Text="Create Accounts" ButtonStyle="ButtonStyle.Primary" Class="rz-mt-3" Click="ImportAccounts" Disabled="@(!accountImportPreview.CanImport || accountImportBusy)" />
+             }
+         </RadzenCard>
+         *@
 
         <!-- Manage Users section -->
         <RadzenCard>
@@ -864,6 +899,10 @@
 
         private string fundUpdateError = string.Empty;
         private string fundUpdateSuccess = string.Empty;
+
+        private Cya2.Application.DTOs.AccountImportPreviewDto? accountImportPreview;
+        private string accountImportMessage = string.Empty;
+        private bool accountImportBusy;
 
         // New UI-only state for fund creation toggle and subfund inputs
         private bool createSubFund = false;
@@ -1716,6 +1755,57 @@
                 errorMessage = $"Error loading accounts: {ex.Message}";
                 allAccounts = new List<Account>();
                 _logger.LogError(ex, "Error loading accounts from database");
+            }
+        }
+
+        private async Task LoadAccountImportPreview()
+        {
+            accountImportBusy = true;
+            accountImportMessage = string.Empty;
+            accountImportPreview = null;
+            try
+            {
+                accountImportPreview = await AccountImportService.PreviewAsync();
+                accountImportMessage = accountImportPreview.Errors.Count == 0
+                    ? "Preview loaded successfully. Review the rows before creating accounts."
+                    : string.Join(" ", accountImportPreview.Errors);
+            }
+            catch (Exception ex)
+            {
+                accountImportMessage = $"Account import preview failed: {ex.Message}";
+                _logger.LogError(ex, "Account import preview failed");
+            }
+            finally
+            {
+                accountImportBusy = false;
+            }
+        }
+
+        private async Task ImportAccounts()
+        {
+            if (accountImportPreview is null || !accountImportPreview.CanImport)
+                return;
+
+            accountImportBusy = true;
+            accountImportMessage = string.Empty;
+            try
+            {
+                var result = await AccountImportService.ImportAsync(accountImportPreview.Rows);
+                accountImportMessage = result.Message;
+                if (result.IsSuccess)
+                {
+                    accountImportPreview = null;
+                    await LoadAllAccounts();
+                }
+            }
+            catch (Exception ex)
+            {
+                accountImportMessage = $"Account import failed: {ex.Message}";
+                _logger.LogError(ex, "Account import failed");
+            }
+            finally
+            {
+                accountImportBusy = false;
             }
         }
 
