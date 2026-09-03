@@ -132,6 +132,12 @@
   <data name="Amount" xml:space="preserve">
     <value>Amount</value>
   </data>
+  <data name="Anonymous" xml:space="preserve">
+    <value>Anonymous</value>
+  </data>
+  <data name="AnonymousDonationTooltip" xml:space="preserve">
+    <value>This donor requested that their identity remain private.</value>
+  </data>
   <data name="ApplyFilter" xml:space="preserve">
     <value>Apply Filter</value>
   </data>

@@ -1,4 +1,5 @@
 @page "/donors"
+@using Microsoft.AspNetCore.Authorization
 @using Cya2.Shared.Utilities
 @using Radzen
 @using Radzen.Blazor
@@ -29,6 +30,7 @@
 @inject cya2.Services.Diagnostics.PageLoadCorrelationContext PageLoadCorrelation
 @inject Cya2.Application.Interfaces.IAccountSnapshotWarmupService AccountSnapshotWarmupService
 @inject Cya2.Application.Interfaces.IAccountSelectionCoordinator AccountSelectionCoordinator
+@attribute [Authorize]
 
 <PageTitle>@Localizer["Donors"]</PageTitle>
 

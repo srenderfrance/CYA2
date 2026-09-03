@@ -3,6 +3,7 @@ namespace Cya2.Application.DTOs;
 public class DonationPivotRowDto
 {
     public string Donor { get; set; } = string.Empty;
+    public bool IsAnonymous { get; set; }
     public Dictionary<DateTime, decimal> Monthly { get; set; } = new();
     public decimal Total => Monthly.Values.Sum();
 }

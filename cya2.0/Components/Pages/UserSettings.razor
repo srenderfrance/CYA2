@@ -1,4 +1,5 @@
 @page "/settings"
+@using Microsoft.AspNetCore.Authorization
 @using Microsoft.AspNetCore.Components.Authorization
 @using System.Security.Claims
 @using static Microsoft.AspNetCore.Components.Web.RenderMode
@@ -15,6 +16,7 @@
 @rendermode InteractiveServer
 @inject IStringLocalizer<Resource> Localizer
 @inject IJSRuntime JS
+@attribute [Authorize]
 
 <style>
     @@media (max-width: 768px) {
