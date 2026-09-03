@@ -401,7 +401,7 @@ LIMIT 5",
         if (funds.Count == 0) return new List<DonationRecord>();
 
         await using var conn = new MySqlConnection(ConnStr);
-        var results = new List<DonationRecord>();
+        var results = new Dictionary<int, DonationRecord>();
         foreach (var fund in funds)
         {
             var accountId = await conn.ExecuteScalarAsync<int?>(
@@ -409,9 +409,12 @@ LIMIT 5",
                 new { Fund = fund });
 
             var rows = await conn.QueryAsync<DonationRecord>(sql, parameterFactory(fund, accountId));
-            results.AddRange(rows);
+            foreach (var row in rows)
+            {
+                results[row.Id] = row;
+            }
         }
 
-        return results;
+        return results.Values.ToList();
     }
 }

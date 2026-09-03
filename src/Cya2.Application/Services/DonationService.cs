@@ -144,6 +144,7 @@ public class DonationService : IDonationService
 
             // Build sub-account options for the selected account when Separate sub-accounts exist.
             var separateSubAccounts = new List<Cya2.Core.Entities.SubAccount>();
+            var mergedSubAccounts = new List<Cya2.Core.Entities.SubAccount>();
             if (selected != null && !selectedIsInternAccount)
             {
                 var allSubAccounts = accountSnapshot?.SubAccounts
@@ -158,6 +159,9 @@ public class DonationService : IDonationService
                     ?? await _donationReadRepository.GetSubAccountsByAccountIdAsync(selected.AccountId);
                 separateSubAccounts = allSubAccounts
                     .Where(sa => string.Equals(sa.Kind, "Separate", StringComparison.OrdinalIgnoreCase) && !string.IsNullOrWhiteSpace(sa.SubFund))
+                    .ToList();
+                mergedSubAccounts = allSubAccounts
+                    .Where(sa => string.Equals(sa.Kind, "Merged", StringComparison.OrdinalIgnoreCase) && !string.IsNullOrWhiteSpace(sa.SubFund))
                     .ToList();
 
                 result.ShowSubAccountDropdown = separateSubAccounts.Any();
@@ -282,14 +286,25 @@ public class DonationService : IDonationService
             if (accountSnapshot != null && selected != null && !selectedIsInternAccount)
             {
                 var snapshotFunds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-                if (!result.ShowSubAccountDropdown ||
-                    string.Equals(result.SelectedSubAccount, "Primary", StringComparison.OrdinalIgnoreCase))
+                if (!result.ShowSubAccountDropdown)
+                {
+                    snapshotFunds.Add(selected.Fund);
+                    foreach (var subAccount in mergedSubAccounts)
+                    {
+                        snapshotFunds.Add(subAccount.SubFund);
+                    }
+                }
+                else if (string.Equals(result.SelectedSubAccount, "Primary", StringComparison.OrdinalIgnoreCase))
                 {
                     snapshotFunds.Add(selected.Fund);
                 }
                 else if (string.Equals(result.SelectedSubAccount, "All", StringComparison.OrdinalIgnoreCase))
                 {
                     snapshotFunds.Add(selected.Fund);
+                    foreach (var subAccount in mergedSubAccounts)
+                    {
+                        snapshotFunds.Add(subAccount.SubFund);
+                    }
                     foreach (var subAccount in separateSubAccounts)
                     {
                         snapshotFunds.Add(subAccount.SubFund);
@@ -346,6 +361,7 @@ public class DonationService : IDonationService
                     else if (string.Equals(result.SelectedSubAccount, "All", StringComparison.OrdinalIgnoreCase))
                     {
                         fundsForSelection.Add(selected.Fund);
+                        fundsForSelection.AddRange(mergedSubAccounts.Select(sa => sa.SubFund));
                         fundsForSelection.AddRange(separateSubAccounts.Select(sa => sa.SubFund));
                     }
                     else if (result.SelectedSubAccount.StartsWith("Sub_", StringComparison.OrdinalIgnoreCase) &&
@@ -367,11 +383,12 @@ public class DonationService : IDonationService
                 }
                 else
                 {
-                    donationRecords = (await _donationReadRepository.GetDonationsByAccountAndDateRangeAsync(
-                            selected.AccountId,
-                            selected.Fund,
-                            queryRange.StartDate,
-                            queryRange.EndDate))
+                    var fundsForCombinedSelection = new List<string> { selected.Fund };
+                    fundsForCombinedSelection.AddRange(mergedSubAccounts.Select(sa => sa.SubFund));
+                    donationRecords = (await _donationReadRepository.GetDonationsByFundsAndDateRangeAsync(
+                             fundsForCombinedSelection.Distinct(StringComparer.OrdinalIgnoreCase),
+                             queryRange.StartDate,
+                             queryRange.EndDate))
                         ?? new List<Cya2.Core.ReadModels.DonationRecord>();
                 }
             }
