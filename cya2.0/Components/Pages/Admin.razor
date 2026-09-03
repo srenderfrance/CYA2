@@ -108,7 +108,7 @@
                     <!-- Toggle row (no special bottom margin so it matches other rows) -->
                     <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="2rem" Class="admin-form-row admin-form-first-row">
                         <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="0.5rem" Style="width: 220px;" Class="admin-form-label">
-                            <RadzenText TextStyle="TextStyle.Subtitle2" Class="admin-label" Style="font-weight: bold;">@(createSubFund ? Localizer["ManageSecondaryFund"] : Localizer["ManagePrimaryFund"])</RadzenText>
+                            <RadzenText TextStyle="TextStyle.Subtitle2" Class="admin-label" Style="font-weight: bold;">@(createSubFund ? Localizer["ManageSecondaryFunds"] : Localizer["ManagePrimaryFunds"])</RadzenText>
                         </RadzenStack>
                         <div style="flex: 1; display:flex; align-items:center;">
                             <RadzenSwitch @bind-value="createSubFund" Class="admin-mode-switch" />
@@ -262,7 +262,12 @@
 
                              <!-- Sub Fund Name -->
                              <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="2rem" Class="admin-form-row">
-                                 <RadzenText TextStyle="TextStyle.Subtitle2" Class="admin-label" Style="font-weight: bold; width: 220px;">@Localizer["Fund"]</RadzenText>
+                                  <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="0.5rem" Style="width: 220px;" Class="admin-form-label">
+                                      <RadzenText TextStyle="TextStyle.Subtitle2" Class="admin-label" Style="font-weight: bold; margin:0;">@Localizer["Fund"]</RadzenText>
+                                      <i @ref="subFundIcon" class="bi bi-exclamation-circle" style="cursor: help; color: #dc3545;"
+                                         @onmouseenter="@(() => ShowFundTooltip(subFundIcon))"
+                                         @onmouseleave="@(() => tooltipService.Close())"></i>
+                                  </RadzenStack>
                                  <RadzenFormField Variant="Variant.Outlined" Style="flex: 1;">
                                     <RadzenTextBox @bind-value="subAccountNameEdit" Placeholder="@Localizer["Fund"]" />
                                  </RadzenFormField>
@@ -831,6 +836,7 @@
         // ElementReference for tooltip icons
         private ElementReference accountNumberIcon;
         private ElementReference fundIcon;
+        private ElementReference subFundIcon;
         private ElementReference classIcon;
 
         private string? staffMember;
@@ -1889,7 +1895,8 @@
         {
             var tooltipOptions = options ?? new TooltipOptions() { 
                 Position = TooltipPosition.Bottom,
-                Duration = 10000 // Keep tooltip visible for 10 seconds instead of default ~3 seconds
+                Duration = 10000,
+                CssClass = "tooltip-attention"
             };
             tooltipService.Open(elementReference, "Must match the accounting data account \"Num\" EXACTLY", tooltipOptions);
         }
@@ -1898,7 +1905,8 @@
         {
             var tooltipOptions = options ?? new TooltipOptions() { 
                 Position = TooltipPosition.Bottom,
-                Duration = 10000 // Keep tooltip visible for 10 seconds
+                Duration = 10000,
+                CssClass = "tooltip-attention"
             };
             tooltipService.Open(elementReference, "Must match donation data \"Fund Notes\" EXACTLY", tooltipOptions);
         }
@@ -1907,7 +1915,8 @@
         {
             var tooltipOptions = options ?? new TooltipOptions() { 
                 Position = TooltipPosition.Bottom,
-                Duration = 10000 // Keep tooltip visible for 10 seconds
+                Duration = 10000,
+                CssClass = "tooltip-attention"
             };
             tooltipService.Open(elementReference, "Must match the accounting data \"Class\" EXACTLY", tooltipOptions);
         }

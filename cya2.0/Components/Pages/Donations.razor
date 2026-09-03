@@ -1,4 +1,5 @@
 ﻿@page "/donations"
+@using Microsoft.AspNetCore.Authorization
 @using Cya2.Shared.Utilities
 @using Radzen
 @using Microsoft.AspNetCore.Components.Authorization
@@ -8,6 +9,7 @@
 @inject AuthenticationStateProvider AuthStateProvider
 @inject Cya2.Application.Interfaces.ISessionUserStateService SessionUserStateService
 @inject DialogService DialogService
+@inject TooltipService TooltipService
 @inject Cya2.Application.Interfaces.IUserIdResolver UserIdResolver
 @rendermode @(new InteractiveServerRenderMode(prerender: false))
 @inject IStringLocalizer<Resource> Localizer
@@ -18,6 +20,7 @@
 @inject Cya2.Application.Interfaces.IAccountSnapshotWarmupService AccountSnapshotWarmupService
 @inject Cya2.Application.Interfaces.IAccountSelectionCoordinator AccountSelectionCoordinator
 @implements IDisposable
+@attribute [Authorize]
 
 @* CLEAN ARCHITECTURE INTEGRATION *@
 @using Cya2.Application.Interfaces
@@ -152,6 +155,15 @@
 
     .giving-grid .donor-cell:hover {
         color: #072a47; text-decoration: underline;
+    }
+
+    .giving-grid .anonymous-donor-cell,
+    .donation-list .anonymous-donor-cell {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.3rem;
+        color: #666;
+        cursor: help;
     }
 
     .donation-list .donor-cell {
@@ -410,7 +422,21 @@
                                               OrderIndex="0"
                                               TextAlign="TextAlign.Left">
                             <Template Context="row">
-                                <span class="donor-cell" @onclick="@(() => OnDonorClick(row.Donor))">@row.Donor</span>
+                                @if (row.IsAnonymous)
+                                {
+                                    <span class="anonymous-donor-cell"
+                                          @ref="anonymousDonorElement"
+                                          @onmouseenter="@(() => ShowAnonymousTooltip(anonymousDonorElement, Localizer["AnonymousDonationTooltip"]))"
+                                          @onmouseleave="CloseAnonymousTooltip"
+                                          aria-label="@Localizer["AnonymousDonationTooltip"]">
+                                        <i class="bi bi-lock" aria-hidden="true"></i>
+                                        @Localizer["Anonymous"]
+                                    </span>
+                                }
+                                else
+                                {
+                                    <span class="donor-cell" @onclick="@(() => OnDonorClick(row.Donor))">@row.Donor</span>
+                                }
                             </Template>
                             <FooterTemplate>
                                 <strong>@Localizer["Total"]</strong>
@@ -487,7 +513,21 @@
                             <RadzenDataGridColumn TItem="DonationRowDto" Property="Date" Title="@(Localizer["Date"])" FormatString="{0:MM/dd/yyyy}" Width="110px" />
                             <RadzenDataGridColumn TItem="DonationRowDto" Property="Donor" Title="@(Localizer["Donor"])" Width="200px" Frozen="true" FrozenPosition="FrozenColumnPosition.Left">
                                 <Template Context="donation">
-                                    <span class="donor-cell" @onclick="@(() => OnDonorClick(donation.Donor))">@donation.Donor</span>
+                                    @if (donation.IsAnonymous)
+                                    {
+                                        <span class="anonymous-donor-cell"
+                                              @ref="anonymousDonorElement"
+                                              @onmouseenter="@(() => ShowAnonymousTooltip(anonymousDonorElement, Localizer["AnonymousDonationTooltip"]))"
+                                              @onmouseleave="CloseAnonymousTooltip"
+                                              aria-label="@Localizer["AnonymousDonationTooltip"]">
+                                            <i class="bi bi-lock" aria-hidden="true"></i>
+                                            @Localizer["Anonymous"]
+                                        </span>
+                                    }
+                                    else
+                                    {
+                                        <span class="donor-cell" @onclick="@(() => OnDonorClick(donation.Donor))">@donation.Donor</span>
+                                    }
                                 </Template>
                             </RadzenDataGridColumn>
                             <RadzenDataGridColumn TItem="DonationRowDto" Property="Amount" Title="@(Localizer["Amount"])" FormatString="{0:C2}" Width="90px" />
@@ -1284,6 +1324,23 @@
         return string.IsNullOrWhiteSpace(selectedAccount)
             ? Localizer["PleaseSelectAnAccount"]
             : Localizer["NoDonationsFound"]; 
+    }
+
+    private ElementReference anonymousDonorElement;
+
+    private void ShowAnonymousTooltip(ElementReference element, string message)
+    {
+        TooltipService.Open(element, message, new TooltipOptions
+        {
+            Position = TooltipPosition.Bottom,
+            Duration = 10000,
+            CssClass = "tooltip-information"
+        });
+    }
+
+    private void CloseAnonymousTooltip()
+    {
+        TooltipService.Close();
     }
 
     private async Task OnDonorClick(string? donorName)

@@ -35,7 +35,11 @@ public class DonationPresentationService : IDonationPresentationService
 
         foreach (var g in byDonor)
         {
-            var row = new DonationPivotRowDto { Donor = g.Key ?? unknownDonorLabel };
+            var row = new DonationPivotRowDto
+            {
+                Donor = g.Key ?? unknownDonorLabel,
+                IsAnonymous = g.All(d => d.IsAnonymous)
+            };
 
             foreach (var donation in g)
             {

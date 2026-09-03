@@ -93,6 +93,8 @@ html {
 /* ------------------------------------------------------------
    4. RADZEN TOOLTIP
       Position fixed so it escapes any overflow:hidden parent.
+      The default is informational; use .tooltip-attention for
+      important instructions that require user attention.
    ------------------------------------------------------------ */
 .rz-tooltip {
     position: fixed !important;
@@ -107,16 +109,16 @@ html {
 }
 
 .rz-tooltip-arrow {
-    border-color: #dc3545 !important;
+    border-color: #355c7d !important;
 }
 
 .rz-tooltip-content {
-    background: #dc3545 !important;
-    color: white !important;
-    box-shadow: 0 2px 8px rgba(220, 53, 69, 0.3) !important;
-    border: 1px solid #b02a37 !important;
-    padding: 8px 12px !important;
-    border-radius: 4px !important;
+    background: #355c7d !important;
+    color: #ffffff !important;
+    box-shadow: 0 6px 18px rgba(25, 55, 80, 0.24) !important;
+    border: 1px solid #294a65 !important;
+    padding: 9px 13px !important;
+    border-radius: 9px !important;
     font-size: 0.875rem !important;
     white-space: normal !important;
     min-width: 150px !important;
@@ -129,6 +131,75 @@ html {
     line-height: 1.2 !important;
     min-height: 28px !important;
     pointer-events: none !important;
+}
+
+/* Informational tooltip: optional contextual help. */
+.rz-tooltip.tooltip-information,
+.rz-tooltip-content.tooltip-information {
+    --rz-tooltip-background-color: #355c7d !important;
+    --rz-tooltip-color: #ffffff !important;
+}
+
+.rz-tooltip.tooltip-information .rz-tooltip-content {
+    background: #355c7d !important;
+    color: #ffffff !important;
+    border-color: #294a65 !important;
+    box-shadow: 0 6px 18px rgba(25, 55, 80, 0.24) !important;
+}
+
+.rz-tooltip-content.tooltip-information {
+    background: #355c7d !important;
+    color: #ffffff !important;
+    border-color: #294a65 !important;
+    box-shadow: 0 6px 18px rgba(25, 55, 80, 0.24) !important;
+}
+
+.rz-tooltip.tooltip-information .rz-tooltip-content::after,
+.rz-tooltip-content.tooltip-information::after {
+    background-color: #355c7d !important;
+    border-color: #294a65 !important;
+}
+
+.rz-tooltip.tooltip-information .rz-tooltip-arrow,
+.rz-tooltip-arrow.tooltip-information {
+    border-color: #355c7d !important;
+}
+
+/* Attention tooltip: important instructions users must notice. */
+.rz-tooltip.tooltip-attention,
+.rz-tooltip-content.tooltip-attention {
+    --rz-tooltip-background-color: #910813 !important;
+    --rz-tooltip-color: #ffffff !important;
+}
+
+.rz-tooltip.tooltip-attention .rz-tooltip-content {
+    background: #910813 !important;
+    color: #ffffff !important;
+    border-color: #910813 !important;
+    box-shadow: 0 6px 18px rgba(145, 8, 19, 0.3) !important;
+}
+
+.rz-tooltip.tooltip-attention .rz-tooltip-arrow {
+    border-color: #910813 !important;
+}
+
+/* Radzen may apply TooltipOptions.CssClass to the tooltip content element. */
+.rz-tooltip-content.tooltip-attention {
+    background: #910813 !important;
+    color: #ffffff !important;
+    border-color: #910813 !important;
+    box-shadow: 0 6px 18px rgba(145, 8, 19, 0.3) !important;
+}
+
+.rz-tooltip.tooltip-attention .rz-tooltip-content::after,
+.rz-tooltip-content.tooltip-attention::after {
+    background-color: #910813 !important;
+    border-color: #910813 !important;
+}
+
+.rz-tooltip-content.tooltip-attention + .rz-tooltip-arrow,
+.rz-tooltip-arrow.tooltip-attention {
+    border-color: #910813 !important;
 }
 
 /* ------------------------------------------------------------
