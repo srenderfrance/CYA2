@@ -16,48 +16,106 @@
  * ============================================================
  */
 
-/* ------------------------------------------------------------
-   1. RADZEN CSS CUSTOM PROPERTY TOKENS
-      --rz-scrollbar-color is the variable Radzen actually reads (default.css line 23518).
-      --rz-scrollbar-thumb-background-color is NOT used by Radzen.
-   ------------------------------------------------------------ */
+/* Radzen theme tokens used throughout the application. */
 :root {
-    --rz-scrollbar-color: #0a3b6b;           /* Radzen's real thumb variable */
+    --rz-primary: rgb(96 188 181);
+    --rz-primary-light: rgba(96 188 181, 0.2);
+    --rz-primary-lighter: rgba(96 188 181, 0.1);
+    --rz-primary-dark: rgb(76 150 145);
+    --rz-primary-darker: rgb(61 120 116);
+    --rz-on-primary: #ffffff;
+    --rz-on-primary-light: #ffffff;
+    --rz-on-primary-lighter: rgb(76 150 145);
+    --rz-on-primary-dark: #ffffff;
+    --rz-on-primary-darker: #ffffff;
+    --rz-success: #0a3b6b;
+    --rz-success-light: #164f87;
+    --rz-success-lighter: #dce6f0;
+    --rz-success-dark: #072a47;
+    --rz-success-darker: #051d32;
+    --rz-on-success: #ffffff;
+    --rz-danger: #910813;
+    --rz-danger-light: #a52e37;
+    --rz-danger-lighter: #f4d9db;
+    --rz-danger-dark: #72060f;
+    --rz-danger-darker: #57040b;
+    --rz-on-danger: #ffffff;
+    --rz-checkbox-checked-background-color: #0a3b6b;
+    --rz-checkbox-checked-hover-background-color: #072a47;
+    --rz-checkbox-checked-disabled-background-color: #0a3b6b;
+    --rz-checkbox-checked-color: #ffffff;
+    --rz-grid-selected-background-color: #0a3b6b;
+    --rz-grid-selected-color: #ffffff;
+    --rz-dropdown-item-selected-background-color: #0a3b6b;
+    --rz-dropdown-item-selected-color: #ffffff;
+    --rz-dropdown-item-selected-hover-background-color: #072a47;
+    --rz-dropdown-item-selected-hover-color: #ffffff;
+    --rz-dropdown-item-hover-background-color: #dce6f0;
+    --rz-dropdown-item-hover-color: #0a3b6b;
+    --rz-grid-hover-background-color: rgba(10, 59, 107, 0.08);
+    --rz-grid-hover-color: inherit;
+    --rz-info: #0a3b6b;
+    --rz-on-info: #ffffff;
+    --rz-progressbar-value-background-color: #60bcb5;
+    --rz-switch-background-color: #c1c9cb;
+    --rz-switch-checked-background-color: rgb(96 188 181);
+    --rz-switch-circle-background-color: #ffffff;
+    --rz-switch-checked-circle-background-color: #ffffff;
+}
+
+/* Match the application theme for active Radzen switches. */
+.rz-switch.rz-state-active {
+    background-color: var(--rz-primary) !important;
+    border-color: var(--rz-primary) !important;
+}
+
+.rz-switch .rz-switch-circle {
+    background: var(--rz-switch-background-color) !important;
+}
+
+.rz-switch.rz-switch-checked .rz-switch-circle {
+    background: var(--rz-switch-checked-background-color) !important;
+}
+
+.rz-button.rz-primary {
+    background-color: var(--rz-primary) !important;
+    color: var(--rz-on-primary) !important;
+}
+
+.rz-button.rz-danger {
+    background-color: var(--rz-danger) !important;
+    color: var(--rz-on-danger) !important;
+}
+
+.rz-chkbox-box.rz-state-active {
+    background-color: var(--rz-checkbox-checked-background-color) !important;
+    border-color: var(--rz-checkbox-checked-background-color) !important;
+    color: var(--rz-checkbox-checked-color) !important;
+}
+
+/* Ensure RadzenUpload choose button still uses the primary color. */
+.rz-upload .rz-button,
+.rz-upload .rz-button *,
+.rz-upload .rz-button .rz-button-text,
+.rz-upload .rz-button .rz-button-label,
+.rz-upload .rz-button .rz-button-icon,
+.rz-upload .rz-button span,
+.rz-upload .rz-button::before,
+.rz-upload .rz-button::after {
+    background-color: var(--rz-primary) !important;
+    border-color: var(--rz-primary) !important;
+    color: #fff !important;
+}
+
+/* Radzen default.css reads these variables for its scrollbars. */
+:root {
+    --rz-scrollbar-color: #0a3b6b;
     --rz-scrollbar-background-color: #f1f1f1;
+    --rz-scrollbar-size: 10px;
 }
 
 /* ------------------------------------------------------------
-   2. SCROLLBAR COLOURS
-      Firefox: scrollbar-color on html covers the page scrollbar.
-      WebKit: target * so every overflow div (not just rz-layout)
-      gets the dark-blue thumb.
-   ------------------------------------------------------------ */
-html {
-    scrollbar-color: #0a3b6b #f1f1f1;
-    scrollbar-width: auto;
-}
-
-*::-webkit-scrollbar {
-    width: 12px;
-    height: 12px;
-}
-
-*::-webkit-scrollbar-track {
-    background: #f1f1f1;
-}
-
-*::-webkit-scrollbar-thumb {
-    background: #0a3b6b !important;
-    border-radius: 8px;
-    border: 3px solid #f1f1f1;
-}
-
-*::-webkit-scrollbar-thumb:hover {
-    background: #072a47 !important;
-}
-
-/* ------------------------------------------------------------
-   3. RADZEN DROPDOWN
+   1. RADZEN DROPDOWN
       JS handles dynamic positioning; we only fix z-index,
       shadow, and overflow clipping here.
    ------------------------------------------------------------ */
@@ -91,7 +149,7 @@ html {
 }
 
 /* ------------------------------------------------------------
-   4. RADZEN TOOLTIP
+   2. RADZEN TOOLTIP
       Position fixed so it escapes any overflow:hidden parent.
       The default is informational; use .tooltip-attention for
       important instructions that require user attention.
@@ -200,6 +258,95 @@ html {
 .rz-tooltip-content.tooltip-attention + .rz-tooltip-arrow,
 .rz-tooltip-arrow.tooltip-attention {
     border-color: #910813 !important;
+}
+
+/* ------------------------------------------------------------
+   3. RADZEN DIALOGS AND DATE PICKERS
+   ------------------------------------------------------------ */
+.rz-dialog {
+    border-radius: 8px !important;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3) !important;
+    overflow: hidden;
+    border: 0 !important;
+}
+
+.rz-dialog .rz-dialog-titlebar {
+    border-top-left-radius: 8px;
+    border-top-right-radius: 8px;
+}
+
+.rz-dialog .rz-dialog-content {
+    border-bottom-left-radius: 8px;
+    border-bottom-right-radius: 8px;
+}
+
+@media (max-width: 768px) {
+    .rz-dialog-wrapper {
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        padding: 0.5rem !important;
+    }
+
+    .rz-dialog {
+        position: relative !important;
+        top: auto !important;
+        left: auto !important;
+        transform: none !important;
+        width: 96vw !important;
+        max-width: 96vw !important;
+        max-height: 90vh !important;
+        margin: 0 !important;
+    }
+
+    .rz-dialog-content {
+        max-height: calc(90vh - 52px) !important;
+        overflow: auto !important;
+        padding: 0.75rem !important;
+    }
+
+    .rz-dialog-titlebar {
+        padding: 0.6rem 0.75rem !important;
+    }
+
+    .rz-dialog-title {
+        white-space: normal !important;
+        word-break: break-word;
+    }
+
+    .rz-datepicker-popup,
+    .rz-popup.rz-datepicker-popup,
+    .rz-popup .rz-datepicker,
+    .rz-popup .rz-calendar {
+        position: fixed !important;
+        left: 2vw !important;
+        right: 2vw !important;
+        width: auto !important;
+        max-width: 96vw !important;
+        box-sizing: border-box !important;
+        overflow: hidden !important;
+        background-color: #ffffff !important;
+        opacity: 1 !important;
+        z-index: 11000 !important;
+        border: 1px solid #d9dee5 !important;
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2) !important;
+    }
+
+    .rz-datepicker-popup .rz-calendar,
+    .rz-popup.rz-datepicker-popup .rz-calendar,
+    .rz-popup .rz-calendar {
+        width: 100% !important;
+        max-width: 100% !important;
+        background-color: #ffffff !important;
+        opacity: 1 !important;
+    }
+
+    .rz-datepicker-popup table,
+    .rz-popup.rz-datepicker-popup table,
+    .rz-popup .rz-calendar table {
+        width: 100% !important;
+        table-layout: fixed;
+    }
 }
 
 /* ------------------------------------------------------------

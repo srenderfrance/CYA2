@@ -93,29 +93,20 @@
             </RadzenStack>
         </RadzenStack>
 
-        <RadzenStack Orientation="Orientation.Vertical" Gap="0.4rem" Style="flex:1; max-width:300px;">
+        <RadzenStack Orientation="Orientation.Vertical" Gap="0.4rem" Style="flex:1; max-width:420px;">
             <div class="date-range-toolbar-box account-selector-box">
                 <div style="display:flex;align-items:center;gap:0.5rem;flex-wrap:nowrap;">
                     <RadzenLabel Text="@Localizer["Account"]" />
-                    <RadzenDropDown TValue="string"
-                                Data="@userAccounts"
-                                TextProperty="Fund"
-                                ValueProperty="Fund"
-                                @bind-Value="selectedAccount"
-                                Change="@(async (args) => await accountSelection(args?.ToString() ?? string.Empty))"
-                                Placeholder="@Localizer["ChooseAccount"]"
-                                Class="account-selector-dropdown-inline">
-                    <ValueTemplate>
-                        <span style="display:flex;align-items:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding-right:1.75rem;width:100%;">
-                            @DisplayFormatter.FormatFundDisplay(selectedAccount)
-                        </span>
-                    </ValueTemplate>
-                    <Template Context="acct">
-                        <span style="display:flex;align-items:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;width:100%;">
-                            @DisplayFormatter.FormatFundDisplay(acct.Fund)
-                        </span>
-                    </Template>
-                    </RadzenDropDown>
+                    <AccountSelector TItem="AccountOptionDto" TValue="string"
+                                     Data="@userAccounts"
+                                     TextProperty="Fund"
+                                     ValueProperty="Fund"
+                                     Value="@selectedAccount"
+                                     ValueChanged="@(value => selectedAccount = value)"
+                                     Change="@(async args => await accountSelection(args?.ToString() ?? string.Empty))"
+                                     Placeholder="@Localizer["ChooseAccount"]"
+                                     TextSelector="@(account => DisplayFormatter.FormatFundDisplay(account.Fund))"
+                                     Class="account-selector-dropdown-inline" />
                 </div>
             </div>
         </RadzenStack>

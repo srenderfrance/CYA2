@@ -244,29 +244,19 @@ else
 {
     <RadzenCard class="mt-4">
         <RadzenStack Orientation="Orientation.Horizontal" Gap="2rem" JustifyContent="JustifyContent.End" AlignItems="AlignItems.Start" Wrap="FlexWrap.Wrap" Style="width:100%;">
-            <RadzenStack Orientation="Orientation.Vertical" Gap="0.4rem" Style="flex:1; max-width:300px;" Class="home-controls-right">
+            <RadzenStack Orientation="Orientation.Vertical" Gap="0.4rem" Style="flex:1; max-width:420px;" Class="home-controls-right">
                 <div class="date-range-toolbar-box account-selector-box">
                     <div class="home-account-selector-row" style="display:flex;align-items:center;gap:0.5rem;flex-wrap:nowrap;">
                         <RadzenLabel Text="@Localizer["Account"]" />
-                        <RadzenDropDown TValue="string"
-                                        Data="@dashboardData.UserAccounts"
-                                        TextProperty="DisplayName"
-                                        ValueProperty="Fund"
-                                        Value="@selectedAccount"
-                                        Change="@OnAccountSelectionAsync"
-                                        Placeholder="@Localizer["ChooseAccount"]"
-                                        Class="account-selector-dropdown-inline">
-                            <ValueTemplate>
-                                <span style="display:flex;align-items:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding-right:1.75rem;width:100%;">
-                                    @(dashboardData.UserAccounts.FirstOrDefault(a => a.Fund == selectedAccount)?.DisplayName ?? DisplayFormatter.FormatFundDisplay(selectedAccount))
-                                </span>
-                            </ValueTemplate>
-                            <Template Context="acct">
-                                <span style="display:flex;align-items:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;width:100%;">
-                                    @acct.DisplayName
-                                </span>
-                            </Template>
-                        </RadzenDropDown>
+                        <AccountSelector TItem="UserAccountDto" TValue="string"
+                                         Data="@dashboardData.UserAccounts"
+                                         TextProperty="DisplayName"
+                                         ValueProperty="Fund"
+                                         Value="@selectedAccount"
+                                         Change="@OnAccountSelectionAsync"
+                                         Placeholder="@Localizer["ChooseAccount"]"
+                                         TextSelector="@(account => account.DisplayName)"
+                                         Class="account-selector-dropdown-inline" />
                     </div>
                 </div>
 
