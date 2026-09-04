@@ -305,29 +305,19 @@
             </RadzenStack>
         </RadzenStack>
 
-        <RadzenStack Orientation="Orientation.Vertical" Gap="0.4rem" Style="flex:1; max-width:300px;">
-            <div class="date-range-toolbar-box" style="width:360px; max-width:100%; box-sizing:border-box;">
+        <RadzenStack Orientation="Orientation.Vertical" Gap="0.4rem" Style="flex:1; max-width:420px;">
+            <div class="date-range-toolbar-box" style="width:420px; max-width:100%; box-sizing:border-box;">
                 <div style="display:flex;align-items:center;gap:0.5rem;flex-wrap:nowrap;">
                     <RadzenLabel Text="@Localizer["Account"]" />
-                    <RadzenDropDown TValue="string"
-                                Data="@donationData.UserAccounts"
-                                TextProperty="Fund"
-                                ValueProperty="Fund"
-                                Value="@selectedAccount"
-                                Change="@OnAccountDropdownChanged"
-                                Placeholder="@Localizer["ChooseAccount"]"
-                                Style="flex:1; min-width:0; width:auto;">
-                    <ValueTemplate>
-                        <span style="display:flex;align-items:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding-right:1.75rem;width:100%;">
-                            @DisplayFormatter.FormatFundDisplay(selectedAccount)
-                        </span>
-                    </ValueTemplate>
-                    <Template Context="acct">
-                        <span style="display:flex;align-items:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;width:100%;">
-                            @DisplayFormatter.FormatFundDisplay(acct.Fund)
-                        </span>
-                    </Template>
-                    </RadzenDropDown>
+                    <AccountSelector TItem="AccountOptionDto" TValue="string"
+                                     Data="@donationData.UserAccounts"
+                                     TextProperty="Fund"
+                                     ValueProperty="Fund"
+                                     Value="@selectedAccount"
+                                     Change="@OnAccountDropdownChanged"
+                                     Placeholder="@Localizer["ChooseAccount"]"
+                                     TextSelector="@(account => DisplayFormatter.FormatFundDisplay(account.Fund))"
+                                     Style="flex:1; min-width:0; width:auto;" />
                 </div>
 
                 <!-- SubAccount dropdown - only shown for accounts with Separate sub accounts -->
@@ -409,6 +399,7 @@
                                  AllowColumnReorder="false"
                                  AllowColumnPicking="false"
                                  ShowColumnMenu="false"
+                                 ShowColumnTitleAsTooltip="false"
                                  @ref="_givingGridRef"
                                  CellRender="@OnGivingGridCellRender"
                                  EmptyText="@GetEmptyText()">
@@ -507,6 +498,7 @@
                                     AllowPaging="false"
                                     Dense="@useCompactView"
                                     FilterMode="FilterMode.Advanced"
+                                     ShowColumnTitleAsTooltip="false"
                                     EmptyText="@GetEmptyText()"
                                     Class="@(useCompactView ? "donation-list compact-data-grid" : "donation-list")">
                         <Columns>

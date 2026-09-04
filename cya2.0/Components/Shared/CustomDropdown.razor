@@ -9,7 +9,8 @@
 .custom-dropdown-label { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; flex:1; font-size:16px; font-weight:400; letter-spacing:-0.32px; line-height:20px; color:#212529; }
 /* SVG arrow inherits current color and is sized to match input icon */
 .custom-dropdown-arrow { margin-left:6px; color: #495057; width: 0.85rem; height: 0.85rem; flex-shrink:0; }
-.custom-dropdown-panel { position: absolute; top:100%; left:0; right:0; background:white; border:1px solid #dee2e6; box-shadow:0 6px 18px rgba(0,0,0,0.08); z-index:2000; margin-top:4px; border-radius:4px; }
+.custom-dropdown-panel { position: absolute; top:100%; left:0; right:0; min-width:320px; background:white; border:1px solid #dee2e6; box-shadow:0 6px 18px rgba(0,0,0,0.08); z-index:2000; margin-top:4px; border-radius:4px; }
+.custom-dropdown-filter { width:100%; box-sizing:border-box; padding:8px 10px; border:0; border-bottom:1px solid #dee2e6; outline:none; font:inherit; }
 .custom-dropdown-list { max-height:240px; overflow:auto; margin:0; padding:2px 0; list-style:none; }
 .custom-dropdown-item { padding:4px 6px; cursor:pointer; font-size:16px; font-weight:400; letter-spacing:-0.32px; line-height:20px; color:#212529; }
 .custom-dropdown-item:hover { background:#dce6f0; }
@@ -28,10 +29,19 @@
     @if (IsOpen)
     {
         <div class="custom-dropdown-panel" @ref="panelRef">
+            @if (Searchable)
+            {
+                <input class="custom-dropdown-filter"
+                       placeholder="@SearchPlaceholder"
+                       @bind="searchText"
+                       @bind:event="oninput"
+                       @onclick:stopPropagation="true"
+                       @onkeydown:stopPropagation="true" />
+            }
             <ul class="custom-dropdown-list">
                 @if (Data != null)
                 {
-                    foreach (var item in Data)
+                    foreach (var item in FilteredData)
                     {
                         var itemValue = ValueSelector(item);
                         var isSelected = EqualityComparer<TValue>.Default.Equals(itemValue, Value);
@@ -61,9 +71,12 @@
     [Parameter] public string Placeholder { get; set; } = "Select";
     [Parameter] public RenderFragment<TItem>? ItemTemplate { get; set; }
     [Parameter] public bool Disabled { get; set; }
+    [Parameter] public bool Searchable { get; set; }
+    [Parameter] public string SearchPlaceholder { get; set; } = "Search...";
 
     private string Id = "custom-dropdown-" + Guid.NewGuid().ToString("N");
     private bool IsOpen { get; set; }
+    private string searchText = string.Empty;
     private ElementReference panelRef;
     private DotNetObjectReference<object>? dotNetRef;
 
@@ -91,11 +104,17 @@
     private async void Open()
     {
         IsOpen = true;
+        searchText = string.Empty;
         StateHasChanged();
         await Task.Delay(50); // allow render
         dotNetRef = DotNetObjectReference.Create<object>(new JsCallback(this));
         await JS.InvokeVoidAsync("customDropdown.register", dotNetRef, Id);
     }
+
+    private IEnumerable<TItem> FilteredData =>
+        Data is null || string.IsNullOrWhiteSpace(searchText)
+            ? Data ?? Enumerable.Empty<TItem>()
+            : Data.Where(item => TextSelector(item).Contains(searchText, StringComparison.OrdinalIgnoreCase));
 
     [JSInvokable]
     public Task CloseDropdown()

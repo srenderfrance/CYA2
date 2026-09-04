@@ -40,8 +40,7 @@
         <RadzenButton Icon="menu"
                       ButtonStyle="ButtonStyle.Light"
                       Class="admin-toolbar-toggle"
-                      Click="@(() => showAdminToolbarButtons = !showAdminToolbarButtons)"
-                      title="Toggle admin actions" />
+                      Click="@(() => showAdminToolbarButtons = !showAdminToolbarButtons)" />
 
         <div class="admin-top-actions @(showAdminToolbarButtons ? "expanded" : "collapsed")">
         <!-- Left group: existing account dialogs -->
@@ -129,7 +128,9 @@
                                                 ValueSelector="@(f => f.DisplayText)"
                                                 Value="@selectedFund"
                                                 ValueChanged="@(async (string v) => await fundSelection(v))"
-                                                Placeholder="@Localizer["SelectAccount"]" />
+                                                 Placeholder="@Localizer["SelectAccount"]"
+                                                 Searchable="true"
+                                                 SearchPlaceholder="@Localizer["Search"]" />
                             </RadzenFormField>
                         </RadzenStack>
 
@@ -245,7 +246,9 @@
                                                             ValueSelector="@(a => a.AccountId)"
                                                             Value="@selectedPrincipleAccountId"
                                                             ValueChanged="@(async (int v) => { selectedPrincipleAccountId = v; RefreshFilteredSubAccounts(); ClearSelectedSubAccount(); })"
-                                                            Placeholder="@Localizer["SelectAccount"]" />
+                                                             Placeholder="@Localizer["SelectAccount"]"
+                                                             Searchable="true"
+                                                             SearchPlaceholder="@Localizer["Search"]" />
                                         </RadzenFormField>
                                     </RadzenStack>
                                 </RadzenStack>
@@ -436,10 +439,10 @@
                         <RadzenStack Orientation="Orientation.Vertical" Gap="0.75rem">
                             <RadzenText TextStyle="TextStyle.Subtitle2" Style="font-weight: bold; margin:0;">@Localizer["FundAccess"]</RadzenText>
                             <div style="width:100%;">
-                                <CustomDropdown TItem="Account" TValue="int" Data="@accountsOptions" TextSelector="@(a => a.AccountId == 0 ? Localizer["GrantFundAccess"].Value : DisplayFormatter.FormatFundDisplay(a.Fund))" ValueSelector="@(a => a.AccountId)" Value="@accountToAddId" ValueChanged="@(async (int v) => accountToAddId = v)" Placeholder="@Localizer["GrantFundAccess"]" />
+                                <CustomDropdown TItem="Account" TValue="int" Data="@accountsOptions" TextSelector="@(a => a.AccountId == 0 ? Localizer["GrantFundAccess"].Value : DisplayFormatter.FormatFundDisplay(a.Fund))" ValueSelector="@(a => a.AccountId)" Value="@accountToAddId" ValueChanged="@(async (int v) => accountToAddId = v)" Placeholder="@Localizer["GrantFundAccess"]" Searchable="true" SearchPlaceholder="@Localizer["Search"]" />
                             </div>
                             <div style="width:100%;">
-                                <CustomDropdown TItem="Account" TValue="int" Data="@userAccounts" TextSelector="@(a => a.AccountId == 0 ? Localizer["RemoveFundAccess"].Value : DisplayFormatter.FormatFundDisplay(a.Fund))" ValueSelector="@(a => a.AccountId)" Value="@selectedLinkedAccountId" ValueChanged="@(async (int v) => selectedLinkedAccountId = v)" Placeholder="@Localizer["RemoveFundAccess"]" />
+                                <CustomDropdown TItem="Account" TValue="int" Data="@userAccounts" TextSelector="@(a => a.AccountId == 0 ? Localizer["RemoveFundAccess"].Value : DisplayFormatter.FormatFundDisplay(a.Fund))" ValueSelector="@(a => a.AccountId)" Value="@selectedLinkedAccountId" ValueChanged="@(async (int v) => selectedLinkedAccountId = v)" Placeholder="@Localizer["RemoveFundAccess"]" Searchable="true" SearchPlaceholder="@Localizer["Search"]" />
                             </div>
                         </RadzenStack>
                     </div>

@@ -70,23 +70,18 @@
                             @Localizer["CurrentDefault"]: <strong>@GetAccountDisplayName(currentDefaultAccountId)</strong>
                         </RadzenText>
                         
-                        <RadzenDropDown TValue="string"
-                                        Data="@defaultAccountOptions"
-                                        TextProperty="Fund"
-                                        ValueProperty="AccountingClass"
-                                        Value="@selectedAccountingClass"
-                                        Change="@(value => selectedAccountingClass = value?.ToString() ?? string.Empty)"
-                                        Placeholder="@Localizer["SelectDefaultAccount"]"
-                                        Style="width: 100%;"
-                                        Disabled="@(userAccounts == null || userAccounts.Count == 0)">
-                            <ValueTemplate>
-                                @{ var sel = defaultAccountOptions.FirstOrDefault(a => a.AccountingClass == selectedAccountingClass); }
-                                @(sel?.AccountId == 0 ? Localizer["None"] : DisplayFormatter.FormatFundDisplay(sel?.Fund))
-                            </ValueTemplate>
-                            <Template Context="acct">
-                                @(acct.AccountId == 0 ? Localizer["None"] : DisplayFormatter.FormatFundDisplay(acct.Fund))
-                            </Template>
-                        </RadzenDropDown>
+                         <div class="account-selector-box">
+                             <AccountSelector TItem="AccountOptionDto" TValue="string"
+                                              Data="@defaultAccountOptions"
+                                              TextProperty="Fund"
+                                              ValueProperty="AccountingClass"
+                                              Value="@selectedAccountingClass"
+                                              ValueChanged="@(value => selectedAccountingClass = value)"
+                                              Placeholder="@Localizer["SelectDefaultAccount"]"
+                                              Disabled="@(userAccounts == null || userAccounts.Count == 0)"
+                                              TextSelector="@(account => account.AccountId == 0 ? Localizer["None"].Value : DisplayFormatter.FormatFundDisplay(account.Fund))"
+                                              Class="account-selector-dropdown-inline" />
+                         </div>
                         
                         <RadzenButton Text="@Localizer["Save"]"
                                       Click="SaveAccountSetting"

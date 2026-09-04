@@ -49,10 +49,7 @@ html, body {
     box-sizing: border-box;
 }
 
-/* Restore default browser scrollbar colors */
 html {
-    scrollbar-color: auto;
-    scrollbar-width: auto;
     color-scheme: light;
 }
 
@@ -115,12 +112,6 @@ a, .btn-link {
     border-color: #1861ac;
 }
 
-/* Match Frequency View switch active color to app button theme */
-.rz-switch.rz-state-active {
-    background-color: var(--rz-primary) !important;
-    border-color: var(--rz-primary) !important;
-}
-
 .btn:focus, 
 .btn:active:focus, 
 .btn-link.nav-link:focus, 
@@ -129,56 +120,10 @@ a, .btn-link {
     box-shadow: 0 0 0 0.1rem white, 0 0 0 0.25rem #258cfb;
 }
 
-/* CSS Custom Properties */
-:root {
-    --rz-primary: rgb(96 188 181);
-    --rz-primary-light: rgba(96 188 181, 0.2);
-    --rz-primary-lighter: rgba(96 188 181, 0.1);
-    --rz-success: #0a3b6b;
-    --rz-danger: #910813;
-    /* Scrollbar thumb — Radzen reads --rz-scrollbar-color (defaults to --rz-secondary) */
-    --rz-scrollbar-color: #0a3b6b;
-    /* Checkbox checked state — Radzen reads --rz-checkbox-checked-background-color (defaults to --rz-secondary) */
-    --rz-checkbox-checked-background-color: #0a3b6b;
-    --rz-checkbox-checked-hover-background-color: #072a47;
-    /* DataGrid selected row */
-    --rz-grid-selected-background-color: #0a3b6b;
-    --rz-grid-selected-color: #ffffff;
-    /* Dropdown selected item */
-    --rz-dropdown-item-selected-background-color: #0a3b6b;
-    --rz-dropdown-item-selected-color: #ffffff;
-    --rz-dropdown-item-selected-hover-background-color: #072a47;
-    --rz-dropdown-item-selected-hover-color: #ffffff;
-    /* Dropdown/grid hover (unselected) */
-    --rz-dropdown-item-hover-background-color: #dce6f0;
-    --rz-dropdown-item-hover-color: #0a3b6b;
-    --rz-grid-hover-background-color: rgba(10, 59, 107, 0.08);
-    --rz-grid-hover-color: inherit;
-    /* Alert info boxes ("no data found", "please select account") → dark blue */
-    --rz-info: #0a3b6b;
-    --rz-on-info: #ffffff;
-    /* Progress bar fill → aqua */
-    --rz-progressbar-value-background-color: #60bcb5;
-}
-
 /* Text selection highlight */
 ::selection {
     background-color: #0a3b6b;
     color: #ffffff;
-}
-
-/* Ensure RadzenUpload choose button still uses primary color */
-.rz-upload .rz-button,
-.rz-upload .rz-button *,
-.rz-upload .rz-button .rz-button-text,
-.rz-upload .rz-button .rz-button-label,
-.rz-upload .rz-button .rz-button-icon,
-.rz-upload .rz-button span,
-.rz-upload .rz-button::before,
-.rz-upload .rz-button::after {
-    background-color: var(--rz-primary) !important;
-    border-color: var(--rz-primary) !important;
-    color: #fff !important;
 }
 
 /* ------------------------------------------------------------
@@ -297,73 +242,96 @@ a, .btn-link {
 }
 
 .account-selector-dropdown {
-    width: min(420px, 100%) !important;
-    min-width: 0;
+    width: min(420px, calc(100vw - 2rem)) !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+    flex: 0 1 min(420px, calc(100vw - 2rem)) !important;
+    box-sizing: border-box !important;
 }
 
 .account-selector-dropdown-inline {
-    flex: 1;
-    min-width: 0;
-    width: auto;
+    flex: 0 1 min(420px, calc(100vw - 2rem)) !important;
+    min-width: 0 !important;
+    width: min(420px, calc(100vw - 2rem)) !important;
 }
 
-/* ------------------------------------------------------------
-   Radzen dialog visual style (match rollback dialog look)
-   ------------------------------------------------------------ */
-.rz-dialog {
-    border-radius: 8px !important;
-    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3) !important;
+.account-selector-dropdown .rz-dropdown-label,
+.account-selector-dropdown .rz-inputtext,
+.account-selector-value {
     overflow: hidden;
-    border: 0 !important;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
-.rz-dialog .rz-dialog-titlebar {
-    border-top-left-radius: 8px;
-    border-top-right-radius: 8px;
+.account-selector-option,
+.rz-dropdown-panel .account-selector-option {
+    display: block;
+    width: 100%;
+    padding: 0.15rem 0;
+    overflow: visible;
+    text-overflow: clip;
+    white-space: normal;
 }
 
-.rz-dialog .rz-dialog-content {
-    border-bottom-left-radius: 8px;
-    border-bottom-right-radius: 8px;
+/* Keep every Radzen dropdown option as compact vertically as the account
+   selector options, without changing each dropdown's horizontal padding. */
+.rz-dropdown-panel .rz-dropdown-item {
+    padding-block: 0.1rem !important;
 }
 
-/* ------------------------------------------------------------
-   Radzen dialogs mobile behavior
-   ------------------------------------------------------------ */
+.rz-dropdown-panel:has(.account-selector-option) {
+    box-sizing: border-box !important;
+    padding: 0 !important;
+    overflow: hidden !important;
+    background: #ffffff !important;
+}
+
+.rz-dropdown-panel:has(.account-selector-option) .rz-dropdown-items {
+    box-sizing: border-box !important;
+    width: 100% !important;
+    max-height: 24rem !important;
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+    background: #ffffff !important;
+}
+
+.rz-dropdown-panel:has(.account-selector-option) .rz-dropdown-items-wrapper {
+    box-sizing: border-box !important;
+    width: 100% !important;
+    margin: 0 !important;
+    max-height: 24rem !important;
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+    scrollbar-width: thin !important;
+    background: #ffffff !important;
+}
+
+.rz-dropdown-panel:has(.account-selector-option) .rz-dropdown-items-wrapper::-webkit-scrollbar,
+.rz-dropdown-panel:has(.account-selector-option) .rz-dropdown-items::-webkit-scrollbar {
+    width: 8px !important;
+    height: 8px !important;
+}
+
+.rz-dropdown-panel:has(.account-selector-option) .rz-dropdown-items-wrapper::-webkit-scrollbar-thumb,
+.rz-dropdown-panel:has(.account-selector-option) .rz-dropdown-items::-webkit-scrollbar-thumb {
+    border-width: 2px !important;
+}
+
+.rz-dropdown-panel:has(.account-selector-option) .rz-dropdown-item {
+    box-sizing: border-box !important;
+    width: 100% !important;
+    padding: 0.1rem 1rem !important;
+    overflow: hidden !important;
+    white-space: normal !important;
+}
+
+.rz-dropdown-panel:has(.account-selector-option) .rz-dropdown-item .account-selector-option {
+    padding: 0 !important;
+    max-width: 100% !important;
+    overflow-wrap: anywhere;
+}
+
 @media (max-width: 768px) {
-    .rz-dialog-wrapper {
-        display: flex !important;
-        align-items: center !important;
-        justify-content: center !important;
-        padding: 0.5rem !important;
-    }
-
-    .rz-dialog {
-        position: relative !important;
-        top: auto !important;
-        left: auto !important;
-        transform: none !important;
-        width: 96vw !important;
-        max-width: 96vw !important;
-        max-height: 90vh !important;
-        margin: 0 !important;
-    }
-
-    .rz-dialog-content {
-        max-height: calc(90vh - 52px) !important;
-        overflow: auto !important;
-        padding: 0.75rem !important;
-    }
-
-    .rz-dialog-titlebar {
-        padding: 0.6rem 0.75rem !important;
-    }
-
-    .rz-dialog-title {
-        white-space: normal !important;
-        word-break: break-word;
-    }
-
     .date-range-start-end-row {
         flex-direction: column !important;
         align-items: stretch !important;
@@ -376,40 +344,6 @@ a, .btn-link {
         justify-content: space-between;
     }
 
-    /* Radzen DatePicker popup: force viewport-fit on narrow screens */
-    .rz-datepicker-popup,
-    .rz-popup.rz-datepicker-popup,
-    .rz-popup .rz-datepicker,
-    .rz-popup .rz-calendar {
-        position: fixed !important;
-        left: 2vw !important;
-        right: 2vw !important;
-        width: auto !important;
-        max-width: 96vw !important;
-        box-sizing: border-box !important;
-        overflow: hidden !important;
-        background-color: #ffffff !important;
-        opacity: 1 !important;
-        z-index: 11000 !important;
-        border: 1px solid #d9dee5 !important;
-        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2) !important;
-    }
-
-    .rz-datepicker-popup .rz-calendar,
-    .rz-popup.rz-datepicker-popup .rz-calendar,
-    .rz-popup .rz-calendar {
-        width: 100% !important;
-        max-width: 100% !important;
-        background-color: #ffffff !important;
-        opacity: 1 !important;
-    }
-
-    .rz-datepicker-popup table,
-    .rz-popup.rz-datepicker-popup table,
-    .rz-popup .rz-calendar table {
-        width: 100% !important;
-        table-layout: fixed;
-    }
 }
 
 /* Donors grid: container constrains width, grid handles internal scrolling */
