@@ -139,11 +139,12 @@
                 AccountingClass = string.Empty
             }
         }.Concat(userAccounts);
-    private List<LanguageOption> languageOptions = new()
-    {
-        new LanguageOption { Value = "en-US", Text = "English" },
-        new LanguageOption { Value = "es-US", Text = "Spanish" }
-    };
+    private IEnumerable<LanguageOption> languageOptions =>
+        new[]
+        {
+            new LanguageOption { Value = "en-US", Text = Localizer["English"] },
+            new LanguageOption { Value = "es-US", Text = Localizer["Spanish"] }
+        };
     private string errorMessage = string.Empty;
     private string successMessage = string.Empty;
     private bool isSavingAccount = false;

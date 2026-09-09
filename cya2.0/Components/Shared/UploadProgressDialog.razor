@@ -32,7 +32,7 @@
         public string Details { get; set; } = string.Empty;
     }
 
-    private ProgressDto _p = new() { Status = "Waiting for server..." };
+    private ProgressDto _p = new();
     private int Percent => _p.ExpectedRows > 0 ? (int)(100L * _p.TotalRows / _p.ExpectedRows) : 0;
     private bool _waitingForId => string.IsNullOrWhiteSpace(ProgressId);
 
@@ -50,7 +50,7 @@
     private void OnProgressIdChanged(string id)
     {
         ProgressId = id;
-        _p.Status = "Starting...";
+        _p.Status = GetLocalizedString("Starting", "Starting...");
     }
 
     private async Task Poll()
@@ -59,7 +59,7 @@
         {
             if (string.IsNullOrWhiteSpace(ProgressId))
             {
-                _p.Status = "Waiting for ProgressId...";
+                _p.Status = GetLocalizedString("WaitingForProgressId", "Waiting for ProgressId...");
                 await InvokeAsync(StateHasChanged);
                 return;
             }
@@ -67,7 +67,7 @@
             var srv = ProgressService.Get(ProgressId);
             if (srv == null)
             {
-                _p.Status = "Initializing import...";
+                _p.Status = GetLocalizedString("InitializingImport", "Initializing import...");
                 await InvokeAsync(StateHasChanged);
                 return;
             }
@@ -76,7 +76,9 @@
             _p.InsertedRows = srv.InsertedRows;
             _p.FailedRows = srv.FailedRows;
             _p.ExpectedRows = srv.ExpectedRows;
-            _p.Status = string.IsNullOrWhiteSpace(srv.Status) ? "Processing..." : srv.Status;
+            _p.Status = string.IsNullOrWhiteSpace(srv.Status)
+                ? GetLocalizedString("Processing", "Processing...")
+                : srv.Status;
             _p.Errors = srv.Errors?.ToList() ?? new List<string>();
             _p.IsComplete = srv.IsComplete;
             _p.ImportType = srv.ImportType ?? string.Empty;
@@ -100,7 +102,10 @@
                 // Set final status without repeating row count
                 if (_p.FailedRows > 0)
                 {
-                    _p.Status = $"{GetLocalizedString("Completed", "Completed")} - {_p.FailedRows} failed rows";
+                    _p.Status = string.Format(
+                        GetLocalizedString("CompletedWithFailedRows", "{0} - {1} failed rows"),
+                        GetLocalizedString("Completed", "Completed"),
+                        _p.FailedRows);
                 }
                 else
                 {
@@ -112,7 +117,9 @@
         }
         catch (Exception ex)
         {
-            _p.Status = $"Error polling progress: {ex.Message}";
+            _p.Status = string.Format(
+                GetLocalizedString("ErrorPollingProgress", "Error polling progress: {0}"),
+                ex.Message);
             await InvokeAsync(StateHasChanged);
         }
     }
@@ -277,7 +284,7 @@
                         }
                         @if (_p.Errors.Count > 10)
                         {
-                            <li style="font-size: 0.85em;"><em>... and @(_p.Errors.Count - 10) more errors</em></li>
+                             <li style="font-size: 0.85em;"><em>@string.Format(GetLocalizedString("MoreErrors", "... and {0} more errors"), _p.Errors.Count - 10)</em></li>
                         }
                     </ul>
                 </RadzenAlert>

@@ -239,7 +239,151 @@
         min-width: 720px;
     }
 
+    .donations-date-controls,
+    .donations-common-range,
+    .donations-custom-range,
+    .donations-custom-range .date-range-apply-group,
+    .donations-custom-range .date-range-start-end-row {
+        flex-wrap: nowrap !important;
+    }
+
+    .donations-date-controls {
+        min-width: max-content;
+    }
+
+    .donations-common-range,
+    .donations-custom-range,
+    .donations-custom-range .date-range-apply-group,
+    .donations-custom-range .date-range-start-end-row,
+    .donations-custom-range .date-range-start-end-row > div,
+    .donations-custom-range .rz-button {
+        flex: 0 0 auto;
+    }
+
+    @@media (max-width: 1100px) {
+        .donations-filter-layout {
+            display: grid !important;
+            grid-template-columns: minmax(0, 1fr);
+            gap: 1rem !important;
+        }
+
+        .donations-date-controls {
+            display: grid !important;
+            grid-column: 1;
+            grid-row: 1;
+            grid-template-columns: minmax(0, 1fr);
+            gap: 0.4rem;
+            min-width: 0;
+            width: 100%;
+        }
+
+        .donations-common-range,
+        .donations-custom-range {
+            grid-column: 1;
+            width: 100% !important;
+        }
+
+        .donations-date-controls > .rz-stack,
+        .donations-common-range,
+        .donations-custom-range {
+            display: flex !important;
+            flex-direction: row !important;
+            flex-wrap: nowrap !important;
+            align-items: center !important;
+            min-width: 0;
+        }
+
+        .donations-account-control {
+            grid-column: 1;
+            grid-row: 2;
+            min-width: 0;
+            width: 100%;
+            max-width: none !important;
+        }
+
+        .donations-common-range,
+        .donations-custom-range,
+        .donations-account-control,
+        .donations-common-range > div,
+        .donations-custom-range > div,
+        .donations-account-control > div {
+            width: 100% !important;
+            box-sizing: border-box;
+        }
+
+        .donations-common-range,
+        .donations-custom-range,
+        .donations-account-control,
+        .donations-common-range .date-range-toolbar-box,
+        .donations-custom-range .date-range-apply-group,
+        .donations-account-control .date-range-toolbar-box {
+            white-space: nowrap;
+            overflow-x: visible;
+        }
+
+        .donations-custom-range .date-range-start-end-row,
+        .donations-custom-range .date-range-apply-group {
+            flex-wrap: nowrap !important;
+        }
+
+        .donations-custom-range .date-range-apply-group {
+            align-items: center !important;
+            min-width: max-content;
+        }
+
+        .donations-custom-range .date-range-start-end-row,
+        .donations-custom-range .rz-button {
+            flex: 0 0 auto;
+        }
+    }
+
+    @@media (max-width: 900px) {
+        .donations-filter-layout {
+            grid-template-columns: minmax(0, 1fr);
+        }
+
+        .donations-date-controls,
+        .donations-account-control {
+            grid-column: 1;
+        }
+
+        .donations-date-controls {
+            grid-row: 1;
+        }
+
+        .donations-account-control {
+            grid-row: 2;
+        }
+
+        .donations-date-controls > .rz-stack {
+            flex-direction: row !important;
+            flex-wrap: nowrap !important;
+        }
+
+        .donations-common-range .date-range-toolbar-box,
+        .donations-custom-range .date-range-apply-group,
+        .donations-account-control .date-range-toolbar-box {
+            max-width: 100%;
+        }
+    }
+
     @@media (max-width: 768px) {
+        .donations-custom-range .date-range-start-end-row {
+            flex-direction: row !important;
+            flex-wrap: nowrap !important;
+            align-items: center !important;
+            width: max-content !important;
+        }
+
+        .donations-custom-range .date-range-start-end-row > div {
+            width: auto !important;
+            justify-content: flex-start !important;
+        }
+
+        .donations-custom-range .date-range-apply-group {
+            flex-wrap: wrap !important;
+        }
+
         .donations-main-chart .rz-chart {
             min-width: 760px;
         }
@@ -250,17 +394,19 @@
 <RadzenStack Orientation="Orientation.Vertical" Gap="15px" Class="rz-p-4" Style="padding-top:0.5rem; max-width:100%; overflow-x:hidden; box-sizing:border-box;">
 
     <RadzenStack Orientation="Orientation.Horizontal"
+                 Class="donations-filter-layout"
                  Gap="2rem"
                  JustifyContent="JustifyContent.SpaceBetween"
                  AlignItems="AlignItems.Start"
                  Wrap="FlexWrap.Wrap"
                  Style="width:100%; max-width:100%; box-sizing:border-box;">
 
-        <RadzenStack Orientation="Orientation.Vertical" Gap="0.4rem" Style="flex:1;">
+        <RadzenStack Orientation="Orientation.Horizontal" Gap="0.5rem" Style="flex:1;" Class="donations-date-controls">
             <RadzenStack Orientation="Orientation.Horizontal"
                          Gap="0.5rem"
                          AlignItems="AlignItems.Center"
-                         Wrap="FlexWrap.Wrap">
+                         Wrap="FlexWrap.Wrap"
+                         Class="donations-common-range">
                 <div class="date-range-toolbar-box" style="display:flex;align-items:center;gap:0.5rem;">
                     <RadzenLabel Text="@Localizer["CommonRanges"]" />
                     <!-- Preset dropdown -->
@@ -283,6 +429,12 @@
                     </Template>
                 </RadzenDropDown>
                 </div>
+            </RadzenStack>
+            <RadzenStack Orientation="Orientation.Horizontal"
+                         Gap="0.5rem"
+                         AlignItems="AlignItems.Center"
+                         Wrap="FlexWrap.Wrap"
+                         Class="donations-custom-range">
                 <div class="date-range-apply-group" style="display:flex;align-items:center;gap:0.5rem;flex-wrap:wrap;">
                     <div class="date-range-start-end-row" style="display:flex;align-items:center;gap:0.5rem;flex-wrap:nowrap;">
                     <div style="display:flex;align-items:center;gap:0.5rem;">
@@ -305,7 +457,7 @@
             </RadzenStack>
         </RadzenStack>
 
-        <RadzenStack Orientation="Orientation.Vertical" Gap="0.4rem" Style="flex:1; max-width:420px;">
+        <RadzenStack Orientation="Orientation.Vertical" Gap="0.4rem" Style="flex:1; max-width:420px;" Class="donations-account-control">
             <div class="date-range-toolbar-box" style="width:420px; max-width:100%; box-sizing:border-box;">
                 <div style="display:flex;align-items:center;gap:0.5rem;flex-wrap:nowrap;">
                     <RadzenLabel Text="@Localizer["Account"]" />
@@ -534,6 +686,10 @@
                             </RadzenDataGridColumn>
                         </Columns>
                     </RadzenDataGrid>
+                    <div style="display:flex;justify-content:flex-end;gap:0.5rem;padding:0.75rem 1rem;font-weight:600;border-top:1px solid var(--rz-border-color);">
+                        <span>@Localizer["Total"]:</span>
+                        <span>@selectedDonations.Sum(d => Convert.ToDecimal(d.Amount)).ToString("C2")</span>
+                    </div>
                 </div>
             </div>
         </SectionLoadingBoundary>

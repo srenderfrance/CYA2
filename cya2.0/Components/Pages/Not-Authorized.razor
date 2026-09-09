@@ -3,20 +3,20 @@
 @attribute [AllowAnonymous]
 @inject IStringLocalizer<Resource> Localizer
 
-<PageTitle>Not Authorized</PageTitle>
+<PageTitle>@Localizer["NotAuthorized"]</PageTitle>
 
 <div class="row justify-content-center mt-5">
     <div class="col-md-6">
         <div class="card">
             <div class="card-header bg-danger text-white">
-                <h3 class="text-center">Not Authorized</h3>
+                <h3 class="text-center">@Localizer["NotAuthorized"]</h3>
             </div>
             <div class="card-body text-center">
-                <p>Your Google account has not been pre-registered in the system.</p>
-                <p>Please contact your administrator to request access.</p>
-                <p class="mt-4">Or try signing in with a different Google account:</p>
+                <p>@Localizer["GoogleAccountNotRegistered"]</p>
+                <p>@Localizer["ContactAdministratorForAccess"]</p>
+                <p class="mt-4">@Localizer["TryDifferentGoogleAccount"]</p>
                 <a href="/api/login" class="btn btn-primary">
-                    <i class="bi bi-google me-2"></i> Sign in with different account
+                    <i class="bi bi-google me-2"></i> @Localizer["SignInWithDifferentAccount"]
                 </a>
             </div>
         </div>

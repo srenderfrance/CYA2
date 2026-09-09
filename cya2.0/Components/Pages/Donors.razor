@@ -141,7 +141,7 @@
                         </div>
                     }
                 </div>
-                <RadzenButton Text="Clear" Click="@(()=> ClearDonorSelection())" ButtonStyle="ButtonStyle.Light" Style="margin-left:0.5rem;" />
+                <RadzenButton Text="@Localizer["Clear"]" Click="@(()=> ClearDonorSelection())" ButtonStyle="ButtonStyle.Light" Style="margin-left:0.5rem;" />
             </div>
 
             @if (!string.IsNullOrWhiteSpace(selectedDonor))
