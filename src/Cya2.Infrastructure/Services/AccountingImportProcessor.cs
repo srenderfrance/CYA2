@@ -15,6 +15,7 @@ namespace Cya2.Infrastructure.Services
 {
     internal sealed class AccountingImportProcessor : IImportProcessor
     {
+        private static readonly SemaphoreSlim ImportGate = new(1, 1);
         private readonly IConfiguration _config;
         private readonly ILogger<AccountingImportProcessor> _logger;
         private readonly IImportProgressService _progressService;
@@ -42,6 +43,21 @@ namespace Cya2.Infrastructure.Services
 
         private async Task<ImportResult> ProcessAsync(Stream file, CancellationToken ct, string progressId)
         {
+            await ImportGate.WaitAsync(ct);
+            try
+            {
+                _logger.LogInformation("Accounting import acquired the single-import connection gate. progressId={ProgressId}", progressId);
+                return await ProcessImportCoreAsync(file, ct, progressId);
+            }
+            finally
+            {
+                ImportGate.Release();
+                _logger.LogInformation("Accounting import released the single-import connection gate. progressId={ProgressId}", progressId);
+            }
+        }
+
+        private async Task<ImportResult> ProcessImportCoreAsync(Stream file, CancellationToken ct, string progressId)
+        {
             var result = new ImportResult { ProgressId = progressId };
 
             using var package = new ExcelPackage(file);
@@ -59,8 +75,25 @@ namespace Cya2.Infrastructure.Services
             int headerRow = 5, firstDataRow = 6;
             var map = BuildColumnMap(ws, headerRow);
 
+            _logger.LogInformation(
+                "Accounting import header validation: worksheet={Worksheet} headerRow={HeaderRow} dimension={Dimension} headings={Headings}",
+                ws.Name,
+                headerRow,
+                ws.Dimension?.Address ?? "(none)",
+                string.Join(", ", GetHeaderDescriptions(ws, headerRow)));
+
             string[] required = { "Class", "Date", "Num", "Amount", "Account #", "Account", "Type" };
-            foreach (var col in required) if (!map.ContainsKey(col)) result.Errors.Add($"Missing column: {col}");
+            foreach (var col in required)
+            {
+                if (!map.ContainsKey(col))
+                {
+                    _logger.LogWarning(
+                        "Accounting import missing required column: expected={ExpectedColumn} headerRow={HeaderRow}",
+                        col,
+                        headerRow);
+                    result.Errors.Add($"Missing column: {col}");
+                }
+            }
 
             if (result.Errors.Count > 0)
             {
@@ -169,5 +202,18 @@ namespace Cya2.Infrastructure.Services
             }
             return map;
         }
+
+        private static IEnumerable<string> GetHeaderDescriptions(OfficeOpenXml.ExcelWorksheet ws, int headerRow)
+        {
+            int lastCol = ws.Dimension?.End.Column ?? 0;
+            for (int column = 1; column <= lastCol; column++)
+            {
+                var heading = ws.Cells[headerRow, column]?.Text ?? string.Empty;
+                yield return $"{ExcelCellAddress.GetColumnLetter(column)}={FormatLogValue(heading)}";
+            }
+        }
+
+        private static string FormatLogValue(string value)
+            => string.IsNullOrEmpty(value) ? "<blank>" : $"'{value.Replace("'", "''", StringComparison.Ordinal)}'";
     }
 }

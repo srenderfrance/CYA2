@@ -107,7 +107,7 @@
                     <!-- Toggle row (no special bottom margin so it matches other rows) -->
                     <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="2rem" Class="admin-form-row admin-form-first-row">
                         <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="0.5rem" Style="width: 220px;" Class="admin-form-label">
-                            <RadzenText TextStyle="TextStyle.Subtitle2" Class="admin-label" Style="font-weight: bold;">@(createSubFund ? Localizer["ManageSecondaryFunds"] : Localizer["ManagePrimaryFunds"])</RadzenText>
+                            <RadzenText TextStyle="TextStyle.Subtitle2" Class="admin-label" Style="font-weight: bold;">@(createSubFund ? Localizer["ManageSecondaryFunds"] : Localizer["ManagePrimaryAccounts"])</RadzenText>
                         </RadzenStack>
                         <div style="flex: 1; display:flex; align-items:center;">
                             <RadzenSwitch @bind-value="createSubFund" Class="admin-mode-switch" />
@@ -294,7 +294,7 @@
                              <!-- Add New Sub Account Button -->
                              <RadzenStack Orientation="Orientation.Horizontal" Gap="1rem" Class="admin-fund-actions">
                                  <RadzenButton Text="@Localizer["AddNewFund"]" ButtonStyle="ButtonStyle.Primary" Click="@(async () => await AddNewFund())" />
-                                 <RadzenButton Text="@Localizer["UpdateFund"]" ButtonStyle="ButtonStyle.Primary" Click="@(async () => await UpdateSubAccountAsync())" Disabled="@IsAddNewSubAccountSelected" />
+                                  <RadzenButton Text="@Localizer["SaveChanges"]" ButtonStyle="ButtonStyle.Primary" Click="@(async () => await UpdateSubAccountAsync())" Disabled="@IsAddNewSubAccountSelected" />
                                  <RadzenButton Text="@Localizer["DeleteFund"]" ButtonStyle="ButtonStyle.Danger" Click="@(async () => await DeleteSubAccountAsync())" Disabled="@IsAddNewSubAccountSelected" />
                              </RadzenStack>
                          </RadzenStack>
@@ -322,18 +322,18 @@
                 <!-- Primary Account Management Buttons -->
                 <div class="admin-fund-actions admin-action-row">
                     <RadzenButton 
-                        Text="@Localizer["UpdateAccount"]" 
-                        ButtonStyle="ButtonStyle.Primary" 
-                        Class="admin-action-btn"
-                        Click="UpdateFund" 
-                        Disabled="@(string.IsNullOrEmpty(selectedFund) || IsAddNewAccountSelected)" />
-                        
-                    <RadzenButton 
                         Text="@Localizer["AddNewAccount"]" 
                         ButtonStyle="ButtonStyle.Primary" 
                         Class="admin-action-btn"
                         Click="@(async () => await AddNewFund())" 
                         Disabled="@(!IsAddNewAccountSelected)" />
+
+                    <RadzenButton 
+                        Text="@Localizer["SaveChanges"]" 
+                        ButtonStyle="ButtonStyle.Primary" 
+                        Class="admin-action-btn"
+                        Click="UpdateFund" 
+                        Disabled="@(string.IsNullOrEmpty(selectedFund) || IsAddNewAccountSelected)" />
                         
                     <RadzenButton 
                         Text="@Localizer["DeleteAccount"]" 
@@ -516,18 +516,18 @@
             <!-- Update and Add buttons -->
             <div class="admin-action-row" style="margin-top: 1rem;">
                 <RadzenButton 
-                    Text="@Localizer["UpdateUser"]" 
-                    ButtonStyle="ButtonStyle.Primary" 
-                    Class="admin-action-btn"
-                    Click="UpdateStaffMember" 
-                    Disabled="@(string.IsNullOrEmpty(staffMember) || IsAddNewSelected)" />
-                    
-                <RadzenButton 
                     Text="@Localizer["AddNewUser"]" 
                     ButtonStyle="ButtonStyle.Primary" 
                     Class="admin-action-btn"
                     Click="@(async () => await AddNewStaffMember())" 
                     Disabled="@(!IsAddNewSelected)" />
+
+                <RadzenButton 
+                    Text="@Localizer["SaveChanges"]" 
+                    ButtonStyle="ButtonStyle.Primary" 
+                    Class="admin-action-btn"
+                    Click="UpdateStaffMember" 
+                    Disabled="@(string.IsNullOrEmpty(staffMember) || IsAddNewSelected)" />
                     
                 <RadzenButton 
                     Text="@Localizer["DeleteUser"]" 
@@ -632,8 +632,8 @@
                     NotificationService.Notify(new NotificationMessage
                     {
                         Severity = NotificationSeverity.Error,
-                        Summary = "Upload Error",
-                        Detail = "No response from server for preview.",
+                        Summary = Localizer["UploadError"],
+                        Detail = Localizer["NoPreviewResponse"],
                         Duration = 4000
                     });
                     return;
@@ -649,8 +649,8 @@
                     NotificationService.Notify(new NotificationMessage
                     {
                         Severity = NotificationSeverity.Error,
-                        Summary = "Upload Error",
-                        Detail = "Could not read preview information.",
+                        Summary = Localizer["UploadError"],
+                        Detail = Localizer["PreviewReadFailed"],
                         Duration = 4000
                     });
                     return;
@@ -677,7 +677,7 @@
                 NotificationService.Notify(new NotificationMessage
                 {
                     Severity = NotificationSeverity.Error,
-                    Summary = "Upload Error",
+                    Summary = Localizer["UploadError"],
                     Detail = ex.Message,
                     Duration = 4000
                 });
@@ -728,8 +728,8 @@
                     NotificationService.Notify(new NotificationMessage
                     {
                         Severity = NotificationSeverity.Error,
-                        Summary = "Import Error",
-                        Detail = "Import did not return a progress id.",
+                        Summary = Localizer["ImportError"],
+                        Detail = Localizer["ImportProgressIdMissing"],
                         Duration = 4000
                     });
 
@@ -761,7 +761,7 @@
                 NotificationService.Notify(new NotificationMessage
                 {
                     Severity = NotificationSeverity.Error,
-                    Summary = "Import Error",
+                        Summary = Localizer["ImportError"],
                     Detail = ex.Message,
                     Duration = 4000
                 });
@@ -793,7 +793,7 @@
                 NotificationService.Notify(new NotificationMessage
                 {
                     Severity = NotificationSeverity.Error,
-                    Summary = "Upload Error",
+                    Summary = Localizer["UploadError"],
                     Detail = ex.Message,
                     Duration = 4000
                 });
@@ -823,7 +823,7 @@
                 NotificationService.Notify(new NotificationMessage
                 {
                     Severity = NotificationSeverity.Error,
-                    Summary = "Upload Error",
+                    Summary = Localizer["UploadError"],
                     Detail = ex.Message,
                     Duration = 4000
                 });

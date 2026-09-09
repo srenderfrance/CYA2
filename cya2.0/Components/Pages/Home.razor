@@ -28,8 +28,17 @@
 @inject Cya2.Application.Interfaces.IDateRangeStateService DateRangeStateService
 @inject cya2.Services.UserSessionHydrationService SessionHydrationService
 @inject cya2.Services.Diagnostics.PageLoadCorrelationContext PageLoadCorrelation
+@inject TooltipService TooltipService
 
 <style>
+    .overhead-tooltip-indicator {
+        margin-left: 0.2rem;
+        color: #355c7d;
+        font-size: 0.8em;
+        cursor: help;
+        vertical-align: 0.05em;
+    }
+
     .home-account-row {
         min-width: 0;
     }
@@ -263,7 +272,9 @@ else
                 @if (!showVisualizations && missingGiftDonors.Count > 0)
                 {
                     <div style="width:100%;">
-                        <RadzenButton Text=@($"Missing Monthly Donations ({missingGiftDonors.Count})")
+                        <RadzenButton Text="@(missingGiftDonors.Count == 1
+                            ? Localizer["MissingMonthlyDonation"]
+                            : Localizer["MissingMonthlyDonations", missingGiftDonors.Count])"
                                       Icon="warning"
                                       ButtonStyle="ButtonStyle.Danger"
                                       Size="ButtonSize.Small"
@@ -279,7 +290,7 @@ else
         {
             <RadzenCard class="mt-3" Style="border: 1px solid var(--rz-danger); background: var(--rz-base-background-color);">
                 <RadzenStack Orientation="Orientation.Horizontal" JustifyContent="JustifyContent.SpaceBetween" AlignItems="AlignItems.Center" Gap="0.5rem" Class="mb-2">
-                    <RadzenText TextStyle="TextStyle.Subtitle1" Style="font-weight:600;" Class="home-missing-gift-title">Missing donations during @GetMissingGiftMonthsText().</RadzenText>
+                    <RadzenText TextStyle="TextStyle.Subtitle1" Style="font-weight:600;" Class="home-missing-gift-title">@Localizer["MissingDonationsDuring", GetMissingGiftMonthsText()]</RadzenText>
                     <RadzenButton Icon="close" ButtonStyle="ButtonStyle.Light" Size="ButtonSize.ExtraSmall" Click="@(() => showMissingGiftDialog = false)" />
                 </RadzenStack>
                 <RadzenDataGrid TItem="Cya2.Application.DTOs.DonorSummaryDto"
@@ -288,8 +299,8 @@ else
                                 AllowPaging="false"
                                 Style="width:100%;">
                     <Columns>
-                        <RadzenDataGridColumn TItem="Cya2.Application.DTOs.DonorSummaryDto" Property="Name" Title="Donor" />
-                        <RadzenDataGridColumn TItem="Cya2.Application.DTOs.DonorSummaryDto" Title="Missing Months">
+                        <RadzenDataGridColumn TItem="Cya2.Application.DTOs.DonorSummaryDto" Property="Name" Title="@Localizer["Donor"]" />
+                        <RadzenDataGridColumn TItem="Cya2.Application.DTOs.DonorSummaryDto" Title="@Localizer["MissingMonths"]">
                             <Template Context="d">
                                 @string.Join(", ", d.MissingMonths)
                             </Template>
@@ -333,7 +344,13 @@ else
                         }
 
                         <div class="d-flex justify-content-between">
-                            <RadzenText TextStyle="TextStyle.Body1">@Localizer["Overhead"]</RadzenText>
+                             <RadzenText TextStyle="TextStyle.Body1">
+                                 <span @ref="currentMonthOverheadElement"
+                                       @onmouseenter="@(() => ShowOverheadTooltip(currentMonthOverheadElement))"
+                                       @onmouseleave="CloseOverheadTooltip">
+                                     @Localizer["Overhead"] <i class="bi bi-info-circle overhead-tooltip-indicator" aria-hidden="true"></i>
+                                 </span>
+                             </RadzenText>
                             <RadzenText TextStyle="TextStyle.Body1">
                                 <span class="fw-bold">@dashboardData.CurrentMonth.TotalOverhead.ToString("C", CultureInfo.CurrentCulture)</span>
                             </RadzenText>
@@ -401,7 +418,13 @@ else
                         }
 
                         <div class="d-flex justify-content-between">
-                            <RadzenText TextStyle="TextStyle.Body1">@Localizer["Overhead"]</RadzenText>
+                             <RadzenText TextStyle="TextStyle.Body1">
+                                 <span @ref="priorMonthOverheadElement"
+                                       @onmouseenter="@(() => ShowOverheadTooltip(priorMonthOverheadElement))"
+                                       @onmouseleave="CloseOverheadTooltip">
+                                     @Localizer["Overhead"] <i class="bi bi-info-circle overhead-tooltip-indicator" aria-hidden="true"></i>
+                                 </span>
+                             </RadzenText>
                             <div class="text-end">
                                 <RadzenText TextStyle="TextStyle.Body1">
                                     <span class="fw-bold">@dashboardData.PriorMonth.TotalOverhead.ToString("C", CultureInfo.CurrentCulture)</span>
@@ -475,7 +498,13 @@ else
                         }
 
                         <div class="d-flex justify-content-between">
-                            <RadzenText TextStyle="TextStyle.Body1">@Localizer["Overhead"]</RadzenText>
+                             <RadzenText TextStyle="TextStyle.Body1">
+                                 <span @ref="currentYearOverheadElement"
+                                       @onmouseenter="@(() => ShowOverheadTooltip(currentYearOverheadElement))"
+                                       @onmouseleave="CloseOverheadTooltip">
+                                     @Localizer["Overhead"] <i class="bi bi-info-circle overhead-tooltip-indicator" aria-hidden="true"></i>
+                                 </span>
+                             </RadzenText>
                             <div class="text-end">
                                 <RadzenText TextStyle="TextStyle.Body1">
                                     <span class="fw-bold">@dashboardData.CurrentYear.TotalOverhead.ToString("C", CultureInfo.CurrentCulture)</span>
@@ -549,7 +578,13 @@ else
                         }
 
                         <div class="d-flex justify-content-between">
-                            <RadzenText TextStyle="TextStyle.Body1">@Localizer["Overhead"]</RadzenText>
+                             <RadzenText TextStyle="TextStyle.Body1">
+                                 <span @ref="priorYearOverheadElement"
+                                       @onmouseenter="@(() => ShowOverheadTooltip(priorYearOverheadElement))"
+                                       @onmouseleave="CloseOverheadTooltip">
+                                     @Localizer["Overhead"] <i class="bi bi-info-circle overhead-tooltip-indicator" aria-hidden="true"></i>
+                                 </span>
+                             </RadzenText>
                             <div class="text-end">
                                 <RadzenText TextStyle="TextStyle.Body1">
                                     <span class="fw-bold">@dashboardData.PriorYear.TotalOverhead.ToString("C", CultureInfo.CurrentCulture)</span>
@@ -745,6 +780,11 @@ private string selectedAccount = string.Empty;
 private bool isAdminUser;
 private bool isInternAccountSelected;
 
+private ElementReference currentMonthOverheadElement;
+private ElementReference priorMonthOverheadElement;
+private ElementReference currentYearOverheadElement;
+private ElementReference priorYearOverheadElement;
+
 private FinancialDashboardDto dashboardData = new();
 private string debugMessage = string.Empty;
 
@@ -802,25 +842,27 @@ private bool showMissingGiftDialog = false;
             .ToList();
 
         if (months.Count == 0)
-            return "the reported period";
+            return Localizer["ReportedPeriod"];
 
         var yearGroups = months
             .GroupBy(month => month.Year)
             .OrderBy(group => group.Key)
-            .Select(group => JoinWithAnd(group.Select(month => month.ToString("MMMM", CultureInfo.InvariantCulture)).ToList()) + $" {group.Key}")
+            .Select(group => JoinWithAnd(group.Select(month => month.ToString("MMMM", CultureInfo.CurrentCulture)).ToList()) + $" {group.Key}")
             .ToList();
 
         return JoinWithAnd(yearGroups);
     }
 
-    private static string JoinWithAnd(IReadOnlyList<string> values)
+    private string JoinWithAnd(IReadOnlyList<string> values)
     {
+        var conjunction = Localizer["And"];
+
         return values.Count switch
         {
             0 => string.Empty,
             1 => values[0],
-            2 => $"{values[0]} and {values[1]}",
-            _ => $"{string.Join(", ", values.Take(values.Count - 1))} and {values[^1]}"
+            2 => $"{values[0]} {conjunction} {values[1]}",
+            _ => $"{string.Join(", ", values.Take(values.Count - 1))} {conjunction} {values[^1]}"
         };
     }
 
@@ -888,6 +930,10 @@ private bool showMissingGiftDialog = false;
             visualizationPresetOptions = DateRangeHelper.GetPresetOptions(Localizer)
                 .Select(p => new DatePresetOption { Value = p.preset, Text = p.displayName })
                 .ToList();
+
+            visualizationGraphTypeOptions[0].Text = Localizer["LineChart"];
+            visualizationGraphTypeOptions[1].Text = Localizer["AreaChart"];
+            visualizationGraphTypeOptions[2].Text = Localizer["ColumnChart"];
 
             var (vizStart, vizEnd) = DateRangeHelper.GetPresetDateRange(visualizationSelectedPreset);
             visualizationPendingStartDate = vizStart.Date;
@@ -1256,6 +1302,21 @@ private bool showMissingGiftDialog = false;
         {
             Logger.LogWarning(ex, "Home.BuildDebugMessage failed");
         }
+    }
+
+    private void ShowOverheadTooltip(ElementReference element)
+    {
+        TooltipService.Open(element, "This number is an estimate.", new TooltipOptions
+        {
+            Position = TooltipPosition.Bottom,
+            Duration = 10000,
+            CssClass = "tooltip-information"
+        });
+    }
+
+    private void CloseOverheadTooltip()
+    {
+        TooltipService.Close();
     }
 
     private async Task CopyDebugMessageAsync()

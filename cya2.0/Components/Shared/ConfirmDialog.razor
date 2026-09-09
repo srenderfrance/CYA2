@@ -1,14 +1,15 @@
 ﻿@* Components/Shared/ConfirmDialog.razor *@
+@inject IStringLocalizer<Resource> Localizer
 <div class="modal-overlay @(Show ? "show" : "")">
     <div class="modal-content">
-        <h3>@Title</h3>
-        <p>@Message</p>
+        <h3>@DisplayTitle</h3>
+        <p>@DisplayMessage</p>
         <div class="button-row">
-            <RadzenButton Text="@CancelText"
+            <RadzenButton Text="@DisplayCancelText"
                           ButtonStyle="ButtonStyle.Light"
                           Click="@OnCancel"
                           Style="margin-right: 1rem;" />
-            <RadzenButton Text="@ConfirmText"
+            <RadzenButton Text="@DisplayConfirmText"
                           ButtonStyle="@ConfirmButtonStyle"
                           Click="@OnConfirm" />
         </div>
@@ -17,11 +18,16 @@
 
 @code {
     [Parameter] public bool Show { get; set; }
-    [Parameter] public string Title { get; set; } = "Confirm";
-    [Parameter] public string Message { get; set; } = "Are you sure?";
-    [Parameter] public string ConfirmText { get; set; } = "Yes";
-    [Parameter] public string CancelText { get; set; } = "No";
+    [Parameter] public string? Title { get; set; }
+    [Parameter] public string? Message { get; set; }
+    [Parameter] public string? ConfirmText { get; set; }
+    [Parameter] public string? CancelText { get; set; }
     [Parameter] public ButtonStyle ConfirmButtonStyle { get; set; } = ButtonStyle.Danger;
     [Parameter] public EventCallback OnConfirm { get; set; }
     [Parameter] public EventCallback OnCancel { get; set; }
+
+    private string DisplayTitle => string.IsNullOrWhiteSpace(Title) ? Localizer["Confirm"] : Title;
+    private string DisplayMessage => string.IsNullOrWhiteSpace(Message) ? Localizer["AreYouSure"] : Message;
+    private string DisplayConfirmText => string.IsNullOrWhiteSpace(ConfirmText) ? Localizer["Yes"] : ConfirmText;
+    private string DisplayCancelText => string.IsNullOrWhiteSpace(CancelText) ? Localizer["No"] : CancelText;
 }

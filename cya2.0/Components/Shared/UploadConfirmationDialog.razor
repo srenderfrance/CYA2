@@ -3,11 +3,11 @@
 
 <RadzenCard Class="upload-confirm-dialog-card" Style="padding: 1rem; width:100%; max-width:100%; box-sizing:border-box;">
     <RadzenStack Orientation="Orientation.Vertical" Gap="1rem">
-        <RadzenText TextStyle="TextStyle.H6">Confirm File Upload</RadzenText>
+        <RadzenText TextStyle="TextStyle.H6">@Localizer["ConfirmFileUpload"]</RadzenText>
 
         <RadzenStack Orientation="Orientation.Vertical" Gap="0.5rem" Style="background-color:#f8f9fa; padding:0.75rem; border-radius:4px;">
-            <div><b>File name:</b> @Preview?.FileName</div>
-            <div><b>Size:</b> @(Preview == null ? "" : FormatSize(Preview.FileSizeBytes))</div>
+            <div><b>@Localizer["FileName"]:</b> @Preview?.FileName</div>
+            <div><b>@Localizer["Size"]:</b> @(Preview == null ? "" : FormatSize(Preview.FileSizeBytes))</div>
             @if (Preview != null && !IsLikelyExcelFile(Preview))
             {
                 <div style="color:#910813; font-weight:600;">
@@ -17,12 +17,12 @@
         </RadzenStack>
 
         <RadzenText TextStyle="TextStyle.Body2">
-            This file will be used to update the database. Are you sure this is the correct file?
+            @Localizer["ConfirmFileUploadMessage"]
         </RadzenText>
 
         <RadzenStack Orientation="Orientation.Horizontal" JustifyContent="JustifyContent.End" Gap="0.75rem" Class="upload-confirm-actions">
-            <RadzenButton Text="Cancel" ButtonStyle="ButtonStyle.Light" Click="@(() => DialogService.Close(false))" />
-            <RadzenButton Text="Confirm"
+            <RadzenButton Text="@Localizer["Cancel"]" ButtonStyle="ButtonStyle.Light" Click="@(() => DialogService.Close(false))" />
+            <RadzenButton Text="@Localizer["Confirm"]"
                           ButtonStyle="ButtonStyle.Primary"
                           Click="@(() => DialogService.Close(true))"
                           Disabled="@(Preview == null || !IsLikelyExcelFile(Preview))" />

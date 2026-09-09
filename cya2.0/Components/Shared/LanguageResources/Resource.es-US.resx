@@ -249,6 +249,24 @@
   <data name="LanguagePreference" xml:space="preserve">
     <value>Preferencia de Idioma</value>
   </data>
+  <data name="English" xml:space="preserve">
+    <value>Inglés</value>
+  </data>
+  <data name="Spanish" xml:space="preserve">
+    <value>Español</value>
+  </data>
+  <data name="NoLanguageChange" xml:space="preserve">
+    <value>No se realizó ningún cambio de idioma.</value>
+  </data>
+  <data name="LanguageUpdated" xml:space="preserve">
+    <value>El idioma se actualizó correctamente.</value>
+  </data>
+  <data name="LanguageUpdateFailed" xml:space="preserve">
+    <value>No se pudo actualizar el idioma.</value>
+  </data>
+  <data name="ErrorSavingLanguage" xml:space="preserve">
+    <value>Error al guardar la configuración de idioma:</value>
+  </data>
   <data name="LinkAccountToUser" xml:space="preserve">
     <value>Vincular Cuenta al Usuario</value>
   </data>
@@ -303,6 +321,33 @@
   <data name="Overhead" xml:space="preserve">
     <value>Comisión</value>
   </data>
+  <data name="And" xml:space="preserve">
+    <value>y</value>
+  </data>
+  <data name="MissingMonthlyDonations" xml:space="preserve">
+    <value>Donaciones mensuales faltantes ({0})</value>
+  </data>
+  <data name="MissingMonthlyDonation" xml:space="preserve">
+    <value>Donación mensual faltante (1)</value>
+  </data>
+  <data name="MissingDonationsDuring" xml:space="preserve">
+    <value>Faltan donaciones durante {0}.</value>
+  </data>
+  <data name="ReportedPeriod" xml:space="preserve">
+    <value>el período informado</value>
+  </data>
+  <data name="MissingMonths" xml:space="preserve">
+    <value>Meses faltantes</value>
+  </data>
+  <data name="LineChart" xml:space="preserve">
+    <value>Línea</value>
+  </data>
+  <data name="AreaChart" xml:space="preserve">
+    <value>Área</value>
+  </data>
+  <data name="ColumnChart" xml:space="preserve">
+    <value>Columna</value>
+  </data>
   <data name="PriorMonth" xml:space="preserve">
     <value>Mes Anterior</value>
   </data>
@@ -329,6 +374,57 @@
   </data>
   <data name="SignInWithGoogle" xml:space="preserve">
     <value>Iniciar sesión con Google</value>
+  </data>
+  <data name="LoginRequired" xml:space="preserve">
+    <value>Inicio de sesión requerido</value>
+  </data>
+  <data name="LoginError" xml:space="preserve">
+    <value>Error de inicio de sesión</value>
+  </data>
+  <data name="CouldNotProcessSignIn" xml:space="preserve">
+    <value>No pudimos procesar su inicio de sesión</value>
+  </data>
+  <data name="LoginAttemptNotCompleted" xml:space="preserve">
+    <value>No se pudo completar su intento de inicio de sesión.</value>
+  </data>
+  <data name="TrySigningInAgain" xml:space="preserve">
+    <value>Intente iniciar sesión nuevamente.</value>
+  </data>
+  <data name="TrySignInAgain" xml:space="preserve">
+    <value>Intentar iniciar sesión nuevamente</value>
+  </data>
+  <data name="NotAuthorized" xml:space="preserve">
+    <value>No autorizado</value>
+  </data>
+  <data name="GoogleAccountNotRegistered" xml:space="preserve">
+    <value>Su cuenta de Google no ha sido registrada previamente en el sistema.</value>
+  </data>
+  <data name="ContactAdministratorForAccess" xml:space="preserve">
+    <value>Comuníquese con su administrador para solicitar acceso.</value>
+  </data>
+  <data name="TryDifferentGoogleAccount" xml:space="preserve">
+    <value>O intente iniciar sesión con otra cuenta de Google:</value>
+  </data>
+  <data name="SignInWithDifferentAccount" xml:space="preserve">
+    <value>Iniciar sesión con otra cuenta</value>
+  </data>
+  <data name="PleaseSignIn" xml:space="preserve">
+    <value>Inicie sesión.</value>
+  </data>
+  <data name="NotAuthorizedResource" xml:space="preserve">
+    <value>No está autorizado para acceder a este recurso.</value>
+  </data>
+  <data name="LoadingEllipsis" xml:space="preserve">
+    <value>Cargando...</value>
+  </data>
+  <data name="Authorizing" xml:space="preserve">
+    <value>Autorizando...</value>
+  </data>
+  <data name="NotFound" xml:space="preserve">
+    <value>No encontrado</value>
+  </data>
+  <data name="NothingAtAddress" xml:space="preserve">
+    <value>Lo sentimos, no hay nada en esta dirección.</value>
   </data>
   <data name="StaffAccount" xml:space="preserve">
     <value>Cuenta del Personal</value>
@@ -507,6 +603,12 @@
   <data name="ManageSecondaryFund" xml:space="preserve">
     <value>Administrar Fondo Secondario</value>
   </data>
+  <data name="ManageSecondaryFunds" xml:space="preserve">
+    <value>Administrar Fondos Secundarios</value>
+  </data>
+  <data name="SecondaryFunds" xml:space="preserve">
+    <value>Fondos Secundarios</value>
+  </data>
   <data name="ThisMonth" xml:space="preserve">
     <value>Este Mes</value>
   </data>
@@ -615,14 +717,77 @@
   <data name="ManagePrimaryFund" xml:space="preserve">
     <value>AdministrarFondo Primario</value>
   </data>
+  <data name="ManagePrimaryAccounts" xml:space="preserve">
+    <value>Administrar Cuentas Principales</value>
+  </data>
   <data name="CreateNewFund" xml:space="preserve">
     <value>Crear Nuevo Fondo</value>
   </data>
   <data name="ConfirmUpload" xml:space="preserve">
     <value>Confirmar Carga</value>
   </data>
+  <data name="ConfirmFileUpload" xml:space="preserve">
+    <value>Confirmar carga de archivo</value>
+  </data>
+  <data name="FileName" xml:space="preserve">
+    <value>Nombre del archivo</value>
+  </data>
+  <data name="Size" xml:space="preserve">
+    <value>Tamaño</value>
+  </data>
+  <data name="ConfirmFileUploadMessage" xml:space="preserve">
+    <value>Este archivo se utilizará para actualizar la base de datos. ¿Está seguro de que este es el archivo correcto?</value>
+  </data>
+  <data name="Confirm" xml:space="preserve">
+    <value>Confirmar</value>
+  </data>
+  <data name="AreYouSure" xml:space="preserve">
+    <value>¿Está seguro?</value>
+  </data>
+  <data name="Yes" xml:space="preserve">
+    <value>Sí</value>
+  </data>
+  <data name="No" xml:space="preserve">
+    <value>No</value>
+  </data>
   <data name="UploadInProgress" xml:space="preserve">
     <value>Carga en Curso</value>
+  </data>
+  <data name="Starting" xml:space="preserve">
+    <value>Iniciando...</value>
+  </data>
+  <data name="WaitingForProgressId" xml:space="preserve">
+    <value>Esperando el identificador de progreso...</value>
+  </data>
+  <data name="InitializingImport" xml:space="preserve">
+    <value>Inicializando la importación...</value>
+  </data>
+  <data name="Processing" xml:space="preserve">
+    <value>Procesando...</value>
+  </data>
+  <data name="CompletedWithFailedRows" xml:space="preserve">
+    <value>{0} - {1} filas fallidas</value>
+  </data>
+  <data name="ErrorPollingProgress" xml:space="preserve">
+    <value>Error al consultar el progreso: {0}</value>
+  </data>
+  <data name="MoreErrors" xml:space="preserve">
+    <value>... y {0} errores más</value>
+  </data>
+  <data name="UploadError" xml:space="preserve">
+    <value>Error de carga</value>
+  </data>
+  <data name="NoPreviewResponse" xml:space="preserve">
+    <value>El servidor no devolvió una respuesta para la vista previa.</value>
+  </data>
+  <data name="PreviewReadFailed" xml:space="preserve">
+    <value>No se pudo leer la información de la vista previa.</value>
+  </data>
+  <data name="ImportError" xml:space="preserve">
+    <value>Error de importación</value>
+  </data>
+  <data name="ImportProgressIdMissing" xml:space="preserve">
+    <value>La importación no devolvió un identificador de progreso.</value>
   </data>
   <data name="UploadInvalidExcelFormatMessage" xml:space="preserve">
     <value>El archivo seleccionado no tiene el formato correcto. El archivo debe ser un archivo de Excel con extensión .xlsx.</value>
@@ -663,6 +828,9 @@
   <data name="Save" xml:space="preserve">
     <value>&#x8;Guardar</value>
   </data>
+  <data name="SaveChanges" xml:space="preserve">
+    <value>Guardar cambios</value>
+  </data>
   <data name="HorizontalaxisMonthVerticalaxisTotalDonationsUSD" xml:space="preserve">
     <value>Eje horizontal: Mes | Eje vertical: Total de donaciones (USD)</value>
   </data>
@@ -677,5 +845,125 @@
   </data>
   <data name="FrequencyView" xml:space="preserve">
     <value>Vista de Frecuencia</value>
+  </data>
+  <data name="CalculatingDonations" xml:space="preserve">
+    <value>Calculando donaciones...</value>
+  </data>
+  <data name="Cancel" xml:space="preserve">
+    <value>Cancelar</value>
+  </data>
+  <data name="Close" xml:space="preserve">
+    <value>Cerrar</value>
+  </data>
+  <data name="Completed" xml:space="preserve">
+    <value>Completado</value>
+  </data>
+  <data name="ConfirmDeleteFundMessage" xml:space="preserve">
+    <value>¿Está seguro de que desea eliminar la cuenta '{0}'?</value>
+  </data>
+  <data name="ConfirmDeleteUserMessage" xml:space="preserve">
+    <value>¿Está seguro de que desea eliminar al usuario '{0}'?</value>
+  </data>
+  <data name="ConfirmRollback" xml:space="preserve">
+    <value>Confirmar reversión</value>
+  </data>
+  <data name="ConfirmRollbackMessage" xml:space="preserve">
+    <value>¿Está seguro de que desea revertir: {0}?</value>
+  </data>
+  <data name="CopiedToClipboard" xml:space="preserve">
+    <value>Copiado al portapapeles.</value>
+  </data>
+  <data name="DataAnalysis" xml:space="preserve">
+    <value>Análisis de datos</value>
+  </data>
+  <data name="DatabaseBackup" xml:space="preserve">
+    <value>Copia de seguridad de la base de datos</value>
+  </data>
+  <data name="DatabaseUpdateProgress" xml:space="preserve">
+    <value>Progreso de actualización de la base de datos</value>
+  </data>
+  <data name="DataImport" xml:space="preserve">
+    <value>Importación de datos</value>
+  </data>
+  <data name="DeleteAccount" xml:space="preserve">
+    <value>Eliminar cuenta</value>
+  </data>
+  <data name="Done" xml:space="preserve">
+    <value>Listo</value>
+  </data>
+  <data name="DownloadStarted" xml:space="preserve">
+    <value>Descarga iniciada.</value>
+  </data>
+  <data name="ExecuteRollback" xml:space="preserve">
+    <value>Ejecutar reversión</value>
+  </data>
+  <data name="Failed" xml:space="preserve">
+    <value>Fallido</value>
+  </data>
+  <data name="FileValidation" xml:space="preserve">
+    <value>Validación del archivo</value>
+  </data>
+  <data name="ImportWarnings" xml:space="preserve">
+    <value>Advertencias de importación</value>
+  </data>
+  <data name="Inserted" xml:space="preserve">
+    <value>Insertadas</value>
+  </data>
+  <data name="LegacyBackup" xml:space="preserve">
+    <value>Copia de seguridad anterior</value>
+  </data>
+  <data name="NoAccountSelected" xml:space="preserve">
+    <value>No se ha seleccionado ninguna cuenta.</value>
+  </data>
+  <data name="NoBackupAvailable" xml:space="preserve">
+    <value>No hay ninguna copia de seguridad disponible</value>
+  </data>
+  <data name="NoBalancesFound" xml:space="preserve">
+    <value>No se encontraron saldos de cuenta.</value>
+  </data>
+  <data name="NoDonorsInRange" xml:space="preserve">
+    <value>No se encontraron donantes en el intervalo de fechas seleccionado.</value>
+  </data>
+  <data name="NotStarted" xml:space="preserve">
+    <value>No iniciado</value>
+  </data>
+  <data name="RollbackAccounting" xml:space="preserve">
+    <value>Datos contables</value>
+  </data>
+  <data name="RollbackBoth" xml:space="preserve">
+    <value>Revertir los datos de donaciones y contabilidad</value>
+  </data>
+  <data name="RollbackDescription" xml:space="preserve">
+    <value>Seleccione una o más tablas de datos para revertir. Esto deshará la última carga de cualquier tabla seleccionada.</value>
+  </data>
+  <data name="RollbackDonations" xml:space="preserve">
+    <value>Datos de donaciones</value>
+  </data>
+  <data name="Rows" xml:space="preserve">
+    <value>Filas</value>
+  </data>
+  <data name="Search" xml:space="preserve">
+    <value>Buscar</value>
+  </data>
+  <data name="Status" xml:space="preserve">
+    <value>Estado</value>
+  </data>
+  <data name="Type" xml:space="preserve">
+    <value>Tipo</value>
+  </data>
+  <data name="Unknown" xml:space="preserve">
+    <value>Desconocido</value>
+  </data>
+  <data name="UpdatingAccountingDataTable" xml:space="preserve">
+    <value>Actualizando la tabla de datos contables</value>
+  </data>
+  <data name="UpdatingDonationDataTable" xml:space="preserve">
+    <value>Actualizando la tabla de datos de donaciones</value>
+  </data>
+  <data name="UserNotAuthenticated" xml:space="preserve">
+    <value>El usuario no está autenticado.</value>
+  </data>
+  <data name="UserSettings" xml:space="preserve">
+    <value>Configuración del usuario</value>
   </data>
 </root>
