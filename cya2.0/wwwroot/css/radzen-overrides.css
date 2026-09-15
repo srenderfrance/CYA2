@@ -148,6 +148,22 @@
     overflow-y: auto !important;
 }
 
+.sub-account-dropdown.rz-dropdown {
+    height: 38px !important;
+    min-height: 38px !important;
+    max-height: 38px !important;
+    display: flex !important;
+    align-items: center !important;
+    box-sizing: border-box !important;
+}
+
+.sub-account-dropdown.rz-dropdown .rz-dropdown-label,
+.sub-account-dropdown.rz-dropdown .rz-dropdown-trigger {
+    height: 36px !important;
+    min-height: 0 !important;
+    box-sizing: border-box !important;
+}
+
 /* ------------------------------------------------------------
    2. RADZEN TOOLTIP
       Position fixed so it escapes any overflow:hidden parent.

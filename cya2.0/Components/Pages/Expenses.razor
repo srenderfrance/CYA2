@@ -33,18 +33,18 @@
 
     <!-- Top two control sections: date range on left, account + toggle on right -->
     <RadzenStack Orientation="Orientation.Horizontal"
+                 Class="date-account-filter-layout"
                  Gap="2rem"
                  JustifyContent="JustifyContent.SpaceBetween"
                  AlignItems="AlignItems.Start"
-                 Wrap="FlexWrap.Wrap"
-                 Style="width:100%;">
+                 Wrap="FlexWrap.Wrap">
 
         <!-- Left side: Date Range controls -->
-        <RadzenStack Orientation="Orientation.Vertical" Gap="0.4rem" Style="flex:1;">
+        <RadzenStack Orientation="Orientation.Horizontal" Gap="0.5rem" Class="shared-date-controls">
 
             <!-- Date Range section (match Donations/Donors layout: label above, controls in a single horizontal row) -->
-            <RadzenStack Orientation="Orientation.Horizontal" Gap="0.5rem" AlignItems="AlignItems.Center" Wrap="FlexWrap.Wrap">
-                <div class="date-range-toolbar-box" style="display:flex;align-items:center;gap:0.5rem;">
+            <RadzenStack Orientation="Orientation.Horizontal" Gap="0.5rem" AlignItems="AlignItems.Center" Wrap="FlexWrap.Wrap" Class="shared-common-range">
+                <div class="date-range-toolbar-box">
                     <RadzenLabel Text="@Localizer["CommonRanges"]" />
                     <!-- Preset dropdown -->
                 <RadzenDropDown TValue="Cya2.Application.DTOs.DateRangePreset"
@@ -66,14 +66,20 @@
                     </Template>
                 </RadzenDropDown>
                 </div>
-                <div class="date-range-apply-group" style="display:flex;align-items:center;gap:0.5rem;flex-wrap:wrap;">
-                    <div class="date-range-start-end-row" style="display:flex;align-items:center;gap:0.5rem;flex-wrap:nowrap;">
-                    <div style="display:flex;align-items:center;gap:0.5rem;">
+            </RadzenStack>
+            <RadzenStack Orientation="Orientation.Horizontal"
+                         Gap="0.5rem"
+                         AlignItems="AlignItems.Center"
+                         Wrap="FlexWrap.Wrap"
+                         Class="shared-custom-range">
+                <div class="date-range-apply-group shared-custom-range">
+                    <div class="date-range-start-end-row">
+                    <div class="date-range-field">
                         <RadzenLabel Text="@Localizer["StartDate"]" />
                         <RadzenDatePicker @bind-Value="@dateRangeState.PendingStartDate" DateFormat="MM/dd/yyyy" Style="max-width:130px"
                                           Change="@OnDatePickerChanged" />
                     </div>
-                    <div style="display:flex;align-items:center;gap:0.5rem;">
+                    <div class="date-range-field">
                         <RadzenLabel Text="@Localizer["EndDate"]" />
                         <RadzenDatePicker @bind-Value="@dateRangeState.PendingEndDate" DateFormat="MM/dd/yyyy" Style="max-width:130px"
                                           Change="@OnDatePickerChanged" />
@@ -89,9 +95,9 @@
         </RadzenStack>
 
         <!-- Right side: Account selector -->
-        <RadzenStack Orientation="Orientation.Vertical" Gap="0.4rem" Style="flex:1; max-width:420px;">
+        <RadzenStack Orientation="Orientation.Vertical" Gap="0.4rem" Class="shared-account-control">
             <div class="date-range-toolbar-box account-selector-box">
-                <div style="display:flex;align-items:center;gap:0.5rem;flex-wrap:nowrap;">
+                <div class="account-selector-row">
                     <RadzenLabel Text="@Localizer["Account"]" />
                     <AccountSelector TItem="AccountOptionDto" TValue="string"
                                      Data="@((expenseData.UserAccounts ?? new List<AccountOptionDto>()))"
@@ -131,7 +137,7 @@
 
         <!-- Grids and messages (right side) -->
         <div class="page-grid-col">
-            <div class="date-range-toolbar-box" style="width: fit-content; margin-top: 0.5rem; margin-bottom: 0.5rem;">
+            <div class="date-range-toolbar-box expenses-view-toolbar" style="width: fit-content; margin-top: 0.5rem; margin-bottom: 0.5rem;">
                 <div style="display:flex; align-items:center; gap:0.75rem; flex-wrap:wrap;">
                     <RadzenToggleButton Value="useMinimalView"
                                         ValueChanged="@(async (bool v) => await OnViewModeChange(v))"

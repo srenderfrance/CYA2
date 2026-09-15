@@ -147,6 +147,10 @@ a, .btn-link {
     margin: 0 auto;
 }
 
+.expenses-view-toolbar {
+    display: block;
+}
+
 .expense-grid-compact .rz-data-grid .rz-column-header,
 .expense-grid-compact .rz-data-grid .rz-cell,
 .expense-grid-compact .rz-data-grid .rz-column-footer {
@@ -255,6 +259,24 @@ a, .btn-link {
     width: min(420px, calc(100vw - 2rem)) !important;
 }
 
+.sub-account-control {
+    min-width: 0;
+}
+
+.sub-account-dropdown {
+    height: 38px !important;
+    min-height: 38px !important;
+    max-height: 38px !important;
+    box-sizing: border-box !important;
+}
+
+.sub-account-dropdown .rz-dropdown-label,
+.sub-account-dropdown .rz-inputtext {
+    height: auto !important;
+    min-height: 0 !important;
+    box-sizing: border-box !important;
+}
+
 .account-selector-dropdown .rz-dropdown-label,
 .account-selector-dropdown .rz-inputtext,
 .account-selector-value {
@@ -344,6 +366,257 @@ a, .btn-link {
         justify-content: space-between;
     }
 
+}
+
+/* Shared date/account controls layout for Donations, Donors, and Expenses. */
+.date-account-filter-layout {
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+}
+
+.date-range-apply-group,
+.date-range-start-end-row,
+.date-range-field,
+.account-selector-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.shared-common-range .date-range-toolbar-box {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.date-range-apply-group {
+    flex-wrap: wrap;
+}
+
+.date-range-start-end-row {
+    flex-wrap: nowrap;
+}
+
+.shared-date-controls {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.shared-common-range,
+.shared-custom-range {
+    flex: 0 0 auto;
+    min-width: 0;
+}
+
+.shared-account-control {
+    flex: 0 1 420px;
+    width: min(420px, 100%);
+    max-width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
+}
+
+.account-selector-row {
+    width: 100%;
+    min-width: 0;
+    flex-wrap: nowrap;
+}
+
+.account-selector-row > .rz-label,
+.account-selector-row > label {
+    flex: 0 0 auto;
+}
+
+.account-selector-row .account-selector-dropdown,
+.account-selector-row .account-selector-dropdown-inline {
+    flex: 1 1 0 !important;
+    min-width: 0;
+    width: auto !important;
+}
+
+.home-account-selector-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-wrap: nowrap;
+    width: 100%;
+    min-width: 0;
+}
+
+.home-account-selector-row > .rz-label,
+.home-account-selector-row > label {
+    flex: 0 0 auto;
+}
+
+.home-account-selector-row .account-selector-dropdown,
+.home-account-selector-row .account-selector-dropdown-inline {
+    flex: 1 1 0 !important;
+    min-width: 0;
+    width: auto !important;
+}
+
+@media (max-width: 1100px) {
+    .date-account-filter-layout {
+        display: grid !important;
+        grid-template-columns: minmax(0, 1fr) !important;
+        gap: 1rem !important;
+        width: 100% !important;
+        max-width: 100% !important;
+    }
+
+    .shared-date-controls,
+    .shared-date-controls.rz-stack {
+        display: grid !important;
+        grid-column: 1;
+        grid-row: 1;
+        grid-template-columns: minmax(0, max-content);
+        grid-auto-rows: max-content;
+        gap: 0.4rem;
+        width: min(100%, max-content) !important;
+        max-width: 100% !important;
+        justify-self: start;
+    }
+
+    .shared-common-range,
+    .shared-custom-range,
+    .shared-account-control {
+        grid-column: 1;
+        min-width: 0 !important;
+        width: fit-content !important;
+        max-width: 100% !important;
+        box-sizing: border-box;
+        justify-self: start;
+    }
+
+    .shared-common-range.rz-stack {
+        grid-row: 1;
+    }
+
+    .shared-custom-range.rz-stack {
+        grid-row: 2;
+    }
+
+    .shared-common-range,
+    .shared-custom-range {
+        display: flex !important;
+        flex-direction: row !important;
+        align-items: center !important;
+    }
+
+    .shared-account-control {
+        grid-row: 2;
+        width: min(420px, 100%) !important;
+        max-width: 100% !important;
+        flex: 0 1 420px !important;
+    }
+
+    .shared-common-range > div,
+    .shared-custom-range > div,
+    .shared-account-control > div {
+        width: fit-content !important;
+        max-width: 100% !important;
+        min-width: 0 !important;
+        box-sizing: border-box;
+    }
+
+    .shared-account-control .date-range-toolbar-box {
+        width: 100% !important;
+        max-width: 100% !important;
+        min-width: 0 !important;
+        flex: 0 0 100% !important;
+        box-sizing: border-box;
+    }
+
+    .shared-account-control .date-range-toolbar-box {
+        overflow: hidden;
+    }
+
+    .shared-account-control .date-range-toolbar-box > div {
+        display: flex !important;
+        width: 100% !important;
+        min-width: 0 !important;
+        flex: 1 1 auto !important;
+        flex-wrap: nowrap !important;
+    }
+
+    .shared-account-control .sub-account-control {
+        width: 100% !important;
+        max-width: 100% !important;
+        min-width: 0 !important;
+    }
+
+    .shared-account-control .date-range-toolbar-box > div > .rz-label,
+    .shared-account-control .date-range-toolbar-box > div > label {
+        flex: 0 0 auto;
+    }
+
+    .shared-account-control .account-selector-dropdown-inline {
+        width: auto !important;
+        max-width: 100% !important;
+        min-width: 0 !important;
+        flex: 1 1 0 !important;
+    }
+
+    .shared-account-control .account-selector-dropdown {
+        width: auto !important;
+        max-width: 100% !important;
+        min-width: 0 !important;
+        flex: 1 1 0 !important;
+    }
+
+    .account-selector-box {
+        width: 100%;
+    }
+
+    .shared-account-control .account-selector-dropdown-inline,
+    .shared-account-control .account-selector-dropdown-inline .rz-dropdown,
+    .shared-account-control .account-selector-dropdown-inline .rz-inputtext,
+    .shared-account-control .account-selector-dropdown-inline .rz-dropdown-trigger {
+        min-width: 0 !important;
+        max-width: 100% !important;
+        box-sizing: border-box !important;
+    }
+
+    .shared-custom-range .date-range-apply-group {
+        width: fit-content !important;
+        max-width: 100% !important;
+        box-sizing: border-box;
+    }
+
+    .shared-custom-range .date-range-start-end-row {
+        width: fit-content !important;
+    }
+}
+
+@media (max-width: 600px) {
+    .shared-date-controls,
+    .shared-common-range,
+    .shared-custom-range,
+    .shared-account-control,
+    .shared-common-range > div,
+    .shared-custom-range > div,
+    .shared-account-control > div,
+    .shared-account-control .date-range-toolbar-box {
+        width: 100% !important;
+        max-width: 100% !important;
+        min-width: 0 !important;
+    }
+
+    .home-account-selector-row {
+        flex-wrap: wrap;
+        align-items: stretch;
+    }
+
+    .home-account-selector-row .account-selector-dropdown,
+    .home-account-selector-row .account-selector-dropdown-inline {
+        width: 100% !important;
+        flex: 1 1 100% !important;
+    }
+
+    .shared-date-controls {
+        grid-template-columns: minmax(0, 1fr);
+    }
 }
 
 /* Donors grid: container constrains width, grid handles internal scrolling */

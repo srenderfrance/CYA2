@@ -239,151 +239,7 @@
         min-width: 720px;
     }
 
-    .donations-date-controls,
-    .donations-common-range,
-    .donations-custom-range,
-    .donations-custom-range .date-range-apply-group,
-    .donations-custom-range .date-range-start-end-row {
-        flex-wrap: nowrap !important;
-    }
-
-    .donations-date-controls {
-        min-width: max-content;
-    }
-
-    .donations-common-range,
-    .donations-custom-range,
-    .donations-custom-range .date-range-apply-group,
-    .donations-custom-range .date-range-start-end-row,
-    .donations-custom-range .date-range-start-end-row > div,
-    .donations-custom-range .rz-button {
-        flex: 0 0 auto;
-    }
-
-    @@media (max-width: 1100px) {
-        .donations-filter-layout {
-            display: grid !important;
-            grid-template-columns: minmax(0, 1fr);
-            gap: 1rem !important;
-        }
-
-        .donations-date-controls {
-            display: grid !important;
-            grid-column: 1;
-            grid-row: 1;
-            grid-template-columns: minmax(0, 1fr);
-            gap: 0.4rem;
-            min-width: 0;
-            width: 100%;
-        }
-
-        .donations-common-range,
-        .donations-custom-range {
-            grid-column: 1;
-            width: 100% !important;
-        }
-
-        .donations-date-controls > .rz-stack,
-        .donations-common-range,
-        .donations-custom-range {
-            display: flex !important;
-            flex-direction: row !important;
-            flex-wrap: nowrap !important;
-            align-items: center !important;
-            min-width: 0;
-        }
-
-        .donations-account-control {
-            grid-column: 1;
-            grid-row: 2;
-            min-width: 0;
-            width: 100%;
-            max-width: none !important;
-        }
-
-        .donations-common-range,
-        .donations-custom-range,
-        .donations-account-control,
-        .donations-common-range > div,
-        .donations-custom-range > div,
-        .donations-account-control > div {
-            width: 100% !important;
-            box-sizing: border-box;
-        }
-
-        .donations-common-range,
-        .donations-custom-range,
-        .donations-account-control,
-        .donations-common-range .date-range-toolbar-box,
-        .donations-custom-range .date-range-apply-group,
-        .donations-account-control .date-range-toolbar-box {
-            white-space: nowrap;
-            overflow-x: visible;
-        }
-
-        .donations-custom-range .date-range-start-end-row,
-        .donations-custom-range .date-range-apply-group {
-            flex-wrap: nowrap !important;
-        }
-
-        .donations-custom-range .date-range-apply-group {
-            align-items: center !important;
-            min-width: max-content;
-        }
-
-        .donations-custom-range .date-range-start-end-row,
-        .donations-custom-range .rz-button {
-            flex: 0 0 auto;
-        }
-    }
-
-    @@media (max-width: 900px) {
-        .donations-filter-layout {
-            grid-template-columns: minmax(0, 1fr);
-        }
-
-        .donations-date-controls,
-        .donations-account-control {
-            grid-column: 1;
-        }
-
-        .donations-date-controls {
-            grid-row: 1;
-        }
-
-        .donations-account-control {
-            grid-row: 2;
-        }
-
-        .donations-date-controls > .rz-stack {
-            flex-direction: row !important;
-            flex-wrap: nowrap !important;
-        }
-
-        .donations-common-range .date-range-toolbar-box,
-        .donations-custom-range .date-range-apply-group,
-        .donations-account-control .date-range-toolbar-box {
-            max-width: 100%;
-        }
-    }
-
     @@media (max-width: 768px) {
-        .donations-custom-range .date-range-start-end-row {
-            flex-direction: row !important;
-            flex-wrap: nowrap !important;
-            align-items: center !important;
-            width: max-content !important;
-        }
-
-        .donations-custom-range .date-range-start-end-row > div {
-            width: auto !important;
-            justify-content: flex-start !important;
-        }
-
-        .donations-custom-range .date-range-apply-group {
-            flex-wrap: wrap !important;
-        }
-
         .donations-main-chart .rz-chart {
             min-width: 760px;
         }
@@ -394,20 +250,19 @@
 <RadzenStack Orientation="Orientation.Vertical" Gap="15px" Class="rz-p-4" Style="padding-top:0.5rem; max-width:100%; overflow-x:hidden; box-sizing:border-box;">
 
     <RadzenStack Orientation="Orientation.Horizontal"
-                 Class="donations-filter-layout"
+                 Class="date-account-filter-layout"
                  Gap="2rem"
                  JustifyContent="JustifyContent.SpaceBetween"
                  AlignItems="AlignItems.Start"
-                 Wrap="FlexWrap.Wrap"
-                 Style="width:100%; max-width:100%; box-sizing:border-box;">
+                 Wrap="FlexWrap.Wrap">
 
-        <RadzenStack Orientation="Orientation.Horizontal" Gap="0.5rem" Style="flex:1;" Class="donations-date-controls">
+        <RadzenStack Orientation="Orientation.Horizontal" Gap="0.5rem" Class="shared-date-controls">
             <RadzenStack Orientation="Orientation.Horizontal"
                          Gap="0.5rem"
                          AlignItems="AlignItems.Center"
                          Wrap="FlexWrap.Wrap"
-                         Class="donations-common-range">
-                <div class="date-range-toolbar-box" style="display:flex;align-items:center;gap:0.5rem;">
+                         Class="shared-common-range">
+                <div class="date-range-toolbar-box">
                     <RadzenLabel Text="@Localizer["CommonRanges"]" />
                     <!-- Preset dropdown -->
                 <RadzenDropDown TValue="DateRangePreset"
@@ -434,15 +289,15 @@
                          Gap="0.5rem"
                          AlignItems="AlignItems.Center"
                          Wrap="FlexWrap.Wrap"
-                         Class="donations-custom-range">
-                <div class="date-range-apply-group" style="display:flex;align-items:center;gap:0.5rem;flex-wrap:wrap;">
-                    <div class="date-range-start-end-row" style="display:flex;align-items:center;gap:0.5rem;flex-wrap:nowrap;">
-                    <div style="display:flex;align-items:center;gap:0.5rem;">
+                         Class="shared-custom-range">
+                <div class="date-range-apply-group">
+                    <div class="date-range-start-end-row">
+                    <div class="date-range-field">
                         <RadzenLabel Text="@Localizer["StartDate"]" />
                         <RadzenDatePicker @bind-Value="@dateRangeState.PendingStartDate" DateFormat="MM/dd/yyyy" Style="max-width:130px"
                                           Change="@OnDatePickerChanged" />
                     </div>
-                    <div style="display:flex;align-items:center;gap:0.5rem;">
+                    <div class="date-range-field">
                         <RadzenLabel Text="@Localizer["EndDate"]" />
                         <RadzenDatePicker @bind-Value="@dateRangeState.PendingEndDate" DateFormat="MM/dd/yyyy" Style="max-width:130px"
                                           Change="@OnDatePickerChanged" />
@@ -457,9 +312,9 @@
             </RadzenStack>
         </RadzenStack>
 
-        <RadzenStack Orientation="Orientation.Vertical" Gap="0.4rem" Style="flex:1; max-width:420px;" Class="donations-account-control">
-            <div class="date-range-toolbar-box" style="width:420px; max-width:100%; box-sizing:border-box;">
-                <div style="display:flex;align-items:center;gap:0.5rem;flex-wrap:nowrap;">
+        <RadzenStack Orientation="Orientation.Vertical" Gap="0.4rem" Class="shared-account-control">
+            <div class="date-range-toolbar-box account-selector-box">
+                <div class="account-selector-row">
                     <RadzenLabel Text="@Localizer["Account"]" />
                     <AccountSelector TItem="AccountOptionDto" TValue="string"
                                      Data="@donationData.UserAccounts"
@@ -468,14 +323,13 @@
                                      Value="@selectedAccount"
                                      Change="@OnAccountDropdownChanged"
                                      Placeholder="@Localizer["ChooseAccount"]"
-                                     TextSelector="@(account => DisplayFormatter.FormatFundDisplay(account.Fund))"
-                                     Style="flex:1; min-width:0; width:auto;" />
+                                      TextSelector="@(account => DisplayFormatter.FormatFundDisplay(account.Fund))" />
                 </div>
 
                 <!-- SubAccount dropdown - only shown for accounts with Separate sub accounts -->
                 @if (showSubAccountDropdown && subAccountOptions.Any())
                 {
-                    <RadzenStack Orientation="Orientation.Vertical" Gap="0.2rem" Style="margin-top: 0.5rem;">
+                    <RadzenStack Orientation="Orientation.Vertical" Gap="0.2rem" Class="sub-account-control" Style="margin-top: 0.5rem;">
                         <RadzenText TextStyle="TextStyle.Body2" Style="color: #666; font-size: 0.9rem;">Sub Account</RadzenText>
                         <RadzenDropDown TValue="string"
                                         Data="@subAccountOptions"
@@ -483,7 +337,7 @@
                                         ValueProperty="Value"
                                         @bind-Value="selectedSubAccount"
                                         Change="@(args => OnSubAccountSelection(args?.ToString() ?? string.Empty))"
-                                Class="account-selector-dropdown-inline">
+                                Class="account-selector-dropdown-inline sub-account-dropdown">
                             <ValueTemplate>
                                 <span style="display:flex;align-items:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding-right:1.75rem;width:100%;">
                                     @(subAccountOptions.FirstOrDefault(o => o.Value == selectedSubAccount)?.DisplayText ?? "")
