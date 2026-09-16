@@ -39,12 +39,9 @@ namespace Cya2.Infrastructure.Services
 
             try
             {
-                // Build connection string with extended timeouts for rollback operations
-                var csb = new MySqlConnectionStringBuilder(connStr)
-                {
-                    ConnectionTimeout = 60, // 1 minute for connection
-                    DefaultCommandTimeout = 300 // 5 minutes for commands
-                };
+                var csb = new MySqlConnectionStringBuilder(connStr);
+                csb["Connection Timeout"] = 60;
+                csb.DefaultCommandTimeout = 300;
 
                 await using var conn = new MySqlConnection(csb.ConnectionString);
                 await conn.OpenAsync(cancellationToken);
@@ -218,12 +215,9 @@ WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = @TableName AND COLUMN_NAME = @C
 
             try
             {
-                // Build connection string with extended timeouts for rollback operations
-                var csb = new MySqlConnectionStringBuilder(connStr)
-                {
-                    ConnectionTimeout = 60, // 1 minute for connection
-                    DefaultCommandTimeout = 300 // 5 minutes for commands
-                };
+                var csb = new MySqlConnectionStringBuilder(connStr);
+                csb["Connection Timeout"] = 60;
+                csb.DefaultCommandTimeout = 300;
 
                 await using var conn = new MySqlConnection(csb.ConnectionString);
                 await conn.OpenAsync(cancellationToken);

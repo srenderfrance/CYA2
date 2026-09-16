@@ -35,11 +35,8 @@ public sealed class AccountingImportRepository : IAccountingImportRepository
         try
         {
             _progress.UpdateStep(progressId, "Database Backup", "Connecting to database...");
-            var csb = new MySqlConnectionStringBuilder(ConnStr)
-            {
-                ConnectionTimeout = 60,
-                DefaultCommandTimeout = 300
-            };
+            var csb = new MySqlConnectionStringBuilder(ConnStr);
+            csb["Connection Timeout"] = 60;
 
             await using var conn = new MySqlConnection(csb.ConnectionString);
             await conn.OpenAsync(ct);
@@ -126,6 +123,7 @@ public sealed class AccountingImportRepository : IAccountingImportRepository
             bool allowLocalInfile = _config.GetValue<bool>("Import:UseLocalInfile", false) && csb.AllowLoadLocalInfile;
             int maxAttempts = _config.GetValue<int>("Import:MaxAttempts", 3);
 
+            csb.ConnectionTimeout = 60;
             using var conn = new MySqlConnection(csb.ConnectionString);
             await conn.OpenAsync(ct);
 
