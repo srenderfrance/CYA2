@@ -27,6 +27,7 @@ using Cya2.Core.ValueObjects;
 using Cya2.Application.Extensions;
 using Cya2.Infrastructure.Extensions;
 using Cya2.Infrastructure.Services;
+using MySql.Data.MySqlClient;
 
 var _lastResetTime = DateTime.Now;
 var _lockObject = new object();
@@ -53,6 +54,16 @@ if (!string.IsNullOrEmpty(mysqlConnStr))
     builder.Configuration["ConnectionStrings:default"] = mysqlConnStr;
 }
 
+var configuredConnectionString = builder.Configuration.GetConnectionString("default");
+if (!string.IsNullOrWhiteSpace(configuredConnectionString))
+{
+    var connectionStringBuilder = new MySqlConnectionStringBuilder(configuredConnectionString)
+    {
+        MaximumPoolSize = 15
+    };
+    builder.Configuration["ConnectionStrings:default"] = connectionStringBuilder.ConnectionString;
+}
+
 builder.Services.AddLogging(l =>
 {
     l.AddSimpleConsole(options => options.IncludeScopes = true);
@@ -77,6 +88,27 @@ builder.Services.AddCya2Authentication(builder.Configuration);
 builder.Services.AddCya2WebHostServices();
 
 var app = builder.Build();
+
+var effectiveConnectionString = app.Configuration.GetConnectionString("default") ?? string.Empty;
+try
+{
+    var connectionStringBuilder = new MySqlConnectionStringBuilder(effectiveConnectionString);
+    var startupLogger = app.Services.GetRequiredService<ILogger<Program>>();
+    startupLogger.LogInformation(
+        "MySQL connection configuration: ProcessId={ProcessId} Machine={Machine} Server={Server} Port={Port} Database={Database} MaximumPoolSize={MaximumPoolSize} MinimumPoolSize={MinimumPoolSize}",
+        Environment.ProcessId,
+        Environment.MachineName,
+        connectionStringBuilder.Server,
+        connectionStringBuilder.Port,
+        connectionStringBuilder.Database,
+        connectionStringBuilder.MaximumPoolSize,
+        connectionStringBuilder.MinimumPoolSize);
+}
+catch (Exception ex)
+{
+    var startupLogger = app.Services.GetRequiredService<ILogger<Program>>();
+    startupLogger.LogWarning(ex, "Unable to parse the effective MySQL connection configuration for diagnostics");
+}
 
 string[] supportedCultures = ["en-US", "es-US"];
 var localizationOptions = new RequestLocalizationOptions()

@@ -15,7 +15,6 @@ namespace Cya2.Infrastructure.Services
 {
     internal sealed class AccountingImportProcessor : IImportProcessor
     {
-        private static readonly SemaphoreSlim ImportGate = new(1, 1);
         private readonly IConfiguration _config;
         private readonly ILogger<AccountingImportProcessor> _logger;
         private readonly IImportProgressService _progressService;
@@ -43,17 +42,7 @@ namespace Cya2.Infrastructure.Services
 
         private async Task<ImportResult> ProcessAsync(Stream file, CancellationToken ct, string progressId)
         {
-            await ImportGate.WaitAsync(ct);
-            try
-            {
-                _logger.LogInformation("Accounting import acquired the single-import connection gate. progressId={ProgressId}", progressId);
-                return await ProcessImportCoreAsync(file, ct, progressId);
-            }
-            finally
-            {
-                ImportGate.Release();
-                _logger.LogInformation("Accounting import released the single-import connection gate. progressId={ProgressId}", progressId);
-            }
+            return await ProcessImportCoreAsync(file, ct, progressId);
         }
 
         private async Task<ImportResult> ProcessImportCoreAsync(Stream file, CancellationToken ct, string progressId)
