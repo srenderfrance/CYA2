@@ -24,11 +24,101 @@ public sealed class ExpenseCalculationTests
         var result = classifier.Categorize(transactions);
 
         Assert.Single(result.ExpenseTransactions);
-        Assert.Single(result.TransferTransactions);
+        Assert.Equal(1, result.TransferTransactions.Count);
         Assert.Single(result.OtherTransactions);
         Assert.Equal(10m, result.ExpenseTotal);
         Assert.Equal(20m, result.TransferTotal);
         Assert.Equal(30m, result.OtherTotal);
+    }
+
+    [Fact]
+    public void TransferTotal_UsesSignedAmounts_AndNeverIncludesExpenses()
+    {
+        var classifier = new ExpenseClassificationService();
+        var transactions = new List<AccountingRecord>
+        {
+            new() { Account = "Transfer: incoming", Amount = 20 },
+            new() { Account = "Transfer: outgoing", Amount = -7 },
+            new() { Account = "2200000 Unrestricted:General", Amount = 3 },
+            new() { Type = "Expense", Account = "Transfer: excluded", Amount = 100 }
+        };
+
+        var result = classifier.Categorize(transactions);
+
+        Assert.Equal(16m, result.TransferTotal);
+        Assert.Equal(100m, result.ExpenseTotal);
+        Assert.Equal(3, result.TransferTransactions.Count);
+        Assert.Single(result.ExpenseTransactions);
+        Assert.Empty(result.TransferTransactions.Intersect(result.ExpenseTransactions));
+    }
+
+    [Fact]
+    public void FundraisingTransactions_ReturnToTheirOriginalCategories()
+    {
+        var service = new AccountCalculationService(
+            new EmptyExpenseRepository(),
+            new EmptyDonationRepository(),
+            new ExpenseClassificationService());
+        var transactions = new List<AccountingRecord>
+        {
+            new() { Account = "Fundraising: event", Amount = 100 },
+            new() { Type = "Expense", Account = "Fundraising: supplies", Amount = 25 },
+            new() { Account = "Transfer: operating", Amount = 10 }
+        };
+
+        var result = service.CalculateBalanceFromData(transactions);
+
+        Assert.Equal(85m, result.TotalBalance);
+        Assert.Equal(25m, result.ExpenseTotal);
+        Assert.Equal(10m, result.TransferTotal);
+        Assert.Equal(100m, result.OtherTotal);
+        Assert.Equal(3, result.AllTransactions.Count);
+    }
+
+    [Fact]
+    public void PayrollClearingInsurance_IsExcludedFromBalanceCalculations()
+    {
+        var service = new AccountCalculationService(
+            new EmptyExpenseRepository(),
+            new EmptyDonationRepository(),
+            new ExpenseClassificationService());
+        var transactions = new List<AccountingRecord>
+        {
+            new() { Account = "Payroll Clearing Insurance", Amount = 100 },
+            new() { Account = "Income", Amount = 25 },
+            new() { Type = "Expense", Account = "Expenses: Supplies", Amount = 10 }
+        };
+
+        var result = service.CalculateBalanceFromData(transactions);
+
+        Assert.Equal(15m, result.TotalBalance);
+        Assert.Equal(10m, result.ExpenseTotal);
+        Assert.Equal(25m, result.OtherTotal);
+        Assert.DoesNotContain(result.AllTransactions, transaction =>
+            string.Equals(transaction.Account, "Payroll Clearing Insurance", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public async Task CalculateBalancesAsync_UsesTheSharedBalanceFormulaForEveryAccount()
+    {
+        var repository = new BatchExpenseRepository();
+        var service = new AccountCalculationService(
+            repository,
+            new EmptyDonationRepository(),
+            new ExpenseClassificationService());
+        var accounts = new List<UserAccountContextAccount>
+        {
+            new() { AccountId = 1, AccountingClass = "Class1", AccountNumber = "Number1", BalanceAdjustment = 5m },
+            new() { AccountId = 2, AccountingClass = "Class2", AccountNumber = "Number2" }
+        };
+
+        var results = await service.CalculateBalancesAsync(accounts, DateTime.MinValue, DateTime.MaxValue);
+
+        Assert.Equal(1, repository.CallCount);
+        Assert.Equal(15m, results[1].TotalBalance);
+        Assert.Equal(20m, results[2].TotalBalance);
+        Assert.DoesNotContain(results[1].AllTransactions, transaction =>
+            string.Equals(transaction.Account, "Payroll Clearing Insurance", StringComparison.OrdinalIgnoreCase));
     }
 
     [Fact]
@@ -42,6 +132,30 @@ public sealed class ExpenseCalculationTests
         });
 
         Assert.Equal(-25m, result.ExpenseTotal);
+    }
+
+    private sealed class BatchExpenseRepository : IExpenseReadRepository
+    {
+        public int CallCount { get; private set; }
+
+        public Task<List<AccountingRecord>> GetAccountingDataForAccountAsync(string accountingClass, string accountNumber, DateTime startDate, DateTime endDate) => Task.FromResult(new List<AccountingRecord>());
+
+        public Task<IReadOnlyDictionary<int, List<AccountingRecord>>> GetAccountingDataForAccountsAsync(IReadOnlyList<(int AccountId, string AccountingClass, string AccountNumber)> accounts, DateTime startDate, DateTime endDate)
+        {
+            CallCount++;
+            return Task.FromResult<IReadOnlyDictionary<int, List<AccountingRecord>>>(new Dictionary<int, List<AccountingRecord>>
+            {
+                [1] =
+                [
+                    new() { Account = "Payroll Clearing Insurance", Amount = 100 },
+                    new() { Account = "Income", Amount = 10 }
+                ],
+                [2] =
+                [
+                    new() { Account = "Transfer: operating", Amount = 20 }
+                ]
+            });
+        }
     }
 
     [Fact]
@@ -182,6 +296,7 @@ public sealed class ExpenseCalculationTests
     private sealed class EmptyExpenseRepository : IExpenseReadRepository
     {
         public Task<List<AccountingRecord>> GetAccountingDataForAccountAsync(string accountingClass, string accountNumber, DateTime startDate, DateTime endDate) => Task.FromResult(new List<AccountingRecord>());
+        public Task<IReadOnlyDictionary<int, List<AccountingRecord>>> GetAccountingDataForAccountsAsync(IReadOnlyList<(int AccountId, string AccountingClass, string AccountNumber)> accounts, DateTime startDate, DateTime endDate) => Task.FromResult<IReadOnlyDictionary<int, List<AccountingRecord>>>(new Dictionary<int, List<AccountingRecord>>());
     }
 
     private sealed class EmptyDonationRepository : IDonationReadRepository

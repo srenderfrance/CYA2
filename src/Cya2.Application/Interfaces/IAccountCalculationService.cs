@@ -12,6 +12,7 @@ public interface IAccountCalculationService
     /// Calculate account balance using repository queries with transaction categorization
     /// </summary>
     Task<BalanceCalculationResult> CalculateBalanceAsync(UserAccountContextAccount account, DateTime? startDate = null, DateTime? endDate = null);
+    Task<IReadOnlyDictionary<int, BalanceCalculationResult>> CalculateBalancesAsync(IReadOnlyList<UserAccountContextAccount> accounts, DateTime? startDate = null, DateTime? endDate = null);
 
     /// <summary>
     /// Calculate balance using pre-loaded transaction data

@@ -174,6 +174,7 @@ public sealed class CacheInvalidationTests
 
     private sealed class FakeExpenseReadRepository : IExpenseReadRepository
     {
+        public Task<IReadOnlyDictionary<int, List<AccountingRecord>>> GetAccountingDataForAccountsAsync(IReadOnlyList<(int AccountId, string AccountingClass, string AccountNumber)> accounts, DateTime startDate, DateTime endDate) => Task.FromResult<IReadOnlyDictionary<int, List<AccountingRecord>>>(new Dictionary<int, List<AccountingRecord>>());
         public int CallCount { get; private set; }
         public Task<List<AccountingRecord>> GetAccountingDataForAccountAsync(string accountingClass, string accountNumber, DateTime startDate, DateTime endDate) => Load();
         private Task<List<AccountingRecord>> Load()

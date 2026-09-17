@@ -12,7 +12,6 @@ public class FinancialDashboardService : IFinancialDashboardService
     private readonly IAccountCalculationService _accountCalculationService;
     private readonly ISessionAccountDataCacheService _sessionAccountDataCache;
     private readonly IUserAccountContextService _userAccountContextService;
-    private readonly IFinancialDashboardReadRepository _financialDashboardReadRepository;
     private readonly IDonationService _donationService;
 
     public FinancialDashboardService(
@@ -20,14 +19,12 @@ public class FinancialDashboardService : IFinancialDashboardService
         IAccountCalculationService accountCalculationService,
         ISessionAccountDataCacheService sessionAccountDataCache,
         IUserAccountContextService userAccountContextService,
-        IFinancialDashboardReadRepository financialDashboardReadRepository,
         IDonationService donationService)
     {
         _logger = logger;
         _accountCalculationService = accountCalculationService;
         _sessionAccountDataCache = sessionAccountDataCache;
         _userAccountContextService = userAccountContextService;
-        _financialDashboardReadRepository = financialDashboardReadRepository;
         _donationService = donationService;
     }
 
@@ -257,7 +254,6 @@ public class FinancialDashboardService : IFinancialDashboardService
                 return points;
             }
 
-            var repositoryAccount = ToCoreAccount(selectedAccount);
             var donationData = await _accountCalculationService.LoadDonationCalculationDataAsync(selectedAccount, startDate, endDate);
             var cursor = new DateTime(startDate.Year, startDate.Month, 1);
             var endMonth = new DateTime(endDate.Year, endDate.Month, 1);
@@ -279,7 +275,7 @@ public class FinancialDashboardService : IFinancialDashboardService
                     monthStart,
                     monthEnd).TotalDonations;
                 var expenseTask = _accountCalculationService.CalculateBalanceAsync(selectedAccount, monthStart, monthEnd);
-                var balanceTask = _financialDashboardReadRepository.GetBalanceAsOfAsync(repositoryAccount, monthEnd);
+                var balanceTask = _accountCalculationService.CalculateBalanceAsync(selectedAccount, null, monthEnd);
 
                 await Task.WhenAll(expenseTask, balanceTask);
 
@@ -290,7 +286,7 @@ public class FinancialDashboardService : IFinancialDashboardService
                     DonationTotal = donationTotal,
                     OverheadTotal = _accountCalculationService.CalculateOverheadAmount(selectedAccount, donationTotal),
                     ExpenseTotal = expenseTask.Result.ExpenseTotal,
-                    Balance = balanceTask.Result
+                    Balance = balanceTask.Result.TotalBalance
                 });
 
                 cursor = cursor.AddMonths(1);
@@ -370,10 +366,19 @@ public class FinancialDashboardService : IFinancialDashboardService
 
         var cachedData = await _sessionAccountDataCache.GetOrLoadAccountDataAsync(selectedAccount, windowStart, windowEnd, isDefaultAccount);
 
-        dashboard.CurrentMonth = BuildSummaryFromCache(selectedAccount, cachedData, currentMonthStart, currentMonthEnd, now.ToString("MMMM yyyy"));
-        dashboard.PriorMonth = BuildSummaryFromCache(selectedAccount, cachedData, priorMonthStart, priorMonthEnd, now.AddMonths(-1).ToString("MMMM yyyy"));
-        dashboard.CurrentYear = BuildSummaryFromCache(selectedAccount, cachedData, currentYearStart, currentYearEnd, now.ToString("yyyy"));
-        dashboard.PriorYear = BuildSummaryFromCache(selectedAccount, cachedData, priorYearStart, priorYearEnd, (now.Year - 1).ToString());
+        var currentMonth = BuildSummaryFromCache(selectedAccount, cachedData, currentMonthStart, currentMonthEnd, now.ToString("MMMM yyyy"));
+        var priorMonth = BuildSummaryFromCache(selectedAccount, cachedData, priorMonthStart, priorMonthEnd, now.AddMonths(-1).ToString("MMMM yyyy"));
+        var currentYear = BuildSummaryFromCache(selectedAccount, cachedData, currentYearStart, currentYearEnd, now.ToString("yyyy"));
+        var priorYear = BuildSummaryFromCache(selectedAccount, cachedData, priorYearStart, priorYearEnd, (now.Year - 1).ToString());
+
+        dashboard.CurrentMonth = currentMonth.Summary;
+        dashboard.PriorMonth = priorMonth.Summary;
+        dashboard.CurrentYear = currentYear.Summary;
+        dashboard.PriorYear = priorYear.Summary;
+        LogHomeOtherAccounts(selectedAccount, currentMonth.OtherAccounts
+            .Concat(priorMonth.OtherAccounts)
+            .Concat(currentYear.OtherAccounts)
+            .Concat(priorYear.OtherAccounts));
 
         SetYearAverages(dashboard, now);
     }
@@ -401,15 +406,24 @@ public class FinancialDashboardService : IFinancialDashboardService
 
         await Task.WhenAll(currentMonthTask, priorMonthTask, currentYearTask, priorYearTask);
 
-        dashboard.CurrentMonth = await currentMonthTask;
-        dashboard.PriorMonth = await priorMonthTask;
-        dashboard.CurrentYear = await currentYearTask;
-        dashboard.PriorYear = await priorYearTask;
+        var currentMonth = await currentMonthTask;
+        var priorMonth = await priorMonthTask;
+        var currentYear = await currentYearTask;
+        var priorYear = await priorYearTask;
+
+        dashboard.CurrentMonth = currentMonth.Summary;
+        dashboard.PriorMonth = priorMonth.Summary;
+        dashboard.CurrentYear = currentYear.Summary;
+        dashboard.PriorYear = priorYear.Summary;
+        LogHomeOtherAccounts(selectedAccount, currentMonth.OtherAccounts
+            .Concat(priorMonth.OtherAccounts)
+            .Concat(currentYear.OtherAccounts)
+            .Concat(priorYear.OtherAccounts));
 
         SetYearAverages(dashboard, now);
     }
 
-    private async Task<FinancialSummaryDto> BuildSummaryFromAggregatesAsync(UserAccountContextAccount account, DonationCalculationData donationData, DateTime startDate, DateTime endDate, string period)
+    private async Task<HomeSummaryResult> BuildSummaryFromAggregatesAsync(UserAccountContextAccount account, DonationCalculationData donationData, DateTime startDate, DateTime endDate, string period)
     {
         var stopwatch = System.Diagnostics.Stopwatch.StartNew();
         // _logger.LogInformation("Dashboard summary period-start period={Period} account={Account} range={StartDate}..{EndDate}", period, account.Fund, startDate.ToString("yyyy-MM-dd"), endDate.ToString("yyyy-MM-dd"));
@@ -421,44 +435,34 @@ public class FinancialDashboardService : IFinancialDashboardService
             startDate,
             endDate).TotalDonations;
         var expenseTask = _accountCalculationService.CalculateBalanceAsync(account, startDate, endDate);
-        var repositoryAccount = ToCoreAccount(account);
-        var balanceTask = _financialDashboardReadRepository.GetBalanceAsOfAsync(repositoryAccount, endDate);
+        var balanceTask = _accountCalculationService.CalculateBalanceAsync(account, null, endDate);
         await Task.WhenAll(expenseTask, balanceTask);
 
         var balanceCalculation = expenseTask.Result;
         var expenseTotal = balanceCalculation.ExpenseTotal;
         var transferTotal = balanceCalculation.TransferTotal;
-        var balance = balanceTask.Result;
+        var balance = balanceTask.Result.TotalBalance;
         // _logger.LogInformation("Dashboard summary period-complete period={Period} account={Account} elapsedMs={ElapsedMs}", period, account.Fund, stopwatch.ElapsedMilliseconds);
 
-        return new FinancialSummaryDto
+        return new HomeSummaryResult
         {
-            Period = period,
-            TotalDonations = donationTotal,
-            TotalOverhead = _accountCalculationService.CalculateOverheadAmount(account, donationTotal),
-            TotalExpenses = expenseTotal,
-            InternalTransfers = transferTotal,
-            Balance = balance
+            Summary = new FinancialSummaryDto
+            {
+                Period = period,
+                TotalDonations = donationTotal,
+                TotalOverhead = _accountCalculationService.CalculateOverheadAmount(account, donationTotal),
+                TotalExpenses = expenseTotal,
+                InternalTransfers = transferTotal,
+                Balance = balance
+            },
+            OtherAccounts = balanceCalculation.OtherTransactions
+                .Select(transaction => transaction.Account ?? string.Empty)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList()
         };
     }
 
-    private static Cya2.Core.Entities.Account ToCoreAccount(UserAccountContextAccount account)
-    {
-        return new Cya2.Core.Entities.Account
-        {
-            AccountId = account.AccountId,
-            Fund = account.Fund ?? string.Empty,
-            AccountingClass = account.AccountingClass ?? string.Empty,
-            AccountNumber = account.AccountNumber ?? string.Empty,
-            CreatedAt = account.CreatedAt,
-            Overhead = Convert.ToDecimal(account.Overhead),
-            SoftCredit = account.SoftCredit ?? string.Empty,
-            BalanceAdjustment = account.BalanceAdjustment,
-            OtherFunds = account.OtherFunds
-        };
-    }
-
-    private FinancialSummaryDto BuildSummaryFromCache(UserAccountContextAccount account, DashboardAccountCacheData cachedData, DateTime startDate, DateTime endDate, string period)
+    private HomeSummaryResult BuildSummaryFromCache(UserAccountContextAccount account, DashboardAccountCacheData cachedData, DateTime startDate, DateTime endDate, string period)
     {
         var summary = new FinancialSummaryDto { Period = period };
 
@@ -500,7 +504,35 @@ public class FinancialDashboardService : IFinancialDashboardService
             periodBalance.ExpenseTransactions.Count,
             periodBalance.TransferTransactions.Count);
 
-        return summary;
+        return new HomeSummaryResult
+        {
+            Summary = summary,
+            OtherAccounts = periodBalance.OtherTransactions
+                .Select(transaction => transaction.Account ?? string.Empty)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList()
+        };
+    }
+
+    private void LogHomeOtherAccounts(UserAccountContextAccount account, IEnumerable<string> otherAccounts)
+    {
+        var distinctAccounts = otherAccounts
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(value => value)
+            .ToList();
+
+        _logger.LogInformation(
+            "Home balance account values: accountId={AccountId}, fund={Fund}, otherAccounts={OtherAccounts}",
+            account.AccountId,
+            account.Fund,
+            string.Join("|", distinctAccounts));
+    }
+
+    private sealed class HomeSummaryResult
+    {
+        public FinancialSummaryDto Summary { get; init; } = new();
+        public List<string> OtherAccounts { get; init; } = new();
     }
 
     private static void SetYearAverages(FinancialDashboardDto dashboard, DateTime now)

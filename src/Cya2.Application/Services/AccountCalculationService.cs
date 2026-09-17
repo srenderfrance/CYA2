@@ -32,6 +32,25 @@ public class AccountCalculationService : IAccountCalculationService
         _logger = logger ?? NullLogger<AccountCalculationService>.Instance;
     }
 
+    public async Task<IReadOnlyDictionary<int, BalanceCalculationResult>> CalculateBalancesAsync(
+        IReadOnlyList<UserAccountContextAccount> accounts,
+        DateTime? startDate = null,
+        DateTime? endDate = null)
+    {
+        var actualStartDate = startDate ?? DateTime.MinValue;
+        var actualEndDate = endDate ?? DateTime.MaxValue;
+        var accountKeys = accounts
+            .Select(account => (account.AccountId, account.AccountingClass, account.AccountNumber))
+            .ToList();
+        var accountingData = await _expenseReadRepository.GetAccountingDataForAccountsAsync(accountKeys, actualStartDate, actualEndDate);
+
+        return accounts.ToDictionary(
+            account => account.AccountId,
+            account => CalculateBalanceFromData(
+                accountingData.GetValueOrDefault(account.AccountId, new List<AccountingRecord>()),
+                account.BalanceAdjustment));
+    }
+
     /// <summary>
     /// Calculate balance using repository reads.
     /// </summary>
@@ -74,6 +93,10 @@ public class AccountCalculationService : IAccountCalculationService
                 (!endDate.HasValue || e.Date <= endDate.Value)
             ).ToList();
         }
+
+        entries = entries
+            .Where(e => !_expenseClassificationService.IsExcludedFromBalance(e))
+            .ToList();
 
         var categorized = _expenseClassificationService.Categorize(entries);
         var calculatedBalance = balanceAdjustment + entries.Sum(e =>
@@ -162,18 +185,18 @@ public class AccountCalculationService : IAccountCalculationService
             .ToList();
         var accountSubAccounts = (subAccounts ?? Enumerable.Empty<SubAccount>()).ToList();
 
-        _logger.LogInformation(
-            "Donation total inputs: accountId={AccountId}, fund={Fund}, donationRows={DonationRows}, subAccounts={SubAccounts}, merged={Merged}, separate={Separate}, mergedFunds={MergedFunds}, separateFunds={SeparateFunds}, range={Start:yyyy-MM-dd}..{End:yyyy-MM-dd}",
-            account.AccountId,
-            account.Fund,
-            donationRows.Count,
-            accountSubAccounts.Count,
-            accountSubAccounts.Count(s => string.Equals(s.Kind?.Trim(), "Merged", StringComparison.OrdinalIgnoreCase)),
-            accountSubAccounts.Count(s => string.Equals(s.Kind?.Trim(), "Separate", StringComparison.OrdinalIgnoreCase)),
-            string.Join("|", accountSubAccounts.Where(s => string.Equals(s.Kind?.Trim(), "Merged", StringComparison.OrdinalIgnoreCase)).Select(s => s.SubFund)),
-            string.Join("|", accountSubAccounts.Where(s => string.Equals(s.Kind?.Trim(), "Separate", StringComparison.OrdinalIgnoreCase)).Select(s => s.SubFund)),
-            start,
-            end);
+        // _logger.LogInformation(
+        //     "Donation total inputs: accountId={AccountId}, fund={Fund}, donationRows={DonationRows}, subAccounts={SubAccounts}, merged={Merged}, separate={Separate}, mergedFunds={MergedFunds}, separateFunds={SeparateFunds}, range={Start:yyyy-MM-dd}..{End:yyyy-MM-dd}",
+        //     account.AccountId,
+        //     account.Fund,
+        //     donationRows.Count,
+        //     accountSubAccounts.Count,
+        //     accountSubAccounts.Count(s => string.Equals(s.Kind?.Trim(), "Merged", StringComparison.OrdinalIgnoreCase)),
+        //     accountSubAccounts.Count(s => string.Equals(s.Kind?.Trim(), "Separate", StringComparison.OrdinalIgnoreCase)),
+        //     string.Join("|", accountSubAccounts.Where(s => string.Equals(s.Kind?.Trim(), "Merged", StringComparison.OrdinalIgnoreCase)).Select(s => s.SubFund)),
+        //     string.Join("|", accountSubAccounts.Where(s => string.Equals(s.Kind?.Trim(), "Separate", StringComparison.OrdinalIgnoreCase)).Select(s => s.SubFund)),
+        //     start,
+        //     end);
 
         if (InternAccountUtility.IsInternFund(account.Fund))
         {
@@ -211,14 +234,14 @@ public class AccountCalculationService : IAccountCalculationService
         }
 
         var result = CreateDonationTotalsResult(account, start, end, primaryTotal, mergedExtrasTotal, separateTotals);
-        _logger.LogInformation(
-            "Donation total result: accountId={AccountId}, fund={Fund}, primary={Primary}, merged={Merged}, total={Total}, separateCount={SeparateCount}",
-            account.AccountId,
-            account.Fund,
-            result.PrimaryDonations,
-            result.MergedSubfundDonations,
-            result.TotalDonations,
-            result.SeparateSubfundTotals.Count);
+        // _logger.LogInformation(
+        //     "Donation total result: accountId={AccountId}, fund={Fund}, primary={Primary}, merged={Merged}, total={Total}, separateCount={SeparateCount}",
+        //     account.AccountId,
+        //     account.Fund,
+        //     result.PrimaryDonations,
+        //     result.MergedSubfundDonations,
+        //     result.TotalDonations,
+        //     result.SeparateSubfundTotals.Count);
         return result;
     }
 
