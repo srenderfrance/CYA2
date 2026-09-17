@@ -572,6 +572,7 @@ WHERE Frequency IS NULL OR Frequency NOT IN (1,2,3,4,5)";
             .ToList();
 
         if (keys.Count == 0) return new List<DonationRecord>();
+        if (maxPerDonor <= 0) return new List<DonationRecord>();
 
         var results = new List<DonationRecord>();
 
@@ -580,37 +581,71 @@ WHERE Frequency IS NULL OR Frequency NOT IN (1,2,3,4,5)";
             await using var conn = new MySqlConnection(ConnStr);
             await conn.OpenAsync(ct);
 
-            // Build an IN-style query using a temporary values list.
-            // We query the last maxPerDonor rows per (AccountName, Fund) pair before beforeDate.
-            // This uses a ranked subquery compatible with MySQL 8+.
-            var unionParts = new List<string>();
-            var cmd = conn.CreateCommand();
-            cmd.CommandTimeout = 60;
+            var createKeys = conn.CreateCommand();
+            createKeys.CommandTimeout = 60;
+            createKeys.CommandText = @"
+CREATE TEMPORARY TABLE RecentDonorKeys (
+    AccountName VARCHAR(255) NOT NULL,
+    Fund VARCHAR(255) NOT NULL,
+    PRIMARY KEY (AccountName, Fund)
+) ENGINE=InnoDB";
+            await createKeys.ExecuteNonQueryAsync(ct);
 
-            int pi = 0;
-            foreach (var (accountName, fund) in keys)
+            const int batchSize = 500;
+            for (var batchStart = 0; batchStart < keys.Count; batchStart += batchSize)
             {
-                var pName = $"@n{pi}";
-                var pFund = $"@f{pi}";
-                unionParts.Add($"(SELECT AccountName, Fund, Date, Amount, PaymentMethod, Frequency FROM DonationData WHERE AccountName={pName} AND Fund={pFund} AND Date < @beforeDate ORDER BY Date DESC LIMIT {maxPerDonor})");
-                cmd.Parameters.Add(new MySqlParameter(pName, accountName));
-                cmd.Parameters.Add(new MySqlParameter(pFund, fund));
-                pi++;
+                var batch = keys.Skip(batchStart).Take(batchSize).ToList();
+                var insert = conn.CreateCommand();
+                insert.CommandTimeout = 60;
+                var values = new List<string>(batch.Count);
+                for (var index = 0; index < batch.Count; index++)
+                {
+                    var nameParameter = $"@name{index}";
+                    var fundParameter = $"@fund{index}";
+                    values.Add($"({nameParameter}, {fundParameter})");
+                    insert.Parameters.Add(new MySqlParameter(nameParameter, batch[index].AccountName));
+                    insert.Parameters.Add(new MySqlParameter(fundParameter, batch[index].Fund));
+                }
+
+                insert.CommandText = $"INSERT INTO RecentDonorKeys (AccountName, Fund) VALUES {string.Join(", ", values)}";
+                await insert.ExecuteNonQueryAsync(ct);
             }
 
+            var cmd = conn.CreateCommand();
+            cmd.CommandTimeout = 120;
+            cmd.CommandText = @"
+SELECT AccountName, Fund, Date, Amount, PaymentMethod, Frequency
+FROM (
+    SELECT d.AccountName,
+           d.Fund,
+           d.Date,
+           d.Amount,
+           d.PaymentMethod,
+           d.Frequency,
+           ROW_NUMBER() OVER (
+               PARTITION BY d.AccountName, d.Fund
+               ORDER BY d.Date DESC
+           ) AS RowNumber
+    FROM DonationData d
+    INNER JOIN RecentDonorKeys k
+        ON k.AccountName = d.AccountName
+       AND k.Fund = d.Fund
+    WHERE d.Date < @beforeDate
+) ranked
+WHERE RowNumber <= @maxPerDonor
+ORDER BY AccountName, Fund, Date DESC";
             cmd.Parameters.Add(new MySqlParameter("@beforeDate", beforeDate));
-            cmd.CommandText = string.Join(" UNION ALL ", unionParts);
+            cmd.Parameters.Add(new MySqlParameter("@maxPerDonor", maxPerDonor));
 
             await using var reader = await cmd.ExecuteReaderAsync(ct);
+            var freqOrdinal = reader.GetOrdinal("Frequency");
+            var nameOrdinal = reader.GetOrdinal("AccountName");
+            var fundOrdinal = reader.GetOrdinal("Fund");
+            var dateOrdinal = reader.GetOrdinal("Date");
+            var amountOrdinal = reader.GetOrdinal("Amount");
+            var paymentOrdinal = reader.GetOrdinal("PaymentMethod");
             while (await reader.ReadAsync(ct))
             {
-                var freqOrdinal = reader.GetOrdinal("Frequency");
-                var nameOrdinal = reader.GetOrdinal("AccountName");
-                var fundOrdinal = reader.GetOrdinal("Fund");
-                var dateOrdinal = reader.GetOrdinal("Date");
-                var amountOrdinal = reader.GetOrdinal("Amount");
-                var paymentOrdinal = reader.GetOrdinal("PaymentMethod");
-
                 DonorFrequency? freq = reader.IsDBNull(freqOrdinal)
                     ? null
                     : (DonorFrequency)reader.GetInt32(freqOrdinal);
