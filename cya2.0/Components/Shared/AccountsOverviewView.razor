@@ -1,8 +1,6 @@
 @using Radzen.Blazor
 @using Cya2.Application.Interfaces
-@using Microsoft.AspNetCore.Components.Authorization
 @inject IStringLocalizer<Resource> Localizer
-@inject AuthenticationStateProvider AuthStateProvider
 @inject IAdminPreloadService AdminPreloadService
 @inject IJSRuntime JS
 
@@ -138,17 +136,31 @@
     private bool financialsLoaded = false;
     private bool isLoading = true;
 
-    protected override async Task OnInitializedAsync()
+    protected override Task OnInitializedAsync()
+        => Task.CompletedTask;
+
+    protected override Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            _ = LoadOverviewAsync();
+        }
+
+        return Task.CompletedTask;
+    }
+
+    private async Task LoadOverviewAsync()
     {
         try
         {
-            var authState = await AuthStateProvider.GetAuthenticationStateAsync();
             var accounts = await AdminPreloadService.GetAccountsAsync();
 
             fundBalances = accounts
                 .OrderBy(a => a.Fund)
                 .Select(a => new FundBalanceRow { Fund = a.Fund })
                 .ToList();
+            isLoading = false;
+            await InvokeAsync(StateHasChanged);
 
             var overview = await AdminPreloadService.GetAccountOverviewAsync();
             fundBalances = overview
@@ -168,6 +180,8 @@
             errorMessage = $"Error loading accounts: {ex.Message}";
             isLoading = false;
         }
+
+        await InvokeAsync(StateHasChanged);
     }
 
     private async Task CopyTableAsync()

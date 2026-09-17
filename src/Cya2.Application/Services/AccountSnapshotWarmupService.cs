@@ -55,7 +55,7 @@ public sealed class AccountSnapshotWarmupService : IAccountSnapshotWarmupService
     public void WarmDefaultAccount(Account account)
         => WarmDefaultAccount(ToContextAccount(account));
 
-    public async Task WarmInitialAccountsAsync(IEnumerable<UserAccountContextAccount> accounts, int? defaultAccountId, string userId = "", bool isAdminOrViewer = false, DateRange? donorSummaryRange = null)
+    public async Task WarmInitialAccountsAsync(IEnumerable<UserAccountContextAccount> accounts, int? defaultAccountId, string userId = "", bool isAdminOrViewer = false, DateRange? donorSummaryRange = null, bool isAdminUser = false)
     {
         var orderedAccounts = (accounts ?? [])
             .Where(account => account.AccountId > 0 && !string.IsNullOrWhiteSpace(account.Fund))
@@ -65,10 +65,11 @@ public sealed class AccountSnapshotWarmupService : IAccountSnapshotWarmupService
             : null;
 
         _logger.LogInformation(
-            "Account warmup schedule: user={UserId}, accounts={AccountCount}, defaultAccountId={DefaultAccountId}, warningRange={WarningStart:yyyy-MM-dd}..{WarningEnd:yyyy-MM-dd}",
+            "Account warmup schedule: user={UserId}, accounts={AccountCount}, defaultAccountId={DefaultAccountId}, isAdminUser={IsAdminUser}, warningRange={WarningStart:yyyy-MM-dd}..{WarningEnd:yyyy-MM-dd}",
             userId,
             orderedAccounts.Count,
             defaultAccountId,
+            isAdminUser,
             donorSummaryRange?.StartDate,
             donorSummaryRange?.EndDate);
 
@@ -95,10 +96,18 @@ public sealed class AccountSnapshotWarmupService : IAccountSnapshotWarmupService
             }
         }
 
-        var accountsToWarm = orderedAccounts
-            .Where(account => defaultAccount is null || account.AccountId != defaultAccount.AccountId)
-            .Take(defaultAccount is null ? MaxAccountsWithoutDefault : MaxNonDefaultAccounts)
-            .ToList();
+        var accountsToWarm = isAdminUser
+            ? []
+            : orderedAccounts
+                .Where(account => defaultAccount is null || account.AccountId != defaultAccount.AccountId)
+                .Take(defaultAccount is null ? MaxAccountsWithoutDefault : MaxNonDefaultAccounts)
+                .ToList();
+
+        _logger.LogInformation(
+            "Account warmup non-default schedule: user={UserId}, isAdminUser={IsAdminUser}, queuedAccounts={QueuedAccountCount}",
+            userId,
+            isAdminUser,
+            accountsToWarm.Count);
 
         StartBackgroundWarmup(accountsToWarm, donorSummaryRange);
     }

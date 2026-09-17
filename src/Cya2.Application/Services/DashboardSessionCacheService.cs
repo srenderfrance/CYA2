@@ -2,6 +2,7 @@ using System.Text.Json;
 using Cya2.Application.Interfaces;
 using Cya2.Core.Interfaces;
 using Cya2.Core.ReadModels;
+using Cya2.Core.Utilities;
 using Microsoft.Extensions.Logging;
 
 namespace Cya2.Application.Services;
@@ -95,17 +96,24 @@ public class DashboardSessionCacheService : ISessionAccountDataCacheService
 
     private async Task<DashboardAccountCacheData> LoadAccountDataAsync(UserAccountContextAccount account, DateTime windowStart, DateTime windowEnd)
     {
-        var accounting = await _expenseReadRepository.GetAccountingDataByClassOrAccountNumberAndDateAsync(
+        var accounting = await _expenseReadRepository.GetAccountingDataForAccountAsync(
             account.AccountingClass,
             account.AccountNumber,
             windowStart,
             windowEnd);
 
-        var donations = await _donationReadRepository.GetDonationsByAccountAndDateRangeAsync(
-            account.AccountId,
-            account.Fund,
-            windowStart,
-            windowEnd);
+        var subAccounts = await _donationReadRepository.GetSubAccountsByAccountIdAsync(account.AccountId);
+        var donations = InternAccountUtility.IsInternFund(account.Fund) &&
+                        InternAccountUtility.TryGetInternDesignationName(account.Fund, out var designation)
+            ? await _donationReadRepository.GetInternDonationsByDesignationAndDateRangeAsync(
+                designation,
+                windowStart,
+                windowEnd)
+            : await _donationReadRepository.GetDonationsForAccountTotalAsync(
+                account.AccountId,
+                account.Fund,
+                windowStart,
+                windowEnd);
 
         var payload = new DashboardAccountCacheData
         {
@@ -113,7 +121,8 @@ public class DashboardSessionCacheService : ISessionAccountDataCacheService
             WindowStart = windowStart,
             WindowEnd = windowEnd,
             AccountingData = accounting,
-            DonationData = donations
+            DonationData = donations,
+            SubAccounts = subAccounts ?? new()
         };
 
         payload.ApproximateBytes = EstimateBytes(payload);
@@ -150,7 +159,8 @@ public class DashboardSessionCacheService : ISessionAccountDataCacheService
         {
             var accountingBytes = JsonSerializer.SerializeToUtf8Bytes(payload.AccountingData).LongLength;
             var donationBytes = JsonSerializer.SerializeToUtf8Bytes(payload.DonationData).LongLength;
-            return accountingBytes + donationBytes;
+            var subAccountBytes = JsonSerializer.SerializeToUtf8Bytes(payload.SubAccounts).LongLength;
+            return accountingBytes + donationBytes + subAccountBytes;
         }
         catch
         {

@@ -927,6 +927,10 @@
         // Rollback functionality placeholders
         private bool showRollbackDialog = false;
         private bool showAdminToolbarButtons = false;
+         private bool adminInitializationStarted;
+         private bool adminControlsLoaded;
+         private bool adminSecondaryInitializationStarted;
+         private string? resolvedAdminUserId;
         private string rollbackTarget = string.Empty; // "donations", "accounting", "both"
         private string rollbackStatus = string.Empty;
         private string rollbackError = string.Empty;
@@ -960,16 +964,82 @@
 
                 // Ensure session state is keyed to a consistent resolved user id
                 var resolvedUserId = UserIdResolver.ResolveUserId(user, SessionUserStateService.CurrentUserId);
+                resolvedAdminUserId = resolvedUserId;
                 SessionUserStateService.ResetForUser(resolvedUserId);
 
                 await base.OnInitializedAsync();
+            }
+            catch (Exception ex)
+            {
+                errorMessage = $"Error initializing admin page: {ex.Message}";
+                _logger.LogError(ex, "Error initializing admin page");
+            }
+        }
+
+        protected override Task OnAfterRenderAsync(bool firstRender)
+        {
+            if (firstRender && !adminInitializationStarted)
+            {
+                adminInitializationStarted = true;
+                _ = InitializeAdminDataAsync();
+            }
+            else if (adminControlsLoaded && !adminSecondaryInitializationStarted)
+            {
+                adminSecondaryInitializationStarted = true;
+                _ = InitializeAdminSecondaryDataAsync();
+            }
+
+            return Task.CompletedTask;
+        }
+
+        private async Task InitializeAdminDataAsync()
+        {
+            try
+            {
+                _logger.LogInformation("Admin post-render initialization started.");
+
                 await Task.WhenAll(
                     LoadAllAccounts(),
                     LoadAllStaff(),
                     LoadSubAccounts(null)
                 );
 
-                var userContext = await UserAccountContextService.GetContextAsync(resolvedUserId, isAdminOrViewerHint: true);
+                RefreshAccountsOptions();
+
+                // Set allFunds to the same data as allAccounts since funds are stored in the Accounts table
+                allFunds = allAccounts;
+
+                // Default selection to Add New
+                staffMember = AddNewLabel;
+                await staffSelection(staffMember);
+
+                // Default fund selection to Add New
+                selectedFund = AddNewAccountLabel;
+                await fundSelection(selectedFund);
+
+                // Ensure dropdowns default to 'Select Account'
+                accountToAddId = 0;
+                selectedLinkedAccountId = 0;
+
+                adminControlsLoaded = true;
+                await InvokeAsync(StateHasChanged);
+                _logger.LogInformation("Admin control data loaded and rendered.");
+            }
+            catch (Exception ex)
+            {
+                errorMessage = $"Error initializing admin page: {ex.Message}";
+                _logger.LogError(ex, "Error initializing Admin data after first render");
+                await InvokeAsync(StateHasChanged);
+            }
+        }
+
+        private async Task InitializeAdminSecondaryDataAsync()
+        {
+            try
+            {
+                var userContext = await UserAccountContextService.GetContextAsync(
+                    resolvedAdminUserId ?? string.Empty,
+                    isAdminOrViewerHint: true);
                 if (userContext?.DefaultAccountId is int defaultAccountId)
                 {
                     var defaultAccount = allAccounts.FirstOrDefault(a => a.AccountId == defaultAccountId);
@@ -979,29 +1049,25 @@
                     }
                 }
 
-                _ = AdminPreloadService.PreloadAsync(resolvedUserId);
-
-                RefreshAccountsOptions();
-                
-                // Set allFunds to the same data as allAccounts since funds are stored in the Accounts table
-                allFunds = allAccounts;
-
-                // Default selection to Add New
-                staffMember = AddNewLabel;
-                await staffSelection(staffMember);
-                
-                // Default fund selection to Add New
-                selectedFund = AddNewAccountLabel;
-                await fundSelection(selectedFund);
-
-                // Ensure dropdowns default to 'Select Account'
-                accountToAddId = 0;
-                selectedLinkedAccountId = 0;
+                _ = PreloadAdminDataAsync(resolvedAdminUserId ?? string.Empty);
+                _logger.LogInformation("Admin secondary snapshot and preload work started after controls rendered.");
             }
             catch (Exception ex)
             {
-                errorMessage = $"Error initializing admin page: {ex.Message}";
-                _logger.LogError(ex, "Error initializing admin page");
+                _logger.LogError(ex, "Admin secondary initialization failed");
+            }
+        }
+
+        private async Task PreloadAdminDataAsync(string userId)
+        {
+            try
+            {
+                await AdminPreloadService.PreloadAsync(userId);
+                _logger.LogInformation("Admin preload completed after first render.");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Admin preload failed after first render");
             }
         }
 
@@ -1874,6 +1940,8 @@
 
         private async Task OpenAccountsOverviewDialog()
         {
+            _logger.LogInformation("Admin dialog button clicked: dialog={Dialog}", "AccountsOverview");
+            _logger.LogInformation("Admin dialog opening: dialog={Dialog}", "AccountsOverview");
             await DialogService.OpenAsync<AccountsOverviewView>(
                 title: Localizer["AccountsOverview"],
                 options: BuildAdminDialogOptions(width: "90vw", height: "auto", resizable: true, showClose: true));
@@ -1881,6 +1949,8 @@
 
         private async Task OpenAccountSummariesDialog()
         {
+            _logger.LogInformation("Admin dialog button clicked: dialog={Dialog}", "AccountSummaries");
+            _logger.LogInformation("Admin dialog opening: dialog={Dialog}", "AccountSummaries");
             await DialogService.OpenAsync<AccountSummariesView>(
                 title: Localizer["AccountSummaries"],
                 options: BuildAdminDialogOptions(width: "90vw", height: "auto", resizable: true, showClose: true));
