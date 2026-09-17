@@ -15,9 +15,12 @@ public sealed class DonorSnapshotTests
     {
         var donations = new TrackingDonationRepository
         {
-            SubAccounts = [new SubAccount(42, "FUND-A-SUB", "Separate")],
-            AccountDonations = [CreateDonation(1, "FUND-A", "Primary donor")],
-            FundDonations = [CreateDonation(2, "FUND-A-SUB", "Subaccount donor")]
+            SubAccounts = [new SubAccount(42, "FUND-A-MERGED", "Merged")],
+            AccountTotalDonations =
+            [
+                CreateDonation(1, "FUND-A", "Primary donor"),
+                CreateDonation(2, "FUND-A-MERGED", "Merged donor")
+            ]
         };
         var loader = new AccountSnapshotLoader(
             donations,
@@ -35,9 +38,8 @@ public sealed class DonorSnapshotTests
 
         Assert.Equal(2, snapshot.Donations.Count);
         Assert.Contains(snapshot.Donations, donation => donation.Fund == "FUND-A");
-        Assert.Contains(snapshot.Donations, donation => donation.Fund == "FUND-A-SUB");
-        Assert.Single(donations.FundRequests);
-        Assert.Equal(["FUND-A", "FUND-A-SUB"], donations.FundRequests[0]);
+        Assert.Contains(snapshot.Donations, donation => donation.Fund == "FUND-A-MERGED");
+        Assert.True(donations.AccountTotalRequested);
     }
 
     private static DonationRecord CreateDonation(int id, string fund, string donorName) => new()
@@ -52,6 +54,8 @@ public sealed class DonorSnapshotTests
 
     private sealed class TrackingDonationRepository : IDonationReadRepository
     {
+        public List<DonationRecord> AccountTotalDonations { get; init; } = [];
+        public bool AccountTotalRequested { get; private set; }
         public List<SubAccount> SubAccounts { get; init; } = [];
         public List<DonationRecord> AccountDonations { get; init; } = [];
         public List<DonationRecord> FundDonations { get; init; } = [];
@@ -60,7 +64,17 @@ public sealed class DonorSnapshotTests
         public Task<List<SubAccount>> GetSubAccountsByAccountIdAsync(int accountId) => Task.FromResult(SubAccounts);
         public Task<List<DonationRecord>> GetDonationsByFundsAsync(IEnumerable<string> fundNames) => Task.FromResult(FundDonations);
         public Task<List<DonationRecord>> GetDonationsByAccountAsync(int accountId, string fundName) => Task.FromResult(AccountDonations);
+        public Task<List<DonationRecord>> GetDonationsForAccountTotalAsync(int accountId, string fundName, DateTime startDate, DateTime endDate)
+        {
+            AccountTotalRequested = true;
+            return Task.FromResult(AccountTotalDonations);
+        }
         public Task<List<DonationRecord>> GetDonationsByFundsAndDateRangeAsync(IEnumerable<string> fundNames, DateTime startDate, DateTime endDate)
+        {
+            FundRequests.Add(fundNames.ToList());
+            return Task.FromResult(AccountDonations.Concat(FundDonations).ToList());
+        }
+        public Task<List<DonationRecord>> GetDonationsByFundNamesAndDateRangeAsync(IEnumerable<string> fundNames, DateTime startDate, DateTime endDate)
         {
             FundRequests.Add(fundNames.ToList());
             return Task.FromResult(AccountDonations.Concat(FundDonations).ToList());
@@ -75,7 +89,6 @@ public sealed class DonorSnapshotTests
 
     private sealed class EmptyExpenseRepository : IExpenseReadRepository
     {
-        public Task<List<AccountingRecord>> GetAccountingDataByClassAndDateAsync(string accountingClass, DateTime startDate, DateTime endDate) => Task.FromResult(new List<AccountingRecord>());
-        public Task<List<AccountingRecord>> GetAccountingDataByClassOrAccountNumberAndDateAsync(string accountingClass, string accountNumber, DateTime startDate, DateTime endDate) => Task.FromResult(new List<AccountingRecord>());
+        public Task<List<AccountingRecord>> GetAccountingDataForAccountAsync(string accountingClass, string accountNumber, DateTime startDate, DateTime endDate) => Task.FromResult(new List<AccountingRecord>());
     }
 }

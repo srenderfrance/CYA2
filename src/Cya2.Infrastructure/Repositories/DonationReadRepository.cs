@@ -31,7 +31,19 @@ public sealed class DonationReadRepository : IDonationReadRepository
         var rows = await conn.QueryAsync<SubAccount>(
             "SELECT Id, AccountId, SubFund, Kind FROM SubAccounts WHERE AccountId = @AccountId",
             new { AccountId = accountId });
-        return rows.ToList();
+        var subAccounts = rows.ToList();
+        _logger.LogInformation(
+            "Subaccounts loaded: accountId={AccountId}, count={Count}, kinds={Kinds}, funds={Funds}",
+            accountId,
+            subAccounts.Count,
+            string.Join("|", subAccounts.Select(s => s.Kind?.Trim() ?? string.Empty).Distinct(StringComparer.OrdinalIgnoreCase)),
+            string.Join("|", subAccounts.Select(s => s.SubFund)));
+        return subAccounts;
+    }
+
+    public Task<List<DonationRecord>> GetDonationsForAccountTotalAsync(int accountId, string fundName, DateTime startDate, DateTime endDate)
+    {
+        return GetDonationsByAccountAndDateRangeAsync(accountId, fundName, startDate, endDate);
     }
 
     public Task<List<DonationRecord>> GetDonationsByFundsAsync(IEnumerable<string> fundNames)
@@ -83,6 +95,31 @@ WHERE Date >= @StartDate
        )
   )",
             (fund, accountId) => new { Fund = fund, AccountId = accountId, StartDate = startDate, EndDate = endDate });
+    }
+
+    public async Task<List<DonationRecord>> GetDonationsByFundNamesAndDateRangeAsync(IEnumerable<string> fundNames, DateTime startDate, DateTime endDate)
+    {
+        _dbGuard.ThrowIfUnavailable();
+        var funds = fundNames
+            .Where(f => !string.IsNullOrWhiteSpace(f))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        if (funds.Length == 0)
+        {
+            return new List<DonationRecord>();
+        }
+
+        await using var conn = new MySqlConnection(ConnStr);
+        var rows = await conn.QueryAsync<DonationRecord>(
+            @"SELECT *
+FROM DonationData
+WHERE Date >= @StartDate
+  AND Date <= @EndDate
+  AND Fund COLLATE utf8mb4_0900_ai_ci IN @Funds",
+            new { StartDate = startDate, EndDate = endDate, Funds = funds });
+        var result = rows.ToList();
+        _logger.LogInformation("Donations loaded in one fund query: fundCount={FundCount}, rowCount={RowCount}", funds.Length, result.Count);
+        return result;
     }
 
     public async Task<List<DonationRecord>> GetDonationsByAccountAndDateRangeAsync(int accountId, string fundName, DateTime startDate, DateTime endDate)

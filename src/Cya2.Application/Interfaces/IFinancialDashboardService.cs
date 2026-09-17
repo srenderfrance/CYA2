@@ -1,4 +1,5 @@
 using Cya2.Application.DTOs;
+using Cya2.Core.Entities;
 using Cya2.Core.ReadModels;
 
 namespace Cya2.Application.Interfaces;
@@ -56,5 +57,6 @@ public sealed class DashboardAccountCacheData
     public DateTime WindowEnd { get; set; }
     public List<AccountingRecord> AccountingData { get; set; } = new();
     public List<DonationRecord> DonationData { get; set; } = new();
+    public List<SubAccount> SubAccounts { get; set; } = new();
     public long ApproximateBytes { get; set; }
 }

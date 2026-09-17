@@ -164,7 +164,23 @@ public class DonationService : IDonationService
                     .Where(sa => string.Equals(sa.Kind, "Merged", StringComparison.OrdinalIgnoreCase) && !string.IsNullOrWhiteSpace(sa.SubFund))
                     .ToList();
 
+                _logger.LogInformation(
+                    "Donation subaccounts loaded: accountId={AccountId}, fund={Fund}, total={Total}, separate={Separate}, merged={Merged}, kinds={Kinds}, separateFunds={SeparateFunds}, mergedFunds={MergedFunds}",
+                    selected.AccountId,
+                    selected.Fund,
+                    allSubAccounts.Count,
+                    separateSubAccounts.Count,
+                    mergedSubAccounts.Count,
+                    string.Join("|", allSubAccounts.Select(sa => sa.Kind?.Trim() ?? string.Empty).Distinct(StringComparer.OrdinalIgnoreCase)),
+                    string.Join("|", separateSubAccounts.Select(sa => sa.SubFund)),
+                    string.Join("|", mergedSubAccounts.Select(sa => sa.SubFund)));
+
                 result.ShowSubAccountDropdown = separateSubAccounts.Any();
+                _logger.LogInformation(
+                    "Donation subaccount UI scope: accountId={AccountId}, showDropdown={ShowDropdown}, selectedSubAccount={SelectedSubAccount}",
+                    selected.AccountId,
+                    result.ShowSubAccountDropdown,
+                    result.SelectedSubAccount);
                 result.SubAccountOptions = new List<SubAccountOptionDto>();
 
                 if (result.ShowSubAccountDropdown)
@@ -330,6 +346,13 @@ public class DonationService : IDonationService
                     .Where(r => snapshotFunds.Contains(r.Fund))
                     .Where(r => r.Date.Date >= dateRange.StartDate.Date && r.Date.Date <= dateRange.EndDate.Date);
                 donationRecords = snapshotDonations.ToList();
+                _logger.LogInformation(
+                    "Donation snapshot scope: accountId={AccountId}, selectedSubAccount={SelectedSubAccount}, fundCount={FundCount}, funds={Funds}, rowCount={RowCount}",
+                    selected.AccountId,
+                    result.SelectedSubAccount,
+                    snapshotFunds.Count,
+                    string.Join("|", snapshotFunds),
+                    donationRecords.Count);
             }
             else if (accountSnapshot != null && selectedIsInternAccount)
             {

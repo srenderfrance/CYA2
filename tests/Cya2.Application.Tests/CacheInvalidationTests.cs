@@ -175,8 +175,7 @@ public sealed class CacheInvalidationTests
     private sealed class FakeExpenseReadRepository : IExpenseReadRepository
     {
         public int CallCount { get; private set; }
-        public Task<List<AccountingRecord>> GetAccountingDataByClassAndDateAsync(string accountingClass, DateTime startDate, DateTime endDate) => Load();
-        public Task<List<AccountingRecord>> GetAccountingDataByClassOrAccountNumberAndDateAsync(string accountingClass, string accountNumber, DateTime startDate, DateTime endDate) => Load();
+        public Task<List<AccountingRecord>> GetAccountingDataForAccountAsync(string accountingClass, string accountNumber, DateTime startDate, DateTime endDate) => Load();
         private Task<List<AccountingRecord>> Load()
         {
             CallCount++;
@@ -186,11 +185,13 @@ public sealed class CacheInvalidationTests
 
     private sealed class FakeDonationReadRepository : IDonationReadRepository
     {
+        public Task<List<DonationRecord>> GetDonationsForAccountTotalAsync(int accountId, string fundName, DateTime startDate, DateTime endDate) => Load();
         public int CallCount { get; private set; }
         public Task<List<SubAccount>> GetSubAccountsByAccountIdAsync(int accountId) => Task.FromResult(new List<SubAccount>());
         public Task<List<DonationRecord>> GetDonationsByFundsAsync(IEnumerable<string> fundNames) => Load();
         public Task<List<DonationRecord>> GetDonationsByAccountAsync(int accountId, string fundName) => Load();
         public Task<List<DonationRecord>> GetDonationsByFundsAndDateRangeAsync(IEnumerable<string> fundNames, DateTime startDate, DateTime endDate) => Load();
+        public Task<List<DonationRecord>> GetDonationsByFundNamesAndDateRangeAsync(IEnumerable<string> fundNames, DateTime startDate, DateTime endDate) => Load();
         public Task<List<DonationRecord>> GetDonationsByAccountAndDateRangeAsync(int accountId, string fundName, DateTime startDate, DateTime endDate) => Load();
         public Task<List<DonationRecord>> GetDonationsByFundsAndDonorAsync(IEnumerable<string> fundNames, string donorName) => Load();
         public Task<List<DonationRecord>> GetDonationsByAccountAndDonorAsync(int accountId, string fundName, string donorName) => Load();

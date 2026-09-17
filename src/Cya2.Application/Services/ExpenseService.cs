@@ -328,8 +328,9 @@ public class ExpenseService : IExpenseService
     {
         try
         {
-            var result = await _expenseReadRepository.GetAccountingDataByClassAndDateAsync(
+            var result = await _expenseReadRepository.GetAccountingDataForAccountAsync(
                 account.AccountingClass,
+                account.AccountNumber,
                 dateRange.StartDate,
                 dateRange.EndDate);
 

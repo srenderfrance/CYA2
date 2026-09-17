@@ -32,6 +32,117 @@ public sealed class ExpenseCalculationTests
     }
 
     [Fact]
+    public void Categorize_UsesStoredExpenseAmountForTotal()
+    {
+        var classifier = new ExpenseClassificationService();
+
+        var result = classifier.Categorize(new List<AccountingRecord>
+        {
+            new() { Type = "Expense", Amount = -25 }
+        });
+
+        Assert.Equal(-25m, result.ExpenseTotal);
+    }
+
+    [Fact]
+    public void DonationTotals_IncludeMergedButRetainSeparateSubaccounts()
+    {
+        var service = new AccountCalculationService(
+            new EmptyExpenseRepository(),
+            new EmptyDonationRepository(),
+            new ExpenseClassificationService());
+        var account = new UserAccountContextAccount { AccountId = 1, Fund = "PRIMARY" };
+        var subAccounts = new List<SubAccount>
+        {
+            new(1, "MERGED", "Merged"),
+            new(1, "SEPARATE", "Separate")
+        };
+        var donations = new List<DonationRecord>
+        {
+            new() { Fund = "PRIMARY", Amount = 100 },
+            new() { Fund = "MERGED", Amount = 25 },
+            new() { Fund = "SEPARATE", Amount = 50 }
+        };
+
+        var result = service.CalculateDonationTotalsFromData(account, donations, subAccounts);
+
+        Assert.Equal(125m, result.TotalDonations);
+        Assert.Equal(25m, result.MergedSubfundDonations);
+        Assert.Equal(50m, result.SeparateSubfundTotals["SEPARATE"]);
+    }
+
+    [Fact]
+    public void DonationTotals_TrimSubaccountKindWhenIncludingMergedFunds()
+    {
+        var service = new AccountCalculationService(
+            new EmptyExpenseRepository(),
+            new EmptyDonationRepository(),
+            new ExpenseClassificationService());
+        var account = new UserAccountContextAccount { AccountId = 1, Fund = "PRIMARY" };
+        var subAccounts = new List<SubAccount>
+        {
+            new(1, "MERGED", " Merged ")
+        };
+        var donations = new List<DonationRecord>
+        {
+            new() { Fund = "PRIMARY", Amount = 100 },
+            new() { Fund = "MERGED", Amount = 25 }
+        };
+
+        var result = service.CalculateDonationTotalsFromData(account, donations, subAccounts);
+
+        Assert.Equal(125m, result.TotalDonations);
+        Assert.Equal(25m, result.MergedSubfundDonations);
+    }
+
+    [Fact]
+    public void HomeDonationTotals_MatchCombinedDonationScopeWithoutSeparateSubaccounts()
+    {
+        var service = new AccountCalculationService(
+            new EmptyExpenseRepository(),
+            new EmptyDonationRepository(),
+            new ExpenseClassificationService());
+        var account = new UserAccountContextAccount { AccountId = 1, Fund = "PRIMARY" };
+        var subAccounts = new List<SubAccount>
+        {
+            new(1, "MERGED", "Merged"),
+            new(1, "SEPARATE", "Separate")
+        };
+        var donations = new List<DonationRecord>
+        {
+            new() { Fund = "PRIMARY", Amount = 100 },
+            new() { Fund = "MERGED", Amount = 25 },
+            new() { Fund = "SEPARATE", Amount = 50 }
+        };
+
+        var result = service.CalculateDonationTotalsFromData(account, donations, subAccounts);
+
+        Assert.Equal(125m, result.TotalDonations);
+        Assert.Equal(50m, result.SeparateSubfundTotals["SEPARATE"]);
+    }
+
+    [Fact]
+    public void DonationTotals_InternAccountUsesAllMatchedRowsAsTotal()
+    {
+        var service = new AccountCalculationService(
+            new EmptyExpenseRepository(),
+            new EmptyDonationRepository(),
+            new ExpenseClassificationService());
+        var account = new UserAccountContextAccount { AccountId = 2, Fund = "Intern: Jane Doe" };
+        var donations = new List<DonationRecord>
+        {
+            new() { Fund = "unrelated", Intern = "Jane Doe", Amount = 80 },
+            new() { Fund = "unrelated", Intern = "Doe, Jane", Amount = 20 }
+        };
+
+        var result = service.CalculateDonationTotalsFromData(account, donations, []);
+
+        Assert.Equal(100m, result.TotalDonations);
+        Assert.Equal(0m, result.MergedSubfundDonations);
+        Assert.Empty(result.SeparateSubfundTotals);
+    }
+
+    [Fact]
     public void CalculateOverheadAmount_UsesCoreAccountRule()
     {
         var service = new AccountCalculationService(
@@ -70,16 +181,17 @@ public sealed class ExpenseCalculationTests
 
     private sealed class EmptyExpenseRepository : IExpenseReadRepository
     {
-        public Task<List<AccountingRecord>> GetAccountingDataByClassAndDateAsync(string accountingClass, DateTime startDate, DateTime endDate) => Task.FromResult(new List<AccountingRecord>());
-        public Task<List<AccountingRecord>> GetAccountingDataByClassOrAccountNumberAndDateAsync(string accountingClass, string accountNumber, DateTime startDate, DateTime endDate) => Task.FromResult(new List<AccountingRecord>());
+        public Task<List<AccountingRecord>> GetAccountingDataForAccountAsync(string accountingClass, string accountNumber, DateTime startDate, DateTime endDate) => Task.FromResult(new List<AccountingRecord>());
     }
 
     private sealed class EmptyDonationRepository : IDonationReadRepository
     {
+            public Task<List<DonationRecord>> GetDonationsForAccountTotalAsync(int accountId, string fundName, DateTime startDate, DateTime endDate) => Task.FromResult(new List<DonationRecord>());
         public Task<List<Cya2.Core.Entities.SubAccount>> GetSubAccountsByAccountIdAsync(int accountId) => Task.FromResult(new List<Cya2.Core.Entities.SubAccount>());
         public Task<List<DonationRecord>> GetDonationsByFundsAsync(IEnumerable<string> fundNames) => Task.FromResult(new List<DonationRecord>());
         public Task<List<DonationRecord>> GetDonationsByAccountAsync(int accountId, string fundName) => Task.FromResult(new List<DonationRecord>());
         public Task<List<DonationRecord>> GetDonationsByFundsAndDateRangeAsync(IEnumerable<string> fundNames, DateTime startDate, DateTime endDate) => Task.FromResult(new List<DonationRecord>());
+        public Task<List<DonationRecord>> GetDonationsByFundNamesAndDateRangeAsync(IEnumerable<string> fundNames, DateTime startDate, DateTime endDate) => Task.FromResult(new List<DonationRecord>());
         public Task<List<DonationRecord>> GetDonationsByAccountAndDateRangeAsync(int accountId, string fundName, DateTime startDate, DateTime endDate) => Task.FromResult(new List<DonationRecord>());
         public Task<List<DonationRecord>> GetDonationsByFundsAndDonorAsync(IEnumerable<string> fundNames, string donorName) => Task.FromResult(new List<DonationRecord>());
         public Task<List<DonationRecord>> GetDonationsByAccountAndDonorAsync(int accountId, string fundName, string donorName) => Task.FromResult(new List<DonationRecord>());

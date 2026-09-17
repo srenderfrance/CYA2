@@ -84,6 +84,41 @@ public sealed class AccountSnapshotWarmupTests
     }
 
     [Fact]
+    public async Task WarmInitialAccountsAsync_AdminUser_WarmsOnlyDefaultAccount()
+    {
+        var accounts = Enumerable.Range(1, 5)
+            .Select(id => new UserAccountContextAccount
+            {
+                AccountId = id,
+                Fund = $"FUND-{id}",
+                AccountingClass = $"CLASS-{id}",
+                AccountNumber = $"ACCOUNT-{id}"
+            })
+            .ToList();
+        var snapshotCache = new TrackingSnapshotCache();
+        var loader = new TrackingSnapshotLoader();
+        var donors = new TrackingDonorService();
+
+        using var warmup = new AccountSnapshotWarmupService(
+            snapshotCache,
+            loader,
+            new TrackingDashboardService(),
+            new NoOpDashboardCache(),
+            new TrackingDonationService(),
+            new TrackingExpenseService(),
+            donors,
+            NullLogger<AccountSnapshotWarmupService>.Instance);
+
+        await warmup.WarmInitialAccountsAsync(accounts, defaultAccountId: 1, userId: "admin-1", isAdminUser: true);
+        await Task.Delay(100);
+
+        Assert.Single(loader.LoadedAccountIds);
+        Assert.Equal(1, loader.LoadedAccountIds.Single());
+        Assert.Equal(1, donors.SummaryCalls);
+        Assert.Equal(1, donors.MissingGiftCalls);
+    }
+
+    [Fact]
     public async Task WarmInitialAccountsAsync_PassesWarningRangeToEveryAccountWarmup()
     {
         var accounts = Enumerable.Range(1, 5)

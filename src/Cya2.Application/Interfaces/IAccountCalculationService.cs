@@ -1,3 +1,4 @@
+using Cya2.Core.Entities;
 using Cya2.Core.ReadModels;
 
 namespace Cya2.Application.Interfaces;
@@ -22,10 +23,31 @@ public interface IAccountCalculationService
     /// </summary>
     Task<DonationTotalsResult> CalculateDonationTotalsAsync(UserAccountContextAccount account, DateTime? startDate = null, DateTime? endDate = null);
 
+    Task<DonationCalculationData> LoadDonationCalculationDataAsync(
+        UserAccountContextAccount account,
+        DateTime startDate,
+        DateTime endDate);
+
+    /// <summary>
+    /// Calculate donation totals from pre-loaded account data using the same account and subaccount rules.
+    /// </summary>
+    DonationTotalsResult CalculateDonationTotalsFromData(
+        UserAccountContextAccount account,
+        IEnumerable<DonationRecord> donations,
+        IEnumerable<SubAccount> subAccounts,
+        DateTime? startDate = null,
+        DateTime? endDate = null);
+
     /// <summary>
     /// Calculate overhead amount based on donation total and account percentage
     /// </summary>
     decimal CalculateOverheadAmount(UserAccountContextAccount account, decimal donationTotal);
+}
+
+public sealed class DonationCalculationData
+{
+    public List<DonationRecord> Donations { get; init; } = new();
+    public List<SubAccount> SubAccounts { get; init; } = new();
 }
 
 /// <summary>

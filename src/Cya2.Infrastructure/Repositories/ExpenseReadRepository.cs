@@ -19,29 +19,19 @@ public sealed class ExpenseReadRepository : IExpenseReadRepository
 
     private string ConnStr => _configuration.GetConnectionString("default") ?? string.Empty;
 
-    public async Task<List<AccountingRecord>> GetAccountingDataByClassAndDateAsync(string accountingClass, DateTime startDate, DateTime endDate)
-    {
-        _dbGuard.ThrowIfUnavailable();
-        const string sql = @"
-SELECT Id, AccountingClass, Date, Num, Amount, AccountNumber, Account, Type, DateCreated
-FROM AccountingData
-WHERE AccountingClass = @AccountClass
-  AND Date >= @StartDate
-  AND Date <= @EndDate
-ORDER BY Date DESC";
-        await using var conn = new MySqlConnection(ConnStr);
-        var rows = await conn.QueryAsync<AccountingRecord>(sql, new { AccountClass = accountingClass, StartDate = startDate, EndDate = endDate });
-        return rows.ToList();
-    }
-
-    public async Task<List<AccountingRecord>> GetAccountingDataByClassOrAccountNumberAndDateAsync(string accountingClass, string accountNumber, DateTime startDate, DateTime endDate)
+    public async Task<List<AccountingRecord>> GetAccountingDataForAccountAsync(
+        string accountingClass,
+        string accountNumber,
+        DateTime startDate,
+        DateTime endDate)
     {
         _dbGuard.ThrowIfUnavailable();
         const string sql = @"
 SELECT Id, AccountingClass, Date, Num, Amount, AccountNumber, Account, Type, DateCreated
 FROM AccountingData
 WHERE (AccountingClass = @AccountClass OR AccountNumber = @AccountNumber)
-  AND Account != 'Prepaids'
+  AND LOWER(COALESCE(Account, '')) <> 'prepaids'
+  AND LOWER(COALESCE(Account, '')) <> 'payroll clearing insurance'
   AND Date >= @StartDate
   AND Date <= @EndDate
 ORDER BY Date";

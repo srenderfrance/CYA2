@@ -44,6 +44,12 @@ The account snapshot is the shared, complete account-level data set used by the 
 
 The snapshot loader is the single place to create complete snapshots. Do not create partial snapshots in individual feature services.
 
+All account-scoped AccountingData reads use `IExpenseReadRepository.GetAccountingDataForAccountAsync`. The shared query matches the account's `AccountingClass` or `AccountNumber`, applies the requested inclusive date range, and excludes `Prepaids` case-insensitively before data is placed in snapshots or derived caches. Expense totals on Expenses and Home use the same `ExpenseClassificationService` result and preserve the stored amount sign. This keeps Expenses, balance calculations, dashboard data, and snapshot-backed requests on the same source-of-truth filtering and total-calculation rules.
+
+Home donation totals use `IAccountCalculationService.CalculateDonationTotalsAsync` or its preloaded-data equivalent. The canonical rule is primary fund plus merged subaccounts; separate subaccount totals are retained separately until Home exposes them. Intern funds use the shared intern-designation matching query and include all matched donation rows.
+
+On a direct Home load, the dashboard requests one broad donation window covering all displayed periods. The account-total repository query returns the primary fund and merged subaccounts in one database query; Home derives the month, year, and visualization totals from that data in memory. This avoids one query per period or per fund without changing the separate-subaccount rule.
+
 `AccountSnapshotWarmupService` uses an existing snapshot as the data source for derived-cache warming; a snapshot hit must not short-circuit dashboard, donation, expense, or donor-summary cache population. This preserves the cache-first behavior for subsequent Home and feature-page requests.
 Warmup requests for the same account are single-flight across initial loading and account selection: an active warmup is joined before an existing snapshot is used to start derived-cache warming. This prevents concurrent Home requests from duplicating derived cache loads.
 On Home initialization, the warmup coordinator loads the default account plus up to four non-default accounts. Selecting an account while this preload is running prioritizes that account but does not cancel the remaining automatic preload.
@@ -133,9 +139,12 @@ These are scoped Admin-specific caches and are intentionally separate from the r
 - Accounts Overview aggregates.
 - Fund References data.
 
-`AdminRecentAccountSnapshotService` warms snapshots for the five most recently selected non-default accounts. If a default account is configured, it is warmed separately and does not consume one of the five recent-account positions.
+Accounts Overview displays the account rows before financial aggregates complete. Its aggregate load uses one batched accounting query and one batched non-intern donation query, then applies the existing account and subaccount calculation rules in memory. Intern-designated accounts retain their specialized donation query path.
+
+For non-admin users, the initial account warmup can warm the configured default account plus a bounded set of recent non-default accounts. For Admin users, the initial warmup stops after the configured default account; it does not automatically warm any additional account snapshots. Explicit account selection may still warm the selected account on demand.
 
 Admin preload data must not be used as a reason to warm every account at startup.
+The Admin page prioritizes account, staff, and subaccount data needed by its controls, renders those collections, and only then starts default-account and admin preload warmups. Database latency and the overview's per-account calculations must not block the first interactive response. Overview warmup is bounded to two accounts concurrently so it does not monopolize the shared database connection pool. Preload timing and item counts are logged to distinguish cold-load latency from later cache reuse.
 
 ## Invalidation architecture
 

@@ -895,13 +895,25 @@ private bool showMissingGiftDialog = false;
         }
     }
 
-    protected override async Task OnInitializedAsync()
+    protected override Task OnInitializedAsync()
     {
-        // using var operationScope = PageLoadCorrelation.BeginOperation(Logger, nameof(Home), "Initialize");
-        // var initSw = Stopwatch.StartNew();
         isLoading = true;
         isAccountDataLoading = true;
+        return Task.CompletedTask;
+    }
 
+    protected override Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            _ = InitializeHomeAsync();
+        }
+
+        return Task.CompletedTask;
+    }
+
+    private async Task InitializeHomeAsync()
+    {
         try
         {
             // Logger.LogInformation("Home init phase=auth-start elapsedMs={ElapsedMs}", initSw.ElapsedMilliseconds);
@@ -1000,24 +1012,9 @@ private bool showMissingGiftDialog = false;
             isLoading = false;
             isAccountDataLoading = false;
             ScheduleInitialDeferredWork();
-            // Logger.LogInformation(
-            //     "Home init complete user={UserId} selectedAccount={SelectedAccount} userAccounts={AccountCount} elapsedMs={ElapsedMs}",
-            //     cachedUserId,
-            //     selectedAccount,
-            //     dashboardData.UserAccounts?.Count ?? 0,
-            //     initSw.ElapsedMilliseconds);
-        }
-    }
-
-    protected override Task OnAfterRenderAsync(bool firstRender)
-    {
-        if (firstRender)
-        {
-            // Logger.LogInformation("Home first render complete; starting account warmup");
             ScheduleInitialWarmup();
+            await InvokeAsync(StateHasChanged);
         }
-
-        return Task.CompletedTask;
     }
 
     private void ScheduleInitialDeferredWork()
@@ -1062,7 +1059,8 @@ private bool showMissingGiftDialog = false;
                 defaultAccountId,
                 cachedUserId,
                 isAdminUser,
-                GetDonorSummaryWarmupRange());
+                GetDonorSummaryWarmupRange(),
+                isAdminUser: isAdminUser);
         });
     }
 

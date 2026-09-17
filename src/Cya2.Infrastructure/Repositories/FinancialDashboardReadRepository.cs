@@ -23,123 +23,6 @@ public sealed class FinancialDashboardReadRepository : IFinancialDashboardReadRe
 
     private string ConnStr => _configuration.GetConnectionString("default") ?? string.Empty;
 
-    public Task<decimal> GetDonationTotalAsync(Account account, DateTime startDate, DateTime endDate)
-    {
-        _dbGuard.ThrowIfUnavailable();
-        const string sql = @"
-SELECT COALESCE(SUM(Amount), 0)
-FROM DonationData
-WHERE Date >= @StartDate
-  AND Date <= @EndDate
-  AND (
-        Fund COLLATE utf8mb4_0900_ai_ci = @Fund COLLATE utf8mb4_0900_ai_ci
-        OR Fund COLLATE utf8mb4_0900_ai_ci IN (
-            SELECT SubFund COLLATE utf8mb4_0900_ai_ci
-            FROM SubAccounts
-            WHERE AccountId = @AccountId AND Kind = 'Merged'
-        )
-  )";
-        return QuerySingleDecimalAsync(sql, new { StartDate = startDate, EndDate = endDate, account.Fund, account.AccountId });
-    }
-
-    public Task<decimal> GetInternDonationTotalAsync(string internDesignationName, DateTime startDate, DateTime endDate)
-    {
-        _dbGuard.ThrowIfUnavailable();
-        var criteria = InternAccountUtility.CreateDesignationCriteria(internDesignationName);
-        const string sql = @"
-SELECT COALESCE(SUM(Amount), 0)
-FROM DonationData
-WHERE Date >= @StartDate
-  AND Date <= @EndDate
-  AND (
-      Intern COLLATE utf8mb4_0900_ai_ci = @InternDesignationName COLLATE utf8mb4_0900_ai_ci
-      OR (@HasAlternateDesignation = 1 AND Intern COLLATE utf8mb4_0900_ai_ci = @AlternateDesignation COLLATE utf8mb4_0900_ai_ci)
-      OR (
-          LOCATE(',', Intern) > 0
-          AND TRIM(CONCAT(
-              TRIM(SUBSTRING_INDEX(Intern, ',', -1)),
-              ' ',
-              TRIM(SUBSTRING_INDEX(Intern, ',', 1))
-          )) COLLATE utf8mb4_0900_ai_ci = @InternDesignationName COLLATE utf8mb4_0900_ai_ci
-      )
-      OR (
-          @HasAlternateDesignation = 1
-          AND LOCATE(',', Intern) > 0
-          AND TRIM(CONCAT(
-              TRIM(SUBSTRING_INDEX(Intern, ',', -1)),
-              ' ',
-              TRIM(SUBSTRING_INDEX(Intern, ',', 1))
-          )) COLLATE utf8mb4_0900_ai_ci = @AlternateDesignation COLLATE utf8mb4_0900_ai_ci
-      )
-      OR (
-          @HasNameTokens = 1
-          AND Intern IS NOT NULL
-          AND Intern COLLATE utf8mb4_0900_ai_ci LIKE @FirstToken COLLATE utf8mb4_0900_ai_ci
-          AND Intern COLLATE utf8mb4_0900_ai_ci LIKE @LastToken COLLATE utf8mb4_0900_ai_ci
-      )
-      OR (
-          LOWER(REPLACE(REPLACE(REPLACE(REPLACE(COALESCE(Intern,''), ' ', ''), ',', ''), '.', ''), '-', '')) = @DesignationLookupKey
-      )
-      OR (
-          @HasAlternateLookupKey = 1
-          AND LOWER(REPLACE(REPLACE(REPLACE(REPLACE(COALESCE(Intern,''), ' ', ''), ',', ''), '.', ''), '-', '')) = @AlternateLookupKey
-      )
-  )";
-
-        _logger.LogInformation(
-            "Intern dashboard total query debug: designation='{Designation}', alternate='{Alternate}', hasAlternate={HasAlternate}, firstName='{FirstName}', lastName='{LastName}', hasNameTokens={HasNameTokens}, lookupKey='{LookupKey}', alternateLookupKey='{AlternateLookupKey}', range={StartDate:yyyy-MM-dd}..{EndDate:yyyy-MM-dd}",
-            criteria.InternDesignationName,
-            criteria.AlternateDesignation,
-            criteria.HasAlternateDesignation,
-            criteria.FirstName,
-            criteria.LastName,
-            criteria.HasNameTokens,
-            criteria.DesignationLookupKey,
-            criteria.AlternateLookupKey,
-            startDate,
-            endDate);
-
-        return QuerySingleDecimalAsync(sql, new
-        {
-            StartDate = startDate,
-            EndDate = endDate,
-            InternDesignationName = criteria.InternDesignationName,
-            AlternateDesignation = criteria.AlternateDesignation,
-            HasAlternateDesignation = criteria.HasAlternateDesignation ? 1 : 0,
-            HasNameTokens = criteria.HasNameTokens ? 1 : 0,
-            FirstToken = $"%{criteria.FirstName}%",
-            LastToken = $"%{criteria.LastName}%",
-            DesignationLookupKey = criteria.DesignationLookupKey,
-            AlternateLookupKey = criteria.AlternateLookupKey,
-            HasAlternateLookupKey = criteria.HasAlternateLookupKey ? 1 : 0
-        });
-    }
-
-    public Task<decimal> GetExpenseTotalAsync(Account account, DateTime startDate, DateTime endDate)
-    {
-        _dbGuard.ThrowIfUnavailable();
-        const string sql = @"
-SELECT COALESCE(SUM(ABS(Amount)), 0)
-FROM AccountingData
-WHERE (AccountingClass = @AccountingClass OR AccountNumber = @AccountNumber)
-  AND Account != 'Prepaids'
-  AND Date >= @StartDate
-  AND Date <= @EndDate
-  AND (
-        Type IN ('Payroll Check', 'Expense')
-        OR Account LIKE '%Expenses:%'
-        OR Account LIKE '%Payroll:%'
-        OR Account LIKE '%Administration:%'
-  )";
-        return QuerySingleDecimalAsync(sql, new
-        {
-            AccountingClass = account.AccountingClass,
-            AccountNumber = account.AccountNumber,
-            StartDate = startDate,
-            EndDate = endDate
-        });
-    }
-
     public Task<decimal> GetTransferTotalAsync(Account account, DateTime startDate, DateTime endDate)
     {
         _dbGuard.ThrowIfUnavailable();
@@ -181,6 +64,46 @@ WHERE (AccountingClass = @AccountingClass OR AccountNumber = @AccountNumber)
             EndDate = endDate
         });
         return baseBalance + account.BalanceAdjustment;
+    }
+
+    public async Task<IReadOnlyDictionary<int, decimal>> GetBalancesAsOfAsync(IReadOnlyList<Account> accounts, DateTime endDate)
+    {
+        _dbGuard.ThrowIfUnavailable();
+        if (accounts.Count == 0)
+        {
+            return new Dictionary<int, decimal>();
+        }
+
+        var parameters = new DynamicParameters();
+        parameters.Add("EndDate", endDate);
+        parameters.Add("AccountingClasses", accounts.Select(a => a.AccountingClass).Distinct(StringComparer.OrdinalIgnoreCase).ToArray());
+        parameters.Add("AccountNumbers", accounts.Select(a => a.AccountNumber).Distinct(StringComparer.OrdinalIgnoreCase).ToArray());
+
+        var expressions = accounts.Select((account, index) =>
+        {
+            parameters.Add($"AccountingClass{index}", account.AccountingClass);
+            parameters.Add($"AccountNumber{index}", account.AccountNumber);
+            return $"COALESCE(SUM(CASE WHEN (AccountingClass = @AccountingClass{index} OR AccountNumber = @AccountNumber{index}) THEN CASE WHEN Type IN ('Payroll Check', 'Expense') OR Account LIKE '%Expenses:%' OR Account LIKE '%Payroll:%' OR Account LIKE '%Administration:%' THEN -Amount ELSE Amount END ELSE 0 END), 0) AS B{index}";
+        });
+
+        var sql = $@"
+SELECT {string.Join(", ", expressions)}
+FROM AccountingData
+WHERE Account != 'Prepaids'
+  AND Date <= @EndDate
+  AND (AccountingClass IN @AccountingClasses OR AccountNumber IN @AccountNumbers)";
+
+        await using var conn = new MySqlConnection(ConnStr);
+        var row = await conn.QuerySingleAsync(sql, parameters);
+        var values = (IDictionary<string, object>)row;
+        var result = new Dictionary<int, decimal>(accounts.Count);
+        for (var index = 0; index < accounts.Count; index++)
+        {
+            result[accounts[index].AccountId] = Convert.ToDecimal(values[$"B{index}"]) + accounts[index].BalanceAdjustment;
+        }
+
+        _logger.LogInformation("Dashboard account balances loaded in one query: accountCount={AccountCount}", accounts.Count);
+        return result;
     }
 
     private async Task<decimal> QuerySingleDecimalAsync(string sql, object parameters)

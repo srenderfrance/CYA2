@@ -25,8 +25,9 @@ public sealed class AccountSnapshotLoader : IAccountSnapshotLoader
         AccountSnapshotKey key,
         CancellationToken cancellationToken = default)
     {
-        var accounting = await _expenseReadRepository.GetAccountingDataByClassAndDateAsync(
+        var accounting = await _expenseReadRepository.GetAccountingDataForAccountAsync(
             account.AccountingClass,
+            account.AccountNumber,
             queryRange.StartDate,
             queryRange.EndDate);
 
@@ -40,12 +41,7 @@ public sealed class AccountSnapshotLoader : IAccountSnapshotLoader
                 designation,
                 queryRange.StartDate,
                 queryRange.EndDate)
-            : subAccounts is { Count: > 0 }
-                ? await _donationReadRepository.GetDonationsByFundsAndDateRangeAsync(
-                    new[] { account.Fund }.Concat(subAccounts.Select(subAccount => subAccount.SubFund)),
-                    queryRange.StartDate,
-                    queryRange.EndDate)
-                : await _donationReadRepository.GetDonationsByAccountAndDateRangeAsync(
+            : await _donationReadRepository.GetDonationsForAccountTotalAsync(
                     account.AccountId,
                     account.Fund,
                     queryRange.StartDate,
