@@ -9,4 +9,9 @@ public interface IExpenseReadRepository
         string accountNumber,
         DateTime startDate,
         DateTime endDate);
+
+    Task<IReadOnlyDictionary<int, List<AccountingRecord>>> GetAccountingDataForAccountsAsync(
+        IReadOnlyList<(int AccountId, string AccountingClass, string AccountNumber)> accounts,
+        DateTime startDate,
+        DateTime endDate);
 }

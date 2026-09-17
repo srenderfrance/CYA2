@@ -3,14 +3,14 @@ using Cya2.Core.ReadModels;
 namespace Cya2.Core.Services;
 
 /// <summary>
-/// Domain service that classifies accounting transactions as expenses, transfers, or other.
+/// Domain service that classifies accounting transactions as expenses or transfers.
 /// Contains the authoritative business rules for transaction categorization.
 /// No infrastructure or application framework dependencies.
 /// </summary>
 public class ExpenseClassificationService
 {
     /// <summary>
-    /// Classifies a list of accounting transactions into expense, transfer, and other categories.
+    /// Classifies a list of accounting transactions into expense or transfer categories.
     /// </summary>
     public CategorizedTransactions Categorize(List<AccountingRecord> transactions)
     {
@@ -29,6 +29,14 @@ public class ExpenseClassificationService
             TransferTransactions = transfers,
             OtherTransactions = other
         };
+    }
+
+    /// <summary>
+    /// Returns true when the transaction is not included in the expense or transfer categories.
+    /// </summary>
+    public bool IsIgnored(AccountingRecord transaction)
+    {
+        return false;
     }
 
     /// <summary>
@@ -51,9 +59,10 @@ public class ExpenseClassificationService
     /// </summary>
     public bool IsTransfer(AccountingRecord transaction)
     {
-        if (transaction == null) return false;
+        if (transaction == null || IsExpense(transaction)) return false;
 
-        return transaction.Account != null && transaction.Account.Contains("Transfer", StringComparison.OrdinalIgnoreCase);
+        return transaction.Account?.Contains("Transfer", StringComparison.OrdinalIgnoreCase) == true ||
+               string.Equals(transaction.Account, "2200000 Unrestricted:General", StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>
@@ -62,6 +71,14 @@ public class ExpenseClassificationService
     public bool ShouldSubtractFromBalance(AccountingRecord transaction)
     {
         return IsExpense(transaction);
+    }
+
+    /// <summary>
+    /// Returns true when the transaction should be excluded from account balances.
+    /// </summary>
+    public bool IsExcludedFromBalance(AccountingRecord transaction)
+    {
+        return string.Equals(transaction?.Account, "Payroll Clearing Insurance", StringComparison.OrdinalIgnoreCase);
     }
 }
 

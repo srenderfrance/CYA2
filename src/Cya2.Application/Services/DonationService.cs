@@ -54,12 +54,12 @@ public class DonationService : IDonationService
                     var cachedDonationData = directCached!;
                     if (requestedInternAccount && (directCached?.Donations?.Count ?? 0) == 0)
                     {
-                        _logger.LogInformation(
-                            "Donation data cache-direct stale-for-intern user='{UserId}' selectedAccount='{SelectedAccount}' rows=0 range={StartDate:yyyy-MM-dd}..{EndDate:yyyy-MM-dd}; refreshing from DB",
-                            userId,
-                            accountName,
-                            dateRange.StartDate,
-                            dateRange.EndDate);
+                        // _logger.LogInformation(
+                        //     "Donation data cache-direct stale-for-intern user='{UserId}' selectedAccount='{SelectedAccount}' rows=0 range={StartDate:yyyy-MM-dd}..{EndDate:yyyy-MM-dd}; refreshing from DB",
+                        //     userId,
+                        //     accountName,
+                        //     dateRange.StartDate,
+                        //     dateRange.EndDate);
                     }
                     else
                     {
@@ -77,16 +77,16 @@ public class DonationService : IDonationService
 
                 if (directCached != null)
                 {
-                    _logger.LogInformation(
-                        "Donation data cache miss user='{UserId}' account='{Account}' reason=date-range-mismatch requested={RequestedStart:yyyy-MM-dd}..{RequestedEnd:yyyy-MM-dd} cached={CachedStart:yyyy-MM-dd}..{CachedEnd:yyyy-MM-dd} bypassSubAccountCache={BypassSubAccountCache} forceRefresh={ForceRefresh}",
-                        userId,
-                        accountName,
-                        dateRange.StartDate,
-                        dateRange.EndDate,
-                        directCached.CachedStartDate,
-                        directCached.CachedEndDate,
-                        bypassSubAccountCache,
-                        forceRefresh);
+                    // _logger.LogInformation(
+                    //     "Donation data cache miss user='{UserId}' account='{Account}' reason=date-range-mismatch requested={RequestedStart:yyyy-MM-dd}..{RequestedEnd:yyyy-MM-dd} cached={CachedStart:yyyy-MM-dd}..{CachedEnd:yyyy-MM-dd} bypassSubAccountCache={BypassSubAccountCache} forceRefresh={ForceRefresh}",
+                    //     userId,
+                    //     accountName,
+                    //     dateRange.StartDate,
+                    //     dateRange.EndDate,
+                    //     directCached.CachedStartDate,
+                    //     directCached.CachedEndDate,
+                    //     bypassSubAccountCache,
+                    //     forceRefresh);
                 }
             }
 
@@ -164,23 +164,23 @@ public class DonationService : IDonationService
                     .Where(sa => string.Equals(sa.Kind, "Merged", StringComparison.OrdinalIgnoreCase) && !string.IsNullOrWhiteSpace(sa.SubFund))
                     .ToList();
 
-                _logger.LogInformation(
-                    "Donation subaccounts loaded: accountId={AccountId}, fund={Fund}, total={Total}, separate={Separate}, merged={Merged}, kinds={Kinds}, separateFunds={SeparateFunds}, mergedFunds={MergedFunds}",
-                    selected.AccountId,
-                    selected.Fund,
-                    allSubAccounts.Count,
-                    separateSubAccounts.Count,
-                    mergedSubAccounts.Count,
-                    string.Join("|", allSubAccounts.Select(sa => sa.Kind?.Trim() ?? string.Empty).Distinct(StringComparer.OrdinalIgnoreCase)),
-                    string.Join("|", separateSubAccounts.Select(sa => sa.SubFund)),
-                    string.Join("|", mergedSubAccounts.Select(sa => sa.SubFund)));
+                // _logger.LogInformation(
+                //     "Donation subaccounts loaded: accountId={AccountId}, fund={Fund}, total={Total}, separate={Separate}, merged={Merged}, kinds={Kinds}, separateFunds={SeparateFunds}, mergedFunds={MergedFunds}",
+                //     selected.AccountId,
+                //     selected.Fund,
+                //     allSubAccounts.Count,
+                //     separateSubAccounts.Count,
+                //     mergedSubAccounts.Count,
+                //     string.Join("|", allSubAccounts.Select(sa => sa.Kind?.Trim() ?? string.Empty).Distinct(StringComparer.OrdinalIgnoreCase)),
+                //     string.Join("|", separateSubAccounts.Select(sa => sa.SubFund)),
+                //     string.Join("|", mergedSubAccounts.Select(sa => sa.SubFund)));
 
                 result.ShowSubAccountDropdown = separateSubAccounts.Any();
-                _logger.LogInformation(
-                    "Donation subaccount UI scope: accountId={AccountId}, showDropdown={ShowDropdown}, selectedSubAccount={SelectedSubAccount}",
-                    selected.AccountId,
-                    result.ShowSubAccountDropdown,
-                    result.SelectedSubAccount);
+                // _logger.LogInformation(
+                //     "Donation subaccount UI scope: accountId={AccountId}, showDropdown={ShowDropdown}, selectedSubAccount={SelectedSubAccount}",
+                //     selected.AccountId,
+                //     result.ShowSubAccountDropdown,
+                //     result.SelectedSubAccount);
                 result.SubAccountOptions = new List<SubAccountOptionDto>();
 
                 if (result.ShowSubAccountDropdown)
@@ -248,12 +248,12 @@ public class DonationService : IDonationService
                     var cachedDonationData = cached!;
                     if (selectedIsInternAccount && (cached?.Donations?.Count ?? 0) == 0)
                     {
-                        _logger.LogInformation(
-                            "Donation data cache stale-for-intern user='{UserId}' selectedAccount='{SelectedAccount}' rows=0 range={StartDate:yyyy-MM-dd}..{EndDate:yyyy-MM-dd}; refreshing from DB",
-                            userId,
-                            result.SelectedAccount,
-                            dateRange.StartDate,
-                            dateRange.EndDate);
+                        // _logger.LogInformation(
+                        //     "Donation data cache stale-for-intern user='{UserId}' selectedAccount='{SelectedAccount}' rows=0 range={StartDate:yyyy-MM-dd}..{EndDate:yyyy-MM-dd}; refreshing from DB",
+                        //     userId,
+                        //     result.SelectedAccount,
+                        //     dateRange.StartDate,
+                        //     dateRange.EndDate);
                     }
                     else
                     {
@@ -274,28 +274,28 @@ public class DonationService : IDonationService
 
                 if (cached != null)
                 {
-                    _logger.LogInformation(
-                        "Donation data cache miss user='{UserId}' selectedAccount='{SelectedAccount}' reason=date-range-mismatch requested={RequestedStart:yyyy-MM-dd}..{RequestedEnd:yyyy-MM-dd} cached={CachedStart:yyyy-MM-dd}..{CachedEnd:yyyy-MM-dd} bypassSubAccountCache={BypassSubAccountCache} forceRefresh={ForceRefresh}",
-                        userId,
-                        result.SelectedAccount,
-                        dateRange.StartDate,
-                        dateRange.EndDate,
-                        cached.CachedStartDate,
-                        cached.CachedEndDate,
-                        bypassSubAccountCache,
-                        forceRefresh);
+                    // _logger.LogInformation(
+                    //     "Donation data cache miss user='{UserId}' selectedAccount='{SelectedAccount}' reason=date-range-mismatch requested={RequestedStart:yyyy-MM-dd}..{EndDate:yyyy-MM-dd} cached={CachedStart:yyyy-MM-dd}..{CachedEnd:yyyy-MM-dd} bypassSubAccountCache={BypassSubAccountCache} forceRefresh={ForceRefresh}",
+                    //     userId,
+                    //     result.SelectedAccount,
+                    //     dateRange.StartDate,
+                    //     dateRange.EndDate,
+                    //     cached.CachedStartDate,
+                    //     cached.CachedEndDate,
+                    //     bypassSubAccountCache,
+                    //     forceRefresh);
                 }
             }
 
-            _logger.LogInformation(
-                "Donation data loading from snapshot or repository user='{UserId}' requestedAccount='{RequestedAccount}' selectedAccount='{SelectedAccount}' source='{Source}' bypassSubAccountCache={BypassSubAccountCache} forceRefresh={ForceRefresh} subAccountSelection='{SubAccountSelection}'",
-                userId,
-                accountName,
-                result.SelectedAccount,
-                donationDataSource,
-                bypassSubAccountCache,
-                forceRefresh,
-                normalizedSubSelection);
+            // _logger.LogInformation(
+            //     "Donation data loading from snapshot or repository user='{UserId}' requestedAccount='{RequestedAccount}' selectedAccount='{SelectedAccount}' source='{Source}' bypassSubAccountCache={BypassSubAccountCache} forceRefresh={ForceRefresh} subAccountSelection='{SubAccountSelection}'",
+            //     userId,
+            //     accountName,
+            //     result.SelectedAccount,
+            //     donationDataSource,
+            //     bypassSubAccountCache,
+            //     forceRefresh,
+            //     normalizedSubSelection);
 
             // Query donation records from the shared snapshot when available; retain the existing repository path otherwise.
             var donationRecords = new List<Cya2.Core.ReadModels.DonationRecord>();
@@ -346,13 +346,13 @@ public class DonationService : IDonationService
                     .Where(r => snapshotFunds.Contains(r.Fund))
                     .Where(r => r.Date.Date >= dateRange.StartDate.Date && r.Date.Date <= dateRange.EndDate.Date);
                 donationRecords = snapshotDonations.ToList();
-                _logger.LogInformation(
-                    "Donation snapshot scope: accountId={AccountId}, selectedSubAccount={SelectedSubAccount}, fundCount={FundCount}, funds={Funds}, rowCount={RowCount}",
-                    selected.AccountId,
-                    result.SelectedSubAccount,
-                    snapshotFunds.Count,
-                    string.Join("|", snapshotFunds),
-                    donationRecords.Count);
+                // _logger.LogInformation(
+                //     "Donation snapshot scope: accountId={AccountId}, selectedSubAccount={SelectedSubAccount}, fundCount={FundCount}, funds={Funds}, rowCount={RowCount}",
+                //     selected.AccountId,
+                //     result.SelectedSubAccount,
+                //     snapshotFunds.Count,
+                //     string.Join("|", snapshotFunds),
+                //     donationRecords.Count);
             }
             else if (accountSnapshot != null && selectedIsInternAccount)
             {

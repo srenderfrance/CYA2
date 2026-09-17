@@ -14,7 +14,6 @@ public sealed class AdminPreloadService : IAdminPreloadService
     private readonly UserManagementService _userManagementService;
     private readonly IDonationReadRepository _donationReadRepository;
     private readonly IAccountCalculationService _accountCalculationService;
-    private readonly IFinancialDashboardReadRepository _financialDashboardReadRepository;
     private readonly ILogger<AdminPreloadService> _logger;
     private readonly object _sync = new();
     private Lazy<Task<IReadOnlyList<Account>>>? _accounts;
@@ -27,14 +26,12 @@ public sealed class AdminPreloadService : IAdminPreloadService
         UserManagementService userManagementService,
         IDonationReadRepository donationReadRepository,
         IAccountCalculationService accountCalculationService,
-        IFinancialDashboardReadRepository financialDashboardReadRepository,
         ILogger<AdminPreloadService> logger)
     {
         _fundReadService = fundReadService;
         _userManagementService = userManagementService;
         _donationReadRepository = donationReadRepository;
         _accountCalculationService = accountCalculationService;
-        _financialDashboardReadRepository = financialDashboardReadRepository;
         _logger = logger;
     }
 
@@ -133,7 +130,8 @@ public sealed class AdminPreloadService : IAdminPreloadService
             .Where(account => !InternAccountUtility.IsInternFund(account.Fund))
             .ToList();
         var subAccountsTask = _fundReadService.GetSubAccountsAsync();
-        var balancesTask = _financialDashboardReadRepository.GetBalancesAsOfAsync(accounts, trailingEnd);
+        var balanceAccounts = accounts.Select(ToContextAccount).ToList();
+        var balancesTask = _accountCalculationService.CalculateBalancesAsync(balanceAccounts, null, trailingEnd);
         var subAccounts = await subAccountsTask;
         var donationFunds = nonInternAccounts
             .SelectMany(account => new[] { account.Fund }
@@ -169,7 +167,7 @@ public sealed class AdminPreloadService : IAdminPreloadService
                 return new AdminAccountOverviewDto
                 {
                     Fund = account.Fund ?? string.Empty,
-                    CurrentBalance = balances.GetValueOrDefault(account.AccountId),
+                    CurrentBalance = balances.GetValueOrDefault(account.AccountId)?.TotalBalance ?? 0m,
                     Last12MonthsDonations = donationTotals.TotalDonations
                 };
             }
