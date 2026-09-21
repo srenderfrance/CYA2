@@ -6,19 +6,31 @@
     <div style="font-weight:500; overflow-wrap:anywhere; min-width:0; @ValueTextStyle">@(string.IsNullOrWhiteSpace(DonorName) ? Localizer["None"] : DonorName)</div>
 
     <div style="font-weight:600; color:#666; @SelectableTextStyle">@Localizer["Email"]</div>
-    <div style="overflow-wrap:anywhere; min-width:0; @ValueTextStyle">@(string.IsNullOrWhiteSpace(DonorEmail) ? Localizer["None"] : DonorEmail)</div>
+    <div style="overflow-wrap:anywhere; min-width:0; @ValueTextStyle">
+        @if (ContactValues(DonorEmail).Count == 0)
+        {
+            @Localizer["None"]
+        }
+        else
+        {
+            @foreach (var email in ContactValues(DonorEmail))
+            {
+                <div style="@ValueTextStyle">@email</div>
+            }
+        }
+    </div>
 
     <div style="font-weight:600; color:#666; @SelectableTextStyle">@Localizer["Phone"]</div>
     <div style="min-width:0; @ValueTextStyle">
-        @if (!string.IsNullOrWhiteSpace(DonorPhoneMobile)) 
-        { 
-            <div style="@ValueTextStyle">Cell: @DisplayFormatter.FormatPhone(DonorPhoneMobile)</div> 
+        @foreach (var phone in ContactValues(DonorPhoneMobile))
+        {
+            <div style="@ValueTextStyle">Cell: @DisplayFormatter.FormatPhone(phone)</div>
         }
-        @if (!string.IsNullOrWhiteSpace(DonorPhoneFixed)) 
-        { 
-            <div style="@ValueTextStyle">Primary: @DisplayFormatter.FormatPhone(DonorPhoneFixed)</div> 
+        @foreach (var phone in ContactValues(DonorPhoneFixed))
+        {
+            <div style="@ValueTextStyle">Primary: @DisplayFormatter.FormatPhone(phone)</div>
         }
-        @if (string.IsNullOrWhiteSpace(DonorPhoneMobile) && string.IsNullOrWhiteSpace(DonorPhoneFixed)) 
+        @if (ContactValues(DonorPhoneMobile).Count == 0 && ContactValues(DonorPhoneFixed).Count == 0)
         { 
             <div style="@ValueTextStyle">@Localizer["None"]</div> 
         }
@@ -71,4 +83,11 @@
 
     private string SelectableTextStyle => AllowTextSelection ? "user-select: text;" : string.Empty;
     private string ValueTextStyle => BoldValues ? $"{SelectableTextStyle} font-weight:600;" : SelectableTextStyle;
+
+    private static IReadOnlyList<string> ContactValues(string? value)
+    {
+        return string.IsNullOrWhiteSpace(value)
+            ? Array.Empty<string>()
+            : value.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+    }
 }

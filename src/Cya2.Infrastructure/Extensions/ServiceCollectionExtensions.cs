@@ -2,6 +2,7 @@ using Cya2.Core.Interfaces;
 using Cya2.Application.Interfaces;
 using Cya2.Infrastructure.Repositories;
 using Cya2.Infrastructure.Services;
+using Cya2.Core.Services;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Cya2.Infrastructure.Extensions;
@@ -23,13 +24,14 @@ public static class ServiceCollectionExtensions
         services.AddScoped<ISubAccountRepository, SubAccountRepository>();
         services.AddScoped<IDonationReadRepository, DonationReadRepository>();
         services.AddScoped<IExpenseReadRepository, ExpenseReadRepository>();
-        services.AddScoped<IDonationImportRepository, DonationImportRepository>();
+        services.AddScoped<IDonationRepository, DonationRepository>();
         services.AddScoped<IAccountingImportRepository, AccountingImportRepository>();
         services.AddScoped<IAccountImportService, AccountImportService>();
         services.AddScoped<IRollbackRepository, RollbackRepository>();
         services.AddScoped<IImportProcessor, DonationImportProcessor>();
         services.AddScoped<IImportProcessor, AccountingImportProcessor>();
         services.AddScoped<IDonationImportMaintenanceService, DonationImportProcessor>();
+        services.AddSingleton<DonorIdentityResolver>();
         services.AddScoped<IRollbackExecutor, RollbackExecutor>();
 
         return services;

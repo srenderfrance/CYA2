@@ -31,6 +31,7 @@ public sealed class AccountDataSnapshot
 
 public sealed record DonationSnapshot(
     int Id,
+    long DonorId,
     DateTime Date,
     DonorFrequency? Frequency,
     string AccountName,

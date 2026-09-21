@@ -24,6 +24,34 @@ public sealed class DonationReadRepository : IDonationReadRepository
 
     private string ConnStr => _configuration.GetConnectionString("default") ?? string.Empty;
 
+    private const string DonationProjection = @"
+SELECT
+    d.Id,
+    d.DonorId,
+    d.Date,
+    d.Frequency,
+    d.AccountName,
+    d.PaymentMethod,
+    d.GiftType,
+    d.Amount,
+    d.Fund,
+    d.Intern,
+    d.PrimaryAddressee AS Addressee,
+    d.SoftCreditName,
+    -- Projection intentionally reads only current-state DonorContacts rows; reconciliation removes obsolete values.
+    (SELECT GROUP_CONCAT(DISTINCT CASE WHEN c.ContactType = 'AddressLine1' THEN c.ContactValue END SEPARATOR '; ') FROM DonorContacts c WHERE c.DonorId = d.DonorId) AS Address,
+    (SELECT GROUP_CONCAT(DISTINCT CASE WHEN c.ContactType = 'City' THEN c.ContactValue END SEPARATOR '; ') FROM DonorContacts c WHERE c.DonorId = d.DonorId) AS City,
+    (SELECT GROUP_CONCAT(DISTINCT CASE WHEN c.ContactType = 'State' THEN c.ContactValue END SEPARATOR '; ') FROM DonorContacts c WHERE c.DonorId = d.DonorId) AS State,
+    (SELECT GROUP_CONCAT(DISTINCT CASE WHEN c.ContactType = 'PostalCode' THEN c.ContactValue END SEPARATOR '; ') FROM DonorContacts c WHERE c.DonorId = d.DonorId) AS PostalCode,
+    (SELECT GROUP_CONCAT(DISTINCT CASE WHEN c.ContactType = 'Country' THEN c.ContactValue END SEPARATOR '; ') FROM DonorContacts c WHERE c.DonorId = d.DonorId) AS Country,
+    (SELECT GROUP_CONCAT(DISTINCT CASE WHEN c.ContactType = 'Email' THEN c.ContactValue END SEPARATOR '; ') FROM DonorContacts c WHERE c.DonorId = d.DonorId) AS Email,
+    (SELECT GROUP_CONCAT(DISTINCT CASE WHEN c.ContactType = 'HomePhone' THEN c.ContactValue END SEPARATOR '; ') FROM DonorContacts c WHERE c.DonorId = d.DonorId) AS PhoneFixed,
+    (SELECT GROUP_CONCAT(DISTINCT CASE WHEN c.ContactType = 'MobilePhone' THEN c.ContactValue END SEPARATOR '; ') FROM DonorContacts c WHERE c.DonorId = d.DonorId) AS PhoneMobile,
+    d.DateCreated,
+    d.IsAnonymous
+FROM DonationData d
+INNER JOIN Donors dn ON dn.Id = d.DonorId";
+
     public async Task<List<SubAccount>> GetSubAccountsByAccountIdAsync(int accountId)
     {
         _dbGuard.ThrowIfUnavailable();
@@ -50,10 +78,9 @@ public sealed class DonationReadRepository : IDonationReadRepository
     {
         _dbGuard.ThrowIfUnavailable();
         return LoadByFundsAsync(fundNames,
-            @"SELECT *
-FROM DonationData
-WHERE Fund COLLATE utf8mb4_0900_ai_ci = @Fund COLLATE utf8mb4_0900_ai_ci
-   OR Fund COLLATE utf8mb4_0900_ai_ci IN (
+            $@"{DonationProjection}
+WHERE d.Fund COLLATE utf8mb4_0900_ai_ci = @Fund COLLATE utf8mb4_0900_ai_ci
+   OR d.Fund COLLATE utf8mb4_0900_ai_ci IN (
         SELECT SubFund COLLATE utf8mb4_0900_ai_ci
         FROM SubAccounts
         WHERE AccountId = @AccountId AND Kind = 'Merged'
@@ -66,10 +93,9 @@ WHERE Fund COLLATE utf8mb4_0900_ai_ci = @Fund COLLATE utf8mb4_0900_ai_ci
         _dbGuard.ThrowIfUnavailable();
         await using var conn = new MySqlConnection(ConnStr);
         var rows = await conn.QueryAsync<DonationRecord>(
-            @"SELECT *
-FROM DonationData
-WHERE Fund COLLATE utf8mb4_0900_ai_ci = @Fund COLLATE utf8mb4_0900_ai_ci
-   OR Fund COLLATE utf8mb4_0900_ai_ci IN (
+            $@"{DonationProjection}
+WHERE d.Fund COLLATE utf8mb4_0900_ai_ci = @Fund COLLATE utf8mb4_0900_ai_ci
+   OR d.Fund COLLATE utf8mb4_0900_ai_ci IN (
         SELECT SubFund COLLATE utf8mb4_0900_ai_ci
         FROM SubAccounts
         WHERE AccountId = @AccountId AND Kind = 'Merged'
@@ -82,13 +108,12 @@ WHERE Fund COLLATE utf8mb4_0900_ai_ci = @Fund COLLATE utf8mb4_0900_ai_ci
     {
         _dbGuard.ThrowIfUnavailable();
         return LoadByFundsAsync(fundNames,
-            @"SELECT *
-FROM DonationData
-WHERE Date >= @StartDate
-  AND Date <= @EndDate
+            $@"{DonationProjection}
+WHERE d.Date >= @StartDate
+  AND d.Date <= @EndDate
   AND (
-       Fund COLLATE utf8mb4_0900_ai_ci = @Fund COLLATE utf8mb4_0900_ai_ci
-       OR Fund COLLATE utf8mb4_0900_ai_ci IN (
+       d.Fund COLLATE utf8mb4_0900_ai_ci = @Fund COLLATE utf8mb4_0900_ai_ci
+       OR d.Fund COLLATE utf8mb4_0900_ai_ci IN (
             SELECT SubFund COLLATE utf8mb4_0900_ai_ci
             FROM SubAccounts
             WHERE AccountId = @AccountId AND Kind = 'Merged'
@@ -111,11 +136,10 @@ WHERE Date >= @StartDate
 
         await using var conn = new MySqlConnection(ConnStr);
         var rows = await conn.QueryAsync<DonationRecord>(
-            @"SELECT *
-FROM DonationData
-WHERE Date >= @StartDate
-  AND Date <= @EndDate
-  AND Fund COLLATE utf8mb4_0900_ai_ci IN @Funds",
+            $@"{DonationProjection}
+WHERE d.Date >= @StartDate
+  AND d.Date <= @EndDate
+  AND d.Fund COLLATE utf8mb4_0900_ai_ci IN @Funds",
             new { StartDate = startDate, EndDate = endDate, Funds = funds });
         var result = rows.ToList();
         _logger.LogInformation("Donations loaded in one fund query: fundCount={FundCount}, rowCount={RowCount}", funds.Length, result.Count);
@@ -127,13 +151,12 @@ WHERE Date >= @StartDate
         _dbGuard.ThrowIfUnavailable();
         await using var conn = new MySqlConnection(ConnStr);
         var rows = await conn.QueryAsync<DonationRecord>(
-            @"SELECT *
-FROM DonationData
-WHERE Date >= @StartDate
-  AND Date <= @EndDate
+            $@"{DonationProjection}
+WHERE d.Date >= @StartDate
+  AND d.Date <= @EndDate
   AND (
-       Fund COLLATE utf8mb4_0900_ai_ci = @Fund COLLATE utf8mb4_0900_ai_ci
-       OR Fund COLLATE utf8mb4_0900_ai_ci IN (
+       d.Fund COLLATE utf8mb4_0900_ai_ci = @Fund COLLATE utf8mb4_0900_ai_ci
+       OR d.Fund COLLATE utf8mb4_0900_ai_ci IN (
             SELECT SubFund COLLATE utf8mb4_0900_ai_ci
             FROM SubAccounts
             WHERE AccountId = @AccountId AND Kind = 'Merged'
@@ -147,12 +170,11 @@ WHERE Date >= @StartDate
     {
         _dbGuard.ThrowIfUnavailable();
         return LoadByFundsAsync(fundNames,
-            @"SELECT *
-FROM DonationData
-WHERE AccountName = @DonorName
+            $@"{DonationProjection}
+WHERE dn.DisplayName = @DonorName
   AND (
-       Fund COLLATE utf8mb4_0900_ai_ci = @Fund COLLATE utf8mb4_0900_ai_ci
-       OR Fund COLLATE utf8mb4_0900_ai_ci IN (
+       d.Fund COLLATE utf8mb4_0900_ai_ci = @Fund COLLATE utf8mb4_0900_ai_ci
+       OR d.Fund COLLATE utf8mb4_0900_ai_ci IN (
             SELECT SubFund COLLATE utf8mb4_0900_ai_ci
             FROM SubAccounts
             WHERE AccountId = @AccountId AND Kind = 'Merged'
@@ -166,12 +188,11 @@ WHERE AccountName = @DonorName
         _dbGuard.ThrowIfUnavailable();
         await using var conn = new MySqlConnection(ConnStr);
         var rows = await conn.QueryAsync<DonationRecord>(
-            @"SELECT *
-FROM DonationData
-WHERE AccountName = @DonorName
+            $@"{DonationProjection}
+WHERE dn.DisplayName = @DonorName
   AND (
-       Fund COLLATE utf8mb4_0900_ai_ci = @Fund COLLATE utf8mb4_0900_ai_ci
-       OR Fund COLLATE utf8mb4_0900_ai_ci IN (
+       d.Fund COLLATE utf8mb4_0900_ai_ci = @Fund COLLATE utf8mb4_0900_ai_ci
+       OR d.Fund COLLATE utf8mb4_0900_ai_ci IN (
             SELECT SubFund COLLATE utf8mb4_0900_ai_ci
             FROM SubAccounts
             WHERE AccountId = @AccountId AND Kind = 'Merged'
@@ -186,12 +207,11 @@ WHERE AccountName = @DonorName
         _dbGuard.ThrowIfUnavailable();
         var likeTerm = $"%{searchTerm}%";
         return LoadByFundsAsync(fundNames,
-            @"SELECT *
-FROM DonationData
-WHERE AccountName LIKE @SearchTerm
+            $@"{DonationProjection}
+WHERE dn.DisplayName LIKE @SearchTerm
   AND (
-       Fund COLLATE utf8mb4_0900_ai_ci = @Fund COLLATE utf8mb4_0900_ai_ci
-       OR Fund COLLATE utf8mb4_0900_ai_ci IN (
+       d.Fund COLLATE utf8mb4_0900_ai_ci = @Fund COLLATE utf8mb4_0900_ai_ci
+       OR d.Fund COLLATE utf8mb4_0900_ai_ci IN (
             SELECT SubFund COLLATE utf8mb4_0900_ai_ci
             FROM SubAccounts
             WHERE AccountId = @AccountId AND Kind = 'Merged'
@@ -206,12 +226,11 @@ WHERE AccountName LIKE @SearchTerm
         var likeTerm = $"%{searchTerm}%";
         await using var conn = new MySqlConnection(ConnStr);
         var rows = await conn.QueryAsync<DonationRecord>(
-            @"SELECT *
-FROM DonationData
-WHERE AccountName LIKE @SearchTerm
+            $@"{DonationProjection}
+WHERE dn.DisplayName LIKE @SearchTerm
   AND (
-       Fund COLLATE utf8mb4_0900_ai_ci = @Fund COLLATE utf8mb4_0900_ai_ci
-       OR Fund COLLATE utf8mb4_0900_ai_ci IN (
+       d.Fund COLLATE utf8mb4_0900_ai_ci = @Fund COLLATE utf8mb4_0900_ai_ci
+       OR d.Fund COLLATE utf8mb4_0900_ai_ci IN (
             SELECT SubFund COLLATE utf8mb4_0900_ai_ci
             FROM SubAccounts
             WHERE AccountId = @AccountId AND Kind = 'Merged'
@@ -318,63 +337,41 @@ WHERE Date >= @StartDate
             endDate);
 
         var rows = await conn.QueryAsync<DonationRecord>(
-            @"SELECT
-    Id,
-    Date,
-    Frequency,
-    AccountName,
-    PaymentMethod,
-    GiftType,
-    Amount,
-    Fund,
-    Intern,
-    Addressee,
-    SoftCreditName,
-    Address,
-    City,
-    State,
-    PostalCode,
-    Country,
-    Email,
-    PhoneFixed,
-    PhoneMobile,
-    DateCreated,
-    IsAnonymous
-FROM DonationData
-WHERE Date >= @StartDate
-  AND Date <= @EndDate
+            $@"{DonationProjection}
+WHERE d.Date >= @StartDate
+  AND d.Date <= @EndDate
   AND (
-      Intern COLLATE utf8mb4_0900_ai_ci = @InternDesignationName COLLATE utf8mb4_0900_ai_ci
-      OR (@HasAlternateDesignation = 1 AND Intern COLLATE utf8mb4_0900_ai_ci = @AlternateDesignation COLLATE utf8mb4_0900_ai_ci)
+      d.Intern COLLATE utf8mb4_0900_ai_ci = @InternDesignationName COLLATE utf8mb4_0900_ai_ci
+      OR (@HasAlternateDesignation = 1 AND d.Intern COLLATE utf8mb4_0900_ai_ci = @AlternateDesignation COLLATE utf8mb4_0900_ai_ci)
       OR (
-          LOCATE(',', Intern) > 0
+          LOCATE(',', d.Intern) > 0
           AND TRIM(CONCAT(
-              TRIM(SUBSTRING_INDEX(Intern, ',', -1)),
+              TRIM(SUBSTRING_INDEX(d.Intern, ',', -1)),
               ' ',
-              TRIM(SUBSTRING_INDEX(Intern, ',', 1))
+              TRIM(SUBSTRING_INDEX(d.Intern, ',', 1))
           )) COLLATE utf8mb4_0900_ai_ci = @InternDesignationName COLLATE utf8mb4_0900_ai_ci
       )
       OR (
           @HasAlternateDesignation = 1
-          AND LOCATE(',', Intern) > 0
+          AND LOCATE(',', d.Intern) > 0
           AND TRIM(CONCAT(
-              TRIM(SUBSTRING_INDEX(Intern, ',', -1)),
+              TRIM(SUBSTRING_INDEX(d.Intern, ',', -1)),
               ' ',
-              TRIM(SUBSTRING_INDEX(Intern, ',', 1))
+              TRIM(SUBSTRING_INDEX(d.Intern, ',', 1))
           )) COLLATE utf8mb4_0900_ai_ci = @AlternateDesignation COLLATE utf8mb4_0900_ai_ci
       )
       OR (
           @HasNameTokens = 1
-          AND Intern IS NOT NULL
-          AND Intern COLLATE utf8mb4_0900_ai_ci LIKE @FirstToken COLLATE utf8mb4_0900_ai_ci
-          AND Intern COLLATE utf8mb4_0900_ai_ci LIKE @LastToken COLLATE utf8mb4_0900_ai_ci
+          AND d.Intern IS NOT NULL
+          AND d.Intern COLLATE utf8mb4_0900_ai_ci LIKE @FirstToken COLLATE utf8mb4_0900_ai_ci
+          AND d.Intern COLLATE utf8mb4_0900_ai_ci LIKE @LastToken COLLATE utf8mb4_0900_ai_ci
       )
       OR (
-          LOWER(REPLACE(REPLACE(REPLACE(REPLACE(COALESCE(Intern,''), ' ', ''), ',', ''), '.', ''), '-', '')) = @DesignationLookupKey
+          LOWER(REPLACE(REPLACE(REPLACE(REPLACE(COALESCE(d.Intern,''), ' ', ''), ',', ''), '.', ''), '-', '')) = @DesignationLookupKey
       )
       OR (
           @HasAlternateLookupKey = 1
-          AND LOWER(REPLACE(REPLACE(REPLACE(REPLACE(COALESCE(Intern,''), ' ', ''), ',', ''), '.', ''), '-', '')) = @AlternateLookupKey
+          AND LOWER(REPLACE(REPLACE(REPLACE(REPLACE(COALESCE(d.Intern,''), ' ', ''), ',', ''), '.', ''), '-', '')) = @AlternateLookupKey
       )
   )",
             new

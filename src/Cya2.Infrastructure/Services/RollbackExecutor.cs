@@ -75,7 +75,7 @@ WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = @TableName AND COLUMN_NAME = @C
                         await alter.ExecuteNonQueryAsync(ct);
                     }
 
-                    // Check if backup table exists and has data
+                    // Check if the backup payload and snapshot metadata tables exist.
                     var checkBackupCmd = conn.CreateCommand();
                     checkBackupCmd.Transaction = (MySqlTransaction)tx;
                     checkBackupCmd.CommandText = @"
@@ -91,19 +91,42 @@ WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = @TableName AND COLUMN_NAME = @C
                         return result;
                     }
 
+                    var snapshotTableExists = Convert.ToInt32(await ExecuteScalarAsync(conn, (MySqlTransaction)tx,
+                        "SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'DonationBackupSnapshots'",
+                        cancellationToken)) > 0;
+                    if (!snapshotTableExists)
+                    {
+                        result.Success = false;
+                        result.ErrorMessage = "No donation backup snapshot metadata found. A newer upload is required for rollback.";
+                        return result;
+                    }
+
+                    var donorBackupExists = Convert.ToInt32(await ExecuteScalarAsync(conn, (MySqlTransaction)tx,
+                        "SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'DonorsBackup'",
+                        cancellationToken)) > 0;
+                    var contactBackupExists = Convert.ToInt32(await ExecuteScalarAsync(conn, (MySqlTransaction)tx,
+                        "SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'DonorContactsBackup'",
+                        cancellationToken)) > 0;
+                    if (!donorBackupExists || !contactBackupExists)
+                    {
+                        result.Success = false;
+                        result.ErrorMessage = "The selected donation backup does not contain donor and contact snapshots. A newer backup is required for canonical rollback.";
+                        return result;
+                    }
+
                     // Find the most recent non-pinned backup
                     var getLatestBackupCmd = conn.CreateCommand();
                     getLatestBackupCmd.Transaction = (MySqlTransaction)tx;
                     getLatestBackupCmd.CommandText = @"
-                        SELECT BackupId, BackupAt, COUNT(*) as RecordCount
-                        FROM DonationDataBackup 
+                        SELECT BackupId, BackupAt, SourceRangeStart, RecordCount
+                        FROM DonationBackupSnapshots
                         WHERE Pinned = 0
-                        GROUP BY BackupId, BackupAt
                         ORDER BY BackupAt DESC
                         LIMIT 1";
 
                     string? latestBackupId = null;
                     DateTime? backupDate = null;
+                    DateTime? sourceRangeStart = null;
                     int backupRecordCount = 0;
 
                     using var reader = await getLatestBackupCmd.ExecuteReaderAsync(cancellationToken);
@@ -115,8 +138,9 @@ WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = @TableName AND COLUMN_NAME = @C
                             string value => value,
                             var value => Convert.ToString(value, System.Globalization.CultureInfo.InvariantCulture)
                         };
-                        backupDate = reader.GetDateTime(1);    // BackupAt  
-                        backupRecordCount = reader.GetInt32(2); // RecordCount
+                        backupDate = reader.GetDateTime(1);
+                        sourceRangeStart = reader.IsDBNull(2) ? null : reader.GetDateTime(2);
+                        backupRecordCount = reader.GetInt32(3);
                     }
                     reader.Close();
 
@@ -130,42 +154,86 @@ WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = @TableName AND COLUMN_NAME = @C
                     _logger.LogInformation("Rolling back donations to backup {BackupId} from {BackupDate} with {RecordCount} records", 
                         latestBackupId, backupDate, backupRecordCount);
 
-                    await EnsureColumnExistsAsync(conn, (MySqlTransaction)tx, "DonationData", "Intern", "VARCHAR(255)", cancellationToken);
-                    await EnsureColumnExistsAsync(conn, (MySqlTransaction)tx, "DonationData", "Addressee", "VARCHAR(255)", cancellationToken);
+                    var backupTransaction = (MySqlTransaction)tx;
 
-                    var hasBackupIntern = await ColumnExistsAsync(conn, (MySqlTransaction)tx, "DonationDataBackup", "Intern", cancellationToken);
-                    var hasBackupAddressee = await ColumnExistsAsync(conn, (MySqlTransaction)tx, "DonationDataBackup", "Addressee", cancellationToken);
-
-                    string restoreColumns = "Id, Date, AccountName, PaymentMethod, GiftType, Amount, Fund";
-                    string restoreSelect = "Id, Date, AccountName, PaymentMethod, GiftType, Amount, Fund";
-                    if (hasBackupIntern)
-                    {
-                        restoreColumns += ", Intern";
-                        restoreSelect += ", Intern";
-                    }
-                    if (hasBackupAddressee)
-                    {
-                        restoreColumns += ", Addressee";
-                        restoreSelect += ", Addressee";
-                    }
-                    restoreColumns += ", SoftCreditName, Address, City, State, PostalCode, Country, Email, PhoneFixed, PhoneMobile, DateCreated, IsAnonymous";
-                    restoreSelect += ", SoftCreditName, Address, City, State, PostalCode, Country, Email, PhoneFixed, PhoneMobile, DateCreated, COALESCE(IsAnonymous, 0)";
-
-                    // Clear current donation data
+                    // Remove only the donation range replaced by the import.
                     var clearCmd = conn.CreateCommand();
-                    clearCmd.Transaction = (MySqlTransaction)tx;
+                    clearCmd.Transaction = backupTransaction;
                     clearCmd.CommandTimeout = 300;
-                    clearCmd.CommandText = "DELETE FROM DonationData";
+                    clearCmd.CommandText = "DELETE FROM DonationData WHERE Date >= @SourceRangeStart";
+                    clearCmd.Parameters.AddWithValue("@SourceRangeStart", sourceRangeStart.Value);
                     var deletedRows = await clearCmd.ExecuteNonQueryAsync(cancellationToken);
+
+                    var restoreDonors = conn.CreateCommand();
+                    restoreDonors.Transaction = backupTransaction;
+                    restoreDonors.CommandTimeout = 300;
+                    restoreDonors.CommandText = @"
+UPDATE Donors donor
+INNER JOIN DonorsBackup backup
+    ON backup.BackupId = @BackupId
+   AND backup.Id = donor.Id
+SET donor.Fund = backup.Fund,
+    donor.DisplayName = backup.DisplayName,
+    donor.IdentityKey = backup.IdentityKey,
+    donor.ResolutionSource = backup.ResolutionSource,
+    donor.ResolutionVersion = backup.ResolutionVersion,
+    donor.DateCreated = backup.DateCreated,
+    donor.DateModified = backup.DateModified";
+                    restoreDonors.Parameters.AddWithValue("@BackupId", latestBackupId);
+                    await restoreDonors.ExecuteNonQueryAsync(cancellationToken);
+
+                    var insertMissingDonors = conn.CreateCommand();
+                    insertMissingDonors.Transaction = backupTransaction;
+                    insertMissingDonors.CommandTimeout = 300;
+                    insertMissingDonors.CommandText = @"
+INSERT INTO Donors
+    (Id, Fund, DisplayName, IdentityKey, ResolutionSource, ResolutionVersion, DateCreated, DateModified)
+SELECT backup.Id, backup.Fund, backup.DisplayName, backup.IdentityKey,
+       backup.ResolutionSource, backup.ResolutionVersion, backup.DateCreated, backup.DateModified
+FROM DonorsBackup backup
+LEFT JOIN Donors donor ON donor.Id = backup.Id
+WHERE backup.BackupId = @BackupId
+  AND donor.Id IS NULL";
+                    insertMissingDonors.Parameters.AddWithValue("@BackupId", latestBackupId);
+                    await insertMissingDonors.ExecuteNonQueryAsync(cancellationToken);
+
+                    var deleteCurrentContacts = conn.CreateCommand();
+                    deleteCurrentContacts.Transaction = backupTransaction;
+                    deleteCurrentContacts.CommandTimeout = 300;
+                    deleteCurrentContacts.CommandText = @"
+DELETE contact
+FROM DonorContacts contact
+INNER JOIN DonorsBackup backup
+    ON backup.BackupId = @BackupId
+   AND backup.Id = contact.DonorId";
+                    deleteCurrentContacts.Parameters.AddWithValue("@BackupId", latestBackupId);
+                    await deleteCurrentContacts.ExecuteNonQueryAsync(cancellationToken);
+
+                    var restoreContacts = conn.CreateCommand();
+                    restoreContacts.Transaction = backupTransaction;
+                    restoreContacts.CommandTimeout = 300;
+                    restoreContacts.CommandText = @"
+INSERT INTO DonorContacts
+    (Id, DonorId, ContactType, ContactValue, NormalizedValue, DateCreated, DateModified)
+SELECT backup.Id, backup.DonorId, backup.ContactType, backup.ContactValue,
+       backup.NormalizedValue, backup.DateCreated, backup.DateModified
+FROM DonorContactsBackup backup
+WHERE backup.BackupId = @BackupId";
+                    restoreContacts.Parameters.AddWithValue("@BackupId", latestBackupId);
+                    await restoreContacts.ExecuteNonQueryAsync(cancellationToken);
 
                     // Restore from backup
                     var restoreCmd = conn.CreateCommand();
-                    restoreCmd.Transaction = (MySqlTransaction)tx;
+                    restoreCmd.Transaction = backupTransaction;
                     restoreCmd.CommandTimeout = 300;
                     restoreCmd.CommandText = $@"
                         INSERT INTO DonationData
-                        ({restoreColumns})
-                         SELECT {restoreSelect}
+                        (Id, DonorId, Date, GiftImportId, AccountName, PaymentMethod, GiftType,
+                         Amount, Fund, Intern, PrimaryAddressee, SoftCreditName, HonorMemorialName,
+                         IsAnonymous, Frequency, DateCreated)
+                         SELECT Id, DonorId, Date, GiftImportId, AccountName, PaymentMethod, GiftType,
+                                Amount, Fund, Intern, PrimaryAddressee, SoftCreditName, HonorMemorialName,
+                                COALESCE(IsAnonymous, 0), Frequency, DateCreated
                          FROM DonationDataBackup
                          WHERE BackupId = @BackupId
                            AND Id <> 0";
@@ -173,11 +241,22 @@ WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = @TableName AND COLUMN_NAME = @C
                     
                     var restoredRows = await restoreCmd.ExecuteNonQueryAsync(cancellationToken);
 
+                    // Remove donors created by the rolled-back import when no donation references them.
+                    var orphanDonors = conn.CreateCommand();
+                    orphanDonors.Transaction = backupTransaction;
+                    orphanDonors.CommandText = @"
+DELETE donor FROM Donors donor
+LEFT JOIN DonationData donation ON donation.DonorId = donor.Id
+WHERE donation.Id IS NULL
+  AND NOT EXISTS (SELECT 1 FROM DonorsBackup backup WHERE backup.BackupId = @BackupId AND backup.Id = donor.Id)";
+                    orphanDonors.Parameters.AddWithValue("@BackupId", latestBackupId);
+                    await orphanDonors.ExecuteNonQueryAsync(cancellationToken);
+
                     // Pin this backup to prevent it from being deleted
                     var pinCmd = conn.CreateCommand();
                     pinCmd.Transaction = (MySqlTransaction)tx;
-                    pinCmd.CommandText = @"
-                        UPDATE DonationDataBackup 
+                     pinCmd.CommandText = @"
+                         UPDATE DonationBackupSnapshots
                         SET Pinned = 1 
                         WHERE BackupId = @BackupId";
                     pinCmd.Parameters.Add(new MySqlParameter("@BackupId", latestBackupId));
@@ -241,27 +320,38 @@ WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = @TableName AND COLUMN_NAME = @C
                         return result;
                     }
 
+                    var snapshotTableExists = Convert.ToInt32(await ExecuteScalarAsync(conn, (MySqlTransaction)tx,
+                        "SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'AccountingBackupSnapshots'",
+                        cancellationToken)) > 0;
+                    if (!snapshotTableExists)
+                    {
+                        result.Success = false;
+                        result.ErrorMessage = "No accounting backup snapshot metadata found. A newer upload is required for rollback.";
+                        return result;
+                    }
+
                     // Find the most recent non-pinned backup
                     var getLatestBackupCmd = conn.CreateCommand();
                     getLatestBackupCmd.Transaction = (MySqlTransaction)tx;
                     getLatestBackupCmd.CommandText = @"
-                        SELECT BackupId, BackupAt, COUNT(*) as RecordCount
-                        FROM AccountingDataBackup 
+                        SELECT BackupId, BackupAt, SourceRangeStart, RecordCount
+                        FROM AccountingBackupSnapshots
                         WHERE Pinned = 0
-                        GROUP BY BackupId, BackupAt
                         ORDER BY BackupAt DESC
                         LIMIT 1";
 
                     string? latestBackupId = null;
                     DateTime? backupDate = null;
+                    DateTime? sourceRangeStart = null;
                     int backupRecordCount = 0;
 
                     using var reader = await getLatestBackupCmd.ExecuteReaderAsync(cancellationToken);
                     if (await reader.ReadAsync())
                     {
-                        latestBackupId = reader.GetGuid(0).ToString();  // BackupId - convert GUID to string
-                        backupDate = reader.GetDateTime(1);    // BackupAt  
-                        backupRecordCount = reader.GetInt32(2); // RecordCount
+                        latestBackupId = reader.GetString(0);
+                        backupDate = reader.GetDateTime(1);
+                        sourceRangeStart = reader.GetDateTime(2);
+                        backupRecordCount = reader.GetInt32(3);
                     }
                     reader.Close();
 
@@ -300,7 +390,7 @@ WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = @TableName AND COLUMN_NAME = @C
                     var pinCmd = conn.CreateCommand();
                     pinCmd.Transaction = (MySqlTransaction)tx;
                     pinCmd.CommandText = @"
-                        UPDATE AccountingDataBackup 
+                        UPDATE AccountingBackupSnapshots
                         SET Pinned = 1 
                         WHERE BackupId = @BackupId";
                     pinCmd.Parameters.Add(new MySqlParameter("@BackupId", latestBackupId));
@@ -329,6 +419,45 @@ WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = @TableName AND COLUMN_NAME = @C
             }
 
             return result;
+        }
+
+        private static MySqlCommand CreateCommand(
+            MySqlConnection connection,
+            MySqlTransaction transaction,
+            string commandText,
+            int? commandTimeout = null)
+        {
+            var cmd = connection.CreateCommand();
+            cmd.Transaction = transaction;
+            cmd.CommandText = commandText;
+            if (commandTimeout.HasValue)
+            {
+                cmd.CommandTimeout = commandTimeout.Value;
+            }
+
+            return cmd;
+        }
+
+        private static async Task<object?> ExecuteScalarAsync(
+            MySqlConnection connection,
+            MySqlTransaction transaction,
+            string commandText,
+            CancellationToken cancellationToken,
+            int? commandTimeout = null)
+        {
+            using var cmd = CreateCommand(connection, transaction, commandText, commandTimeout);
+            return await cmd.ExecuteScalarAsync(cancellationToken);
+        }
+
+        private static async Task<int> ExecuteNonQueryAsync(
+            MySqlConnection connection,
+            MySqlTransaction transaction,
+            string commandText,
+            CancellationToken cancellationToken,
+            int? commandTimeout = null)
+        {
+            using var cmd = CreateCommand(connection, transaction, commandText, commandTimeout);
+            return await cmd.ExecuteNonQueryAsync(cancellationToken);
         }
 
         /// <summary>

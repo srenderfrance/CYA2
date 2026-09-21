@@ -32,6 +32,7 @@ namespace Cya2.Application.Services
         private readonly IAccountSnapshotLoader _accountSnapshotLoader;
         private readonly DonorFrequencyService _frequencyService;
         private readonly DonorMissingGiftService _missingGiftService;
+        private readonly DonorIdentityResolver _identityResolver;
         private string? _lastQuery;
         private static readonly ConcurrentDictionary<string, SemaphoreSlim> _queryLocks = new(StringComparer.OrdinalIgnoreCase);
         private static readonly ConcurrentDictionary<string, List<string>> _accountFundsCache = new(StringComparer.OrdinalIgnoreCase);
@@ -45,7 +46,8 @@ namespace Cya2.Application.Services
             IAccountSnapshotCache accountSnapshotCache,
             IAccountSnapshotLoader accountSnapshotLoader,
             DonorFrequencyService frequencyService,
-            DonorMissingGiftService missingGiftService)
+            DonorMissingGiftService missingGiftService,
+            DonorIdentityResolver identityResolver)
         {
             _donationReadRepository = donationReadRepository;
             _userAccountContextService = userAccountContextService;
@@ -56,6 +58,7 @@ namespace Cya2.Application.Services
             _accountSnapshotLoader = accountSnapshotLoader;
             _frequencyService = frequencyService;
             _missingGiftService = missingGiftService;
+            _identityResolver = identityResolver;
         }
 
         public async Task<List<DonorSummaryDto>> GetDonorSummariesForSelectionAsync(
@@ -494,9 +497,9 @@ namespace Cya2.Application.Services
             return new DonorDetailDto
             {
                 Name = r.AccountName ?? string.Empty,
-                Email = r.Email ?? string.Empty,
-                PhoneMobile = r.PhoneMobile ?? string.Empty,
-                PhoneFixed = r.PhoneFixed ?? string.Empty,
+                Email = JoinContactValues(matchingDonations.Select(d => d.Email)),
+                PhoneMobile = JoinContactValues(matchingDonations.Select(d => d.PhoneMobile)),
+                PhoneFixed = JoinContactValues(matchingDonations.Select(d => d.PhoneFixed)),
                 Address = r.Address ?? string.Empty,
                 City = r.City ?? string.Empty,
                 State = r.State ?? string.Empty,
@@ -627,7 +630,7 @@ namespace Cya2.Application.Services
             var groups = donations
                 .Select(d => new { Donation = d, Identity = ResolveDonorIdentity(d) })
                 .Where(x => !string.IsNullOrWhiteSpace(x.Identity.DisplayName))
-                .GroupBy(x => x.Identity.DisplayName, StringComparer.OrdinalIgnoreCase);
+                .GroupBy(x => x.Donation.DonorId);
 
             // Use the latest available donation date in the loaded dataset as the
             // freshness anchor for missing-gift checks. This prevents false
@@ -643,13 +646,12 @@ namespace Cya2.Application.Services
                 var donorRows = g.Select(x => x.Donation).ToList();
                 var identities = g.Select(x => x.Identity).ToList();
 
-                var mostRecentWithEmail = donorRows.OrderByDescending(x => x.Date).FirstOrDefault(x => !string.IsNullOrWhiteSpace(x.Email));
+                var emailSummary = JoinContactValues(donorRows.Select(x => x.Email));
                 var mostRecentWithAddress = donorRows.OrderByDescending(x => x.Date).FirstOrDefault(x => !string.IsNullOrWhiteSpace(x.Address));
 
-                var phones = donorRows
-                    .Select(x => !string.IsNullOrWhiteSpace(x.PhoneMobile) ? x.PhoneMobile : x.PhoneFixed)
-                    .Where(p => !string.IsNullOrWhiteSpace(p))
-                    .Distinct(StringComparer.OrdinalIgnoreCase);
+                var mobilePhones = JoinContactValues(donorRows.Select(x => x.PhoneMobile));
+                var fixedPhones = JoinContactValues(donorRows.Select(x => x.PhoneFixed));
+                var phones = JoinContactValues(donorRows.SelectMany(x => new[] { x.PhoneMobile, x.PhoneFixed }));
 
                 // Build gift records for frequency classification.
                 var giftHistory = donorRows
@@ -672,11 +674,11 @@ namespace Cya2.Application.Services
                     .ToList();
 
                 var sourceSummary = BuildSourceSummary(hasDirect, sourceOrganizations);
-                var donorDisplayName = BuildDonorSummaryName(g.Key, hasDirect, sourceOrganizations);
+                var donorDisplayName = identities.First().DisplayName;
 
                 // Detect missing gift alerts for monthly donors.
                 var missingAlerts = frequency == DonorFrequency.Monthly
-                    ? _missingGiftService.GetMissingGiftAlerts(g.Key, giftHistory, dataFreshThrough)
+                    ? _missingGiftService.GetMissingGiftAlerts(donorDisplayName, giftHistory, dataFreshThrough)
                     : new List<Cya2.Core.Services.MissingGiftAlert>();
 
                 yield return new DonorSummaryDto
@@ -684,9 +686,9 @@ namespace Cya2.Application.Services
                     Name = donorDisplayName,
                     SourceSummary = sourceSummary,
                     Total = donorRows.Sum(x => Convert.ToDecimal(x.Amount)),
-                    Email = mostRecentWithEmail?.Email ?? string.Empty,
-                    PhoneMobile = mostRecent?.PhoneMobile ?? string.Empty,
-                    PhoneFixed = mostRecent?.PhoneFixed ?? string.Empty,
+                    Email = emailSummary,
+                    PhoneMobile = mobilePhones,
+                    PhoneFixed = fixedPhones,
                     PhoneSummary = string.Join("; ", phones),
                     AddressSummary = mostRecentWithAddress?.Address ?? string.Empty,
                     City = mostRecentWithAddress?.City ?? string.Empty,
@@ -700,53 +702,23 @@ namespace Cya2.Application.Services
             }
         }
 
-        private static DonorIdentity ResolveDonorIdentity(DonationRecord record)
+        private DonorIdentity ResolveDonorIdentity(DonationRecord record)
         {
-            var accountName = NormalizeNameValue(record.AccountName);
-            var addressee = NormalizeNameValue(record.Addressee);
-            var softCreditName = NormalizeNameValue(record.SoftCreditName);
-
-            if (!string.IsNullOrWhiteSpace(softCreditName) &&
-                !ContainsName(accountName, softCreditName) &&
-                !ContainsName(addressee, softCreditName))
-            {
-                return new DonorIdentity
-                {
-                    DisplayName = softCreditName,
-                    SourceOrganization = accountName,
-                    IsDirect = false
-                };
-            }
-
-            if (!string.IsNullOrWhiteSpace(addressee))
-            {
-                return new DonorIdentity
-                {
-                    DisplayName = addressee,
-                    SourceOrganization = string.Empty,
-                    IsDirect = true
-                };
-            }
-
-            if (!string.IsNullOrWhiteSpace(accountName))
-            {
-                return new DonorIdentity
-                {
-                    DisplayName = accountName,
-                    SourceOrganization = string.Empty,
-                    IsDirect = true
-                };
-            }
-
+            var resolved = _identityResolver.Resolve(new DonorIdentityInput(
+                record.Fund,
+                record.AccountName,
+                record.SoftCreditName,
+                record.Addressee,
+                record.IsAnonymous));
             return new DonorIdentity
             {
-                DisplayName = record.IsAnonymous ? string.Empty : "Unknown",
+                DisplayName = record.IsAnonymous ? string.Empty : resolved.DisplayName,
                 SourceOrganization = string.Empty,
                 IsDirect = true
             };
         }
 
-        private static string ResolveDonorDisplayName(DonationRecord record)
+        private string ResolveDonorDisplayName(DonationRecord record)
         {
             return ResolveDonorIdentity(record).DisplayName;
         }
@@ -759,6 +731,14 @@ namespace Cya2.Application.Services
             }
 
             return canonicalName;
+        }
+
+        private static string JoinContactValues(IEnumerable<string?> values)
+        {
+            return string.Join("; ", values
+                .Where(value => !string.IsNullOrWhiteSpace(value))
+                .SelectMany(value => value!.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+                .Distinct(StringComparer.OrdinalIgnoreCase));
         }
 
         private static string BuildSourceSummary(bool hasDirect, IReadOnlyCollection<string> sourceOrganizations)

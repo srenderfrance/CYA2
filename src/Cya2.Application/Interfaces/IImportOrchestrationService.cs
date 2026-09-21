@@ -1,6 +1,7 @@
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
+using Cya2.Core.DTOs;
 
 namespace Cya2.Application.Interfaces;
 
@@ -18,6 +19,8 @@ public sealed class ImportResult
     public int InsertedRows { get; set; }
     public int FailedRows { get; set; }
     public List<string> Errors { get; } = new();
+    public int DuplicateRowsMerged { get; set; }
+    public List<DonationImportReportEntry> DuplicateReport { get; } = new();
     public string? ProgressId { get; set; }
 }
 

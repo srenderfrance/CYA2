@@ -5,6 +5,7 @@ namespace Cya2.Core.ReadModels;
 public class DonationRecord
 {
     public int Id { get; set; }
+    public long DonorId { get; set; }
     public DateTime Date { get; set; }
     /// <summary>
     /// Frequency classification stored at DB write time.

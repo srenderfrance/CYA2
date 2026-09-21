@@ -11,16 +11,19 @@ public sealed class ImportOrchestrationService : IImportOrchestrationService
 
     private readonly IReadOnlyDictionary<string, IImportProcessor> _processors;
     private readonly IImportProgressService _progressService;
+    private readonly IImportWorkQueue _workQueue;
     private readonly ILogger<ImportOrchestrationService> _logger;
     private readonly ConcurrentDictionary<string, Preview> _previews = new(StringComparer.Ordinal);
 
     public ImportOrchestrationService(
         IEnumerable<IImportProcessor> processors,
         IImportProgressService progressService,
+        IImportWorkQueue workQueue,
         ILogger<ImportOrchestrationService> logger)
     {
         _processors = processors.ToDictionary(p => p.ImportType, StringComparer.OrdinalIgnoreCase);
         _progressService = progressService;
+        _workQueue = workQueue;
         _logger = logger;
     }
 
@@ -68,7 +71,7 @@ public sealed class ImportOrchestrationService : IImportOrchestrationService
         return await GetProcessor(importType).ProcessAsync(stream, progressId, cancellationToken);
     }
 
-    public Task<ImportResult> StartImportFromPreviewAsync(string previewId, string importType, string? progressId = null)
+    public async Task<ImportResult> StartImportFromPreviewAsync(string previewId, string importType, string? progressId = null)
     {
         var result = new ImportResult { ProgressId = progressId ?? Guid.NewGuid().ToString("N") };
         _progressService.Start(result.ProgressId, importType);
@@ -77,32 +80,21 @@ public sealed class ImportOrchestrationService : IImportOrchestrationService
         {
             result.Errors.Add("PreviewId is required");
             _progressService.SetStatus(result.ProgressId, "PreviewId is required");
-            return Task.FromResult(result);
+            return result;
         }
 
         if (!_previews.TryRemove(previewId, out var preview))
         {
             result.Errors.Add("Preview session expired. Please upload the file again.");
             _progressService.SetStatus(result.ProgressId, "Preview session expired");
-            return Task.FromResult(result);
+            return result;
         }
 
         var id = result.ProgressId;
-        _ = Task.Run(async () =>
-        {
-            try
-            {
-                await using var stream = new MemoryStream(preview.Data, writable: false);
-                await GetProcessor(importType).ProcessAsync(stream, id, CancellationToken.None);
-            }
-            catch (Exception ex)
-            {
-                _progressService.SetStatus(id, $"Error: {ex.Message}");
-                _logger.LogError(ex, "Background {ImportType} import failed for preview {PreviewId}", importType, previewId);
-            }
-        });
+        _logger.LogInformation("Queueing background {ImportType} import. PreviewId={PreviewId}, ProgressId={ProgressId}", importType, previewId, id);
+        await _workQueue.EnqueueAsync(new ImportWorkItem(importType, previewId, id, preview.Data));
 
-        return Task.FromResult(result);
+        return result;
     }
 
     private IImportProcessor GetProcessor(string importType)

@@ -8,6 +8,10 @@ This is a .net 10 app that uses blazor, dapper and mysql, radzen components and 
 - Preserve existing cache behavior and broad shared-snapshot reuse when making further changes; prioritize architecture improvements without changing functionality or breaking caching.
 - When refactoring architecture, preserve the database startup probe and limited-mode behavior; the app must not crash when the database is unavailable.
 - When restoring previously working UI behavior, use the repository's Git baseline directly instead of inferring the original layout from screenshots or adding new CSS workarounds.
+- Prioritize the best long-term data architecture over the smallest short-term change, especially for donation imports and donor/contact modeling.
+
+## Data Management
+- The Donors and DonorContacts tables are application display projections, not the organization's official donor database. Contact data should be current-state only: each upload must remove contact values no longer present and retain DateCreated plus DateModified, without historical contact rows.
 
 ## Tooltip Styles
 - Use two semantic tooltip styles throughout the app: an attention/warning style for important instructions users must notice (currently Admin account-creation guidance, red emphasis), and a neutral informational style for optional contextual help.

@@ -53,6 +53,17 @@ public sealed class AccountingImportRepository : IAccountingImportRepository
             countCmd.CommandText = "SELECT COUNT(*) FROM AccountingData";
             var rowCount = Convert.ToInt32(await countCmd.ExecuteScalarAsync(ct));
 
+            var snapshot = conn.CreateCommand();
+            snapshot.Transaction = (MySqlTransaction)tx;
+            snapshot.CommandText = @"
+                INSERT INTO AccountingBackupSnapshots
+                    (BackupId, BackupAt, SourceRangeStart, RecordCount, Pinned)
+                VALUES (@bid, UTC_TIMESTAMP(), @from, @count, 0)";
+            snapshot.Parameters.Add(new MySqlParameter("@bid", backupId));
+            snapshot.Parameters.Add(new MySqlParameter("@from", fromDate));
+            snapshot.Parameters.Add(new MySqlParameter("@count", rowCount));
+            await snapshot.ExecuteNonQueryAsync(ct);
+
             if (rowCount > 0)
             {
                 _progress.UpdateStep(progressId, "Database Backup", $"Backing up all {rowCount:N0} existing records...");
@@ -261,6 +272,20 @@ public sealed class AccountingImportRepository : IAccountingImportRepository
                 KEY idx_acb_BackupId (BackupId)
             ) ENGINE=InnoDB";
         await create.ExecuteNonQueryAsync(ct);
+
+        var snapshot = conn.CreateCommand();
+        snapshot.Transaction = tx;
+        snapshot.CommandText = @"
+            CREATE TABLE IF NOT EXISTS AccountingBackupSnapshots (
+                BackupId CHAR(36) NOT NULL PRIMARY KEY,
+                BackupAt DATETIME NOT NULL,
+                SourceRangeStart DATETIME NOT NULL,
+                RecordCount INT NOT NULL DEFAULT 0,
+                Pinned TINYINT(1) NOT NULL DEFAULT 0,
+                KEY idx_abs_BackupAt (BackupAt),
+                KEY idx_abs_Pinned (Pinned)
+            ) ENGINE=InnoDB";
+        await snapshot.ExecuteNonQueryAsync(ct);
 
         try
         {
