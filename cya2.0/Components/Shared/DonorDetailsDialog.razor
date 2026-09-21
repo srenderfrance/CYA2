@@ -85,15 +85,13 @@
             var lines = new List<string>
             {
                 $"{Localizer["Name"]}: {(string.IsNullOrWhiteSpace(DonorName) ? Localizer["Unknown"] : DonorName)}",
-                $"{Localizer["Email"]}: {(string.IsNullOrWhiteSpace(DonorEmail) ? Localizer["None"].Value : DonorEmail)}"
+                $"{Localizer["Email"]}: {(string.IsNullOrWhiteSpace(DonorEmail) ? Localizer["None"].Value : string.Join("; ", ContactValues(DonorEmail)))}"
             };
 
             // Add phone information
             var phoneLines = new List<string>();
-            if (!string.IsNullOrWhiteSpace(DonorPhoneMobile))
-                phoneLines.Add($"Cell: {DisplayFormatter.FormatPhone(DonorPhoneMobile)}");
-            if (!string.IsNullOrWhiteSpace(DonorPhoneFixed))
-                phoneLines.Add($"Primary: {DisplayFormatter.FormatPhone(DonorPhoneFixed)}");
+            phoneLines.AddRange(ContactValues(DonorPhoneMobile).Select(phone => $"Cell: {DisplayFormatter.FormatPhone(phone)}"));
+            phoneLines.AddRange(ContactValues(DonorPhoneFixed).Select(phone => $"Primary: {DisplayFormatter.FormatPhone(phone)}"));
             
             if (phoneLines.Any())
                 lines.Add($"{Localizer["Phone"]}: {string.Join("; ", phoneLines)}");
@@ -126,5 +124,12 @@
         {
             Console.WriteLine($"Error copying to clipboard: {ex.Message}");
         }
+    }
+
+    private static IReadOnlyList<string> ContactValues(string? value)
+    {
+        return string.IsNullOrWhiteSpace(value)
+            ? Array.Empty<string>()
+            : value.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
     }
 }

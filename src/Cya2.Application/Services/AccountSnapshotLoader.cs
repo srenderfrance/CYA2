@@ -50,6 +50,7 @@ public sealed class AccountSnapshotLoader : IAccountSnapshotLoader
         var donationSnapshots = (donations ?? [])
             .Select(record => new DonationSnapshot(
                 record.Id,
+                record.DonorId,
                 record.Date,
                 record.Frequency,
                 record.AccountName,

@@ -522,6 +522,7 @@ public class DonationService : IDonationService
     private static DonationSnapshot ToDonationSnapshot(Cya2.Core.ReadModels.DonationRecord record)
         => new(
             record.Id,
+            record.DonorId,
             record.Date,
             record.Frequency,
             record.AccountName,
@@ -548,6 +549,7 @@ public class DonationService : IDonationService
         => new()
         {
             Id = snapshot.Id,
+            DonorId = snapshot.DonorId,
             Date = snapshot.Date,
             Frequency = snapshot.Frequency,
             AccountName = snapshot.AccountName,

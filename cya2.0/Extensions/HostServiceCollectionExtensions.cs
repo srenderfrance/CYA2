@@ -25,6 +25,10 @@ public static class HostServiceCollectionExtensions
         services.AddSingleton<IDatabaseGuard, Cya2.Infrastructure.Services.DatabaseGuardAdapter>();
         services.AddSingleton<ImportProgressService>();
         services.AddSingleton<IImportProgressService>(sp => sp.GetRequiredService<ImportProgressService>());
+        services.AddSingleton<ImportWorkQueue>();
+        services.AddSingleton<IImportWorkQueue>(sp => sp.GetRequiredService<ImportWorkQueue>());
+        services.AddSingleton<Microsoft.Extensions.Hosting.IHostedService>(sp =>
+            sp.GetRequiredService<ImportWorkQueue>());
         services.AddApplicationServices();
         services.AddCleanArchitectureRepositories();
         services.AddScoped<IUserIdResolver, UserIdResolver>();
