@@ -22,6 +22,15 @@
     <data name="Bitmap1" mimetype="application/x-microsoft.net.object.binary.base64">
         <value>[base64 mime encoded serialized .NET Framework object]</value>
     </data>
+  <data name="From" xml:space="preserve">
+    <value>From</value>
+  </data>
+  <data name="Through" xml:space="preserve">
+    <value>through</value>
+  </data>
+  <data name="SelectDateRangeAndApply" xml:space="preserve">
+    <value>Select a date range and select Apply to view the summary.</value>
+  </data>
     <data name="Icon1" type="System.Drawing.Icon, System.Drawing" mimetype="application/x-microsoft.net.object.bytearray.base64">
         <value>[base64 mime encoded string representing a byte array form of the .NET Framework object]</value>
         <comment>This is a comment</comment>
@@ -167,6 +176,15 @@
   </data>
   <data name="CurrentBalance" xml:space="preserve">
     <value>Current Balance</value>
+  </data>
+  <data name="StartingBalance" xml:space="preserve">
+    <value>Starting Balance</value>
+  </data>
+  <data name="SeparateSubaccount" xml:space="preserve">
+    <value>Separate Subaccount</value>
+  </data>
+  <data name="SubAccount" xml:space="preserve">
+    <value>Sub Account</value>
   </data>
   <data name="CurrentDefault" xml:space="preserve">
     <value>Current default</value>

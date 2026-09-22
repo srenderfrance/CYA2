@@ -21,6 +21,11 @@ public interface IFinancialDashboardService
     Task<FinancialDashboardDto> GetDashboardSummaryDataAsync(string accountFund, string userId);
 
     /// <summary>
+    /// Get one financial summary for a caller-selected date range.
+    /// </summary>
+    Task<FinancialSummaryDto> GetCustomSummaryAsync(string accountFund, DateTime startDate, DateTime endDate, string userId);
+
+    /// <summary>
     /// Get user accounts accessible to the user
     /// </summary>
     Task<List<UserAccountDto>> GetUserAccountsAsync(string userId);

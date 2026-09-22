@@ -160,15 +160,8 @@ public sealed record InternDesignationCriteria(
             return string.Empty;
         }
 
-        var trimmed = fund.Trim();
-        if (TryGetInternDesignationName(trimmed, out var internName))
-        {
-            return string.IsNullOrWhiteSpace(internName)
-                ? "Intern"
-                : $"{internName} (Intern)";
-        }
-
-        return trimmed;
+        var separatorIndex = fund.IndexOf(':');
+        return (separatorIndex >= 0 ? fund[..separatorIndex] : fund).Trim();
     }
 
     private static string NormalizeWhitespace(string? value)

@@ -35,6 +35,9 @@ public class FinancialSummaryDto
     public decimal InternalTransfers { get; set; }
     public decimal AvgMonthlyDonations { get; set; }
     public decimal AvgMonthlyExpenses { get; set; }
+    public decimal PrimaryDonations { get; set; }
+    public Dictionary<string, decimal> SeparateSubfundTotals { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+    public decimal StartingBalance { get; set; }
     public decimal Balance { get; set; }
     public string Period { get; set; } = string.Empty;
 }

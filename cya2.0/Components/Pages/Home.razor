@@ -39,6 +39,147 @@
         vertical-align: 0.05em;
     }
 
+    .home-donation-subtotals {
+        display: flex;
+        flex-direction: column;
+        gap: 0.15rem !important;
+        margin: -0.25rem 0 0.25rem 0.85rem;
+    }
+
+    .home-donation-subtotals .home-donation-subtotal-row {
+        display: flex !important;
+        align-items: center !important;
+        min-height: 0 !important;
+        height: 0.75rem !important;
+        margin: 0 !important;
+        padding: 0 !important;
+    }
+
+    .home-donation-subtotals .rz-text,
+    .home-donation-subtotals .rz-text-body2,
+    .home-donation-subtotals .home-donation-subtotal-row > p {
+        margin: 0 !important;
+        margin-block: 0 !important;
+        padding: 0 !important;
+        line-height: 0.75rem !important;
+        height: 0.75rem !important;
+    }
+
+    .home-donation-subtotal-row,
+    .home-donation-subtotal-row .rz-text,
+    .home-donation-subtotal-row .rz-text-body-2 {
+        margin: 0 !important;
+        margin-block: 0 !important;
+        padding-block: 0 !important;
+        line-height: 0.75rem !important;
+    }
+
+    .home-summary-layout {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+        gap: 1rem;
+        align-items: start;
+    }
+
+    .home-fixed-summary-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 0.75rem;
+        min-width: 0;
+    }
+
+    .home-summary-card-column {
+        min-width: 0;
+    }
+
+    .home-fixed-summary-grid .home-summary-card-column .rz-card {
+        padding: 0.5rem !important;
+        box-shadow: 0 0.2rem 0.55rem rgba(0, 0, 0, 0.2) !important;
+    }
+
+    .home-fixed-summary-grid .home-summary-card-column .rz-stack {
+        gap: 0.15rem !important;
+    }
+
+    .home-fixed-summary-grid .home-summary-card-column .rz-text {
+        line-height: 1.15;
+    }
+
+    .home-fixed-summary-grid .home-summary-card-column hr {
+        margin-top: 0.25rem !important;
+        margin-bottom: 0.25rem !important;
+    }
+
+    .home-custom-summary-column {
+        min-width: 0;
+        padding-right: 1rem;
+    }
+
+    .home-custom-summary-column > .rz-card {
+        box-shadow: 0 0.2rem 0.55rem rgba(0, 0, 0, 0.2) !important;
+    }
+
+    .home-custom-date-controls {
+        display: flex;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 0.75rem;
+    }
+
+    .home-custom-date-controls > .rz-button {
+        flex: 0 0 auto;
+        width: auto !important;
+    }
+
+    .home-custom-date-field {
+        display: flex;
+        align-items: center;
+        flex: 0 0 auto;
+        gap: 0.5rem;
+    }
+
+    .home-custom-summary-divider {
+        display: block;
+        width: 100%;
+        height: 2px;
+        margin: 0.75rem 0 !important;
+        background-color: #ced4da;
+    }
+
+    .home-custom-summary-results {
+        padding-top: 0.25rem;
+    }
+
+    @@media (max-width: 900px) {
+        .home-summary-layout {
+            grid-template-columns: 1fr;
+        }
+
+        .home-custom-summary-column {
+            padding-right: 0;
+        }
+    }
+
+    @@media (max-width: 640px) {
+        .home-fixed-summary-grid {
+            grid-template-columns: 1fr;
+        }
+
+        .home-custom-date-field {
+            align-items: stretch;
+            flex-direction: column;
+        }
+
+        .home-custom-date-controls {
+            align-items: stretch;
+            flex-direction: column;
+        }
+
+        .home-custom-date-controls > .rz-button {
+            align-self: flex-start;
+        }
+    }
+
     .home-account-row {
         min-width: 0;
     }
@@ -251,27 +392,27 @@ else if (!dashboardData.UserAccounts.Any())
 }
 else
 {
-    <RadzenCard class="mt-4">
-        <RadzenStack Orientation="Orientation.Horizontal" Gap="2rem" JustifyContent="JustifyContent.End" AlignItems="AlignItems.Start" Wrap="FlexWrap.Wrap" Style="width:100%;">
-            <RadzenStack Orientation="Orientation.Vertical" Gap="0.4rem" Style="flex:1; max-width:420px;" Class="home-controls-right">
-                <div class="date-range-toolbar-box account-selector-box">
-                    <div class="home-account-selector-row" style="display:flex;align-items:center;gap:0.5rem;flex-wrap:nowrap;">
-                        <RadzenLabel Text="@Localizer["Account"]" />
-                        <AccountSelector TItem="UserAccountDto" TValue="string"
-                                         Data="@dashboardData.UserAccounts"
-                                         TextProperty="DisplayName"
-                                         ValueProperty="Fund"
-                                         Value="@selectedAccount"
-                                         Change="@OnAccountSelectionAsync"
-                                         Placeholder="@Localizer["ChooseAccount"]"
-                                         TextSelector="@(account => account.DisplayName)"
-                                         Class="account-selector-dropdown-inline" />
-                    </div>
+    @if (dashboardData.HasAccountData && !showVisualizations)
+    {
+        <SectionLoadingBoundary IsLoading="isAccountDataLoading" LoadingText="@Localizer["Loading"]" MinHeight="280px" UseCardSurface="false" Class="mt-4">
+        <div class="home-summary-layout mt-4">
+            <div class="home-custom-summary-column">
+                <div class="home-account-selector-row mb-2" style="display:flex;align-items:center;gap:0.5rem;flex-wrap:nowrap;">
+                    <RadzenLabel Text="@Localizer["Account"]" />
+                    <AccountSelector TItem="UserAccountDto" TValue="string"
+                                     Data="@dashboardData.UserAccounts"
+                                     TextProperty="Fund"
+                                     ValueProperty="Fund"
+                                     Value="@selectedAccount"
+                                     Change="@OnAccountSelectionAsync"
+                                     Placeholder="@Localizer["ChooseAccount"]"
+                                     TextSelector="@(account => DisplayFormatter.FormatFundDisplay(account.Fund))"
+                                     Class="account-selector-dropdown-inline" />
                 </div>
 
                 @if (!showVisualizations && missingGiftDonors.Count > 0)
                 {
-                    <div style="width:100%;">
+                    <div class="mb-2" style="width:100%;">
                         <RadzenButton Text="@(missingGiftDonors.Count == 1
                             ? Localizer["MissingMonthlyDonation"]
                             : Localizer["MissingMonthlyDonations", missingGiftDonors.Count])"
@@ -283,51 +424,126 @@ else
                                       Click="@(() => showMissingGiftDialog = !showMissingGiftDialog)" />
                     </div>
                 }
-            </RadzenStack>
-        </RadzenStack>
 
-        @if (showMissingGiftDialog && missingGiftDonors.Count > 0)
-        {
-            <RadzenCard class="mt-3" Style="border: 1px solid var(--rz-danger); background: var(--rz-base-background-color);">
-                <RadzenStack Orientation="Orientation.Horizontal" JustifyContent="JustifyContent.SpaceBetween" AlignItems="AlignItems.Center" Gap="0.5rem" Class="mb-2">
-                    <RadzenText TextStyle="TextStyle.Subtitle1" Style="font-weight:600;" Class="home-missing-gift-title">@Localizer["MissingDonationsDuring", GetMissingGiftMonthsText()]</RadzenText>
-                    <RadzenButton Icon="close" ButtonStyle="ButtonStyle.Light" Size="ButtonSize.ExtraSmall" Click="@(() => showMissingGiftDialog = false)" />
-                </RadzenStack>
-                <RadzenDataGrid TItem="Cya2.Application.DTOs.DonorSummaryDto"
-                                Data="@missingGiftDonors"
-                                AllowSorting="true"
-                                AllowPaging="false"
-                                Style="width:100%;">
-                    <Columns>
-                        <RadzenDataGridColumn TItem="Cya2.Application.DTOs.DonorSummaryDto" Property="Name" Title="@Localizer["Donor"]" />
-                        <RadzenDataGridColumn TItem="Cya2.Application.DTOs.DonorSummaryDto" Title="@Localizer["MissingMonths"]">
-                            <Template Context="d">
-                                @string.Join(", ", d.MissingMonths)
-                            </Template>
-                        </RadzenDataGridColumn>
-                    </Columns>
-                </RadzenDataGrid>
-                <RadzenText TextStyle="TextStyle.Caption" Class="mt-2">* Donations are considered missing based on giving history, and may or may not be related to giver intent.</RadzenText>
-            </RadzenCard>
-        }
-    </RadzenCard>
+                @if (showMissingGiftDialog && missingGiftDonors.Count > 0)
+                {
+                    <RadzenCard class="mb-2" Style="border: 1px solid var(--rz-danger); background: var(--rz-base-background-color);">
+                        <RadzenStack Orientation="Orientation.Horizontal" JustifyContent="JustifyContent.SpaceBetween" AlignItems="AlignItems.Center" Gap="0.5rem" Class="mb-2">
+                            <RadzenText TextStyle="TextStyle.Subtitle1" Style="font-weight:600;" Class="home-missing-gift-title">@Localizer["MissingDonationsDuring", GetMissingGiftMonthsText()]</RadzenText>
+                            <RadzenButton Icon="close" ButtonStyle="ButtonStyle.Light" Size="ButtonSize.ExtraSmall" Click="@(() => showMissingGiftDialog = false)" />
+                        </RadzenStack>
+                        <RadzenDataGrid TItem="Cya2.Application.DTOs.DonorSummaryDto" Data="@missingGiftDonors" AllowSorting="true" AllowPaging="false" Style="width:100%;">
+                            <Columns>
+                                <RadzenDataGridColumn TItem="Cya2.Application.DTOs.DonorSummaryDto" Property="Name" Title="@Localizer["Donor"]" />
+                                <RadzenDataGridColumn TItem="Cya2.Application.DTOs.DonorSummaryDto" Title="@Localizer["MissingMonths"]">
+                                    <Template Context="d">@string.Join(", ", d.MissingMonths)</Template>
+                                </RadzenDataGridColumn>
+                            </Columns>
+                        </RadzenDataGrid>
+                        <RadzenText TextStyle="TextStyle.Caption" Class="mt-2">* Donations are considered missing based on giving history, and may or may not be related to giver intent.</RadzenText>
+                    </RadzenCard>
+                }
 
-    @if (dashboardData.HasAccountData && !showVisualizations)
-    {
-        <SectionLoadingBoundary IsLoading="isAccountDataLoading" LoadingText="@Localizer["Loading"]" MinHeight="280px" UseCardSurface="false" Class="mt-4">
-        <RadzenStack Orientation="Orientation.Horizontal" Gap="1rem" Class="mt-4" JustifyContent="JustifyContent.Center" Wrap="FlexWrap.Wrap">
-            <RadzenStack Orientation="Orientation.Vertical" Style="width: 24%; min-width: 260px;">
+                <RadzenCard>
+                    <RadzenStack Gap="0.75rem">
+                        <RadzenText TextStyle="TextStyle.H5">Custom Date Range</RadzenText>
+                        <div class="home-custom-date-controls">
+                            <div class="home-custom-date-field">
+                                <RadzenLabel Text="@Localizer["StartDate"]" />
+                                <RadzenDatePicker @bind-Value="customPendingStartDate" DateFormat="MM/dd/yyyy" Style="max-width:130px" />
+                            </div>
+                            <div class="home-custom-date-field">
+                                <RadzenLabel Text="@Localizer["EndDate"]" />
+                                <RadzenDatePicker @bind-Value="customPendingEndDate" DateFormat="MM/dd/yyyy" Style="max-width:130px" />
+                            </div>
+                            <RadzenButton Text="@Localizer["Apply"]" ButtonStyle="ButtonStyle.Primary" Click="ApplyCustomDateRangeAsync" />
+                        </div>
+
+                        <div class="home-custom-summary-divider" role="separator" aria-hidden="true"></div>
+
+                        <div class="home-custom-summary-results">
+                            @if (hasAppliedCustomDateRange && isCustomSummaryLoading)
+                            {
+                                <SectionLoadingBoundary IsLoading="true" LoadingText="@Localizer["Loading"]" MinHeight="220px" />
+                            }
+                            else
+                            {
+                                @if (hasAppliedCustomDateRange)
+                                {
+                                    <RadzenText TextStyle="TextStyle.Body1" Style="font-weight: 700;">@GetCustomDateRangeDisplay()</RadzenText>
+                                }
+
+                                <div class="d-flex justify-content-between align-items-center"><RadzenText TextStyle="TextStyle.Body1">@Localizer["StartingBalance"]</RadzenText><RadzenText TextStyle="TextStyle.Body1"><span class="fw-bold">@Math.Abs(customSummary.StartingBalance).ToString("C", CultureInfo.CurrentCulture)</span></RadzenText></div>
+                                <hr class="my-2" />
+                                <div class="d-flex justify-content-between"><RadzenText TextStyle="TextStyle.Body1">@Localizer["Donations"]</RadzenText><span class="fw-bold">@customSummary.TotalDonations.ToString("C", CultureInfo.CurrentCulture)</span></div>
+                                <hr class="my-2" />
+                                <div class="d-flex justify-content-between"><RadzenText TextStyle="TextStyle.Body1">@Localizer["Expenses"]</RadzenText><span class="fw-bold">@customSummary.TotalExpenses.ToString("C", CultureInfo.CurrentCulture)</span></div>
+                                <hr class="my-2" />
+                                <div class="d-flex justify-content-between"><RadzenText TextStyle="TextStyle.Body1">@Localizer["Overhead"]</RadzenText><span class="fw-bold">@customSummary.TotalOverhead.ToString("C", CultureInfo.CurrentCulture)</span></div>
+                                <hr class="my-2" />
+                                <div class="d-flex justify-content-between"><RadzenText TextStyle="TextStyle.Body1">@Localizer["Transfers"]</RadzenText><span class="fw-bold">@customSummary.InternalTransfers.ToString("C", CultureInfo.CurrentCulture)</span></div>
+                                @if (!isInternAccountSelected)
+                                {
+                                    <hr class="my-2" />
+                                    <div class="d-flex justify-content-between align-items-center"><RadzenText TextStyle="TextStyle.Body1">@Localizer["EndingBalance"]</RadzenText><span class="fw-bold">@Math.Abs(customSummary.Balance).ToString("C", CultureInfo.CurrentCulture)</span></div>
+                                }
+                            }
+                        </div>
+                    </RadzenStack>
+                </RadzenCard>
+            </div>
+
+            <div class="home-fixed-summary-grid">
+            <RadzenStack Orientation="Orientation.Vertical" Class="home-summary-card-column home-fixed-summary-stack">
                 <RadzenCard Style="height: 100%;">
                     <RadzenText TextStyle="TextStyle.H5">@Localizer["CurrentMonth"]</RadzenText>
                     <RadzenText TextStyle="TextStyle.Subtitle2">@dashboardData.CurrentMonth.Period</RadzenText>
 
-                    <RadzenStack Gap="0.5rem" Class="mt-3">
+                    <RadzenStack Gap="0.25rem" Class="mt-2">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <RadzenText TextStyle="TextStyle.Body1">@Localizer["StartingBalance"]</RadzenText>
+                            <RadzenText TextStyle="TextStyle.Body1">
+                                <span class="fw-bold">
+                                    @Math.Abs(dashboardData.CurrentMonth.StartingBalance).ToString("C", CultureInfo.CurrentCulture)
+                                    @(dashboardData.CurrentMonth.StartingBalance < 0 ? $" {Localizer["Deficit"]}" : "")
+                                </span>
+                            </RadzenText>
+                        </div>
+
+                        <hr class="my-2" />
+
                         <div class="d-flex justify-content-between">
                             <RadzenText TextStyle="TextStyle.Body1">@Localizer["Donations"]</RadzenText>
                             <RadzenText TextStyle="TextStyle.Body1">
                                 <span class="fw-bold">@dashboardData.CurrentMonth.TotalDonations.ToString("C", CultureInfo.CurrentCulture)</span>
                             </RadzenText>
                         </div>
+
+                        @if (dashboardData.CurrentMonth.SeparateSubfundTotals.Any())
+                        {
+                            <div class="home-donation-subtotals">
+                                <div class="home-donation-subtotal-row d-flex justify-content-between">
+                                    <RadzenText TextStyle="TextStyle.Body2">
+                                        <AccountTooltipLabel Label="@Localizer["PrimaryAccount"]" AccountName="@dashboardData.SelectedAccount" />
+                                    </RadzenText>
+                                    <RadzenText TextStyle="TextStyle.Body2">
+                                        <span class="fw-bold">@dashboardData.CurrentMonth.PrimaryDonations.ToString("C", CultureInfo.CurrentCulture)</span>
+                                    </RadzenText>
+                                </div>
+
+                                @foreach (var subfund in dashboardData.CurrentMonth.SeparateSubfundTotals)
+                                {
+                                    <div class="home-donation-subtotal-row d-flex justify-content-between">
+                                        <RadzenText TextStyle="TextStyle.Body2">
+                                            <AccountTooltipLabel Label="@Localizer["SubAccount"]" AccountName="@subfund.Key" />
+                                        </RadzenText>
+                                        <RadzenText TextStyle="TextStyle.Body2">
+                                            <span class="fw-bold">@subfund.Value.ToString("C", CultureInfo.CurrentCulture)</span>
+                                        </RadzenText>
+                                    </div>
+                                }
+                            </div>
+                        }
 
                         <hr class="my-2" />
 
@@ -386,12 +602,26 @@ else
                 </RadzenCard>
             </RadzenStack>
 
-            <RadzenStack Orientation="Orientation.Vertical" Style="width: 24%; min-width: 260px;">
+            <RadzenStack Orientation="Orientation.Vertical" Class="home-summary-card-column home-fixed-summary-stack">
                 <RadzenCard Style="height: 100%;">
                     <RadzenText TextStyle="TextStyle.H5">@Localizer["PriorMonth"]</RadzenText>
                     <RadzenText TextStyle="TextStyle.Subtitle2">@dashboardData.PriorMonth.Period</RadzenText>
 
-                    <RadzenStack Gap="0.5rem" Class="mt-3">
+                    <RadzenStack Gap="0.25rem" Class="mt-2">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <RadzenText TextStyle="TextStyle.Body1">@Localizer["StartingBalance"]</RadzenText>
+                            <div class="text-end">
+                                <RadzenText TextStyle="TextStyle.Body1">
+                                    <span class="fw-bold">
+                                        @Math.Abs(dashboardData.PriorMonth.StartingBalance).ToString("C", CultureInfo.CurrentCulture)
+                                        @(dashboardData.PriorMonth.StartingBalance < 0 ? $" {Localizer["Deficit"]}" : "")
+                                    </span>
+                                </RadzenText>
+                            </div>
+                        </div>
+
+                        <hr class="my-2" />
+
                         <div class="d-flex justify-content-between">
                             <RadzenText TextStyle="TextStyle.Body1">@Localizer["Donations"]</RadzenText>
                             <div class="text-end">
@@ -400,6 +630,36 @@ else
                                 </RadzenText>
                             </div>
                         </div>
+
+                        @if (dashboardData.PriorMonth.SeparateSubfundTotals.Any())
+                        {
+                            <div class="home-donation-subtotals">
+                                <div class="d-flex justify-content-between">
+                                    <RadzenText TextStyle="TextStyle.Body2">
+                                        <AccountTooltipLabel Label="@Localizer["PrimaryAccount"]" AccountName="@dashboardData.SelectedAccount" />
+                                    </RadzenText>
+                                    <div class="text-end">
+                                        <RadzenText TextStyle="TextStyle.Body2">
+                                            <span class="fw-bold">@dashboardData.PriorMonth.PrimaryDonations.ToString("C", CultureInfo.CurrentCulture)</span>
+                                        </RadzenText>
+                                    </div>
+                                </div>
+
+                                @foreach (var subfund in dashboardData.PriorMonth.SeparateSubfundTotals)
+                                {
+                                    <div class="d-flex justify-content-between">
+                                        <RadzenText TextStyle="TextStyle.Body2">
+                                            <AccountTooltipLabel Label="@Localizer["SubAccount"]" AccountName="@subfund.Key" />
+                                        </RadzenText>
+                                        <div class="text-end">
+                                            <RadzenText TextStyle="TextStyle.Body2">
+                                                <span class="fw-bold">@subfund.Value.ToString("C", CultureInfo.CurrentCulture)</span>
+                                            </RadzenText>
+                                        </div>
+                                    </div>
+                                }
+                            </div>
+                        }
 
                         <hr class="my-2" />
 
@@ -466,12 +726,26 @@ else
                 </RadzenCard>
             </RadzenStack>
 
-            <RadzenStack Orientation="Orientation.Vertical" Style="width: 24%; min-width: 260px;">
+            <RadzenStack Orientation="Orientation.Vertical" Class="home-summary-card-column home-fixed-summary-stack">
                 <RadzenCard Style="height: 100%;">
                     <RadzenText TextStyle="TextStyle.H5">@Localizer["CurrentYear"]</RadzenText>
                     <RadzenText TextStyle="TextStyle.Subtitle2">@dashboardData.CurrentYear.Period</RadzenText>
 
-                    <RadzenStack Gap="0.5rem" Class="mt-3">
+                    <RadzenStack Gap="0.25rem" Class="mt-2">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <RadzenText TextStyle="TextStyle.Body1">@Localizer["StartingBalance"]</RadzenText>
+                            <div class="text-end">
+                                <RadzenText TextStyle="TextStyle.Body1">
+                                    <span class="fw-bold">
+                                        @Math.Abs(dashboardData.CurrentYear.StartingBalance).ToString("C", CultureInfo.CurrentCulture)
+                                        @(dashboardData.CurrentYear.StartingBalance < 0 ? $" {Localizer["Deficit"]}" : "")
+                                    </span>
+                                </RadzenText>
+                            </div>
+                        </div>
+
+                        <hr class="my-2" />
+
                         <div class="d-flex justify-content-between">
                             <RadzenText TextStyle="TextStyle.Body1">@Localizer["Donations"]</RadzenText>
                             <div class="text-end">
@@ -480,6 +754,36 @@ else
                                 </RadzenText>
                             </div>
                         </div>
+
+                        @if (dashboardData.CurrentYear.SeparateSubfundTotals.Any())
+                        {
+                            <div class="home-donation-subtotals">
+                                <div class="d-flex justify-content-between">
+                                    <RadzenText TextStyle="TextStyle.Body2">
+                                        <AccountTooltipLabel Label="@Localizer["PrimaryAccount"]" AccountName="@dashboardData.SelectedAccount" />
+                                    </RadzenText>
+                                    <div class="text-end">
+                                        <RadzenText TextStyle="TextStyle.Body2">
+                                            <span class="fw-bold">@dashboardData.CurrentYear.PrimaryDonations.ToString("C", CultureInfo.CurrentCulture)</span>
+                                        </RadzenText>
+                                    </div>
+                                </div>
+
+                                @foreach (var subfund in dashboardData.CurrentYear.SeparateSubfundTotals)
+                                {
+                                    <div class="d-flex justify-content-between">
+                                        <RadzenText TextStyle="TextStyle.Body2">
+                                            <AccountTooltipLabel Label="@Localizer["SubAccount"]" AccountName="@subfund.Key" />
+                                        </RadzenText>
+                                        <div class="text-end">
+                                            <RadzenText TextStyle="TextStyle.Body2">
+                                                <span class="fw-bold">@subfund.Value.ToString("C", CultureInfo.CurrentCulture)</span>
+                                            </RadzenText>
+                                        </div>
+                                    </div>
+                                }
+                            </div>
+                        }
 
                         <hr class="my-2" />
 
@@ -546,12 +850,26 @@ else
                 </RadzenCard>
             </RadzenStack>
 
-            <RadzenStack Orientation="Orientation.Vertical" Style="width: 24%; min-width: 260px;">
+            <RadzenStack Orientation="Orientation.Vertical" Class="home-summary-card-column home-fixed-summary-stack">
                 <RadzenCard Style="height: 100%;">
                     <RadzenText TextStyle="TextStyle.H5">@Localizer["PriorYear"]</RadzenText>
                     <RadzenText TextStyle="TextStyle.Subtitle2">@dashboardData.PriorYear.Period</RadzenText>
 
-                    <RadzenStack Gap="0.5rem" Class="mt-3">
+                    <RadzenStack Gap="0.25rem" Class="mt-2">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <RadzenText TextStyle="TextStyle.Body1">@Localizer["StartingBalance"]</RadzenText>
+                            <div class="text-end">
+                                <RadzenText TextStyle="TextStyle.Body1">
+                                    <span class="fw-bold">
+                                        @Math.Abs(dashboardData.PriorYear.StartingBalance).ToString("C", CultureInfo.CurrentCulture)
+                                        @(dashboardData.PriorYear.StartingBalance < 0 ? $" {Localizer["Deficit"]}" : "")
+                                    </span>
+                                </RadzenText>
+                            </div>
+                        </div>
+
+                        <hr class="my-2" />
+
                         <div class="d-flex justify-content-between">
                             <RadzenText TextStyle="TextStyle.Body1">@Localizer["Donations"]</RadzenText>
                             <div class="text-end">
@@ -560,6 +878,36 @@ else
                                 </RadzenText>
                             </div>
                         </div>
+
+                        @if (dashboardData.PriorYear.SeparateSubfundTotals.Any())
+                        {
+                            <div class="home-donation-subtotals">
+                                <div class="d-flex justify-content-between">
+                                    <RadzenText TextStyle="TextStyle.Body2">
+                                        <AccountTooltipLabel Label="@Localizer["PrimaryAccount"]" AccountName="@dashboardData.SelectedAccount" />
+                                    </RadzenText>
+                                    <div class="text-end">
+                                        <RadzenText TextStyle="TextStyle.Body2">
+                                            <span class="fw-bold">@dashboardData.PriorYear.PrimaryDonations.ToString("C", CultureInfo.CurrentCulture)</span>
+                                        </RadzenText>
+                                    </div>
+                                </div>
+
+                                @foreach (var subfund in dashboardData.PriorYear.SeparateSubfundTotals)
+                                {
+                                    <div class="d-flex justify-content-between">
+                                        <RadzenText TextStyle="TextStyle.Body2">
+                                            <AccountTooltipLabel Label="@Localizer["SubAccount"]" AccountName="@subfund.Key" />
+                                        </RadzenText>
+                                        <div class="text-end">
+                                            <RadzenText TextStyle="TextStyle.Body2">
+                                                <span class="fw-bold">@subfund.Value.ToString("C", CultureInfo.CurrentCulture)</span>
+                                            </RadzenText>
+                                        </div>
+                                    </div>
+                                }
+                            </div>
+                        }
 
                         <hr class="my-2" />
 
@@ -625,7 +973,9 @@ else
                     </RadzenStack>
                 </RadzenCard>
             </RadzenStack>
-        </RadzenStack>
+            </div>
+
+        </div>
         </SectionLoadingBoundary>
     }
     else if (dashboardData.HasAccountData && showVisualizations)
@@ -786,6 +1136,7 @@ private ElementReference currentYearOverheadElement;
 private ElementReference priorYearOverheadElement;
 
 private FinancialDashboardDto dashboardData = new();
+private FinancialSummaryDto customSummary = new();
 private string debugMessage = string.Empty;
 
 private const int MaxDashboardMemoryCacheItems = 15;
@@ -801,6 +1152,12 @@ private DateTime visualizationPendingStartDate;
 private DateTime visualizationPendingEndDate;
 private DateTime visualizationStartDate;
 private DateTime visualizationEndDate;
+private DateTime customPendingStartDate;
+private DateTime customPendingEndDate;
+private DateTime customStartDate;
+private DateTime customEndDate;
+private bool isCustomSummaryLoading = true;
+private bool hasAppliedCustomDateRange;
 private List<MonthlyAccountVisualizationDto> accountVisualizationSeries = new();
 private List<DatePresetOption> visualizationPresetOptions = new();
 private readonly List<VisualizationGraphTypeOption> visualizationGraphTypeOptions =
@@ -864,6 +1221,14 @@ private bool showMissingGiftDialog = false;
             2 => $"{values[0]} {conjunction} {values[1]}",
             _ => $"{string.Join(", ", values.Take(values.Count - 1))} {conjunction} {values[^1]}"
         };
+    }
+
+    private string GetCustomDateRangeDisplay()
+    {
+        var start = customStartDate.ToString("D", CultureInfo.CurrentCulture);
+        var end = customEndDate.ToString("D", CultureInfo.CurrentCulture);
+        var through = Localizer["Through"].Value.ToLower(CultureInfo.CurrentCulture);
+        return $"{start} {through} {end}";
     }
 
     private async Task ComputeMissingGiftAlertsAsync()
@@ -952,6 +1317,7 @@ private bool showMissingGiftDialog = false;
             visualizationPendingEndDate = vizEnd.Date;
             visualizationStartDate = visualizationPendingStartDate;
             visualizationEndDate = visualizationPendingEndDate;
+            InitializeCustomDateRange();
 
             var requestedFund = !string.IsNullOrWhiteSpace(SessionUserStateService.SelectedAccountFund)
                 ? SessionUserStateService.SelectedAccountFund
@@ -1015,6 +1381,59 @@ private bool showMissingGiftDialog = false;
             ScheduleInitialWarmup();
             await InvokeAsync(StateHasChanged);
         }
+    }
+
+    private void InitializeCustomDateRange()
+    {
+        var today = DateTime.Today;
+        customPendingStartDate = new DateTime(today.Year, today.Month, 1);
+        customPendingEndDate = customPendingStartDate.AddMonths(1).AddDays(-1);
+        customStartDate = customPendingStartDate;
+        customEndDate = customPendingEndDate;
+    }
+
+    private async Task LoadCustomSummaryAsync()
+    {
+        if (string.IsNullOrWhiteSpace(selectedAccount) || string.IsNullOrWhiteSpace(cachedUserId))
+        {
+            customSummary = new FinancialSummaryDto();
+            return;
+        }
+
+        isCustomSummaryLoading = true;
+        try
+        {
+            customSummary = await DashboardService.GetCustomSummaryAsync(
+                selectedAccount,
+                customStartDate,
+                customEndDate,
+                cachedUserId);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "Home: failed to load custom date range summary for {Account}", selectedAccount);
+            customSummary = new FinancialSummaryDto
+            {
+                Period = $"{customStartDate:MM/dd/yyyy} - {customEndDate:MM/dd/yyyy}"
+            };
+        }
+        finally
+        {
+            isCustomSummaryLoading = false;
+        }
+    }
+
+    private async Task ApplyCustomDateRangeAsync()
+    {
+        if (customPendingEndDate.Date < customPendingStartDate.Date)
+        {
+            return;
+        }
+
+        customStartDate = customPendingStartDate.Date;
+        customEndDate = customPendingEndDate.Date;
+        hasAppliedCustomDateRange = true;
+        await LoadCustomSummaryAsync();
     }
 
     private void ScheduleInitialDeferredWork()
@@ -1115,6 +1534,8 @@ private bool showMissingGiftDialog = false;
 
             selectedAccount = ResolveSelectedAccount(dashboardData);
             SessionUserStateService.SelectedAccountFund = selectedAccount;
+            hasAppliedCustomDateRange = false;
+            customSummary = new FinancialSummaryDto();
             var selectedAccountDto = dashboardData.UserAccounts.FirstOrDefault(account =>
                 string.Equals(account.Fund, selectedAccount, StringComparison.OrdinalIgnoreCase));
             if (selectedAccountDto is not null)
