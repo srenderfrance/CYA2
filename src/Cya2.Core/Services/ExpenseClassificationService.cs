@@ -46,6 +46,9 @@ public class ExpenseClassificationService
     {
         if (transaction == null) return false;
 
+        if (IsGeneralGivingAccount2200000(transaction))
+            return false;
+
         return string.Equals(transaction.Type, "Payroll Check", StringComparison.OrdinalIgnoreCase) ||
                string.Equals(transaction.Type, "Expense", StringComparison.OrdinalIgnoreCase) ||
                (transaction.Account != null &&
@@ -60,6 +63,9 @@ public class ExpenseClassificationService
     public bool IsTransfer(AccountingRecord transaction)
     {
         if (transaction == null || IsExpense(transaction)) return false;
+
+        if (IsGeneralGivingAccount2200000(transaction))
+            return false;
 
         return transaction.Account?.Contains("Transfer", StringComparison.OrdinalIgnoreCase) == true ||
                string.Equals(transaction.Account, "2200000 Unrestricted:General", StringComparison.OrdinalIgnoreCase);
@@ -79,6 +85,16 @@ public class ExpenseClassificationService
     public bool IsExcludedFromBalance(AccountingRecord transaction)
     {
         return string.Equals(transaction?.Account, "Payroll Clearing Insurance", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsGeneralGivingAccount2200000(AccountingRecord transaction)
+    {
+        if (!string.Equals(transaction.AccountingClass, "General Administration:Fundraising:General Giving", StringComparison.OrdinalIgnoreCase))
+            return false;
+
+        return string.Equals(transaction.Account, "2200000 Unrestricted:General", StringComparison.OrdinalIgnoreCase) ||
+               (string.Equals(transaction.AccountNumber, "2200000", StringComparison.OrdinalIgnoreCase) &&
+                string.Equals(transaction.Account, "Unrestricted:General", StringComparison.OrdinalIgnoreCase));
     }
 }
 

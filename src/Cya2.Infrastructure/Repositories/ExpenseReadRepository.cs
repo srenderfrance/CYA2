@@ -1,5 +1,6 @@
 using Cya2.Core.Interfaces;
 using Cya2.Core.ReadModels;
+using Cya2.Core.Services;
 using Dapper;
 using Microsoft.Extensions.Configuration;
 using MySql.Data.MySqlClient;
@@ -29,7 +30,8 @@ public sealed class ExpenseReadRepository : IExpenseReadRepository
         const string sql = @"
 SELECT Id, AccountingClass, Date, Num, Amount, AccountNumber, Account, Type, DateCreated
 FROM AccountingData
-WHERE (AccountingClass = @AccountClass OR AccountNumber = @AccountNumber)
+ WHERE ((@AccountNumber = '2200000' AND AccountingClass = @AccountClass)
+        OR (@AccountNumber <> '2200000' AND (AccountingClass = @AccountClass OR AccountNumber = @AccountNumber)))
   AND LOWER(COALESCE(Account, '')) <> 'prepaids'
   AND LOWER(COALESCE(Account, '')) <> 'payroll clearing insurance'
   AND Date >= @StartDate
@@ -58,7 +60,8 @@ ORDER BY Date";
         {
             parameters.Add($"AccountingClass{index}", account.AccountingClass);
             parameters.Add($"AccountNumber{index}", account.AccountNumber);
-            return $"(AccountingClass = @AccountingClass{index} OR AccountNumber = @AccountNumber{index})";
+            return $"((@AccountNumber{index} = '2200000' AND AccountingClass = @AccountingClass{index}) " +
+                   $"OR (@AccountNumber{index} <> '2200000' AND (AccountingClass = @AccountingClass{index} OR AccountNumber = @AccountNumber{index})))";
         });
 
         var sql = $@"
@@ -78,8 +81,7 @@ ORDER BY Date";
         {
             foreach (var account in accounts)
             {
-                if (string.Equals(row.AccountingClass, account.AccountingClass, StringComparison.OrdinalIgnoreCase) ||
-                    string.Equals(row.AccountNumber, account.AccountNumber, StringComparison.OrdinalIgnoreCase))
+                if (AccountingDataMatcher.MatchesAccount(row, account.AccountingClass, account.AccountNumber))
                 {
                     result[account.AccountId].Add(row);
                 }
@@ -88,4 +90,5 @@ ORDER BY Date";
 
         return result;
     }
+
 }
