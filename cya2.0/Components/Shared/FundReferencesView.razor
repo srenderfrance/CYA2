@@ -1,5 +1,6 @@
 @using Cya2.Core.Entities
 @using Cya2.Application.Interfaces
+@using Cya2.Shared.Utilities
 @inject IStringLocalizer<Resource> Localizer
 @inject IAdminPreloadService AdminPreloadService
 @inject IJSRuntime JS
@@ -21,7 +22,9 @@
                         EmptyText="@Localizer["NoAccountFound"]">
             <Columns>
                 <RadzenDataGridColumn TItem="Account" Property="AccountNumber" Title="@Localizer["AccountNumber"]" Width="170px" />
-                <RadzenDataGridColumn TItem="Account" Property="Fund" Title="@Localizer["Fund"]" Width="280px" />
+                <RadzenDataGridColumn TItem="Account" Property="Fund" Title="@Localizer["Fund"]" Width="280px">
+                    <Template Context="account">@DisplayFormatter.FormatFundDisplay(account.Fund)</Template>
+                </RadzenDataGridColumn>
                 <RadzenDataGridColumn TItem="Account" Property="AccountingClass" Title="@Localizer["Class"]" Width="170px" />
                 <RadzenDataGridColumn TItem="Account" Property="Overhead" Title="@Localizer["Overhead"]" Width="120px" TextAlign="TextAlign.Right">
                     <Template Context="a">
@@ -67,7 +70,7 @@
             sb.AppendLine($"{Localizer["AccountNumber"]}\t{Localizer["Fund"]}\t{Localizer["Class"]}\t{Localizer["Overhead"]}");
             foreach (var a in accounts)
             {
-                sb.AppendLine($"{a.AccountNumber}\t{a.Fund}\t{a.AccountingClass}\t{a.Overhead:N2}%");
+                sb.AppendLine($"{a.AccountNumber}\t{DisplayFormatter.FormatFundDisplay(a.Fund)}\t{a.AccountingClass}\t{a.Overhead:N2}%");
             }
 
             await JS.InvokeVoidAsync("navigator.clipboard.writeText", sb.ToString());

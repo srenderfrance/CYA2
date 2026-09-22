@@ -324,6 +324,7 @@ public sealed class AccountSnapshotWarmupTests
         public Task<FinancialDashboardDto> GetDashboardDataAsync(string accountFund, string userId) => Task.FromResult(new FinancialDashboardDto());
         public Task<List<UserAccountDto>> GetUserAccountsAsync(string userId) => Task.FromResult(new List<UserAccountDto>());
         public Task<bool> ValidateAccountAccessAsync(string accountFund, string userId) => Task.FromResult(true);
+        public Task<FinancialSummaryDto> GetCustomSummaryAsync(string accountFund, DateTime startDate, DateTime endDate, string userId) => Task.FromResult(new FinancialSummaryDto());
         public Task<List<MonthlyAccountVisualizationDto>> GetMonthlyVisualizationAsync(string accountFund, DateTime startDate, DateTime endDate, string userId) => Task.FromResult(new List<MonthlyAccountVisualizationDto>());
     }
 

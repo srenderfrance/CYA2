@@ -44,8 +44,8 @@ public class DashboardSessionCacheService : ISessionAccountDataCacheService
         }
 
         if (_cache.TryGetValue(account.Fund, out var existing)
-            && existing.WindowStart == windowStart
-            && existing.WindowEnd == windowEnd)
+            && existing.WindowStart <= windowStart
+            && existing.WindowEnd >= windowEnd)
         {
             if (isDefaultAccount)
             {

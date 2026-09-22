@@ -38,6 +38,51 @@ public class FinancialDashboardService : IFinancialDashboardService
         return await GetDashboardDataInternalAsync(accountFund, userId, useSessionAccountDataCache: false);
     }
 
+    public async Task<FinancialSummaryDto> GetCustomSummaryAsync(
+        string accountFund,
+        DateTime startDate,
+        DateTime endDate,
+        string userId)
+    {
+        if (endDate.Date < startDate.Date)
+        {
+            throw new ArgumentException("The custom summary end date must be on or after the start date.");
+        }
+
+        var userContext = await _userAccountContextService.GetContextAsync(userId);
+        var selectedAccount = userContext is null
+            ? null
+            : _userAccountContextService.ResolveSelectedAccount(userContext, accountFund);
+
+        if (selectedAccount is null)
+        {
+            return new FinancialSummaryDto
+            {
+                Period = $"{startDate:MM/dd/yyyy} - {endDate:MM/dd/yyyy}"
+            };
+        }
+
+        var now = DateTime.Now;
+        var broadWindowStart = new DateTime(now.Year - 1, 1, 1);
+        var broadWindowEnd = new DateTime(now.Year, 12, 31);
+        var isDefaultAccount = userContext.DefaultAccountId.HasValue &&
+                               userContext.DefaultAccountId.Value == selectedAccount.AccountId;
+        var cachedData = await _sessionAccountDataCache.GetOrLoadAccountDataAsync(
+            selectedAccount,
+            startDate.Date >= broadWindowStart && endDate.Date <= broadWindowEnd ? broadWindowStart : startDate.Date,
+            startDate.Date >= broadWindowStart && endDate.Date <= broadWindowEnd ? broadWindowEnd : endDate.Date,
+            isDefaultAccount);
+
+        var result = BuildSummaryFromCache(
+            selectedAccount,
+            cachedData,
+            startDate.Date,
+            endDate.Date,
+            $"{startDate:MM/dd/yyyy} - {endDate:MM/dd/yyyy}");
+
+        return result.Summary;
+    }
+
     private async Task<FinancialDashboardDto> GetDashboardDataInternalAsync(string accountFund, string userId, bool useSessionAccountDataCache)
     {
         var stopwatch = System.Diagnostics.Stopwatch.StartNew();
@@ -342,6 +387,7 @@ public class FinancialDashboardService : IFinancialDashboardService
         {
             Period = period,
             TotalDonations = donationTotal,
+            PrimaryDonations = donationTotal,
             TotalOverhead = _accountCalculationService.CalculateOverheadAmount(account, donationTotal),
             TotalExpenses = 0,
             InternalTransfers = 0,
@@ -428,15 +474,16 @@ public class FinancialDashboardService : IFinancialDashboardService
         var stopwatch = System.Diagnostics.Stopwatch.StartNew();
         // _logger.LogInformation("Dashboard summary period-start period={Period} account={Account} range={StartDate}..{EndDate}", period, account.Fund, startDate.ToString("yyyy-MM-dd"), endDate.ToString("yyyy-MM-dd"));
 
-        var donationTotal = _accountCalculationService.CalculateDonationTotalsFromData(
+        var donationTotals = _accountCalculationService.CalculateDonationTotalsFromData(
             account,
             donationData.Donations,
             donationData.SubAccounts,
             startDate,
-            endDate).TotalDonations;
+            endDate);
         var expenseTask = _accountCalculationService.CalculateBalanceAsync(account, startDate, endDate);
         var balanceTask = _accountCalculationService.CalculateBalanceAsync(account, null, endDate);
-        await Task.WhenAll(expenseTask, balanceTask);
+        var startingBalanceTask = _accountCalculationService.CalculateBalanceAsync(account, null, startDate.AddDays(-1));
+        await Task.WhenAll(expenseTask, balanceTask, startingBalanceTask);
 
         var balanceCalculation = expenseTask.Result;
         var expenseTotal = balanceCalculation.ExpenseTotal;
@@ -449,10 +496,13 @@ public class FinancialDashboardService : IFinancialDashboardService
             Summary = new FinancialSummaryDto
             {
                 Period = period,
-                TotalDonations = donationTotal,
-                TotalOverhead = _accountCalculationService.CalculateOverheadAmount(account, donationTotal),
+                TotalDonations = donationTotals.TotalDonations,
+                PrimaryDonations = donationTotals.PrimaryDonations,
+                TotalOverhead = donationTotals.OverheadTotal,
                 TotalExpenses = expenseTotal,
                 InternalTransfers = transferTotal,
+                SeparateSubfundTotals = new Dictionary<string, decimal>(donationTotals.SeparateSubfundTotals, StringComparer.OrdinalIgnoreCase),
+                StartingBalance = startingBalanceTask.Result.TotalBalance,
                 Balance = balance
             },
             OtherAccounts = balanceCalculation.OtherTransactions
@@ -485,11 +535,20 @@ public class FinancialDashboardService : IFinancialDashboardService
             cachedData.WindowStart,
             endDate);
 
+        var startingBalance = _accountCalculationService.CalculateBalanceFromData(
+            cachedData.AccountingData,
+            account.BalanceAdjustment,
+            cachedData.WindowStart,
+            startDate.AddDays(-1));
+
         var expenseTotal = periodBalance.ExpenseTotal;
         summary.TotalDonations = donationTotals.TotalDonations;
+        summary.PrimaryDonations = donationTotals.PrimaryDonations;
         summary.TotalOverhead = donationTotals.OverheadTotal;
+        summary.SeparateSubfundTotals = new Dictionary<string, decimal>(donationTotals.SeparateSubfundTotals, StringComparer.OrdinalIgnoreCase);
         summary.TotalExpenses = expenseTotal;
         summary.InternalTransfers = periodBalance.TransferTotal;
+        summary.StartingBalance = startingBalance.TotalBalance;
         summary.Balance = asOfBalance.TotalBalance;
 
         _logger.LogInformation(

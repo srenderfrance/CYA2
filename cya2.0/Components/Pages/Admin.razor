@@ -207,7 +207,7 @@
                             <div style="flex: 1; display: flex; align-items: center; padding: 0.5rem;">
                                 @if (HasSecondaryFunds)
                                 {
-                                    <RadzenText TextStyle="TextStyle.Body1">@string.Join(", ", subAccounts.Where(sa => sa.AccountId == selectedAccountId!.Value).Select(sa => sa.SubFund))</RadzenText>
+                                    <RadzenText TextStyle="TextStyle.Body1">@string.Join(", ", subAccounts.Where(sa => sa.AccountId == selectedAccountId!.Value).Select(sa => DisplayFormatter.FormatFundDisplay(sa.SubFund)))</RadzenText>
                                 }
                                 else
                                 {
@@ -227,7 +227,7 @@
                                     <RadzenFormField Variant="Variant.Outlined" Style="flex: 1;">
                                         <CustomDropdown TItem="SubAccount" TValue="int"
                                                         Data="@filteredSubAccountsWithAdd"
-                                                        TextSelector="@(sa => sa.Id == 0 ? Localizer["AddNewFund"].Value : sa.SubFund)"
+                                                        TextSelector="@(sa => sa.Id == 0 ? Localizer["AddNewFund"].Value : DisplayFormatter.FormatFundDisplay(sa.SubFund))"
                                                         ValueSelector="@(sa => sa.Id)"
                                                         Value="@selectedSubAccountId"
                                                         ValueChanged="@(async (int v) => { selectedSubAccountId = v; if (v == 0) { ClearSelectedSubAccount(); } else { SelectSubAccount(v); } })"
@@ -369,7 +369,7 @@
                          <tbody>
                          @foreach (var row in accountImportPreview.Rows)
                          {
-                             <tr><td>@row.RowNumber</td><td>@row.AccountNumber</td><td>@row.Fund</td><td>@row.AccountingClass</td><td>@row.Overhead.ToString("0.##")%</td></tr>
+                              <tr><td>@row.RowNumber</td><td>@row.AccountNumber</td><td>@DisplayFormatter.FormatFundDisplay(row.Fund)</td><td>@row.AccountingClass</td><td>@row.Overhead.ToString("0.##")%</td></tr>
                          }
                          </tbody>
                      </table>

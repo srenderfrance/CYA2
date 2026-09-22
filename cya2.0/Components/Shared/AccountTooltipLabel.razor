@@ -1,0 +1,45 @@
+@using Cya2.Shared.Utilities
+@using Radzen
+@inject TooltipService TooltipService
+
+<span class="account-tooltip-label"
+      @ref="labelElement"
+      @onmouseenter="ShowTooltip"
+      @onmouseleave="CloseTooltip"
+      aria-label="@FormattedAccountName">
+    @Label <i class="bi bi-info-circle account-tooltip-indicator" aria-hidden="true"></i>
+</span>
+
+<style>
+    .account-tooltip-indicator {
+        margin-left: 0.2rem;
+        color: #355c7d;
+        font-size: 0.8em;
+        cursor: help;
+        vertical-align: 0.05em;
+    }
+</style>
+
+@code {
+    [Parameter] public string Label { get; set; } = string.Empty;
+    [Parameter] public string AccountName { get; set; } = string.Empty;
+
+    private ElementReference labelElement;
+
+    private string FormattedAccountName => DisplayFormatter.FormatFundDisplay(AccountName);
+
+    private void ShowTooltip()
+    {
+        TooltipService.Open(labelElement, FormattedAccountName, new TooltipOptions
+        {
+            Position = TooltipPosition.Bottom,
+            Duration = 10000,
+            CssClass = "tooltip-information"
+        });
+    }
+
+    private void CloseTooltip()
+    {
+        TooltipService.Close();
+    }
+}

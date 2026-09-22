@@ -1,5 +1,6 @@
 @using Radzen.Blazor
 @using Cya2.Application.Interfaces
+@using Cya2.Shared.Utilities
 @inject IStringLocalizer<Resource> Localizer
 @inject IAdminPreloadService AdminPreloadService
 @inject IJSRuntime JS
@@ -45,7 +46,9 @@
                         AllowPaging="false"
                         EmptyText="@Localizer["NoBalancesFound"]">
             <Columns>
-                <RadzenDataGridColumn TItem="FundBalanceRow" Property="Fund" Title="@Localizer["Account"]" />
+                <RadzenDataGridColumn TItem="FundBalanceRow" Property="Fund" Title="@Localizer["Account"]">
+                    <Template Context="row">@DisplayFormatter.FormatFundDisplay(row.Fund)</Template>
+                </RadzenDataGridColumn>
                 @if (!showDonations12m)
                 {
                     <RadzenDataGridColumn TItem="FundBalanceRow" Property="CurrentBalance" Title="@Localizer["CurrentBalance"]" FormatString="{0:C2}" TextAlign="TextAlign.Right" />
@@ -194,7 +197,7 @@
             foreach (var row in fundBalances)
             {
                 var value = showDonations12m ? row.Last12MonthsDonations : row.CurrentBalance;
-                sb.AppendLine($"{row.Fund}\t{value}");
+                sb.AppendLine($"{DisplayFormatter.FormatFundDisplay(row.Fund)}\t{value}");
             }
             await JS.InvokeVoidAsync("navigator.clipboard.writeText", sb.ToString());
         }

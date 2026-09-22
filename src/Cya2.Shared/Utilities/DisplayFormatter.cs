@@ -98,24 +98,15 @@ public static class DisplayFormatter
     }
 
     /// <summary>
-    /// Format a fund code by extracting display name before colon separator
+    /// Format an account or fund name by keeping only the text before the first colon.
     /// </summary>
     public static string FormatFundDisplay(string? fund)
     {
         if (string.IsNullOrWhiteSpace(fund)) 
             return string.Empty;
 
-        var trimmedFund = fund.Trim();
-
-        // Intern accounts are stored as "Intern: Name" but should display as "Name (Intern)".
-        const string internPrefix = "Intern:";
-        if (trimmedFund.StartsWith(internPrefix, StringComparison.OrdinalIgnoreCase))
-        {
-            var internName = trimmedFund[internPrefix.Length..].Trim();
-            return string.IsNullOrWhiteSpace(internName) ? "Intern" : $"{internName} (Intern)";
-        }
-
-        return trimmedFund;
+        var separatorIndex = fund.IndexOf(':');
+        return (separatorIndex >= 0 ? fund[..separatorIndex] : fund).Trim();
     }
 
     /// <summary>
