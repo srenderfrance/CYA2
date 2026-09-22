@@ -99,6 +99,60 @@ public sealed class ExpenseCalculationTests
     }
 
     [Fact]
+    public void GeneralGivingGeneralAccount_IsIncludedInBalanceButNotExpenseOrTransfer()
+    {
+        var service = new AccountCalculationService(
+            new EmptyExpenseRepository(),
+            new EmptyDonationRepository(),
+            new ExpenseClassificationService());
+        var transactions = new List<AccountingRecord>
+        {
+            new()
+            {
+                AccountingClass = "General Administration:Fundraising:General Giving",
+                AccountNumber = "2200000",
+                Account = "Unrestricted:General",
+                Amount = 100
+            },
+            new()
+            {
+                AccountingClass = "General Administration:Fundraising:General Giving",
+                Account = "2200000 Unrestricted:General",
+                Amount = 25
+            }
+        };
+
+        var result = service.CalculateBalanceFromData(transactions);
+
+        Assert.Equal(125m, result.TotalBalance);
+        Assert.Equal(0m, result.ExpenseTotal);
+        Assert.Equal(0m, result.TransferTotal);
+        Assert.Equal(125m, result.OtherTotal);
+        Assert.Equal(2, result.AllTransactions.Count);
+        Assert.Equal(2, result.OtherTransactions.Count);
+    }
+
+    [Fact]
+    public void AccountNumber2200000_MatchesAccountingClassOnly()
+    {
+        var matchingClass = "General Administration:Fundraising:General Giving";
+        var rows = new List<AccountingRecord>
+        {
+            new() { AccountingClass = matchingClass, AccountNumber = string.Empty, Account = "Other", Amount = 10 },
+            new() { AccountingClass = "Other Class", AccountNumber = "2200000", Account = "Other", Amount = 20 },
+            new() { AccountingClass = matchingClass, AccountNumber = "9999999", Account = "Other", Amount = 30 }
+        };
+
+        var matching = rows.Where(row => AccountingDataMatcher.MatchesAccount(row, matchingClass, "2200000")).ToList();
+        var ordinaryAccountMatching = rows.Where(row => AccountingDataMatcher.MatchesAccount(row, "Different Class", "9999999")).ToList();
+
+        Assert.Equal(2, matching.Count);
+        Assert.Contains(matching, row => row.Amount == 10d);
+        Assert.Contains(matching, row => row.Amount == 30d);
+        Assert.Single(ordinaryAccountMatching);
+    }
+
+    [Fact]
     public async Task CalculateBalancesAsync_UsesTheSharedBalanceFormulaForEveryAccount()
     {
         var repository = new BatchExpenseRepository();

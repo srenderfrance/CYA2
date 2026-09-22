@@ -80,6 +80,19 @@ public class FinancialDashboardService : IFinancialDashboardService
             endDate.Date,
             $"{startDate:MM/dd/yyyy} - {endDate:MM/dd/yyyy}");
 
+        var endingBalanceTask = _accountCalculationService.CalculateBalanceAsync(
+            selectedAccount,
+            null,
+            endDate.Date);
+        var startingBalanceTask = _accountCalculationService.CalculateBalanceAsync(
+            selectedAccount,
+            null,
+            startDate.Date.AddDays(-1));
+        await Task.WhenAll(endingBalanceTask, startingBalanceTask);
+
+        result.Summary.StartingBalance = startingBalanceTask.Result.TotalBalance;
+        result.Summary.Balance = endingBalanceTask.Result.TotalBalance;
+
         return result.Summary;
     }
 
@@ -416,6 +429,31 @@ public class FinancialDashboardService : IFinancialDashboardService
         var priorMonth = BuildSummaryFromCache(selectedAccount, cachedData, priorMonthStart, priorMonthEnd, now.AddMonths(-1).ToString("MMMM yyyy"));
         var currentYear = BuildSummaryFromCache(selectedAccount, cachedData, currentYearStart, currentYearEnd, now.ToString("yyyy"));
         var priorYear = BuildSummaryFromCache(selectedAccount, cachedData, priorYearStart, priorYearEnd, (now.Year - 1).ToString());
+
+        var balanceTasks = new[]
+        {
+            (Summary: currentMonth.Summary, Start: currentMonthStart, End: currentMonthEnd),
+            (Summary: priorMonth.Summary, Start: priorMonthStart, End: priorMonthEnd),
+            (Summary: currentYear.Summary, Start: currentYearStart, End: currentYearEnd),
+            (Summary: priorYear.Summary, Start: priorYearStart, End: priorYearEnd)
+        }
+        .Select(async item =>
+        {
+            var startingBalanceTask = _accountCalculationService.CalculateBalanceAsync(
+                selectedAccount,
+                null,
+                item.Start.AddDays(-1));
+            var endingBalanceTask = _accountCalculationService.CalculateBalanceAsync(
+                selectedAccount,
+                null,
+                item.End);
+            await Task.WhenAll(startingBalanceTask, endingBalanceTask);
+            item.Summary.StartingBalance = startingBalanceTask.Result.TotalBalance;
+            item.Summary.Balance = endingBalanceTask.Result.TotalBalance;
+        })
+        .ToArray();
+
+        await Task.WhenAll(balanceTasks);
 
         dashboard.CurrentMonth = currentMonth.Summary;
         dashboard.PriorMonth = priorMonth.Summary;
