@@ -1,6 +1,5 @@
 using Cya2.Core.Interfaces;
 using Cya2.Core.ReadModels;
-using Cya2.Core.Services;
 using Dapper;
 using Microsoft.Extensions.Configuration;
 using MySql.Data.MySqlClient;
@@ -30,10 +29,7 @@ public sealed class ExpenseReadRepository : IExpenseReadRepository
         const string sql = @"
 SELECT Id, AccountingClass, Date, Num, Amount, AccountNumber, Account, Type, DateCreated
 FROM AccountingData
- WHERE ((@AccountNumber = '2200000' AND AccountingClass = @AccountClass)
-        OR (@AccountNumber <> '2200000' AND (AccountingClass = @AccountClass OR AccountNumber = @AccountNumber)))
-  AND LOWER(COALESCE(Account, '')) <> 'prepaids'
-  AND LOWER(COALESCE(Account, '')) <> 'payroll clearing insurance'
+ WHERE (AccountingClass = @AccountClass OR AccountNumber = @AccountNumber)
   AND Date >= @StartDate
   AND Date <= @EndDate
 ORDER BY Date";
@@ -60,16 +56,13 @@ ORDER BY Date";
         {
             parameters.Add($"AccountingClass{index}", account.AccountingClass);
             parameters.Add($"AccountNumber{index}", account.AccountNumber);
-            return $"((@AccountNumber{index} = '2200000' AND AccountingClass = @AccountingClass{index}) " +
-                   $"OR (@AccountNumber{index} <> '2200000' AND (AccountingClass = @AccountingClass{index} OR AccountNumber = @AccountNumber{index})))";
+            return $"(AccountingClass = @AccountingClass{index} OR AccountNumber = @AccountNumber{index})";
         });
 
         var sql = $@"
 SELECT Id, AccountingClass, Date, Num, Amount, AccountNumber, Account, Type, DateCreated
 FROM AccountingData
 WHERE ({string.Join(" OR ", predicates)})
-  AND LOWER(COALESCE(Account, '')) <> 'prepaids'
-  AND LOWER(COALESCE(Account, '')) <> 'payroll clearing insurance'
   AND Date >= @StartDate
   AND Date <= @EndDate
 ORDER BY Date";
@@ -81,7 +74,8 @@ ORDER BY Date";
         {
             foreach (var account in accounts)
             {
-                if (AccountingDataMatcher.MatchesAccount(row, account.AccountingClass, account.AccountNumber))
+                if (string.Equals(row.AccountingClass, account.AccountingClass, StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(row.AccountNumber, account.AccountNumber, StringComparison.OrdinalIgnoreCase))
                 {
                     result[account.AccountId].Add(row);
                 }

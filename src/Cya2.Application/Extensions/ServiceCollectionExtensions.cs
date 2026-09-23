@@ -14,6 +14,7 @@ public static class ServiceCollectionExtensions
         // Financial dashboard service for Home.razor transformation  
         services.AddScoped<IFinancialDashboardService, FinancialDashboardService>();
         services.AddScoped<IAccountCalculationService, AccountCalculationService>();
+        services.AddScoped<IAccountingTransactionProcessor, AccountingTransactionProcessor>();
         services.AddSingleton<ExpenseClassificationService>();
         services.AddSingleton<DonorFrequencyService>();
         services.AddSingleton<DonorMissingGiftService>();

@@ -18,6 +18,7 @@ public interface IAccountCalculationService
     /// Calculate balance using pre-loaded transaction data
     /// </summary>
     BalanceCalculationResult CalculateBalanceFromData(List<AccountingRecord> entries, decimal balanceAdjustment = 0m, DateTime? startDate = null, DateTime? endDate = null);
+    BalanceCalculationResult CalculateBalanceFromData(UserAccountContextAccount account, IEnumerable<AccountingRecord> entries, DateTime? startDate = null, DateTime? endDate = null);
 
     /// <summary>
     /// Calculate donation totals and overhead for account over date range

@@ -430,30 +430,12 @@ public class FinancialDashboardService : IFinancialDashboardService
         var currentYear = BuildSummaryFromCache(selectedAccount, cachedData, currentYearStart, currentYearEnd, now.ToString("yyyy"));
         var priorYear = BuildSummaryFromCache(selectedAccount, cachedData, priorYearStart, priorYearEnd, (now.Year - 1).ToString());
 
-        var balanceTasks = new[]
-        {
-            (Summary: currentMonth.Summary, Start: currentMonthStart, End: currentMonthEnd),
-            (Summary: priorMonth.Summary, Start: priorMonthStart, End: priorMonthEnd),
-            (Summary: currentYear.Summary, Start: currentYearStart, End: currentYearEnd),
-            (Summary: priorYear.Summary, Start: priorYearStart, End: priorYearEnd)
-        }
-        .Select(async item =>
-        {
-            var startingBalanceTask = _accountCalculationService.CalculateBalanceAsync(
-                selectedAccount,
-                null,
-                item.Start.AddDays(-1));
-            var endingBalanceTask = _accountCalculationService.CalculateBalanceAsync(
-                selectedAccount,
-                null,
-                item.End);
-            await Task.WhenAll(startingBalanceTask, endingBalanceTask);
-            item.Summary.StartingBalance = startingBalanceTask.Result.TotalBalance;
-            item.Summary.Balance = endingBalanceTask.Result.TotalBalance;
-        })
-        .ToArray();
-
-        await Task.WhenAll(balanceTasks);
+        await PopulateAsOfBalancesAsync(
+            selectedAccount,
+            (currentMonth.Summary, currentMonthStart, currentMonthEnd),
+            (priorMonth.Summary, priorMonthStart, priorMonthEnd),
+            (currentYear.Summary, currentYearStart, currentYearEnd),
+            (priorYear.Summary, priorYearStart, priorYearEnd));
 
         dashboard.CurrentMonth = currentMonth.Summary;
         dashboard.PriorMonth = priorMonth.Summary;
@@ -465,6 +447,29 @@ public class FinancialDashboardService : IFinancialDashboardService
             .Concat(priorYear.OtherAccounts));
 
         SetYearAverages(dashboard, now);
+    }
+
+    private async Task PopulateAsOfBalancesAsync(
+        UserAccountContextAccount account,
+        params (FinancialSummaryDto Summary, DateTime Start, DateTime End)[] periods)
+    {
+        var tasks = periods.Select(async period =>
+        {
+            var startingBalanceTask = _accountCalculationService.CalculateBalanceAsync(
+                account,
+                null,
+                period.Start.AddDays(-1));
+            var endingBalanceTask = _accountCalculationService.CalculateBalanceAsync(
+                account,
+                null,
+                period.End);
+
+            await Task.WhenAll(startingBalanceTask, endingBalanceTask);
+            period.Summary.StartingBalance = startingBalanceTask.Result.TotalBalance;
+            period.Summary.Balance = endingBalanceTask.Result.TotalBalance;
+        });
+
+        await Task.WhenAll(tasks);
     }
 
     private async Task PopulateSummariesDirectAsync(FinancialDashboardDto dashboard, UserAccountContextAccount selectedAccount)
@@ -562,22 +567,10 @@ public class FinancialDashboardService : IFinancialDashboardService
             endDate);
 
         var periodBalance = _accountCalculationService.CalculateBalanceFromData(
+            account,
             cachedData.AccountingData,
-            account.BalanceAdjustment,
             startDate,
             endDate);
-
-        var asOfBalance = _accountCalculationService.CalculateBalanceFromData(
-            cachedData.AccountingData,
-            account.BalanceAdjustment,
-            cachedData.WindowStart,
-            endDate);
-
-        var startingBalance = _accountCalculationService.CalculateBalanceFromData(
-            cachedData.AccountingData,
-            account.BalanceAdjustment,
-            cachedData.WindowStart,
-            startDate.AddDays(-1));
 
         var expenseTotal = periodBalance.ExpenseTotal;
         summary.TotalDonations = donationTotals.TotalDonations;
@@ -586,9 +579,6 @@ public class FinancialDashboardService : IFinancialDashboardService
         summary.SeparateSubfundTotals = new Dictionary<string, decimal>(donationTotals.SeparateSubfundTotals, StringComparer.OrdinalIgnoreCase);
         summary.TotalExpenses = expenseTotal;
         summary.InternalTransfers = periodBalance.TransferTotal;
-        summary.StartingBalance = startingBalance.TotalBalance;
-        summary.Balance = asOfBalance.TotalBalance;
-
         _logger.LogInformation(
             "Dashboard summary [{Period}] Fund={Fund} Donations={Donations} Expenses={Expenses} Transfers={Transfers} Balance={Balance} AccountingRows={AccountingRows} ExpenseRows={ExpenseRows} TransferRows={TransferRows}",
             period,

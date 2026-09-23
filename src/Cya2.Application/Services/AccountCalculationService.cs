@@ -18,6 +18,7 @@ public class AccountCalculationService : IAccountCalculationService
     private readonly IExpenseReadRepository _expenseReadRepository;
     private readonly IDonationReadRepository _donationReadRepository;
     private readonly ExpenseClassificationService _expenseClassificationService;
+    private readonly IAccountingTransactionProcessor _accountingTransactionProcessor;
     private readonly ILogger<AccountCalculationService> _logger;
 
     public AccountCalculationService(
@@ -25,10 +26,26 @@ public class AccountCalculationService : IAccountCalculationService
         IDonationReadRepository donationReadRepository,
         ExpenseClassificationService expenseClassificationService,
         ILogger<AccountCalculationService>? logger = null)
+        : this(
+            expenseReadRepository,
+            donationReadRepository,
+            expenseClassificationService,
+            new AccountingTransactionProcessor(expenseClassificationService),
+            logger)
+    {
+    }
+
+    public AccountCalculationService(
+        IExpenseReadRepository expenseReadRepository,
+        IDonationReadRepository donationReadRepository,
+        ExpenseClassificationService expenseClassificationService,
+        IAccountingTransactionProcessor accountingTransactionProcessor,
+        ILogger<AccountCalculationService>? logger = null)
     {
         _expenseReadRepository = expenseReadRepository;
         _donationReadRepository = donationReadRepository;
         _expenseClassificationService = expenseClassificationService;
+        _accountingTransactionProcessor = accountingTransactionProcessor;
         _logger = logger ?? NullLogger<AccountCalculationService>.Instance;
     }
 
@@ -46,9 +63,9 @@ public class AccountCalculationService : IAccountCalculationService
 
         return accounts.ToDictionary(
             account => account.AccountId,
-            account => CalculateBalanceFromData(
-                accountingData.GetValueOrDefault(account.AccountId, new List<AccountingRecord>()),
-                account.BalanceAdjustment));
+            account => _accountingTransactionProcessor.Process(
+                account,
+                accountingData.GetValueOrDefault(account.AccountId, new List<AccountingRecord>())));
     }
 
     /// <summary>
@@ -70,7 +87,9 @@ public class AccountCalculationService : IAccountCalculationService
                 actualStartDate,
                 actualEndDate);
 
-            return CalculateBalanceFromData(records, account.BalanceAdjustment);
+            return _accountingTransactionProcessor.Process(
+                account,
+                records);
         }
         catch (Exception ex)
         {
@@ -83,38 +102,20 @@ public class AccountCalculationService : IAccountCalculationService
     /// </summary>
     public BalanceCalculationResult CalculateBalanceFromData(List<AccountingRecord> entries, decimal balanceAdjustment = 0.00m, DateTime? startDate = null, DateTime? endDate = null)
     {
-        if (entries == null)
-            entries = new List<AccountingRecord>();
+        return _accountingTransactionProcessor.ProcessCandidates(
+            entries,
+            balanceAdjustment,
+            startDate,
+            endDate);
+    }
 
-        if (startDate.HasValue || endDate.HasValue)
-        {
-            entries = entries.Where(e =>
-                (!startDate.HasValue || e.Date >= startDate.Value) &&
-                (!endDate.HasValue || e.Date <= endDate.Value)
-            ).ToList();
-        }
-
-        entries = entries
-            .Where(e => !_expenseClassificationService.IsExcludedFromBalance(e))
-            .ToList();
-
-        var categorized = _expenseClassificationService.Categorize(entries);
-        var calculatedBalance = balanceAdjustment + entries.Sum(e =>
-            _expenseClassificationService.ShouldSubtractFromBalance(e)
-                ? -Convert.ToDecimal(e.Amount)
-                : Convert.ToDecimal(e.Amount));
-
-        return new BalanceCalculationResult
-        {
-            TotalBalance = calculatedBalance,
-            ExpenseTotal = categorized.ExpenseTotal,
-            TransferTotal = categorized.TransferTotal,
-            OtherTotal = categorized.OtherTotal,
-            ExpenseTransactions = categorized.ExpenseTransactions,
-            TransferTransactions = categorized.TransferTransactions,
-            OtherTransactions = categorized.OtherTransactions,
-            AllTransactions = entries
-        };
+    public BalanceCalculationResult CalculateBalanceFromData(
+        UserAccountContextAccount account,
+        IEnumerable<AccountingRecord> entries,
+        DateTime? startDate = null,
+        DateTime? endDate = null)
+    {
+        return _accountingTransactionProcessor.Process(account, entries, startDate, endDate);
     }
 
     /// <summary>

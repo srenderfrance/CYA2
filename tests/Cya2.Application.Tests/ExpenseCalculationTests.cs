@@ -32,6 +32,34 @@ public sealed class ExpenseCalculationTests
     }
 
     [Fact]
+    public void AccountingTransactionProcessor_AppliesMatchingBeforeCategorizationAndBalance()
+    {
+        var processor = new AccountingTransactionProcessor(new ExpenseClassificationService());
+        var account = new UserAccountContextAccount
+        {
+            AccountingClass = "Fund Class",
+            AccountNumber = "123",
+            BalanceAdjustment = 5m
+        };
+        var candidates = new List<AccountingRecord>
+        {
+            new() { AccountingClass = "Fund Class", AccountNumber = "999", Type = "Expense", Amount = 10 },
+            new() { AccountingClass = "Other Class", AccountNumber = "123", Account = "Transfer: Incoming", Amount = 20 },
+            new() { AccountingClass = "Other Class", AccountNumber = "999", Amount = 100 },
+            new() { AccountingClass = "Fund Class", AccountNumber = "999", Account = "Payroll Clearing Insurance", Amount = 30 }
+        };
+
+        var result = processor.Process(account, candidates);
+
+        Assert.Equal(15m, result.TotalBalance);
+        Assert.Equal(10m, result.ExpenseTotal);
+        Assert.Equal(20m, result.TransferTotal);
+        Assert.Equal(2, result.AllTransactions.Count);
+        Assert.Single(result.ExpenseTransactions);
+        Assert.Single(result.TransferTransactions);
+    }
+
+    [Fact]
     public void TransferTotal_UsesSignedAmounts_AndNeverIncludesExpenses()
     {
         var classifier = new ExpenseClassificationService();
@@ -99,6 +127,29 @@ public sealed class ExpenseCalculationTests
     }
 
     [Fact]
+    public void Prepaids_IsExcludedFromBalanceCalculations()
+    {
+        var service = new AccountCalculationService(
+            new EmptyExpenseRepository(),
+            new EmptyDonationRepository(),
+            new ExpenseClassificationService());
+        var transactions = new List<AccountingRecord>
+        {
+            new() { Account = "Prepaids", Amount = 100 },
+            new() { Account = "Income", Amount = 25 }
+        };
+
+        var result = service.CalculateBalanceFromData(transactions);
+
+        Assert.Equal(25m, result.TotalBalance);
+        Assert.Equal(0m, result.ExpenseTotal);
+        Assert.Equal(0m, result.TransferTotal);
+        Assert.Equal(25m, result.OtherTotal);
+        Assert.DoesNotContain(result.AllTransactions, transaction =>
+            string.Equals(transaction.Account, "Prepaids", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
     public void GeneralGivingGeneralAccount_IsIncludedInBalanceButNotExpenseOrTransfer()
     {
         var service = new AccountCalculationService(
@@ -153,6 +204,24 @@ public sealed class ExpenseCalculationTests
     }
 
     [Fact]
+    public void AccountNumberFadh_MatchesAccountingClassOnly()
+    {
+        var matchingClass = "FADH Class";
+        var rows = new List<AccountingRecord>
+        {
+            new() { AccountingClass = matchingClass, AccountNumber = string.Empty, Amount = 10 },
+            new() { AccountingClass = "Other Class", AccountNumber = "FADH", Amount = 20 },
+            new() { AccountingClass = matchingClass, AccountNumber = "9999999", Amount = 30 }
+        };
+
+        var matching = rows.Where(row => AccountingDataMatcher.MatchesAccount(row, matchingClass, "FADH")).ToList();
+
+        Assert.Equal(2, matching.Count);
+        Assert.Contains(matching, row => row.Amount == 10d);
+        Assert.Contains(matching, row => row.Amount == 30d);
+    }
+
+    [Fact]
     public async Task CalculateBalancesAsync_UsesTheSharedBalanceFormulaForEveryAccount()
     {
         var repository = new BatchExpenseRepository();
@@ -201,12 +270,12 @@ public sealed class ExpenseCalculationTests
             {
                 [1] =
                 [
-                    new() { Account = "Payroll Clearing Insurance", Amount = 100 },
-                    new() { Account = "Income", Amount = 10 }
+                    new() { AccountingClass = "Class1", AccountNumber = "Number1", Account = "Payroll Clearing Insurance", Amount = 100 },
+                    new() { AccountingClass = "Class1", AccountNumber = "Number1", Account = "Income", Amount = 10 }
                 ],
                 [2] =
                 [
-                    new() { Account = "Transfer: operating", Amount = 20 }
+                    new() { AccountingClass = "Class2", AccountNumber = "Number2", Account = "Transfer: operating", Amount = 20 }
                 ]
             });
         }
