@@ -21,7 +21,7 @@ public class ExpenseService : IExpenseService
     private readonly ISessionExpenseDataCacheService _expenseCache;
     private readonly IAccountSnapshotCache _accountSnapshotCache;
     private readonly IAccountSnapshotLoader _accountSnapshotLoader;
-    private readonly ExpenseClassificationService _classifier;
+    private readonly IAccountingTransactionProcessor _accountingTransactionProcessor;
 
     public ExpenseService(
         IExpenseReadRepository expenseReadRepository,
@@ -30,7 +30,7 @@ public class ExpenseService : IExpenseService
         ISessionExpenseDataCacheService expenseCache,
         IAccountSnapshotCache accountSnapshotCache,
         IAccountSnapshotLoader accountSnapshotLoader,
-        ExpenseClassificationService classifier)
+        IAccountingTransactionProcessor accountingTransactionProcessor)
     {
         _expenseReadRepository = expenseReadRepository;
         _logger = logger;
@@ -38,7 +38,7 @@ public class ExpenseService : IExpenseService
         _expenseCache = expenseCache;
         _accountSnapshotCache = accountSnapshotCache;
         _accountSnapshotLoader = accountSnapshotLoader;
-        _classifier = classifier;
+        _accountingTransactionProcessor = accountingTransactionProcessor;
     }
 
     public async Task<List<AccountOptionDto>> GetUserAccountsAsync(string userId, bool isAdminOrViewer = false)
@@ -118,7 +118,7 @@ public class ExpenseService : IExpenseService
                 ? await LoadAccountingDataFromSnapshotAsync(selectedAccount, dateRange, sw)
                 : await LoadAccountingDataAsync(selectedAccount, dateRange);
 
-            var categorized = _classifier.Categorize(accountingData);
+            var categorized = _accountingTransactionProcessor.Process(selectedAccount, accountingData);
             _logger.LogInformation("[ExpenseService] Data for account {Account}: expenses={Expenses}, transfers={Transfers}", selectedAccount.Fund, categorized.ExpenseTransactions.Count, categorized.TransferTransactions.Count);
 
             var expenseTransactions = categorized.ExpenseTransactions.Select(MapToExpenseTransactionDto).ToList();
@@ -247,7 +247,7 @@ public class ExpenseService : IExpenseService
             var accountingData = CanUseAccountSnapshot(dateRange)
                 ? await LoadAccountingDataFromSnapshotAsync(selectedAccount, dateRange, Stopwatch.StartNew())
                 : await LoadAccountingDataAsync(selectedAccount, dateRange);
-            var categorized = _classifier.Categorize(accountingData);
+            var categorized = _accountingTransactionProcessor.Process(selectedAccount, accountingData);
 
             return categorized.ExpenseTransactions.Select(MapToExpenseTransactionDto).ToList();
         }
@@ -269,7 +269,7 @@ public class ExpenseService : IExpenseService
             var accountingData = CanUseAccountSnapshot(dateRange)
                 ? await LoadAccountingDataFromSnapshotAsync(selectedAccount, dateRange, Stopwatch.StartNew())
                 : await LoadAccountingDataAsync(selectedAccount, dateRange);
-            var categorized = _classifier.Categorize(accountingData);
+            var categorized = _accountingTransactionProcessor.Process(selectedAccount, accountingData);
 
             return categorized.TransferTransactions.Select(MapToExpenseTransactionDto).ToList();
         }
@@ -299,7 +299,7 @@ public class ExpenseService : IExpenseService
             var accountingData = CanUseAccountSnapshot(dateRange)
                 ? await LoadAccountingDataFromSnapshotAsync(selectedAccount, dateRange, Stopwatch.StartNew())
                 : await LoadAccountingDataAsync(selectedAccount, dateRange);
-            var categorized = _classifier.Categorize(accountingData);
+            var categorized = _accountingTransactionProcessor.Process(selectedAccount, accountingData);
 
             return new ExpenseSummaryDto
             {
