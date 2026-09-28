@@ -41,9 +41,10 @@ jobs:
         run: dotnet build Cya2.sln --configuration Release
 
       - name: Publish
-        run: dotnet publish cya2.0/cya2.csproj \
-          --configuration Release \
-          --output ${{ env.AZURE_WEBAPP_PACKAGE_PATH }}
+        run: |
+          dotnet publish cya2.0/cya2.csproj \
+            --configuration Release \
+            --output ${{ env.AZURE_WEBAPP_PACKAGE_PATH }}
 
       - name: Check publish output
         run: ls -la ${{ env.AZURE_WEBAPP_PACKAGE_PATH }}
