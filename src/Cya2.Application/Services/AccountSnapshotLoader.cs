@@ -51,6 +51,7 @@ public sealed class AccountSnapshotLoader : IAccountSnapshotLoader
             .Select(record => new DonationSnapshot(
                 record.Id,
                 record.DonorId,
+                record.DonorDisplayName,
                 record.Date,
                 record.Frequency,
                 record.AccountName,

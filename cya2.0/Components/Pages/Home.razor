@@ -150,6 +150,11 @@
         padding-top: 0.25rem;
     }
 
+    .home-custom-summary-results .home-custom-date-range {
+        display: block;
+        margin-bottom: 1.25rem !important;
+    }
+
     @@media (max-width: 900px) {
         .home-summary-layout {
             grid-template-columns: 1fr;
@@ -446,7 +451,7 @@ else
 
                 <RadzenCard>
                     <RadzenStack Gap="0.75rem">
-                        <RadzenText TextStyle="TextStyle.H5">Custom Date Range</RadzenText>
+                        <RadzenText TextStyle="TextStyle.H5">@Localizer["AccountSummary"]</RadzenText>
                         <div class="home-custom-date-controls">
                             <div class="home-custom-date-field">
                                 <RadzenLabel Text="@Localizer["StartDate"]" />
@@ -470,7 +475,7 @@ else
                             {
                                 @if (hasAppliedCustomDateRange)
                                 {
-                                    <RadzenText TextStyle="TextStyle.Body1" Style="font-weight: 700;">@GetCustomDateRangeDisplay()</RadzenText>
+                                    <RadzenText TextStyle="TextStyle.Body1" Class="home-custom-date-range" Style="font-weight: 700;">@GetCustomDateRangeDisplay()</RadzenText>
                                 }
 
                                 <div class="d-flex justify-content-between align-items-center"><RadzenText TextStyle="TextStyle.Body1">@Localizer["StartingBalance"]</RadzenText><RadzenText TextStyle="TextStyle.Body1"><span class="fw-bold">@Math.Abs(customSummary.StartingBalance).ToString("C", CultureInfo.CurrentCulture)</span></RadzenText></div>
@@ -479,7 +484,16 @@ else
                                 <hr class="my-2" />
                                 <div class="d-flex justify-content-between"><RadzenText TextStyle="TextStyle.Body1">@Localizer["Expenses"]</RadzenText><span class="fw-bold">@customSummary.TotalExpenses.ToString("C", CultureInfo.CurrentCulture)</span></div>
                                 <hr class="my-2" />
-                                <div class="d-flex justify-content-between"><RadzenText TextStyle="TextStyle.Body1">@Localizer["Overhead"]</RadzenText><span class="fw-bold">@customSummary.TotalOverhead.ToString("C", CultureInfo.CurrentCulture)</span></div>
+                                <div class="d-flex justify-content-between">
+                                    <RadzenText TextStyle="TextStyle.Body1">
+                                        <span @ref="customOverheadElement"
+                                              @onmouseenter="@(() => ShowOverheadTooltip(customOverheadElement))"
+                                              @onmouseleave="CloseOverheadTooltip">
+                                            @Localizer["Overhead"] <i class="bi bi-info-circle overhead-tooltip-indicator" aria-hidden="true"></i>
+                                        </span>
+                                    </RadzenText>
+                                    <span class="fw-bold">@customSummary.TotalOverhead.ToString("C", CultureInfo.CurrentCulture)</span>
+                                </div>
                                 <hr class="my-2" />
                                 <div class="d-flex justify-content-between"><RadzenText TextStyle="TextStyle.Body1">@Localizer["Transfers"]</RadzenText><span class="fw-bold">@customSummary.InternalTransfers.ToString("C", CultureInfo.CurrentCulture)</span></div>
                                 @if (!isInternAccountSelected)
@@ -1134,6 +1148,7 @@ private ElementReference currentMonthOverheadElement;
 private ElementReference priorMonthOverheadElement;
 private ElementReference currentYearOverheadElement;
 private ElementReference priorYearOverheadElement;
+private ElementReference customOverheadElement;
 
 private FinancialDashboardDto dashboardData = new();
 private FinancialSummaryDto customSummary = new();
@@ -1353,6 +1368,7 @@ private bool showMissingGiftDialog = false;
             SessionUserStateService.SelectedAccountFund = selectedAccount;
             SessionUserStateService.DefaultAccountFund = defaultFundFromDto;
             RefreshSelectedAccountMode();
+            SetAccountSummaryFromCurrentMonth();
             // Logger.LogInformation("Home init phase=state-prepared elapsedMs={ElapsedMs} selectedAccount={SelectedAccount}", initSw.ElapsedMilliseconds, selectedAccount);
 
             if (!string.IsNullOrWhiteSpace(cachedUserId) && !string.IsNullOrWhiteSpace(selectedAccount))
@@ -1361,6 +1377,7 @@ private bool showMissingGiftDialog = false;
                 {
                     UserSelectionService.SetSelectedAccount(cachedUserId, selectedAccount);
                 }
+
                 catch (Exception ex)
                 {
                     Logger.LogWarning(ex, "Home: failed to persist initial selected account");
@@ -1381,6 +1398,18 @@ private bool showMissingGiftDialog = false;
             ScheduleInitialWarmup();
             await InvokeAsync(StateHasChanged);
         }
+    }
+
+    private void SetAccountSummaryFromCurrentMonth()
+    {
+        var today = DateTime.Today;
+        customSummary = dashboardData.CurrentMonth;
+        customStartDate = new DateTime(today.Year, today.Month, 1);
+        customEndDate = customStartDate.AddMonths(1).AddDays(-1);
+        customPendingStartDate = customStartDate;
+        customPendingEndDate = customEndDate;
+        hasAppliedCustomDateRange = true;
+        isCustomSummaryLoading = false;
     }
 
     private void InitializeCustomDateRange()
@@ -1534,8 +1563,7 @@ private bool showMissingGiftDialog = false;
 
             selectedAccount = ResolveSelectedAccount(dashboardData);
             SessionUserStateService.SelectedAccountFund = selectedAccount;
-            hasAppliedCustomDateRange = false;
-            customSummary = new FinancialSummaryDto();
+            SetAccountSummaryFromCurrentMonth();
             var selectedAccountDto = dashboardData.UserAccounts.FirstOrDefault(account =>
                 string.Equals(account.Fund, selectedAccount, StringComparison.OrdinalIgnoreCase));
             if (selectedAccountDto is not null)
