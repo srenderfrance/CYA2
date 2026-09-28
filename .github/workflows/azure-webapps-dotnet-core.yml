@@ -12,6 +12,7 @@ on:
 
 permissions:
   contents: read
+  id-token: write
 
 jobs:
   build:
@@ -73,14 +74,14 @@ jobs:
         with:
           name: dotnet-app
           path: ${{ env.AZURE_WEBAPP_PACKAGE_PATH }}
-
-      - name: Azure Login (Service Principal)
-        uses: azure/login@v2
-        with:
+          
+       - name: Azure Login (OIDC)
+       uses: azure/login@v2
+       with:
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-          client-secret: ${{ secrets.AZURE_CLIENT_SECRET }}
+
 
       - name: Deploy to Azure Web App
         id: deploy-to-webapp
