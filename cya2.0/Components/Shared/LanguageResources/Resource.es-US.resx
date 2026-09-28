@@ -195,6 +195,9 @@
   <data name="CurrentMonth" xml:space="preserve">
     <value>Mes Actual</value>
   </data>
+  <data name="AccountSummary" xml:space="preserve">
+    <value>Resumen de Cuenta</value>
+  </data>
   <data name="CurrentYear" xml:space="preserve">
     <value>Año Actual</value>
   </data>

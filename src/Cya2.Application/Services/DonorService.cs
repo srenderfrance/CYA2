@@ -454,6 +454,7 @@ namespace Cya2.Application.Services
             return new DonationRecord
             {
                 Id = snapshot.Id,
+                DonorDisplayName = snapshot.DonorDisplayName,
                 Date = snapshot.Date,
                 Frequency = snapshot.Frequency,
                 AccountName = snapshot.AccountName,
@@ -496,7 +497,7 @@ namespace Cya2.Application.Services
 
             return new DonorDetailDto
             {
-                Name = r.AccountName ?? string.Empty,
+                Name = ResolveDonorDisplayName(r),
                 Email = JoinContactValues(matchingDonations.Select(d => d.Email)),
                 PhoneMobile = JoinContactValues(matchingDonations.Select(d => d.PhoneMobile)),
                 PhoneFixed = JoinContactValues(matchingDonations.Select(d => d.PhoneFixed)),
@@ -630,7 +631,9 @@ namespace Cya2.Application.Services
             var groups = donations
                 .Select(d => new { Donation = d, Identity = ResolveDonorIdentity(d) })
                 .Where(x => !string.IsNullOrWhiteSpace(x.Identity.DisplayName))
-                .GroupBy(x => x.Donation.DonorId);
+                .GroupBy(
+                    x => $"{x.Donation.DonorId}\u001F{x.Identity.DisplayName.Trim()}",
+                    StringComparer.OrdinalIgnoreCase);
 
             // Use the latest available donation date in the loaded dataset as the
             // freshness anchor for missing-gift checks. This prevents false
@@ -704,6 +707,16 @@ namespace Cya2.Application.Services
 
         private DonorIdentity ResolveDonorIdentity(DonationRecord record)
         {
+            if (!record.IsAnonymous && !string.IsNullOrWhiteSpace(record.DonorDisplayName))
+            {
+                return new DonorIdentity
+                {
+                    DisplayName = record.DonorDisplayName.Trim(),
+                    SourceOrganization = string.Empty,
+                    IsDirect = true
+                };
+            }
+
             var resolved = _identityResolver.Resolve(new DonorIdentityInput(
                 record.Fund,
                 record.AccountName,
@@ -720,7 +733,11 @@ namespace Cya2.Application.Services
 
         private string ResolveDonorDisplayName(DonationRecord record)
         {
-            return ResolveDonorIdentity(record).DisplayName;
+            return record.IsAnonymous
+                ? string.Empty
+                : !string.IsNullOrWhiteSpace(record.DonorDisplayName)
+                    ? record.DonorDisplayName.Trim()
+                    : ResolveDonorIdentity(record).DisplayName;
         }
 
         private static string BuildDonorSummaryName(string canonicalName, bool hasDirect, IReadOnlyCollection<string> sourceOrganizations)
