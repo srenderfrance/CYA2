@@ -30,6 +30,7 @@
 - **Working Branch**: upgrade-dotnet-10
 - **Commit Strategy**: After Each Task
 - **Branch Sync**: Auto (Merge)
+- **Last Sync Commit**: 6dc7306 (origin/main)
 
 ## Build Tool Decisions
 - **All six projects in `cya2.0.sln`**: `dotnet build` and `dotnet test`; all projects are SDK-style and target modern .NET without legacy resource, WPF, or .NET Framework requirements.
