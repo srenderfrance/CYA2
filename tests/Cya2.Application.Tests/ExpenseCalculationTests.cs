@@ -24,7 +24,7 @@ public sealed class ExpenseCalculationTests
         var result = classifier.Categorize(transactions);
 
         Assert.Single(result.ExpenseTransactions);
-        Assert.Equal(1, result.TransferTransactions.Count);
+        Assert.Single(result.TransferTransactions);
         Assert.Single(result.OtherTransactions);
         Assert.Equal(10m, result.ExpenseTotal);
         Assert.Equal(20m, result.TransferTotal);
