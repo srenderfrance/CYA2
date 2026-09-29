@@ -911,7 +911,7 @@
 
         private Cya2.Application.DTOs.AccountImportPreviewDto? accountImportPreview;
         private string accountImportMessage = string.Empty;
-        private bool accountImportBusy;
+        private bool accountImportBusy { get; set; }
 
         // New UI-only state for fund creation toggle and subfund inputs
         private bool createSubFund = false;
