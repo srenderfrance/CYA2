@@ -16,6 +16,7 @@ public static class WebEndpointExtensions
 {
     public static IEndpointRouteBuilder MapCya2Endpoints(this IEndpointRouteBuilder endpoints)
     {
+        endpoints.MapStaticAssets();
         endpoints.MapHealthChecks("/health").RequireAuthorization();
         endpoints.MapControllers().RequireRateLimiting("ApiPolicy");
         endpoints.MapRazorComponents<App>()

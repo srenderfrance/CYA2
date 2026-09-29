@@ -8,17 +8,17 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution 
 		cya2.csproj = cya2.csproj
 	EndProjectSection
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Cya2.Application", "..\src\Cya2.Application\Cya2.Application.csproj", "{88510A71-474D-7BC1-348D-0681EE64CC33}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Cya2.Application", "..\Cya2.Application\Cya2.Application.csproj", "{88510A71-474D-7BC1-348D-0681EE64CC33}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Cya2.Core", "..\src\Cya2.Core\Cya2.Core.csproj", "{FADCCB8B-A709-D9A4-5938-F04D7FA481F2}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Cya2.Core", "..\Cya2.Core\Cya2.Core.csproj", "{FADCCB8B-A709-D9A4-5938-F04D7FA481F2}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Cya2.Shared", "..\src\Cya2.Shared\Cya2.Shared.csproj", "{63475383-3D86-B747-B88A-42442F3F74BA}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Cya2.Shared", "..\Cya2.Shared\Cya2.Shared.csproj", "{63475383-3D86-B747-B88A-42442F3F74BA}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Cya2.Infrastructure", "..\src\Cya2.Infrastructure\Cya2.Infrastructure.csproj", "{60235B4D-35B2-C5D5-E443-C1DAE581E2B9}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Cya2.Infrastructure", "..\Cya2.Infrastructure\Cya2.Infrastructure.csproj", "{60235B4D-35B2-C5D5-E443-C1DAE581E2B9}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "cya2", "cya2.csproj", "{898CF7CA-82AB-66C0-4B9B-8A6ECEAF2B94}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Cya2.Application.Tests", "..\tests\Cya2.Application.Tests\Cya2.Application.Tests.csproj", "{FB0B988B-00FF-B5A6-1BDC-2F1643866DF1}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Cya2.Application.Tests", "..\..\tests\Cya2.Application.Tests\Cya2.Application.Tests.csproj", "{FB0B988B-00FF-B5A6-1BDC-2F1643866DF1}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
