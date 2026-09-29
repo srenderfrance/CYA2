@@ -15,7 +15,6 @@ public static class WebHostApplicationBuilderExtensions
         }
 
         app.UseHttpsRedirection();
-        app.UseStaticFiles();
         app.UseAntiforgery();
 
         app.Use(async (context, next) =>

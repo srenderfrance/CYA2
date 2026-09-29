@@ -2,7 +2,7 @@ name: Build and deploy ASP.Net Core app to an Azure Web App
 
 env:
   AZURE_WEBAPP_NAME: CYA2
-  AZURE_WEBAPP_PACKAGE_PATH: cya2.0/myapp
+  AZURE_WEBAPP_PACKAGE_PATH: src/Cya2.Web/myapp
   DOTNET_VERSION: 10.0.x
 
 on:
@@ -46,7 +46,7 @@ jobs:
 
       - name: Publish
         run: |
-          dotnet publish cya2.0/cya2.csproj \
+          dotnet publish src/Cya2.Web/cya2.csproj \
             --configuration Release \
             --no-build \
             --output ${{ env.AZURE_WEBAPP_PACKAGE_PATH }}
