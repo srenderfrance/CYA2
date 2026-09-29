@@ -183,7 +183,7 @@ internal static class GoogleAuthenticationEvents
                 if (string.Equals(signInResult.RejectionReason, "User not registered", StringComparison.Ordinal) ||
                     string.Equals(signInResult.RejectionReason, "Google ID mismatch", StringComparison.Ordinal))
                 {
-                    await RejectUnauthorizedAsync(signInResult.RejectionReason);
+                    await RejectUnauthorizedAsync(signInResult.RejectionReason ?? "Unauthorized sign-in attempt");
                     return;
                 }
 
