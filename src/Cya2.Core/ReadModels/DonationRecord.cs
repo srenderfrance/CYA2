@@ -6,6 +6,7 @@ public class DonationRecord
 {
     public int Id { get; set; }
     public long DonorId { get; set; }
+    public string? DonorDisplayName { get; set; }
     public DateTime Date { get; set; }
     /// <summary>
     /// Frequency classification stored at DB write time.

@@ -39,6 +39,7 @@ public sealed class DonorSnapshotTests
         Assert.Equal(2, snapshot.Donations.Count);
         Assert.Contains(snapshot.Donations, donation => donation.Fund == "FUND-A");
         Assert.Contains(snapshot.Donations, donation => donation.Fund == "FUND-A-MERGED");
+        Assert.Equal("Primary donor (canonical)", snapshot.Donations.Single(donation => donation.Fund == "FUND-A").DonorDisplayName);
         Assert.True(donations.AccountTotalRequested);
     }
 
@@ -48,6 +49,7 @@ public sealed class DonorSnapshotTests
         Date = DateTime.UtcNow.Date,
         Fund = fund,
         AccountName = donorName,
+        DonorDisplayName = $"{donorName} (canonical)",
         Amount = 10,
         DateCreated = DateTime.UtcNow
     };

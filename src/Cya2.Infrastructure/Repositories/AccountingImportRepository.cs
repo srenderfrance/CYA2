@@ -42,8 +42,6 @@ public sealed class AccountingImportRepository : IAccountingImportRepository
             await conn.OpenAsync(ct);
             await using var tx = await conn.BeginTransactionAsync(ct);
 
-            await EnsureBackupTableAsync(conn, (MySqlTransaction)tx, ct);
-
             string backupId = Guid.NewGuid().ToString();
 
             _progress.UpdateStep(progressId, "Database Backup", "Counting existing records...");
@@ -244,66 +242,6 @@ public sealed class AccountingImportRepository : IAccountingImportRepository
         {
             try { if (File.Exists(tempFile)) File.Delete(tempFile); } catch { }
         }
-    }
-
-    private async Task EnsureBackupTableAsync(MySqlConnection conn, MySqlTransaction tx, CancellationToken ct)
-    {
-        var create = conn.CreateCommand();
-        create.Transaction = tx;
-        create.CommandTimeout = 60;
-        create.CommandText = @"
-            CREATE TABLE IF NOT EXISTS AccountingDataBackup (
-                BackupId CHAR(36) NOT NULL,
-                Id INT NOT NULL,
-                AccountingClass VARCHAR(255) NULL,
-                Date DATETIME NULL,
-                Num VARCHAR(255) NULL,
-                Amount DECIMAL(18,2) NULL,
-                AccountNumber VARCHAR(255) NULL,
-                Account VARCHAR(255) NULL,
-                Type VARCHAR(255) NULL,
-                DateCreated DATETIME NULL,
-                BackupAt DATETIME NOT NULL,
-                Pinned TINYINT(1) NOT NULL DEFAULT 0,
-                SourceRangeStart DATETIME NULL,
-                PRIMARY KEY (BackupId, Id),
-                KEY idx_acb_BackupAt (BackupAt),
-                KEY idx_acb_Pinned (Pinned),
-                KEY idx_acb_BackupId (BackupId)
-            ) ENGINE=InnoDB";
-        await create.ExecuteNonQueryAsync(ct);
-
-        var snapshot = conn.CreateCommand();
-        snapshot.Transaction = tx;
-        snapshot.CommandText = @"
-            CREATE TABLE IF NOT EXISTS AccountingBackupSnapshots (
-                BackupId CHAR(36) NOT NULL PRIMARY KEY,
-                BackupAt DATETIME NOT NULL,
-                SourceRangeStart DATETIME NOT NULL,
-                RecordCount INT NOT NULL DEFAULT 0,
-                Pinned TINYINT(1) NOT NULL DEFAULT 0,
-                KEY idx_abs_BackupAt (BackupAt),
-                KEY idx_abs_Pinned (Pinned)
-            ) ENGINE=InnoDB";
-        await snapshot.ExecuteNonQueryAsync(ct);
-
-        try
-        {
-            var check = conn.CreateCommand();
-            check.Transaction = tx;
-            check.CommandText = @"SELECT EXTRA FROM INFORMATION_SCHEMA.COLUMNS
-                WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='AccountingDataBackup' AND COLUMN_NAME='Id'";
-            var extra = await check.ExecuteScalarAsync(ct) as string;
-            if (!string.IsNullOrEmpty(extra) && extra.Contains("auto_increment", StringComparison.OrdinalIgnoreCase))
-            {
-                _logger.LogWarning("AccountingDataBackup has AUTO_INCREMENT on Id — recreating");
-                var drop = conn.CreateCommand(); drop.Transaction = tx;
-                drop.CommandText = "DROP TABLE IF EXISTS AccountingDataBackup";
-                await drop.ExecuteNonQueryAsync(ct);
-                await create.ExecuteNonQueryAsync(ct);
-            }
-        }
-        catch (Exception ex) { _logger.LogWarning(ex, "Could not verify AccountingDataBackup schema"); }
     }
 
     private async Task CleanupBackupsAsync(MySqlConnection conn, MySqlTransaction tx, CancellationToken ct)

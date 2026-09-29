@@ -1,0 +1,990 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <!-- 
+    Microsoft ResX Schema 
+    
+    Version 2.0
+    
+    The primary goals of this format is to allow a simple XML format 
+    that is mostly human readable. The generation and parsing of the 
+    various data types are done through the TypeConverter classes 
+    associated with the data types.
+    
+    Example:
+    
+    ... ado.net/XML headers & schema ...
+    <resheader name="resmimetype">text/microsoft-resx</resheader>
+    <resheader name="version">2.0</resheader>
+    <resheader name="reader">System.Resources.ResXResourceReader, System.Windows.Forms, ...</resheader>
+    <resheader name="writer">System.Resources.ResXResourceWriter, System.Windows.Forms, ...</resheader>
+    <data name="Name1"><value>this is my long string</value><comment>this is a comment</comment></data>
+    <data name="Color1" type="System.Drawing.Color, System.Drawing">Blue</data>
+    <data name="Bitmap1" mimetype="application/x-microsoft.net.object.binary.base64">
+        <value>[base64 mime encoded serialized .NET Framework object]</value>
+    </data>
+  <data name="From" xml:space="preserve">
+    <value>Desde</value>
+  </data>
+  <data name="Through" xml:space="preserve">
+    <value>hasta</value>
+  </data>
+  <data name="SelectDateRangeAndApply" xml:space="preserve">
+    <value>Seleccione un rango de fechas y seleccione Aplicar para ver el resumen.</value>
+  </data>
+    <data name="Icon1" type="System.Drawing.Icon, System.Drawing" mimetype="application/x-microsoft.net.object.bytearray.base64">
+        <value>[base64 mime encoded string representing a byte array form of the .NET Framework object]</value>
+        <comment>This is a comment</comment>
+    </data>
+                
+    There are any number of "resheader" rows that contain simple 
+    name/value pairs.
+    
+    Each data row contains a name, and value. The row also contains a 
+    type or mimetype. Type corresponds to a .NET class that support 
+    text/value conversion through the TypeConverter architecture. 
+    Classes that don't support this are serialized and stored with the 
+    mimetype set.
+    
+    The mimetype is used for serialized objects, and tells the 
+    ResXResourceReader how to depersist the object. This is currently not 
+    extensible. For a given mimetype the value must be set accordingly:
+    
+    Note - application/x-microsoft.net.object.binary.base64 is the format 
+    that the ResXResourceWriter will generate, however the reader can 
+    read any of the formats listed below.
+    
+    mimetype: application/x-microsoft.net.object.binary.base64
+    value   : The object must be serialized with 
+            : System.Runtime.Serialization.Formatters.Binary.BinaryFormatter
+            : and then encoded with base64 encoding.
+    
+    mimetype: application/x-microsoft.net.object.soap.base64
+    value   : The object must be serialized with 
+            : System.Runtime.Serialization.Formatters.Soap.SoapFormatter
+            : and then encoded with base64 encoding.
+
+    mimetype: application/x-microsoft.net.object.bytearray.base64
+    value   : The object must be serialized into a byte array 
+            : using a System.ComponentModel.TypeConverter
+            : and then encoded with base64 encoding.
+    -->
+  <xsd:schema id="root" xmlns="" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:msdata="urn:schemas-microsoft-com:xml-msdata">
+    <xsd:import namespace="http://www.w3.org/XML/1998/namespace" />
+    <xsd:element name="root" msdata:IsDataSet="true">
+      <xsd:complexType>
+        <xsd:choice maxOccurs="unbounded">
+          <xsd:element name="metadata">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" />
+              </xsd:sequence>
+              <xsd:attribute name="name" use="required" type="xsd:string" />
+              <xsd:attribute name="type" type="xsd:string" />
+              <xsd:attribute name="mimetype" type="xsd:string" />
+              <xsd:attribute ref="xml:space" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="assembly">
+            <xsd:complexType>
+              <xsd:attribute name="alias" type="xsd:string" />
+              <xsd:attribute name="name" type="xsd:string" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="data">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+                <xsd:element name="comment" type="xsd:string" minOccurs="0" msdata:Ordinal="2" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" msdata:Ordinal="1" />
+              <xsd:attribute name="type" type="xsd:string" msdata:Ordinal="3" />
+              <xsd:attribute name="mimetype" type="xsd:string" msdata:Ordinal="4" />
+              <xsd:attribute ref="xml:space" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="resheader">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" />
+            </xsd:complexType>
+          </xsd:element>
+        </xsd:choice>
+      </xsd:complexType>
+    </xsd:element>
+  </xsd:schema>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="Account" xml:space="preserve">
+    <value>Cuenta</value>
+  </data>
+  <data name="Accounts" xml:space="preserve">
+    <value>Cuentas</value>
+  </data>
+  <data name="AdminMode" xml:space="preserve">
+    <value>Modo Administrador</value>
+  </data>
+  <data name="AdminPanel" xml:space="preserve">
+    <value>Panel de Administración</value>
+  </data>
+  <data name="Amount" xml:space="preserve">
+    <value>Cantidad</value>
+  </data>
+  <data name="Anonymous" xml:space="preserve">
+    <value>Anónimo</value>
+  </data>
+  <data name="AnonymousDonationTooltip" xml:space="preserve">
+    <value>Este donante solicitó que su identidad permanezca privada.</value>
+  </data>
+  <data name="ApplyFilter" xml:space="preserve">
+    <value>Aplicar Filtro</value>
+  </data>
+  <data name="Apply" xml:space="preserve">
+    <value>Aplicar</value>
+  </data>
+  <data name="AppName" xml:space="preserve">
+    <value>Aplicación CYA</value>
+  </data>
+  <data name="AuthLevel" xml:space="preserve">
+    <value>Nivel de Autorización</value>
+  </data>
+  <data name="Balance" xml:space="preserve">
+    <value>Saldo</value>
+  </data>
+  <data name="ChooseAccount" xml:space="preserve">
+    <value>Elegir Cuenta</value>
+  </data>
+  <data name="ContactAdmin" xml:space="preserve">
+    <value>Si cree que esto es un error, por favor contacte a un administrador.</value>
+  </data>
+  <data name="CreateNewUser" xml:space="preserve">
+    <value>Crear Nuevo Usuario</value>
+  </data>
+  <data name="CurrentAccount" xml:space="preserve">
+    <value>Cuenta Corriente</value>
+  </data>
+  <data name="CurrentBalance" xml:space="preserve">
+    <value>Saldo Actual</value>
+  </data>
+  <data name="StartingBalance" xml:space="preserve">
+    <value>Saldo Inicial</value>
+  </data>
+  <data name="SeparateSubaccount" xml:space="preserve">
+    <value>Subcuenta Separada</value>
+  </data>
+  <data name="SubAccount" xml:space="preserve">
+    <value>Subcuenta</value>
+  </data>
+  <data name="CurrentDefault" xml:space="preserve">
+    <value>Predeterminado actual</value>
+  </data>
+  <data name="CurrentLanguage" xml:space="preserve">
+    <value>Idioma actual</value>
+  </data>
+  <data name="CurrentMonth" xml:space="preserve">
+    <value>Mes Actual</value>
+  </data>
+  <data name="AccountSummary" xml:space="preserve">
+    <value>Resumen de Cuenta</value>
+  </data>
+  <data name="CurrentYear" xml:space="preserve">
+    <value>Año Actual</value>
+  </data>
+  <data name="CYAHome" xml:space="preserve">
+    <value>Inicio CYA</value>
+  </data>
+  <data name="Date" xml:space="preserve">
+    <value>Fecha</value>
+  </data>
+  <data name="DateRange" xml:space="preserve">
+    <value>Rango de Fechas</value>
+  </data>
+  <data name="Deficit" xml:space="preserve">
+    <value>Déficit</value>
+  </data>
+  <data name="DeleteUser" xml:space="preserve">
+    <value>Eliminar Usuario</value>
+  </data>
+  <data name="Description" xml:space="preserve">
+    <value>Descripción</value>
+  </data>
+  <data name="Donations" xml:space="preserve">
+    <value>Donaciones</value>
+  </data>
+  <data name="Donor" xml:space="preserve">
+    <value>Donante</value>
+  </data>
+  <data name="Donors" xml:space="preserve">
+    <value>Donantes</value>
+  </data>
+  <data name="ContactInformation" xml:space="preserve">
+    <value>Información del Contacto</value>
+  </data>
+  <data name="Email" xml:space="preserve">
+    <value>Correo Electrónico</value>
+  </data>
+  <data name="EmailRequired" xml:space="preserve">
+    <value>El correo electrónico es obligatorio</value>
+  </data>
+  <data name="EndBalance" xml:space="preserve">
+    <value>Saldo Final</value>
+  </data>
+  <data name="CommonRanges" xml:space="preserve">
+    <value>Rangos Comunes</value>
+  </data>
+  <data name="EndDate" xml:space="preserve">
+    <value>Fecha Final</value>
+  </data>
+  <data name="EndOfYearBalance" xml:space="preserve">
+    <value>Saldo de Fin de Año</value>
+  </data>
+  <data name="EnterUpdateEmail" xml:space="preserve">
+    <value>Ingrese actualice el correo</value>
+  </data>
+  <data name="EnterUpdateName" xml:space="preserve">
+    <value>Ingrese o actualice el nombre</value>
+  </data>
+  <data name="Expenses" xml:space="preserve">
+    <value>Gastos</value>
+  </data>
+  <data name="ExpensesNav" xml:space="preserve">
+    <value>Gastos</value>
+  </data>
+  <data name="Frequency" xml:space="preserve">
+    <value>Frecuencia</value>
+  </data>
+  <data name="InternalTransfers" xml:space="preserve">
+    <value>Transferencias Internas</value>
+  </data>
+  <data name="LanguagePreference" xml:space="preserve">
+    <value>Preferencia de Idioma</value>
+  </data>
+  <data name="English" xml:space="preserve">
+    <value>Inglés</value>
+  </data>
+  <data name="Spanish" xml:space="preserve">
+    <value>Español</value>
+  </data>
+  <data name="NoLanguageChange" xml:space="preserve">
+    <value>No se realizó ningún cambio de idioma.</value>
+  </data>
+  <data name="LanguageUpdated" xml:space="preserve">
+    <value>El idioma se actualizó correctamente.</value>
+  </data>
+  <data name="LanguageUpdateFailed" xml:space="preserve">
+    <value>No se pudo actualizar el idioma.</value>
+  </data>
+  <data name="ErrorSavingLanguage" xml:space="preserve">
+    <value>Error al guardar la configuración de idioma:</value>
+  </data>
+  <data name="LinkAccountToUser" xml:space="preserve">
+    <value>Vincular Cuenta al Usuario</value>
+  </data>
+  <data name="Loading" xml:space="preserve">
+    <value>Cargando los datos de su cuenta...</value>
+  </data>
+  <data name="LoadingDonations" xml:space="preserve">
+    <value>Cargando datos de donaciones...</value>
+  </data>
+  <data name="LoggedOutHeader" xml:space="preserve">
+    <value>Ha cerrado sesión</value>
+  </data>
+  <data name="LoggedOutMessage" xml:space="preserve">
+    <value>Gracias por usar CYA. Ha cerrado sesión correctamente.</value>
+  </data>
+  <data name="LoggedOutTitle" xml:space="preserve">
+    <value>Sesión Cerrada - CYA</value>
+  </data>
+  <data name="Name" xml:space="preserve">
+    <value>Nombre</value>
+  </data>
+  <data name="NameLength" xml:space="preserve">
+    <value>El nombre debe tener entre 2 y 100 caracteres</value>
+  </data>
+  <data name="NameRequired" xml:space="preserve">
+    <value>El nombre es obligatorio</value>
+  </data>
+  <data name="NewAuthLevel" xml:space="preserve">
+    <value>Nuevo Nivel de Autorización</value>
+  </data>
+  <data name="NewEmail" xml:space="preserve">
+    <value>Nuevo Correo</value>
+  </data>
+  <data name="NewName" xml:space="preserve">
+    <value>Nuevo Nombre</value>
+  </data>
+  <data name="NoAccountFound" xml:space="preserve">
+    <value>No se encontró cuenta</value>
+  </data>
+  <data name="NoAccountMessage" xml:space="preserve">
+    <value>No pudimos encontrar ninguna cuenta asociada a su usuario.</value>
+  </data>
+  <data name="NoDonationsFound" xml:space="preserve">
+    <value>No se encontraron donaciones</value>
+  </data>
+  <data name="NoExpensesFound" xml:space="preserve">
+    <value>No se encontraron gastos</value>
+  </data>
+  <data name="None" xml:space="preserve">
+    <value>Ninguno</value>
+  </data>
+  <data name="Overhead" xml:space="preserve">
+    <value>Comisión</value>
+  </data>
+  <data name="And" xml:space="preserve">
+    <value>y</value>
+  </data>
+  <data name="MissingMonthlyDonations" xml:space="preserve">
+    <value>Donaciones mensuales faltantes ({0})</value>
+  </data>
+  <data name="MissingMonthlyDonation" xml:space="preserve">
+    <value>Donación mensual faltante (1)</value>
+  </data>
+  <data name="MissingDonationsDuring" xml:space="preserve">
+    <value>Faltan donaciones durante {0}.</value>
+  </data>
+  <data name="ReportedPeriod" xml:space="preserve">
+    <value>el período informado</value>
+  </data>
+  <data name="MissingMonths" xml:space="preserve">
+    <value>Meses faltantes</value>
+  </data>
+  <data name="LineChart" xml:space="preserve">
+    <value>Línea</value>
+  </data>
+  <data name="AreaChart" xml:space="preserve">
+    <value>Área</value>
+  </data>
+  <data name="ColumnChart" xml:space="preserve">
+    <value>Columna</value>
+  </data>
+  <data name="PriorMonth" xml:space="preserve">
+    <value>Mes Anterior</value>
+  </data>
+  <data name="PriorYear" xml:space="preserve">
+    <value>Año Anterior</value>
+  </data>
+  <data name="RegisterNewUser" xml:space="preserve">
+    <value>Registrar Nuevo Usuario</value>
+  </data>
+  <data name="SelectAccount" xml:space="preserve">
+    <value>Seleccionar Cuenta</value>
+  </data>
+  <data name="SelectAccountToRemove" xml:space="preserve">
+    <value>Seleccionar Cuenta a Quitar</value>
+  </data>
+  <data name="SelectDefaultAccount" xml:space="preserve">
+    <value>Seleccione una cuenta predeterminada</value>
+  </data>
+  <data name="SelectAuthLevel" xml:space="preserve">
+    <value>Seleccionar nivel de autorización</value>
+  </data>
+  <data name="SelectStaffMember" xml:space="preserve">
+    <value>Seleccionar Miembro del Personal</value>
+  </data>
+  <data name="SignInWithGoogle" xml:space="preserve">
+    <value>Iniciar sesión con Google</value>
+  </data>
+  <data name="LoginRequired" xml:space="preserve">
+    <value>Inicio de sesión requerido</value>
+  </data>
+  <data name="LoginError" xml:space="preserve">
+    <value>Error de inicio de sesión</value>
+  </data>
+  <data name="CouldNotProcessSignIn" xml:space="preserve">
+    <value>No pudimos procesar su inicio de sesión</value>
+  </data>
+  <data name="LoginAttemptNotCompleted" xml:space="preserve">
+    <value>No se pudo completar su intento de inicio de sesión.</value>
+  </data>
+  <data name="TrySigningInAgain" xml:space="preserve">
+    <value>Intente iniciar sesión nuevamente.</value>
+  </data>
+  <data name="TrySignInAgain" xml:space="preserve">
+    <value>Intentar iniciar sesión nuevamente</value>
+  </data>
+  <data name="NotAuthorized" xml:space="preserve">
+    <value>No autorizado</value>
+  </data>
+  <data name="GoogleAccountNotRegistered" xml:space="preserve">
+    <value>Su cuenta de Google no ha sido registrada previamente en el sistema.</value>
+  </data>
+  <data name="ContactAdministratorForAccess" xml:space="preserve">
+    <value>Comuníquese con su administrador para solicitar acceso.</value>
+  </data>
+  <data name="TryDifferentGoogleAccount" xml:space="preserve">
+    <value>O intente iniciar sesión con otra cuenta de Google:</value>
+  </data>
+  <data name="SignInWithDifferentAccount" xml:space="preserve">
+    <value>Iniciar sesión con otra cuenta</value>
+  </data>
+  <data name="PleaseSignIn" xml:space="preserve">
+    <value>Inicie sesión.</value>
+  </data>
+  <data name="NotAuthorizedResource" xml:space="preserve">
+    <value>No está autorizado para acceder a este recurso.</value>
+  </data>
+  <data name="LoadingEllipsis" xml:space="preserve">
+    <value>Cargando...</value>
+  </data>
+  <data name="Authorizing" xml:space="preserve">
+    <value>Autorizando...</value>
+  </data>
+  <data name="NotFound" xml:space="preserve">
+    <value>No encontrado</value>
+  </data>
+  <data name="NothingAtAddress" xml:space="preserve">
+    <value>Lo sentimos, no hay nada en esta dirección.</value>
+  </data>
+  <data name="StaffAccount" xml:space="preserve">
+    <value>Cuenta del Personal</value>
+  </data>
+  <data name="StaffMember" xml:space="preserve">
+    <value>Miembro del Personal</value>
+  </data>
+  <data name="StartDate" xml:space="preserve">
+    <value>Fecha de Inicio</value>
+  </data>
+  <data name="TransactionType" xml:space="preserve">
+    <value>Tipo de Transacción</value>
+  </data>
+  <data name="UpdateUser" xml:space="preserve">
+    <value>Actualizar Usuario</value>
+  </data>
+  <data name="SettingsAndPreferences" xml:space="preserve">
+    <value>Configuración y Preferencias</value>
+  </data>
+  <data name="ValidEmailRequired" xml:space="preserve">
+    <value>Por favor, ingrese un correo electrónico válido</value>
+  </data>
+  <data name="Welcome" xml:space="preserve">
+    <value>Bienvenido</value>
+  </data>
+  <data name="WelcomeUser" xml:space="preserve">
+    <value>¡Bienvenido, {0}!</value>
+  </data>
+  <data name="AccountsOverview" xml:space="preserve">
+    <value>Descripción de Cuentas</value>
+  </data>
+  <data name="AccountSummaries" xml:space="preserve">
+    <value>Resúmenes de Cuentas</value>
+  </data>
+  <data name="DefaultAccount" xml:space="preserve">
+    <value>Cuenta Predeterminada</value>
+  </data>
+  <data name="Total" xml:space="preserve">
+    <value>Total</value>
+  </data>
+  <data name="MonthlyAverage" xml:space="preserve">
+    <value>Promedio Mensual</value>
+  </data>
+  <data name="FundManagement" xml:space="preserve">
+    <value>Gestión de Fundas</value>
+  </data>
+  <data name="ThisYear" xml:space="preserve">
+    <value>Este  Año</value>
+  </data>
+  <data name="Previous12Months" xml:space="preserve">
+    <value>12 Meses Anteriores</value>
+  </data>
+  <data name="LastYear" xml:space="preserve">
+    <value>El Año Pasado</value>
+  </data>
+  <data name="Settings" xml:space="preserve">
+    <value>Ajustes</value>
+  </data>
+  <data name="TotalDonationsLTM" xml:space="preserve">
+    <value>Donaciones Totales (LTM)</value>
+  </data>
+  <data name="AccountBalances" xml:space="preserve">
+    <value>Saldos de Cuentas</value>
+  </data>
+  <data name="AddNewUser" xml:space="preserve">
+    <value>Agregar Nuevo Usuario</value>
+  </data>
+  <data name="ManageUsers" xml:space="preserve">
+    <value>Administrar Usuarias</value>
+  </data>
+  <data name="ManageFunds" xml:space="preserve">
+    <value>Administrar Fondos</value>
+  </data>
+  <data name="AccountNumber" xml:space="preserve">
+    <value>Número de Cuenta</value>
+  </data>
+  <data name="Class" xml:space="preserve">
+    <value>Clase</value>
+  </data>
+  <data name="SoftCredit" xml:space="preserve">
+    <value>Crédito Blando</value>
+  </data>
+  <data name="BalanceAdjustment" xml:space="preserve">
+    <value>Ajuste de Saldo</value>
+  </data>
+  <data name="AccountName" xml:space="preserve">
+    <value>Nombre de la Cuenta</value>
+  </data>
+  <data name="AddNewAccount" xml:space="preserve">
+    <value>Agregar Nueva Cuenta</value>
+  </data>
+  <data name="DeleteFund" xml:space="preserve">
+    <value>Eliminar Fondo</value>
+  </data>
+  <data name="UpdateFund" xml:space="preserve">
+    <value>Actualizar Fondo</value>
+  </data>
+  <data name="UploadDonationData" xml:space="preserve">
+    <value>Subir Datos de Donaciones</value>
+  </data>
+  <data name="UploadAccountingData" xml:space="preserve">
+    <value>Subir Datos Contables</value>
+  </data>
+  <data name="GrantFundAccess" xml:space="preserve">
+    <value>Conceder Acceso al Fondo</value>
+  </data>
+  <data name="RemoveAccess" xml:space="preserve">
+    <value>Quitar Acceso</value>
+  </data>
+  <data name="GrantAccess" xml:space="preserve">
+    <value>Conceder Acceso</value>
+  </data>
+  <data name="RemoveFundAccess" xml:space="preserve">
+    <value>Quitar Acceso al Fondo</value>
+  </data>
+  <data name="SelectFund" xml:space="preserve">
+    <value>Seleccione Fondo</value>
+  </data>
+  <data name="FundAccess" xml:space="preserve">
+    <value>Access al Fondo</value>
+  </data>
+  <data name="CurrentFundAccess" xml:space="preserve">
+    <value>Accesso Presente de Fondos</value>
+  </data>
+  <data name="CustomRange" xml:space="preserve">
+    <value>Rango Personalizado</value>
+  </data>
+  <data name="RefNum" xml:space="preserve">
+    <value>Referencia</value>
+  </data>
+  <data name="SummaryOfTransactions" xml:space="preserve">
+    <value>Resumen de Transacciones</value>
+  </data>
+  <data name="TotalTransfers" xml:space="preserve">
+    <value>Transferencias Totales</value>
+  </data>
+  <data name="TotalExpenses" xml:space="preserve">
+    <value>Gastos Totales</value>
+  </data>
+  <data name="Fund" xml:space="preserve">
+    <value>Fondo</value>
+  </data>
+  <data name="ShowMoreDetail" xml:space="preserve">
+    <value>Mostrar Más Detalles</value>
+  </data>
+  <data name="ShowLessDetail" xml:space="preserve">
+    <value>Mostrar Menos detalles</value>
+  </data>
+  <data name="Logout" xml:space="preserve">
+    <value>Cerrar Sesión</value>
+  </data>
+  <data name="User" xml:space="preserve">
+    <value>Usuario</value>
+  </data>
+  <data name="SelectUser" xml:space="preserve">
+    <value>Seleccionar Usuario</value>
+  </data>
+  <data name="NoUserSelected" xml:space="preserve">
+    <value>No se ha seleccionado ningún usuario.</value>
+  </data>
+  <data name="Grid" xml:space="preserve">
+    <value>Red</value>
+  </data>
+  <data name="List" xml:space="preserve">
+    <value>Lista</value>
+  </data>
+  <data name="Graph" xml:space="preserve">
+    <value>Gráfico</value>
+  </data>
+  <data name="Error" xml:space="preserve">
+    <value>Error</value>
+  </data>
+  <data name="PleaseSelectAnAccount" xml:space="preserve">
+    <value>Por favor seleccione una cuenta.</value>
+  </data>
+  <data name="ManageSecondaryFund" xml:space="preserve">
+    <value>Administrar Fondo Secondario</value>
+  </data>
+  <data name="ManageSecondaryFunds" xml:space="preserve">
+    <value>Administrar Fondos Secundarios</value>
+  </data>
+  <data name="SecondaryFunds" xml:space="preserve">
+    <value>Fondos Secundarios</value>
+  </data>
+  <data name="ThisMonth" xml:space="preserve">
+    <value>Este Mes</value>
+  </data>
+  <data name="LastMonth" xml:space="preserve">
+    <value>Mes pasado</value>
+  </data>
+  <data name="AllDates" xml:space="preserve">
+    <value>Todas las Fechas</value>
+  </data>
+  <data name="AllDonors" xml:space="preserve">
+    <value>Todas las Fechas</value>
+  </data>
+  <data name="NoDonorSelected" xml:space="preserve">
+    <value>No se ha seleccionado ningún donante.</value>
+  </data>
+  <data name="Copy" xml:space="preserve">
+    <value>Copiar</value>
+  </data>
+  <data name="Clear" xml:space="preserve">
+    <value>Despejar</value>
+  </data>
+  <data name="Phone" xml:space="preserve">
+    <value>Teléfono</value>
+  </data>
+  <data name="Address" xml:space="preserve">
+    <value>Dirección</value>
+  </data>
+  <data name="TotalDonations" xml:space="preserve">
+    <value>Donaciones Totales</value>
+  </data>
+  <data name="ColumnSelection" xml:space="preserve">
+    <value>Selección de Columnas</value>
+  </data>
+  <data name="AmountGiven" xml:space="preserve">
+    <value>Cantidad Donada</value>
+  </data>
+  <data name="PaymentMethod" xml:space="preserve">
+    <value>Método de pago</value>
+  </data>
+  <data name="TotalGiven" xml:space="preserve">
+    <value>Total Donado</value>
+  </data>
+  <data name="SearchDonors" xml:space="preserve">
+    <value>Buscar Donantes</value>
+  </data>
+  <data name="DownloadExcel" xml:space="preserve">
+    <value>Descargar Excel</value>
+  </data>
+  <data name="RollbackLastUpdate" xml:space="preserve">
+    <value>Revertir Última Atualización</value>
+  </data>
+  <data name="SelectedDonors" xml:space="preserve">
+    <value>Donantes Seleccionados</value>
+  </data>
+  <data name="ManageFundraisingAccounts" xml:space="preserve">
+    <value>Administrar Cuentas de Recaudación de Fondos</value>
+  </data>
+  <data name="PrimaryAccount" xml:space="preserve">
+    <value>Cuenta Principal</value>
+  </data>
+  <data name="FundraisingAccount" xml:space="preserve">
+    <value>Cuenta de Recaudación de Fondos</value>
+  </data>
+  <data name="AddNewFund" xml:space="preserve">
+    <value>Agregar Nuevo Fondo</value>
+  </data>
+  <data name="SecondaryFund" xml:space="preserve">
+    <value>Fondo Secundario</value>
+  </data>
+  <data name="CreatePrimaryAccount" xml:space="preserve">
+    <value>Crear Cuenta Primario</value>
+  </data>
+  <data name="HasSecondaryFund" xml:space="preserve">
+    <value>Tiene Fondo Secundario</value>
+  </data>
+  <data name="UnableToFindUserInformation" xml:space="preserve">
+    <value>No se pudo encontrar la información del usuario.</value>
+  </data>
+  <data name="UnableToLoadUserSettings" xml:space="preserve">
+    <value>No se pudo cargar la configuración del usuario.</value>
+  </data>
+  <data name="DefaultAccountNoLongerAccessible" xml:space="preserve">
+    <value>La cuenta predeterminada actual ya no está accesible. Seleccione una nueva.</value>
+  </data>
+  <data name="NoAccountsAccessibleContactAdmin" xml:space="preserve">
+    <value>No tiene acceso a ninguna cuenta. Comuníquese con un administrador.</value>
+  </data>
+  <data name="ErrorLoadingUserData" xml:space="preserve">
+    <value>Error al cargar los datos del usuario:</value>
+  </data>
+  <data name="DefaultAccountNoChange" xml:space="preserve">
+    <value>No se realizaron cambios en su cuenta predeterminada.</value>
+  </data>
+  <data name="DefaultAccountUpdatedImmediate" xml:space="preserve">
+    <value>La cuenta predeterminada se actualizó correctamente. Los cambios se aplicaron de inmediato.</value>
+  </data>
+  <data name="DefaultAccountUpdateFailed" xml:space="preserve">
+    <value>No se pudo actualizar la cuenta predeterminada.</value>
+  </data>
+  <data name="ErrorSavingAccountSetting" xml:space="preserve">
+    <value>Error al guardar la configuración de cuenta:</value>
+  </data>
+  <data name="EndingBalance" xml:space="preserve">
+    <value>Saldo Final</value>
+  </data>
+  <data name="ManagePrimaryFund" xml:space="preserve">
+    <value>AdministrarFondo Primario</value>
+  </data>
+  <data name="ManagePrimaryAccounts" xml:space="preserve">
+    <value>Administrar Cuentas Principales</value>
+  </data>
+  <data name="CreateNewFund" xml:space="preserve">
+    <value>Crear Nuevo Fondo</value>
+  </data>
+  <data name="ConfirmUpload" xml:space="preserve">
+    <value>Confirmar Carga</value>
+  </data>
+  <data name="ConfirmFileUpload" xml:space="preserve">
+    <value>Confirmar carga de archivo</value>
+  </data>
+  <data name="FileName" xml:space="preserve">
+    <value>Nombre del archivo</value>
+  </data>
+  <data name="Size" xml:space="preserve">
+    <value>Tamaño</value>
+  </data>
+  <data name="ConfirmFileUploadMessage" xml:space="preserve">
+    <value>Este archivo se utilizará para actualizar la base de datos. ¿Está seguro de que este es el archivo correcto?</value>
+  </data>
+  <data name="Confirm" xml:space="preserve">
+    <value>Confirmar</value>
+  </data>
+  <data name="AreYouSure" xml:space="preserve">
+    <value>¿Está seguro?</value>
+  </data>
+  <data name="Yes" xml:space="preserve">
+    <value>Sí</value>
+  </data>
+  <data name="No" xml:space="preserve">
+    <value>No</value>
+  </data>
+  <data name="UploadInProgress" xml:space="preserve">
+    <value>Carga en Curso</value>
+  </data>
+  <data name="Starting" xml:space="preserve">
+    <value>Iniciando...</value>
+  </data>
+  <data name="WaitingForProgressId" xml:space="preserve">
+    <value>Esperando el identificador de progreso...</value>
+  </data>
+  <data name="InitializingImport" xml:space="preserve">
+    <value>Inicializando la importación...</value>
+  </data>
+  <data name="Processing" xml:space="preserve">
+    <value>Procesando...</value>
+  </data>
+  <data name="CompletedWithFailedRows" xml:space="preserve">
+    <value>{0} - {1} filas fallidas</value>
+  </data>
+  <data name="ErrorPollingProgress" xml:space="preserve">
+    <value>Error al consultar el progreso: {0}</value>
+  </data>
+  <data name="MoreErrors" xml:space="preserve">
+    <value>... y {0} errores más</value>
+  </data>
+  <data name="UploadError" xml:space="preserve">
+    <value>Error de carga</value>
+  </data>
+  <data name="NoPreviewResponse" xml:space="preserve">
+    <value>El servidor no devolvió una respuesta para la vista previa.</value>
+  </data>
+  <data name="PreviewReadFailed" xml:space="preserve">
+    <value>No se pudo leer la información de la vista previa.</value>
+  </data>
+  <data name="ImportError" xml:space="preserve">
+    <value>Error de importación</value>
+  </data>
+  <data name="ImportProgressIdMissing" xml:space="preserve">
+    <value>La importación no devolvió un identificador de progreso.</value>
+  </data>
+  <data name="UploadInvalidExcelFormatMessage" xml:space="preserve">
+    <value>El archivo seleccionado no tiene el formato correcto. El archivo debe ser un archivo de Excel con extensión .xlsx.</value>
+  </data>
+  <data name="NormalizeDonorNames" xml:space="preserve">
+    <value>Normalizar Nombres de Donantes</value>
+  </data>
+  <data name="NormalizeDonorNamesConfirmMessage" xml:space="preserve">
+    <value>Esto normalizará los nombres de donantes en DonationData y DonationDataBackup de 'Apellido, Nombre' a 'Nombre Apellido'. ¿Continuar?</value>
+  </data>
+  <data name="RecategorizeDonations" xml:space="preserve">
+    <value>Recategorizar Donaciones</value>
+  </data>
+  <data name="RecategorizeDonationsConfirmMessage" xml:space="preserve">
+    <value>Esto recategorizará todas las filas de DonationData (Mensual, Anual, Esporádica, Única) usando las reglas actuales de clasificación. ¿Continuar?</value>
+  </data>
+  <data name="NonMonthlyIncludesSporadicAndOneTimeDonations" xml:space="preserve">
+    <value>No Mensual incluye donaciones Esporádicas y Únicas.</value>
+  </data>
+  <data name="SummaryCards" xml:space="preserve">
+    <value>Tarjetas de Resumen</value>
+  </data>
+  <data name="AccountVisualizations" xml:space="preserve">
+    <value>Visualizaciones de Cuenta</value>
+  </data>
+  <data name="AccountGraphs" xml:space="preserve">
+    <value>Gráficos de Cuenta</value>
+  </data>
+  <data name="CompactView" xml:space="preserve">
+    <value>Vista Compacta</value>
+  </data>
+  <data name="FundRefrences" xml:space="preserve">
+    <value>Referencias de Fondos</value>
+  </data>
+  <data name="CopyTable" xml:space="preserve">
+    <value>Copiar Tabla</value>
+  </data>
+  <data name="Save" xml:space="preserve">
+    <value>&#x8;Guardar</value>
+  </data>
+  <data name="SaveChanges" xml:space="preserve">
+    <value>Guardar cambios</value>
+  </data>
+  <data name="HorizontalaxisMonthVerticalaxisTotalDonationsUSD" xml:space="preserve">
+    <value>Eje horizontal: Mes | Eje vertical: Total de donaciones (USD)</value>
+  </data>
+  <data name="MonthlyDonations" xml:space="preserve">
+    <value>Donaciones Mensuales</value>
+  </data>
+  <data name="GraphType" xml:space="preserve">
+    <value>Typo de Gráfico</value>
+  </data>
+  <data name="ShowLabels" xml:space="preserve">
+    <value>Mostrar Etiquetas</value>
+  </data>
+  <data name="FrequencyView" xml:space="preserve">
+    <value>Vista de Frecuencia</value>
+  </data>
+  <data name="CalculatingDonations" xml:space="preserve">
+    <value>Calculando donaciones...</value>
+  </data>
+  <data name="Cancel" xml:space="preserve">
+    <value>Cancelar</value>
+  </data>
+  <data name="Close" xml:space="preserve">
+    <value>Cerrar</value>
+  </data>
+  <data name="Completed" xml:space="preserve">
+    <value>Completado</value>
+  </data>
+  <data name="ConfirmDeleteFundMessage" xml:space="preserve">
+    <value>¿Está seguro de que desea eliminar la cuenta '{0}'?</value>
+  </data>
+  <data name="ConfirmDeleteUserMessage" xml:space="preserve">
+    <value>¿Está seguro de que desea eliminar al usuario '{0}'?</value>
+  </data>
+  <data name="ConfirmRollback" xml:space="preserve">
+    <value>Confirmar reversión</value>
+  </data>
+  <data name="ConfirmRollbackMessage" xml:space="preserve">
+    <value>¿Está seguro de que desea revertir: {0}?</value>
+  </data>
+  <data name="CopiedToClipboard" xml:space="preserve">
+    <value>Copiado al portapapeles.</value>
+  </data>
+  <data name="DataAnalysis" xml:space="preserve">
+    <value>Análisis de datos</value>
+  </data>
+  <data name="DatabaseBackup" xml:space="preserve">
+    <value>Copia de seguridad de la base de datos</value>
+  </data>
+  <data name="DatabaseUpdateProgress" xml:space="preserve">
+    <value>Progreso de actualización de la base de datos</value>
+  </data>
+  <data name="DataImport" xml:space="preserve">
+    <value>Importación de datos</value>
+  </data>
+  <data name="DeleteAccount" xml:space="preserve">
+    <value>Eliminar cuenta</value>
+  </data>
+  <data name="Done" xml:space="preserve">
+    <value>Listo</value>
+  </data>
+  <data name="DownloadStarted" xml:space="preserve">
+    <value>Descarga iniciada.</value>
+  </data>
+  <data name="ExecuteRollback" xml:space="preserve">
+    <value>Ejecutar reversión</value>
+  </data>
+  <data name="Failed" xml:space="preserve">
+    <value>Fallido</value>
+  </data>
+  <data name="FileValidation" xml:space="preserve">
+    <value>Validación del archivo</value>
+  </data>
+  <data name="ImportWarnings" xml:space="preserve">
+    <value>Advertencias de importación</value>
+  </data>
+  <data name="Inserted" xml:space="preserve">
+    <value>Insertadas</value>
+  </data>
+  <data name="LegacyBackup" xml:space="preserve">
+    <value>Copia de seguridad anterior</value>
+  </data>
+  <data name="NoAccountSelected" xml:space="preserve">
+    <value>No se ha seleccionado ninguna cuenta.</value>
+  </data>
+  <data name="NoBackupAvailable" xml:space="preserve">
+    <value>No hay ninguna copia de seguridad disponible</value>
+  </data>
+  <data name="NoBalancesFound" xml:space="preserve">
+    <value>No se encontraron saldos de cuenta.</value>
+  </data>
+  <data name="NoDonorsInRange" xml:space="preserve">
+    <value>No se encontraron donantes en el intervalo de fechas seleccionado.</value>
+  </data>
+  <data name="NotStarted" xml:space="preserve">
+    <value>No iniciado</value>
+  </data>
+  <data name="RollbackAccounting" xml:space="preserve">
+    <value>Datos contables</value>
+  </data>
+  <data name="RollbackBoth" xml:space="preserve">
+    <value>Revertir los datos de donaciones y contabilidad</value>
+  </data>
+  <data name="RollbackDescription" xml:space="preserve">
+    <value>Seleccione una o más tablas de datos para revertir. Esto deshará la última carga de cualquier tabla seleccionada.</value>
+  </data>
+  <data name="RollbackDonations" xml:space="preserve">
+    <value>Datos de donaciones</value>
+  </data>
+  <data name="Rows" xml:space="preserve">
+    <value>Filas</value>
+  </data>
+  <data name="Search" xml:space="preserve">
+    <value>Buscar</value>
+  </data>
+  <data name="Status" xml:space="preserve">
+    <value>Estado</value>
+  </data>
+  <data name="Type" xml:space="preserve">
+    <value>Tipo</value>
+  </data>
+  <data name="Unknown" xml:space="preserve">
+    <value>Desconocido</value>
+  </data>
+  <data name="UpdatingAccountingDataTable" xml:space="preserve">
+    <value>Actualizando la tabla de datos contables</value>
+  </data>
+  <data name="UpdatingDonationDataTable" xml:space="preserve">
+    <value>Actualizando la tabla de datos de donaciones</value>
+  </data>
+  <data name="UserNotAuthenticated" xml:space="preserve">
+    <value>El usuario no está autenticado.</value>
+  </data>
+  <data name="UserSettings" xml:space="preserve">
+    <value>Configuración del usuario</value>
+  </data>
+</root>

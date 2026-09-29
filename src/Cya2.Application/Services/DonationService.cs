@@ -523,6 +523,7 @@ public class DonationService : IDonationService
         => new(
             record.Id,
             record.DonorId,
+            record.DonorDisplayName,
             record.Date,
             record.Frequency,
             record.AccountName,
@@ -550,6 +551,7 @@ public class DonationService : IDonationService
         {
             Id = snapshot.Id,
             DonorId = snapshot.DonorId,
+            DonorDisplayName = snapshot.DonorDisplayName,
             Date = snapshot.Date,
             Frequency = snapshot.Frequency,
             AccountName = snapshot.AccountName,

@@ -49,32 +49,6 @@ namespace Cya2.Infrastructure.Services
 
                 try
                 {
-                    static async Task<bool> ColumnExistsAsync(MySqlConnection connection, MySqlTransaction transaction, string table, string column, CancellationToken ct)
-                    {
-                        var cmd = connection.CreateCommand();
-                        cmd.Transaction = transaction;
-                        cmd.CommandText = @"SELECT COUNT(*)
-FROM INFORMATION_SCHEMA.COLUMNS
-WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = @TableName AND COLUMN_NAME = @ColumnName";
-                        cmd.Parameters.Add(new MySqlParameter("@TableName", table));
-                        cmd.Parameters.Add(new MySqlParameter("@ColumnName", column));
-                        return Convert.ToInt32(await cmd.ExecuteScalarAsync(ct)) > 0;
-                    }
-
-                    static async Task EnsureColumnExistsAsync(MySqlConnection connection, MySqlTransaction transaction, string table, string column, string sqlType, CancellationToken ct)
-                    {
-                        if (await ColumnExistsAsync(connection, transaction, table, column, ct))
-                        {
-                            return;
-                        }
-
-                        var alter = connection.CreateCommand();
-                        alter.Transaction = transaction;
-                        alter.CommandTimeout = 60;
-                        alter.CommandText = $"ALTER TABLE `{table}` ADD COLUMN `{column}` {sqlType} NULL";
-                        await alter.ExecuteNonQueryAsync(ct);
-                    }
-
                     // Check if the backup payload and snapshot metadata tables exist.
                     var checkBackupCmd = conn.CreateCommand();
                     checkBackupCmd.Transaction = (MySqlTransaction)tx;
@@ -148,6 +122,13 @@ WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = @TableName AND COLUMN_NAME = @C
                     {
                         result.Success = false;
                         result.ErrorMessage = "No recent backup found for donations. Cannot rollback.";
+                        return result;
+                    }
+
+                    if (!sourceRangeStart.HasValue)
+                    {
+                        result.Success = false;
+                        result.ErrorMessage = "The most recent donation backup has no source range. Cannot rollback.";
                         return result;
                     }
 

@@ -1,0 +1,38 @@
+﻿<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>cya2</RootNamespace>
+    <AssemblyName>cya2</AssemblyName>
+    <UserSecretsId>b0afc62a-8a85-4a86-a8e1-fca2b94c7ef7</UserSecretsId>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Dapper" Version="2.1.79" />
+    <PackageReference Include="Microsoft.AspNetCore.Authentication.Google" Version="10.0.8" />
+    <PackageReference Include="Radzen.Blazor" Version="10.4.7" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Cya2.Core\Cya2.Core.csproj" />
+    <ProjectReference Include="..\Cya2.Application\Cya2.Application.csproj" />
+    <ProjectReference Include="..\Cya2.Shared\Cya2.Shared.csproj" />
+    <ProjectReference Include="..\Cya2.Infrastructure\Cya2.Infrastructure.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Update="Components\Shared\LanguageResources\Resource.en-US.resx">
+      <LogicalName>cya2.Components.Shared.LanguageResources.Resource.en-US.resources</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Update="Components\Shared\LanguageResources\Resource.es-US.resx">
+      <LogicalName>cya2.Components.Shared.LanguageResources.Resource.es-US.resources</LogicalName>
+    </EmbeddedResource>
+  </ItemGroup>
+
+</Project>
