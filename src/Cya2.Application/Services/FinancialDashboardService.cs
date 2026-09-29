@@ -54,7 +54,7 @@ public class FinancialDashboardService : IFinancialDashboardService
             ? null
             : _userAccountContextService.ResolveSelectedAccount(userContext, accountFund);
 
-        if (selectedAccount is null)
+        if (userContext is null || selectedAccount is null)
         {
             return new FinancialSummaryDto
             {

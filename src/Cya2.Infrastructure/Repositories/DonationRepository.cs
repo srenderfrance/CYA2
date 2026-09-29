@@ -46,8 +46,6 @@ public sealed class DonationRepository : IDonationRepository
         try
         {
             _logger.LogInformation("Donation backup transaction opened. ProgressId={ProgressId}, BackupId={BackupId}, SourceRangeStart={SourceRangeStart:O}", progressId, backupId, fromDate);
-            await EnsureDonationBackupTablesAsync(connection, (MySqlTransaction)transaction, cancellationToken);
-            _logger.LogInformation("Donation backup tables verified. ProgressId={ProgressId}, BackupId={BackupId}", progressId, backupId);
 
             var donationBackupRows = 0;
             await using (var backup = connection.CreateCommand())
@@ -138,63 +136,6 @@ INNER JOIN DonorsBackup donor ON donor.BackupId = @BackupId
             await transaction.RollbackAsync(cancellationToken);
             throw;
         }
-    }
-
-    private static async Task EnsureDonationBackupTablesAsync(
-        MySqlConnection connection,
-        MySqlTransaction transaction,
-        CancellationToken cancellationToken)
-    {
-        await using var donorBackup = connection.CreateCommand();
-        donorBackup.Transaction = transaction;
-        donorBackup.CommandText = @"
-CREATE TABLE IF NOT EXISTS DonorsBackup
-(
-    BackupId CHAR(36) NOT NULL,
-    Id BIGINT NOT NULL,
-    Fund VARCHAR(255) NOT NULL,
-    DisplayName VARCHAR(255) NOT NULL,
-    IdentityKey VARCHAR(512) NOT NULL,
-    ResolutionSource VARCHAR(32) NOT NULL,
-    ResolutionVersion INT NOT NULL,
-    DateCreated DATETIME NOT NULL,
-    DateModified DATETIME NOT NULL,
-    BackupAt DATETIME NOT NULL,
-    PRIMARY KEY (BackupId, Id),
-    KEY ix_DonorsBackup_BackupId (BackupId)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
-
-CREATE TABLE IF NOT EXISTS DonorContactsBackup
-(
-    BackupId CHAR(36) NOT NULL,
-    Id BIGINT NOT NULL,
-    DonorId BIGINT NOT NULL,
-    ContactType VARCHAR(32) NOT NULL,
-    ContactValue VARCHAR(500) NOT NULL,
-    NormalizedValue VARCHAR(500) NOT NULL,
-    DateCreated DATETIME NOT NULL,
-    DateModified DATETIME NOT NULL,
-    BackupAt DATETIME NOT NULL,
-    PRIMARY KEY (BackupId, Id),
-    KEY ix_DonorContactsBackup_BackupId (BackupId),
-    KEY ix_DonorContactsBackup_DonorId (BackupId, DonorId)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci";
-        await donorBackup.ExecuteNonQueryAsync(cancellationToken);
-
-        await using var snapshot = connection.CreateCommand();
-        snapshot.Transaction = transaction;
-        snapshot.CommandText = @"
-CREATE TABLE IF NOT EXISTS DonationBackupSnapshots
-(
-    BackupId CHAR(36) NOT NULL PRIMARY KEY,
-    BackupAt DATETIME NOT NULL,
-    SourceRangeStart DATETIME NOT NULL,
-    RecordCount INT NOT NULL DEFAULT 0,
-    Pinned BOOLEAN NOT NULL DEFAULT FALSE,
-    KEY ix_DonationBackupSnapshots_BackupAt (BackupAt),
-    KEY ix_DonationBackupSnapshots_Pinned (Pinned)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci";
-        await snapshot.ExecuteNonQueryAsync(cancellationToken);
     }
 
     private static async Task CleanupDonationBackupsAsync(

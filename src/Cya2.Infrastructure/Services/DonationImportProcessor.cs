@@ -105,6 +105,8 @@ namespace Cya2.Infrastructure.Services
                 return result;
             }
 
+            var honorMemorialColumnName = honorMemorialColumn.GetValueOrDefault();
+
             var totalDataRows = Math.Max(0, (ws.Dimension?.End.Row ?? 0) - firstDataRow + 1);
             _progressService.CompleteStep(progressId, "File Validation", "Completed", $"Found {totalDataRows:N0} rows to import");
 
@@ -154,7 +156,7 @@ namespace Cya2.Infrastructure.Services
                     Amount = amount,
                     Fund = fund ?? string.Empty,
                     GiftImportId = GetCellText(ws, rowNumber, map["Gift Import ID"]),
-                    HonorMemorialName = GetCellText(ws, rowNumber, honorMemorialColumn.Value),
+                    HonorMemorialName = GetCellText(ws, rowNumber, honorMemorialColumnName),
                     PrimaryAddressee = isAnonymous ? null : addressee,
                     SoftCreditName = isAnonymous ? null : softCredit,
                     Address = isAnonymous ? null : GetCellText(ws, rowNumber, map["Preferred Address Line 1"]),

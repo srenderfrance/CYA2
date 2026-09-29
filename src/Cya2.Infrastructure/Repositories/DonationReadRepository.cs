@@ -28,6 +28,7 @@ public sealed class DonationReadRepository : IDonationReadRepository
 SELECT
     d.Id,
     d.DonorId,
+    dn.DisplayName AS DonorDisplayName,
     d.Date,
     d.Frequency,
     d.AccountName,
