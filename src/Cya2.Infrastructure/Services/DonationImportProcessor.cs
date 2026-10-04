@@ -8,6 +8,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using OfficeOpenXml;
 using Cya2.Application.Interfaces;
+using Cya2.Application.Diagnostics;
 using Cya2.Core.DTOs;
 using Cya2.Core.Interfaces;
 using Cya2.Core.Services;
@@ -129,14 +130,14 @@ namespace Cya2.Infrastructure.Services
                 if (!ExcelParsingHelpers.TryParseDateUS(dateText, out var date))
                 {
                     result.FailedRows++;
-                    result.Errors.Add($"Row {rowNumber}: invalid Gift Date '{dateText}'");
+                    result.Errors.Add(ImportDiagnosticMessages.InvalidCell(rowNumber, "Gift Date"));
                     continue;
                 }
 
                 if (!ExcelParsingHelpers.TryParseDoubleUS(amountText, out var amount))
                 {
                     result.FailedRows++;
-                    result.Errors.Add($"Row {rowNumber}: invalid Amount '{amountText}'");
+                    result.Errors.Add(ImportDiagnosticMessages.InvalidCell(rowNumber, "Amount"));
                     continue;
                 }
 
@@ -192,7 +193,7 @@ namespace Cya2.Infrastructure.Services
             var priorHistory = earliest.HasValue
                 ? await _donationRepository.GetRecentDonationsForDonorsAsync(donorKeys, earliest.Value, 30, ct)
                 : new List<Cya2.Core.ReadModels.DonationRecord>();
-            _progressService.CompleteStep(progressId, "Frequency Pre-load", "Completed", $"Loaded prior history for {priorHistory.Select(h => h.AccountName).Distinct().Count()} donors");
+            _progressService.CompleteStep(progressId, "Frequency Pre-load", "Completed", $"Loaded prior history for {priorHistory.Select(h => h.AccountName).Distinct().Count():N0} donor records");
 
             if (earliest.HasValue)
             {

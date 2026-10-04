@@ -688,13 +688,6 @@
         {
             try
             {
-                // Generate ProgressId
-                string localProgressId = Guid.NewGuid().ToString("N");
-
-                // Store ProgressId in session service so any listening component (including UploadProgressDialog)
-                // receives it via the ImportProgressIdChanged event
-                SessionImportProgressService.SetImportProgressId(localProgressId);
-
                 // Open the progress dialog immediately
                 DialogService.Open<UploadProgressDialog>(
                     title: Localizer["UploadInProgress"],
@@ -708,11 +701,11 @@
                 ImportResult result;
                 if (importType == "donations")
                 {
-                    result = await ImportOrchestrationService.StartImportFromPreviewAsync(previewId, "donations", localProgressId);
+                    result = await ImportOrchestrationService.StartImportFromPreviewAsync(previewId, "donations");
                 }
                 else if (importType == "accounting")
                 {
-                    result = await ImportOrchestrationService.StartImportFromPreviewAsync(previewId, "accounting", localProgressId);
+                    result = await ImportOrchestrationService.StartImportFromPreviewAsync(previewId, "accounting");
                 }
                 else
                 {
@@ -733,22 +726,11 @@
                         Duration = 4000
                     });
 
-                    // Clear the temporary progress id we set earlier
                     SessionImportProgressService.SetImportProgressId(string.Empty);
                     return;
                 }
 
-                // If the service generated its own ProgressId, update session service so the dialog polls the correct id
-                if (!string.Equals(result.ProgressId, localProgressId, StringComparison.Ordinal))
-                {
-                    _logger.LogInformation("Replacing temporary ProgressId {Temp} with server ProgressId {Server}", localProgressId, result.ProgressId);
-                    SessionImportProgressService.SetImportProgressId(result.ProgressId);
-                }
-                else
-                {
-                    // Ensure session service contains the final id
-                    SessionImportProgressService.SetImportProgressId(localProgressId);
-                }
+                SessionImportProgressService.SetImportProgressId(result.ProgressId);
 
                 // Store locally as well
                 currentProgressId = SessionImportProgressService.ImportProgressId;

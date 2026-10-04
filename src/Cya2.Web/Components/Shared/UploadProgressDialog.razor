@@ -126,7 +126,16 @@
 
     public void Dispose()
     {
+        if (!string.IsNullOrWhiteSpace(ProgressId) && _p.IsComplete)
+        {
+            ProgressService.Remove(ProgressId);
+        }
+
         SessionImportProgressService.ImportProgressIdChanged -= OnProgressIdChanged;
+        if (string.Equals(SessionImportProgressService.ImportProgressId, ProgressId, StringComparison.Ordinal))
+        {
+            SessionImportProgressService.SetImportProgressId(string.Empty);
+        }
         _timer?.Dispose();
         _timer = null;
     }

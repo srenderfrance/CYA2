@@ -19,16 +19,16 @@ Use this checklist to prepare the application for safe local setup, deployment, 
 
 ### 2. Write local setup instructions
 
-- [ ] Document the required .NET SDK version.
-- [ ] Document the supported MySQL version.
-- [ ] Document how to create the local database.
+- [x] Document the required .NET SDK version.
+- [x] Document the supported MySQL version.
+- [x] Document how to create the local database.
 - [x] Document how to apply the database scripts or migrations.
-- [ ] Document how to configure the application connection string.
-- [ ] Document how to configure Google OAuth login.
+- [x] Document how to configure the application connection string.
+- [x] Document how to configure Google OAuth login.
 - [ ] Document how to add a matching local user to the `Users` table.
-- [ ] List every required configuration setting.
-- [ ] Include fake example values only.
-- [ ] State clearly where developers must provide local secrets.
+- [x] List every required configuration setting.
+- [x] Include fake example values only.
+- [x] State clearly where developers must provide local secrets.
 - [ ] Confirm that secrets are excluded from source control.
 
 ### 3. Deal with the database password in Git history
@@ -44,11 +44,11 @@ Use this checklist to prepare the application for safe local setup, deployment, 
 
 ### 4. Make deployment reproducible
 
-- [ ] Confirm the target .NET version for every project.
-- [ ] Align the web project target framework with the GitHub Actions SDK installation.
-- [ ] Resolve the current .NET 10 project versus .NET 8 workflow mismatch.
-- [ ] Confirm package versions are compatible with the selected target framework.
-- [ ] Confirm the build SDK version used by CI.
+- [x] Confirm the target .NET version for every project.
+- [x] Align the web project target framework with the GitHub Actions SDK installation.
+- [x] Resolve the current .NET 10 project versus .NET 8 workflow mismatch.
+- [x] Confirm package versions are compatible with the selected target framework.
+- [x] Confirm the build SDK version used by CI.
 - [ ] Confirm the hosting runtime version.
 - [ ] Confirm where the web application will be hosted.
 - [ ] Confirm where the MySQL database will be hosted.
@@ -74,13 +74,13 @@ Use this checklist to prepare the application for safe local setup, deployment, 
 
 ### 6. Clean up import data
 
-- [ ] Add expiration timestamps to upload previews.
-- [ ] Add expiration timestamps to completed progress records.
-- [ ] Remove unused upload previews after a short documented period.
-- [ ] Remove completed progress records after a short documented period.
-- [ ] Ensure cleanup runs even when an import fails or is abandoned.
-- [ ] Document the retention period.
-- [ ] Add tests proving expired records are removed.
+- [x] Add expiration timestamps to upload previews.
+- [x] Add expiration timestamps to completed progress records.
+- [x] Remove unused upload previews after a short documented period.
+- [x] Remove completed progress records after a short documented period.
+- [x] Ensure cleanup runs even when an import fails or is abandoned.
+- [x] Document the retention period.
+- [x] Add tests proving expired records are removed.
 
 ### 7. Tie imports to the admin who started them
 
@@ -119,14 +119,14 @@ Use this checklist to prepare the application for safe local setup, deployment, 
 
 ### 10. Remove personal values from diagnostics
 
-- [ ] Stop logging sample values from the `Honor/Memorial Name` spreadsheet column.
-- [ ] Review logs for user email addresses.
-- [ ] Review logs for uploaded filenames.
-- [ ] Review exception messages before they are written to logs.
-- [ ] Review spreadsheet validation errors before they are returned in progress responses.
-- [ ] Remove personal values from progress responses where possible.
-- [ ] Prefer row numbers, field names, error categories, and counts for diagnostics.
-- [ ] Add redaction or structured logging rules for sensitive fields.
+- [x] Stop logging sample values from the `Honor/Memorial Name` spreadsheet column.
+- [x] Review logs for user email addresses.
+- [x] Review logs for uploaded filenames.
+- [x] Review exception messages before they are written to logs.
+- [x] Review spreadsheet validation errors before they are returned in progress responses.
+- [x] Remove personal values from progress responses where possible.
+- [x] Prefer row numbers, field names, error categories, and counts for diagnostics.
+- [x] Add redaction or structured logging rules for sensitive fields.
 - [ ] Verify production logs do not contain donor or account personal data.
 
 ## Verify the Protections
