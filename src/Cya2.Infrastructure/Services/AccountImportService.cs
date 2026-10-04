@@ -1,5 +1,6 @@
 using System.Globalization;
 using Cya2.Application.DTOs;
+using Cya2.Application.Diagnostics;
 using Cya2.Application.Interfaces;
 using Cya2.Core.Entities;
 using Cya2.Core.Interfaces;
@@ -91,7 +92,7 @@ public sealed class AccountImportService : IAccountImportService
                 if (string.IsNullOrWhiteSpace(accountingClass)) errors.Add($"Row {rowNumber}: Class is required.");
 
                 if (!TryParseOverhead(worksheet.Cells[rowNumber, headers["Overhead"]], out var overhead))
-                    errors.Add($"Row {rowNumber}: Overhead '{overheadText}' is not a valid number from 0 through 100.");
+                    errors.Add(ImportDiagnosticMessages.InvalidCell(rowNumber, "Overhead"));
                 else if (overhead < 0 || overhead > 100)
                     errors.Add($"Row {rowNumber}: Overhead must be from 0 through 100.");
 
@@ -113,9 +114,9 @@ public sealed class AccountImportService : IAccountImportService
             foreach (var row in rows)
             {
                 if (existingAccounts.Any(account => string.Equals(account.Fund.Trim(), row.Fund, StringComparison.OrdinalIgnoreCase)))
-                    errors.Add($"Row {row.RowNumber}: Fund '{row.Fund}' already exists in Accounts.");
+                    errors.Add(ImportDiagnosticMessages.ExistingValue(row.RowNumber, "Fund"));
                 if (existingAccounts.Any(account => string.Equals(account.AccountNumber.Trim(), row.AccountNumber, StringComparison.OrdinalIgnoreCase)))
-                    errors.Add($"Row {row.RowNumber}: Account Number '{row.AccountNumber}' already exists in Accounts.");
+                    errors.Add(ImportDiagnosticMessages.ExistingValue(row.RowNumber, "Account Number"));
             }
 
             return new AccountImportPreviewDto
@@ -127,7 +128,7 @@ public sealed class AccountImportService : IAccountImportService
         }
         catch (Exception ex) when (ex is IOException or InvalidDataException or FormatException)
         {
-            return InvalidPreview($"Unable to read the workbook: {ex.Message}", Path.GetFileName(filePath));
+            return InvalidPreview(ImportDiagnosticMessages.WorkbookReadFailure(), Path.GetFileName(filePath));
         }
     }
 

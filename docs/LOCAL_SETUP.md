@@ -8,8 +8,7 @@
 
 CYA2 is a .NET Blazor application using:
 
-- .NET 10 for the web project.
-- .NET 8 for the Core, Application, Infrastructure, Shared, and test projects.
+- .NET 10 for the web, Core, Application, Infrastructure, Shared, and test projects.
 - Dapper for database access.
 - MySQL through `MySql.Data`.
 - Radzen Blazor components.
@@ -22,14 +21,14 @@ The application database is a new database. It is populated from current exports
 
 ### .NET SDK
 
-The web project targets `net10.0`. Supporting projects and the test project target `net8.0`.
+All projects currently target `net10.0`.
 
-Install a .NET 10 SDK capable of building `net10.0` and the referenced `net8.0` projects. The repository does not currently pin an SDK with a `global.json` file.
+Install a .NET 10 SDK capable of building the solution. The repository does not currently pin an SDK with a `global.json` file.
 
 **Required from project owner:**
 
 - The exact .NET SDK version to standardize on locally and in CI.
-- Whether the supporting projects should remain on .NET 8 or be retargeted.
+- Whether the repository should add a `global.json` file to pin the SDK version.
 
 ### MySQL
 
@@ -72,23 +71,37 @@ The HTTP URL is not an appropriate OAuth redirect URI for normal local sign-in.
 
 ## 3. Get the source and restore dependencies
 
-From the repository or solution directory:
+From the repository root:
 
 ```text
 git clone <repository-url>
-cd Cya2/cya2.0
-dotnet restore cya2.0.sln
+cd Cya2
+dotnet restore Cya2.sln
 ```
 
-The primary web project is `cya2.csproj`. The solution also contains the Core, Application, Infrastructure, Shared, and Application.Tests projects.
+The primary solution is `Cya2.sln`. It contains these projects:
+
+- `src/Cya2.Web/cya2.csproj` — the Blazor web application.
+- `src/Cya2.Core/Cya2.Core.csproj`.
+- `src/Cya2.Application/Cya2.Application.csproj`.
+- `src/Cya2.Infrastructure/Cya2.Infrastructure.csproj`.
+- `src/Cya2.Shared/Cya2.Shared.csproj`.
+
+The test project is `tests/Cya2.Application.Tests/Cya2.Application.Tests.csproj` and can be run separately or from Visual Studio Test Explorer.
 
 Build the solution with:
 
 ```text
-dotnet build cya2.0.sln
+dotnet build Cya2.sln
 ```
 
-Run the tests with the test project or the Visual Studio Test Explorer after the test prerequisites have been installed.
+Run the tests with:
+
+```text
+dotnet test tests/Cya2.Application.Tests/Cya2.Application.Tests.csproj
+```
+
+The relocated web project is `src/Cya2.Web/cya2.csproj`. The former `cya2.0` solution and project paths should not be used.
 
 ## 4. Create and initialize the local database
 
@@ -109,6 +122,11 @@ mysql --host=<host> --port=<port> --user=<setup-user> --password <database-name>
 The command above is an example only. Do not replace the placeholders with real credentials in this document.
 
 The application assumes the schema has already been applied. It does not create, alter, or drop persistent tables during normal operation. Donation imports create session-scoped temporary staging tables; the runtime account therefore needs the separate MySQL `CREATE TEMPORARY TABLES` permission for that workflow.
+
+Use two database accounts:
+
+- A schema setup account with the permissions required to create or update the schema.
+- A restricted application account for normal operation. It should not have `CREATE`, `ALTER`, `DROP`, or other persistent schema-management permissions. It does need the data permissions required by the application and `CREATE TEMPORARY TABLES` for imports.
 
 ## 5. Configure the application
 
@@ -206,12 +224,26 @@ HTTP:  http://localhost:5211
 Use HTTPS for Google OAuth:
 
 ```text
-dotnet run --project cya2.csproj --launch-profile https
+dotnet run --project src/Cya2.Web/cya2.csproj --launch-profile https
 ```
+
+The available project launch profiles are `https`, `Development`, and `cya2`. The `https` profile is recommended for local development because it uses the registered OAuth callback URL.
 
 If the local HTTPS certificate is not trusted, trust the development certificate using the standard .NET development-certificate procedure for the operating system.
 
 On startup, the application performs a database availability check. If the database is unavailable, it is expected to enter limited mode rather than crash.
+
+### Azure deployment
+
+The repository workflow is `.github/workflows/azure-webapps-dotnet-core.yml`. It currently:
+
+- Runs on pushes to `main` or by manual workflow dispatch.
+- Installs the .NET `10.0.x` SDK family.
+- Restores and builds `Cya2.sln`.
+- Publishes `src/Cya2.Web/cya2.csproj`.
+- Deploys the published package to the Azure Web App configured by the `AZURE_WEBAPP_NAME` workflow variable.
+
+The deployment requires the Azure OIDC secrets configured in GitHub Actions: `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, and `AZURE_SUBSCRIPTION_ID`. The Azure Web App still requires its production connection string, Google OAuth settings, and other environment-specific values to be configured outside the repository.
 
 ## 8. Load development data
 
@@ -251,7 +283,7 @@ Recommended local storage options are .NET user secrets, environment variables, 
 The following information is not available or not confirmed in the repository:
 
 1. Exact .NET SDK version and whether a `global.json` should be added.
-2. Final target framework decision for the supporting .NET 8 projects.
+2. Confirmation that all projects should remain on .NET 10.
 3. Supported and tested MySQL version.
 4. Local database creation procedure and database name convention.
 5. Local schema setup account and restricted runtime account responsibilities.
@@ -264,4 +296,4 @@ The following information is not available or not confirmed in the repository:
 12. Supported operating systems and required local tooling.
 13. Approved synthetic data and Excel fixtures.
 14. EPPlus licensing confirmation for the organization and the intended development/deployment environments.
-15. CI workflow and deployment environment details; no workflow configuration was confirmed during this inventory.
+15. Final Azure Web App settings, production connection string, Google OAuth redirect URI, and database hosting details.
