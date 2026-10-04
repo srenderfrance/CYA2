@@ -4,9 +4,19 @@
 -- rows before inserting the data so it can be rerun safely.
 
 SET @fixture_class = 'General Administration:Fundraising:General Giving';
+SET @fixture_fund = 'Synthetic Accounting';
 
 DELETE FROM AccountingData
 WHERE Num LIKE 'ACC-SYNTH-%';
+
+DELETE FROM Accounts
+WHERE Fund = @fixture_fund
+  AND AccountNumber = '2200000';
+
+INSERT INTO Accounts
+	(Fund, AccountingClass, AccountNumber, Overhead, SoftCredit, BalanceAdjustment, OtherFunds)
+VALUES
+	(@fixture_fund, @fixture_class, '2200000', 0.00, '', 0.00, FALSE);
 
 INSERT INTO AccountingData
 	(AccountingClass, Date, Num, Amount, AccountNumber, Account, Type)
