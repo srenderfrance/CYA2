@@ -3,6 +3,7 @@ using Cya2.Application.Services;
 using Cya2.Core.Interfaces;
 using Cya2.Core.Services;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 
 namespace Cya2.Application.Extensions;
 
@@ -60,6 +61,8 @@ public static class ServiceCollectionExtensions
         // Cache invalidation — clears all session caches after import or rollback
         services.AddSingleton<IImportCacheInvalidator, ImportCacheInvalidator>();
         services.AddSingleton<ImportPreviewStore>();
+        services.AddOptions<ImportUploadOptions>();
+        services.AddSingleton<ImportUploadValidator>();
         services.AddScoped<IImportOrchestrationService, ImportOrchestrationService>();
         services.AddScoped<IRollbackService, RollbackOrchestrationService>();
 

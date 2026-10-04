@@ -80,12 +80,12 @@ Ordered from simplest and lowest risk to most complex and highest risk. User dec
 
 ### 3. Upload validation and resource limits
 
-- [ ] Add an explicit maximum request and file size after the owner chooses legitimate spreadsheet limits.
-- [ ] Accept only the expected `.xlsx` extension and content type.
-- [ ] Validate the workbook signature and ensure EPPlus can open it before processing.
-- [ ] Reject oversized, empty, wrong-type, corrupt, and invalid workbooks with controlled responses.
-- [ ] Avoid unrestricted upload streams and memory usage during validation and processing.
-- [ ] Add tests for valid, oversized, wrong-type, corrupt, and malformed files.
+- [x] Add an explicit maximum request and file size after the owner chooses legitimate spreadsheet limits. The configured limit is 5,000 KB (5,120,000 bytes).
+- [x] Accept only the expected `.xlsx` extension and validate the OOXML package signature.
+- [ ] Validate the workbook with EPPlus before processing.
+- [x] Reject oversized, empty, wrong-type, corrupt, and invalid package uploads with controlled responses.
+- [ ] Avoid unrestricted upload streams and memory usage during validation and processing. The upload is bounded, but previews remain in bounded in-memory storage.
+- [x] Add tests for valid, oversized, wrong-type, corrupt, and malformed package uploads.
 
 ### 4. Import retention and cleanup
 

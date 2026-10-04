@@ -1,6 +1,7 @@
 using System.Threading;
 using System.Threading.Tasks;
 using Cya2.Application.Interfaces;
+using Cya2.Application.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -15,17 +16,20 @@ namespace cya2.Controllers
     {
         private readonly IImportOrchestrationService _importService;
         private readonly ILogger<UploadController> _logger;
+        private readonly ImportUploadOptions _uploadOptions;
 
         public UploadController(
             IImportOrchestrationService importService,
-            ILogger<UploadController> logger)
+            ILogger<UploadController> logger,
+            Microsoft.Extensions.Options.IOptions<ImportUploadOptions> uploadOptions)
         {
             _importService = importService;
             _logger = logger;
+            _uploadOptions = uploadOptions.Value;
         }
 
         [HttpPost("donations/preview")]
-        [RequestSizeLimit(long.MaxValue)]
+        [RequestSizeLimit(ImportUploadOptions.DefaultMaximumUploadBytes)]
         public async Task<ActionResult<FilePreviewResult>> PreviewDonations([FromForm] IFormFile file, CancellationToken ct)
         {
             if (file == null || file.Length == 0)
@@ -35,9 +39,19 @@ namespace cya2.Controllers
 
             _logger.LogInformation("Donation preview upload received. Bytes={Bytes}", file.Length);
 
+            if (file.Length > _uploadOptions.MaximumUploadBytes)
+                return StatusCode(StatusCodes.Status413PayloadTooLarge, "The uploaded file exceeds the maximum allowed size.");
+
             await using var stream = file.OpenReadStream();
-            var preview = await _importService.PreviewAsync(stream, "donations", file.FileName, file.ContentType ?? string.Empty, ct);
-            return Ok(preview);
+            try
+            {
+                var preview = await _importService.PreviewAsync(stream, "donations", file.FileName, file.ContentType ?? string.Empty, ct);
+                return Ok(preview);
+            }
+            catch (ImportUploadValidationException exception)
+            {
+                return BadRequest(exception.Message);
+            }
         }
 
         [HttpPost("donations/confirm")]
@@ -54,7 +68,7 @@ namespace cya2.Controllers
         }
 
         [HttpPost("accounting/preview")]
-        [RequestSizeLimit(long.MaxValue)]
+        [RequestSizeLimit(ImportUploadOptions.DefaultMaximumUploadBytes)]
         public async Task<ActionResult<FilePreviewResult>> PreviewAccounting([FromForm] IFormFile file, CancellationToken ct)
         {
             if (file == null || file.Length == 0)
@@ -64,9 +78,19 @@ namespace cya2.Controllers
 
             _logger.LogInformation("Accounting preview upload received. Bytes={Bytes}", file.Length);
 
+            if (file.Length > _uploadOptions.MaximumUploadBytes)
+                return StatusCode(StatusCodes.Status413PayloadTooLarge, "The uploaded file exceeds the maximum allowed size.");
+
             await using var stream = file.OpenReadStream();
-            var preview = await _importService.PreviewAsync(stream, "accounting", file.FileName, file.ContentType ?? string.Empty, ct);
-            return Ok(preview);
+            try
+            {
+                var preview = await _importService.PreviewAsync(stream, "accounting", file.FileName, file.ContentType ?? string.Empty, ct);
+                return Ok(preview);
+            }
+            catch (ImportUploadValidationException exception)
+            {
+                return BadRequest(exception.Message);
+            }
         }
 
         [HttpPost("accounting/confirm")]

@@ -169,12 +169,15 @@ The code recognizes the following optional settings:
   "Import": {
 	"BatchSize": 1000,
 	"UseLocalInfile": false,
-	"MaxAttempts": 3
+	"MaxAttempts": 3,
+	"MaximumUploadBytes": 5120000
   }
 }
 ```
 
 The values shown are the current code defaults or safe local-development values. `UseLocalInfile` also depends on the MySQL connection configuration allowing local infile operations. Enable it only after the security implications and server settings have been confirmed.
+
+Uploaded donation and accounting workbooks must use the `.xlsx` extension and are limited to 5,000 KB (5,120,000 bytes). The application validates the OOXML package signature before retaining a preview. This limit was selected because current workbooks are below 3,000 KB while allowing room for growth.
 
 ### Cache settings
 

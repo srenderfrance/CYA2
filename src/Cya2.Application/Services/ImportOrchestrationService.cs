@@ -12,18 +12,21 @@ public sealed class ImportOrchestrationService : IImportOrchestrationService
     private readonly IImportWorkQueue _workQueue;
     private readonly ILogger<ImportOrchestrationService> _logger;
     private readonly ImportPreviewStore _previews;
+    private readonly ImportUploadValidator _uploadValidator;
 
     public ImportOrchestrationService(
         IEnumerable<IImportProcessor> processors,
         IImportProgressService progressService,
         IImportWorkQueue workQueue,
         ImportPreviewStore previews,
+        ImportUploadValidator uploadValidator,
         ILogger<ImportOrchestrationService> logger)
     {
         _processors = processors.ToDictionary(p => p.ImportType, StringComparer.OrdinalIgnoreCase);
         _progressService = progressService;
         _workQueue = workQueue;
         _previews = previews;
+        _uploadValidator = uploadValidator;
         _logger = logger;
     }
 
@@ -37,18 +40,17 @@ public sealed class ImportOrchestrationService : IImportOrchestrationService
         ArgumentNullException.ThrowIfNull(file);
         GetProcessor(importType);
 
-        using var memory = new MemoryStream();
-        await file.CopyToAsync(memory, cancellationToken);
+        var data = await _uploadValidator.ReadAndValidateAsync(file, fileName, cancellationToken);
 
         var previewId = Guid.NewGuid().ToString("N");
-        _previews.Set(previewId, new ImportPreview(memory.ToArray(), fileName ?? string.Empty, contentType ?? string.Empty, DateTime.UtcNow));
-        _logger.LogInformation("Created {ImportType} import preview {PreviewId} ({Size} bytes)", importType, previewId, memory.Length);
+        _previews.Set(previewId, new ImportPreview(data, fileName ?? string.Empty, contentType ?? string.Empty, DateTime.UtcNow));
+        _logger.LogInformation("Created {ImportType} import preview {PreviewId} ({Size} bytes)", importType, previewId, data.Length);
 
         return new FilePreviewResult
         {
             PreviewId = previewId,
             FileName = fileName ?? string.Empty,
-            FileSizeBytes = memory.Length,
+            FileSizeBytes = data.Length,
             ContentType = contentType ?? string.Empty
         };
     }
