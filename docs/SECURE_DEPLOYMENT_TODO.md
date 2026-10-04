@@ -82,6 +82,8 @@ Use this checklist to prepare the application for safe local setup, deployment, 
 - [x] Document the retention period.
 - [x] Add tests proving expired records are removed.
 
+Production policy: upload previews and in-memory import progress records are retained for a maximum of 15 minutes. Cleanup runs every minute; terminal progress records may also be removed when the progress dialog closes. This policy applies to production as well as local and deployed non-production environments.
+
 ### 7. Tie imports to the admin who started them
 
 - [ ] Record the authenticated admin ID when creating an import preview.

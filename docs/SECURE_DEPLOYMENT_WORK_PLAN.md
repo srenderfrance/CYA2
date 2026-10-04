@@ -41,10 +41,10 @@ These items require synthetic business data, production access, credentials, or 
 - [ ] Define the production connection-string and secret-manager policy without sharing secrets in the repository.
 - [ ] Provide the production Google OAuth project, client, redirect URI, and allowed users.
 - [ ] Decide the largest legitimate spreadsheet size for each import workflow.
-- [ ] Choose upload-preview and import-progress retention periods.
+- [x] Choose upload-preview and import-progress retention periods: 15 minutes in production and other deployed environments.
 - [ ] Choose the authentication cookie lifetime and session-revalidation policy.
 - [ ] Decide whether `Import:UseLocalInfile` is permitted in approved environments.
-- [ ] Confirm EPPlus licensing for the organization and deployment environments.
+- [x] Confirm EPPlus licensing for the organization and deployment environments. Servant Partners is a legal US nonprofit, and CYA2 is used only for its internal operations; it is not sold, licensed, or provided to other organizations. Retain the existing Polyform Noncommercial notices and review licensing if the use changes.
 
 ### Credential and production verification
 
@@ -95,7 +95,7 @@ Ordered from simplest and lowest risk to most complex and highest risk. User dec
 - [x] Add tests proving expired previews are removed and active previews are retained.
 - [x] Document the retention policy and cleanup behavior.
 
-Implementation note: previews and progress records are held in memory. A hosted cleanup service runs every minute and removes records older than 15 minutes. Terminal progress records are also removed when the progress dialog closes; active imports remain protected until completion or timeout.
+Production policy and implementation note: previews and progress records are held in memory for a maximum of 15 minutes in production and other deployed environments. A hosted cleanup service runs every minute and removes records older than 15 minutes. Terminal progress records are also removed when the progress dialog closes; active imports remain protected until completion or timeout.
 
 ### 5. Import ownership and authorization
 

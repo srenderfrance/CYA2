@@ -23,12 +23,13 @@ The application database is a new database. It is populated from current exports
 
 All projects currently target `net10.0`.
 
-Install a .NET 10 SDK capable of building the solution. The repository does not currently pin an SDK with a `global.json` file.
+Install the .NET SDK version specified by the repository's root `global.json` file:
 
-**Required from project owner:**
+```text
+10.0.401
+```
 
-- The exact .NET SDK version to standardize on locally and in CI.
-- Whether the repository should add a `global.json` file to pin the SDK version.
+The `global.json` configuration allows later patch updates in the same feature band and does not allow prerelease SDKs. The GitHub Actions workflow uses the same `10.0.401` SDK version.
 
 ### MySQL
 
@@ -190,6 +191,10 @@ The current configuration supports:
 
 These settings are optional unless a local test requires different cache behavior.
 
+### Import retention
+
+The production retention policy for in-memory upload previews and import progress records is a maximum of 15 minutes. Cleanup runs every minute, and terminal progress records may also be removed when the progress dialog closes. The same 15-minute policy applies to local and other deployed environments unless a future documented policy change is approved.
+
 ## 6. Add the initial local application user
 
 Google sign-in is matched to an application user in the `Users` table. A local user must be added by an administrator or setup process after the schema is applied.
@@ -238,7 +243,7 @@ On startup, the application performs a database availability check. If the datab
 The repository workflow is `.github/workflows/azure-webapps-dotnet-core.yml`. It currently:
 
 - Runs on pushes to `main` or by manual workflow dispatch.
-- Installs the .NET `10.0.x` SDK family.
+- Installs the .NET SDK `10.0.401` specified by the repository workflow and `global.json`.
 - Restores and builds `Cya2.sln`.
 - Publishes `src/Cya2.Web/cya2.csproj`.
 - Deploys the published package to the Azure Web App configured by the `AZURE_WEBAPP_NAME` workflow variable.
@@ -282,18 +287,17 @@ Recommended local storage options are .NET user secrets, environment variables, 
 
 The following information is not available or not confirmed in the repository:
 
-1. Exact .NET SDK version and whether a `global.json` should be added.
-2. Confirmation that all projects should remain on .NET 10.
-3. Supported and tested MySQL version.
-4. Local database creation procedure and database name convention.
-5. Local schema setup account and restricted runtime account responsibilities.
-6. Required MySQL grants, including the temporary-table grant.
-7. Standard local connection-string format and TLS requirements.
-8. Google Cloud project, OAuth client, authorized redirect URIs, and local sign-in users.
-9. Procedure for adding the first local administrator to `Users`.
-10. Complete list of required environment settings for the chosen hosting and development environments.
-11. Whether `Import:UseLocalInfile` should remain disabled or be enabled in approved environments.
-12. Supported operating systems and required local tooling.
-13. Approved synthetic data and Excel fixtures.
-14. EPPlus licensing confirmation for the organization and the intended development/deployment environments.
-15. Final Azure Web App settings, production connection string, Google OAuth redirect URI, and database hosting details.
+1. Supported and tested MySQL version.
+2. Local database creation procedure and database name convention.
+3. Local schema setup account and restricted runtime account responsibilities.
+4. Required MySQL grants, including the temporary-table grant.
+5. Standard local connection-string format and TLS requirements.
+6. Google Cloud project, OAuth client, authorized redirect URIs, and local sign-in users.
+7. Procedure for adding the first local administrator to `Users`.
+8. Complete list of required environment settings for the chosen hosting and development environments.
+9. Whether `Import:UseLocalInfile` should remain disabled or be enabled in approved environments.
+10. Supported operating systems and required local tooling.
+11. Approved synthetic data and Excel fixtures.
+12. Final Azure Web App settings, production connection string, Google OAuth redirect URI, and database hosting details.
+
+EPPlus licensing decision: Servant Partners is a legal US nonprofit using CYA2 only for internal operations. The application is not sold, licensed, or provided to other organizations. Retain the existing Polyform Noncommercial notices and review licensing before any change to this use.
