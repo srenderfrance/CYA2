@@ -33,8 +33,7 @@ namespace cya2.Controllers
                 return BadRequest("No file uploaded");
             }
 
-            _logger.LogInformation("Donation preview upload: {FileName}, {Size} bytes, {ContentType}",
-                file.FileName, file.Length, file.ContentType ?? "");
+            _logger.LogInformation("Donation preview upload received. Bytes={Bytes}", file.Length);
 
             await using var stream = file.OpenReadStream();
             var preview = await _importService.PreviewAsync(stream, "donations", file.FileName, file.ContentType ?? string.Empty, ct);
@@ -63,8 +62,7 @@ namespace cya2.Controllers
                 return BadRequest("No file uploaded");
             }
 
-            _logger.LogInformation("Accounting preview upload: {FileName}, {Size} bytes, {ContentType}",
-                file.FileName, file.Length, file.ContentType ?? "");
+            _logger.LogInformation("Accounting preview upload received. Bytes={Bytes}", file.Length);
 
             await using var stream = file.OpenReadStream();
             var preview = await _importService.PreviewAsync(stream, "accounting", file.FileName, file.ContentType ?? string.Empty, ct);

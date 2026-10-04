@@ -59,6 +59,7 @@ public static class ServiceCollectionExtensions
 
         // Cache invalidation — clears all session caches after import or rollback
         services.AddSingleton<IImportCacheInvalidator, ImportCacheInvalidator>();
+        services.AddSingleton<ImportPreviewStore>();
         services.AddScoped<IImportOrchestrationService, ImportOrchestrationService>();
         services.AddScoped<IRollbackService, RollbackOrchestrationService>();
 

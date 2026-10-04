@@ -1,5 +1,6 @@
 using System.Threading.Channels;
 using Cya2.Application.Interfaces;
+using Cya2.Application.Diagnostics;
 using Cya2.Core.Interfaces;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -75,8 +76,9 @@ public sealed class ImportWorkQueue : BackgroundService, IImportWorkQueue
 
     private void ReportFailure(ImportWorkItem workItem, Exception exception)
     {
-        var errorMessage = $"Import failed: {exception.Message}";
-        _logger.LogError(exception, "Background {ImportType} import failed for preview {PreviewId}", workItem.ImportType, workItem.PreviewId);
+        var errorMessage = ImportDiagnosticMessages.ImportFailed();
+        _logger.LogError("Background {ImportType} import failed for preview {PreviewId}. ExceptionType={ExceptionType}",
+            workItem.ImportType, workItem.PreviewId, ImportDiagnosticMessages.ExceptionCategory(exception));
         try
         {
             using var errorScope = _scopeFactory.CreateScope();
@@ -87,7 +89,8 @@ public sealed class ImportWorkQueue : BackgroundService, IImportWorkQueue
         }
         catch (Exception reportingException)
         {
-            _logger.LogError(reportingException, "Could not report failed import {ProgressId}", workItem.ProgressId);
+            _logger.LogError("Could not report failed import {ProgressId}. ExceptionType={ExceptionType}",
+                workItem.ProgressId, ImportDiagnosticMessages.ExceptionCategory(reportingException));
         }
     }
 }
