@@ -4,18 +4,41 @@
 -- rows before inserting the data so it can be rerun safely.
 
 SET @fixture_fund = 'Test Fund';
+SET @intern_fund = 'Intern: Synthetic Intern';
+SET @separate_subfund = 'Synthetic Separate Fund';
+SET @merged_subfund = 'Synthetic Merged Fund';
 
 -- Remove only rows owned by this fixture so the script can be rerun safely in
 -- an isolated development database. Do not run this script against production.
 DELETE FROM DonationData
 WHERE GiftImportId LIKE 'SYNTH-DONOR-%';
 
+DELETE FROM SubAccounts
+WHERE SubFund IN (@separate_subfund, @merged_subfund);
+
+DELETE FROM Accounts
+WHERE AccountNumber IN ('SYNTH-ACCOUNT-001', 'SYNTH-INTERN-001');
+
+INSERT INTO Accounts
+	(Fund, AccountingClass, AccountNumber, Overhead, SoftCredit, BalanceAdjustment, OtherFunds)
+VALUES
+	(@fixture_fund, 'General Administration:Fundraising:General Giving', 'SYNTH-ACCOUNT-001', 0.00, '', 0.00, FALSE),
+	(@intern_fund, 'General Administration:Fundraising:General Giving', 'SYNTH-INTERN-001', 0.00, '', 0.00, FALSE);
+
+SET @primary_account_id = (SELECT AccountId FROM Accounts WHERE Fund = @fixture_fund LIMIT 1);
+
+INSERT INTO SubAccounts
+	(AccountId, SubFund, Kind)
+VALUES
+	(@primary_account_id, @separate_subfund, 'Separate'),
+	(@primary_account_id, @merged_subfund, 'Merged');
+
 DELETE FROM DonorContacts
-WHERE DonorId BETWEEN 900001 AND 900009;
+WHERE DonorId BETWEEN 900001 AND 900013;
 
 DELETE FROM Donors
-WHERE Id BETWEEN 900001 AND 900009
-  AND Fund = @fixture_fund;
+WHERE Id BETWEEN 900001 AND 900013
+  AND Fund IN (@fixture_fund, @intern_fund);
 
 INSERT INTO Donors
 	(Id, Fund, DisplayName, IdentityKey, ResolutionSource, ResolutionVersion)
@@ -28,7 +51,11 @@ VALUES
 	(900006, @fixture_fund, 'Donor6 CatchUp', 'donor6catchup', 'AccountName', 1),
 	(900007, @fixture_fund, 'Donor7 Quarterly', 'donor7quarterly', 'AccountName', 1),
 	(900008, @fixture_fund, 'Donor8 Yearly', 'donor8yearly', 'AccountName', 1),
-	(900009, @fixture_fund, 'Donor9 Sporadic', 'donor9sporadic', 'AccountName', 1)
+	(900009, @fixture_fund, 'Donor9 Sporadic', 'donor9sporadic', 'AccountName', 1),
+	(900010, @fixture_fund, 'Donor10 Separate Subaccount', 'donor10separatesubaccount', 'AccountName', 1),
+	(900011, @fixture_fund, 'Donor11 Merged Subaccount', 'donor11mergedsubaccount', 'AccountName', 1),
+	(900012, @intern_fund, 'Donor12 Intern Gift', 'donor12interngift', 'AccountName', 1),
+	(900013, @intern_fund, 'Donor13 Intern Gift', 'donor13interngift', 'AccountName', 1)
 ON DUPLICATE KEY UPDATE
 	DisplayName = VALUES(DisplayName),
 	ResolutionSource = VALUES(ResolutionSource),
