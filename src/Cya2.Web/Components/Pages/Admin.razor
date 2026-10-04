@@ -58,7 +58,6 @@
 
         <!-- Right group: upload controls -->
         <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="0.75rem" Class="admin-top-right" Style="max-width:100%; box-sizing:border-box;">
-            <!-- NOTE: No size limit for now. TODO: enforce a sensible max file size. -->
             <div style="display:flex; align-items:center; gap:0.5rem;">
                 <InputFile id="donationFileInput" style="display:none" OnChange="OnDonationInputFileChange" accept=".xlsx" />
                 <label for="donationFileInput" class="rz-button rz-button-primary" style="background-color:#0a3b6b; border-color:#0a3b6b; color: white; cursor: pointer; display:inline-flex; align-items:center; gap:0.5rem; padding:0 0.75rem; border-radius:4px; height:38px; font-size:14px;font-weight:600;">
@@ -759,7 +758,7 @@
                 var file = e.File;
                 if (file == null) return;
 
-                const long maxAllowedBytes = 512L * 1024 * 1024;
+                const long maxAllowedBytes = 5_000L * 1024;
                 await using var stream = file.OpenReadStream(maxAllowedBytes);
 
                 var preview = await ImportOrchestrationService.PreviewAsync(
@@ -776,7 +775,7 @@
                 {
                     Severity = NotificationSeverity.Error,
                     Summary = Localizer["UploadError"],
-                    Detail = ex.Message,
+                    Detail = "The upload could not be validated. Select a valid .xlsx workbook no larger than 5,000 KB.",
                     Duration = 4000
                 });
             }
@@ -789,7 +788,7 @@
                 var file = e.File;
                 if (file == null) return;
 
-                const long maxAllowedBytes = 512L * 1024 * 1024;
+                const long maxAllowedBytes = 5_000L * 1024;
                 await using var stream = file.OpenReadStream(maxAllowedBytes);
 
                 var preview = await ImportOrchestrationService.PreviewAsync(
@@ -806,7 +805,7 @@
                 {
                     Severity = NotificationSeverity.Error,
                     Summary = Localizer["UploadError"],
-                    Detail = ex.Message,
+                    Detail = "The upload could not be validated. Select a valid .xlsx workbook no larger than 5,000 KB.",
                     Duration = 4000
                 });
             }

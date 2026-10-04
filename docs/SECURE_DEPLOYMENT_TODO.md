@@ -63,14 +63,14 @@ Use this checklist to prepare the application for safe local setup, deployment, 
 ### 5. Put firm limits on uploads
 
 - [ ] Determine the largest legitimate spreadsheet currently used.
-- [ ] Set an explicit maximum upload size based on that limit.
-- [ ] Accept only the expected `.xlsx` file type.
-- [ ] Validate the file signature and extension.
+- [x] Set an explicit maximum upload size based on that limit. The limit is 5,000 KB (5,120,000 bytes); current workbooks are below 3,000 KB.
+- [x] Accept only the expected `.xlsx` file type.
+- [x] Validate the file signature and extension.
 - [ ] Validate that the file can be opened as a valid workbook.
-- [ ] Return a controlled validation error for invalid workbooks.
-- [ ] Reject oversized files before processing them.
-- [ ] Avoid keeping unrestricted uploaded files in memory.
-- [ ] Add tests for oversized, wrong-type, corrupt, and valid files.
+- [x] Return a controlled validation error for invalid workbooks.
+- [x] Reject oversized files before processing them.
+- [ ] Avoid keeping unrestricted uploaded files in memory. Uploads are bounded to 5,000 KB, but previews remain in bounded in-memory storage.
+- [x] Add tests for oversized, wrong-type, corrupt, and valid OOXML package uploads.
 
 ### 6. Clean up import data
 

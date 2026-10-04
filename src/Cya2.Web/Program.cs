@@ -22,6 +22,7 @@ using System.Security.Claims;
 using System.Threading;
 using System.Threading.RateLimiting;
 using Cya2.Application.Interfaces;
+using Cya2.Application.Services;
 using Cya2.Core.Interfaces;
 using Cya2.Core.ValueObjects;
 using Cya2.Application.Extensions;
@@ -79,6 +80,8 @@ builder.Services.AddLogging(l =>
 });
 
 builder.Services.AddCya2HostServices();
+builder.Services.Configure<ImportUploadOptions>(
+    builder.Configuration.GetSection(ImportUploadOptions.SectionName));
 
 builder.Services.AddAuthenticationCore();
 builder.Services.AddCascadingAuthenticationState();
