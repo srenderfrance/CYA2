@@ -16,6 +16,8 @@ namespace cya2.Services.Imports
 
     public sealed class ImportProgress
     {
+        internal DateTime CreatedAtUtc { get; set; }
+        internal DateTime LastUpdatedAtUtc { get; set; }
         public int TotalRows { get; set; }
         public int InsertedRows { get; set; }
         public int FailedRows { get; set; }
@@ -33,25 +35,29 @@ namespace cya2.Services.Imports
 
         public void Start(string id)
         {
-            var prog = new ImportProgress();
+            var now = DateTime.UtcNow;
+            var prog = new ImportProgress { CreatedAtUtc = now, LastUpdatedAtUtc = now };
             _store[id] = prog;
         }
 
         public void Start(string id, int expectedRows)
         {
-            var prog = new ImportProgress { ExpectedRows = expectedRows };
+            var now = DateTime.UtcNow;
+            var prog = new ImportProgress { ExpectedRows = expectedRows, CreatedAtUtc = now, LastUpdatedAtUtc = now };
             _store[id] = prog;
         }
 
         public void Start(string id, string importType)
         {
-            var prog = new ImportProgress { ImportType = importType };
+            var now = DateTime.UtcNow;
+            var prog = new ImportProgress { ImportType = importType, CreatedAtUtc = now, LastUpdatedAtUtc = now };
             _store[id] = prog;
         }
 
         public void AddStep(string id, string stepName, string status = "Starting...")
         {
             if (!_store.TryGetValue(id, out var prog)) return;
+            prog.LastUpdatedAtUtc = DateTime.UtcNow;
 
             // Mark previous step as inactive
             foreach (var step in prog.Steps)
@@ -72,6 +78,7 @@ namespace cya2.Services.Imports
         public void UpdateStep(string id, string stepName, string status, string? details = null)
         {
             if (!_store.TryGetValue(id, out var prog)) return;
+            prog.LastUpdatedAtUtc = DateTime.UtcNow;
 
             var step = prog.Steps.FirstOrDefault(s => s.Name == stepName);
             if (step != null)
@@ -84,6 +91,7 @@ namespace cya2.Services.Imports
         public void CompleteStep(string id, string stepName, string completionStatus, string? details = null)
         {
             if (!_store.TryGetValue(id, out var prog)) return;
+            prog.LastUpdatedAtUtc = DateTime.UtcNow;
 
             var step = prog.Steps.FirstOrDefault(s => s.Name == stepName);
             if (step != null)
@@ -98,6 +106,7 @@ namespace cya2.Services.Imports
         public void Report(string id, int totalRows, int insertedRows, int failedRows)
         {
             if (!_store.TryGetValue(id, out var prog)) return;
+            prog.LastUpdatedAtUtc = DateTime.UtcNow;
             prog.TotalRows = totalRows;
             prog.InsertedRows = insertedRows;
             prog.FailedRows = failedRows;
@@ -106,6 +115,7 @@ namespace cya2.Services.Imports
         public void Report(string id, int totalRows, int insertedRows, int failedRows, string? status)
         {
             if (!_store.TryGetValue(id, out var prog)) return;
+            prog.LastUpdatedAtUtc = DateTime.UtcNow;
             prog.TotalRows = totalRows;
             prog.InsertedRows = insertedRows;
             prog.FailedRows = failedRows;
@@ -114,17 +124,18 @@ namespace cya2.Services.Imports
 
         public void SetExpected(string id, int expectedRows)
         {
-            if (_store.TryGetValue(id, out var prog)) prog.ExpectedRows = expectedRows;
+            if (_store.TryGetValue(id, out var prog)) { prog.ExpectedRows = expectedRows; prog.LastUpdatedAtUtc = DateTime.UtcNow; }
         }
 
         public void SetStatus(string id, string status)
         {
-            if (_store.TryGetValue(id, out var prog)) prog.Status = status;
+            if (_store.TryGetValue(id, out var prog)) { prog.Status = status; prog.LastUpdatedAtUtc = DateTime.UtcNow; }
         }
 
         public void AddErrors(string id, IEnumerable<string> errors)
         {
             if (!_store.TryGetValue(id, out var prog)) return;
+            prog.LastUpdatedAtUtc = DateTime.UtcNow;
             if (errors == null) return;
             lock (prog.Errors)
             {
@@ -137,6 +148,7 @@ namespace cya2.Services.Imports
             if (_store.TryGetValue(id, out var prog))
             {
                 prog.IsComplete = true;
+                prog.LastUpdatedAtUtc = DateTime.UtcNow;
                 if (string.IsNullOrEmpty(prog.Status)) prog.Status = "Complete";
 
                 // Mark all steps as inactive
@@ -145,6 +157,28 @@ namespace cya2.Services.Imports
                     step.IsActive = false;
                 }
             }
+        }
+
+        public bool Remove(string id) => _store.TryRemove(id, out _);
+
+        public int RemoveExpired(DateTime utcNow, TimeSpan lifetime)
+        {
+            var removed = 0;
+            foreach (var entry in _store)
+            {
+                var age = utcNow - entry.Value.LastUpdatedAtUtc;
+                if (!entry.Value.IsComplete && age < lifetime)
+                {
+                    continue;
+                }
+
+                if (age >= lifetime && _store.TryRemove(new KeyValuePair<string, ImportProgress>(entry.Key, entry.Value)))
+                {
+                    removed++;
+                }
+            }
+
+            return removed;
         }
 
         public ImportProgress? Get(string id)

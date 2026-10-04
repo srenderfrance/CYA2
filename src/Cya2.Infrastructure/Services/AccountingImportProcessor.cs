@@ -7,6 +7,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using OfficeOpenXml;
 using Cya2.Application.Interfaces;
+using Cya2.Application.Diagnostics;
 using Cya2.Core.DTOs;
 using Cya2.Core.Interfaces;
 using ImportResult = Cya2.Application.Interfaces.ImportResult;
@@ -65,11 +66,9 @@ namespace Cya2.Infrastructure.Services
             var map = BuildColumnMap(ws, headerRow);
 
             _logger.LogInformation(
-                "Accounting import header validation: worksheet={Worksheet} headerRow={HeaderRow} dimension={Dimension} headings={Headings}",
-                ws.Name,
+                "Accounting import header validation: headerRow={HeaderRow} worksheetData={WorksheetData}",
                 headerRow,
-                ws.Dimension?.Address ?? "(none)",
-                string.Join(", ", GetHeaderDescriptions(ws, headerRow)));
+                ws.Dimension is not null);
 
             string[] required = { "Class", "Date", "Num", "Amount", "Account #", "Account", "Type" };
             foreach (var col in required)
@@ -137,8 +136,8 @@ namespace Cya2.Infrastructure.Services
 
                 if (string.IsNullOrWhiteSpace(cls) && string.IsNullOrWhiteSpace(num) && string.IsNullOrWhiteSpace(acct)) continue;
 
-                if (!ExcelParsingHelpers.TryParseDateUS(dtTxt, out var date)) { result.FailedRows++; result.Errors.Add($"Row {r}: invalid Date '{dtTxt}'"); continue; }
-                if (!ExcelParsingHelpers.TryParseDoubleUS(amtTxt, out var amount)) { result.FailedRows++; result.Errors.Add($"Row {r}: invalid Amount '{amtTxt}'"); continue; }
+                if (!ExcelParsingHelpers.TryParseDateUS(dtTxt, out var date)) { result.FailedRows++; result.Errors.Add(ImportDiagnosticMessages.InvalidCell(r, "Date")); continue; }
+                if (!ExcelParsingHelpers.TryParseDoubleUS(amtTxt, out var amount)) { result.FailedRows++; result.Errors.Add(ImportDiagnosticMessages.InvalidCell(r, "Amount")); continue; }
 
                 batch.Add(new AccountingImportRowDto
                 {
@@ -192,17 +191,5 @@ namespace Cya2.Infrastructure.Services
             return map;
         }
 
-        private static IEnumerable<string> GetHeaderDescriptions(OfficeOpenXml.ExcelWorksheet ws, int headerRow)
-        {
-            int lastCol = ws.Dimension?.End.Column ?? 0;
-            for (int column = 1; column <= lastCol; column++)
-            {
-                var heading = ws.Cells[headerRow, column]?.Text ?? string.Empty;
-                yield return $"{ExcelCellAddress.GetColumnLetter(column)}={FormatLogValue(heading)}";
-            }
-        }
-
-        private static string FormatLogValue(string value)
-            => string.IsNullOrEmpty(value) ? "<blank>" : $"'{value.Replace("'", "''", StringComparison.Ordinal)}'";
     }
 }

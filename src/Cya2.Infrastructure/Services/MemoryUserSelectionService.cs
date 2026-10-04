@@ -20,18 +20,18 @@ namespace Cya2.Infrastructure.Services
         {
             if (string.IsNullOrWhiteSpace(userId) || string.IsNullOrWhiteSpace(account))
             {
-                _logger.LogDebug("MemoryUserSelectionService.SetSelectedAccount called with empty userId or account. userId='{UserId}', account='{Account}'", userId, account);
+                _logger.LogDebug("MemoryUserSelectionService.SetSelectedAccount called with empty userId or account.");
                 return;
             }
             var key = UserKey(userId);
             if (_cache.TryGetValue(key, out string? existing) && string.Equals(existing, account, StringComparison.OrdinalIgnoreCase))
             {
-                _logger.LogDebug("MemoryUserSelectionService: Selection unchanged for {UserId} -> {Account}; skipping write", userId, account);
+                _logger.LogDebug("MemoryUserSelectionService: Selection unchanged; skipping write.");
                 return;
             }
             var options = new MemoryCacheEntryOptions { AbsoluteExpirationRelativeToNow = ttl ?? _defaultTtl };
             _cache.Set(key, account, options);
-            _logger.LogDebug("MemoryUserSelectionService: Set selection for {UserId} -> {Account} (ttl={Ttl})", userId, account, options.AbsoluteExpirationRelativeToNow);
+            _logger.LogDebug("MemoryUserSelectionService: Selection stored (ttl={Ttl})", options.AbsoluteExpirationRelativeToNow);
         }
 
         public bool TryGetSelectedAccount(string userId, out string account)
@@ -45,7 +45,7 @@ namespace Cya2.Infrastructure.Services
             var key = UserKey(userId);
             var found = _cache.TryGetValue<string?>(key, out var cachedAccount);
             account = cachedAccount ?? string.Empty;
-            _logger.LogDebug("MemoryUserSelectionService: TryGet for {UserId} -> found={Found}, account='{Account}'", userId, found, account);
+            _logger.LogDebug("MemoryUserSelectionService: Selection lookup completed. Found={Found}", found);
             return found;
         }
 

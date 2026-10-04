@@ -7,23 +7,23 @@ namespace Cya2.Application.Services;
 
 public sealed class ImportOrchestrationService : IImportOrchestrationService
 {
-    private sealed record Preview(byte[] Data, string FileName, string ContentType, DateTime CreatedAtUtc);
-
     private readonly IReadOnlyDictionary<string, IImportProcessor> _processors;
     private readonly IImportProgressService _progressService;
     private readonly IImportWorkQueue _workQueue;
     private readonly ILogger<ImportOrchestrationService> _logger;
-    private readonly ConcurrentDictionary<string, Preview> _previews = new(StringComparer.Ordinal);
+    private readonly ImportPreviewStore _previews;
 
     public ImportOrchestrationService(
         IEnumerable<IImportProcessor> processors,
         IImportProgressService progressService,
         IImportWorkQueue workQueue,
+        ImportPreviewStore previews,
         ILogger<ImportOrchestrationService> logger)
     {
         _processors = processors.ToDictionary(p => p.ImportType, StringComparer.OrdinalIgnoreCase);
         _progressService = progressService;
         _workQueue = workQueue;
+        _previews = previews;
         _logger = logger;
     }
 
@@ -41,8 +41,8 @@ public sealed class ImportOrchestrationService : IImportOrchestrationService
         await file.CopyToAsync(memory, cancellationToken);
 
         var previewId = Guid.NewGuid().ToString("N");
-        _previews[previewId] = new Preview(memory.ToArray(), fileName ?? string.Empty, contentType ?? string.Empty, DateTime.UtcNow);
-        _logger.LogInformation("Created {ImportType} import preview {PreviewId} for {FileName} ({Size} bytes)", importType, previewId, fileName, memory.Length);
+        _previews.Set(previewId, new ImportPreview(memory.ToArray(), fileName ?? string.Empty, contentType ?? string.Empty, DateTime.UtcNow));
+        _logger.LogInformation("Created {ImportType} import preview {PreviewId} ({Size} bytes)", importType, previewId, memory.Length);
 
         return new FilePreviewResult
         {
@@ -58,7 +58,7 @@ public sealed class ImportOrchestrationService : IImportOrchestrationService
         if (string.IsNullOrWhiteSpace(previewId))
             throw new ArgumentException("PreviewId is required", nameof(previewId));
 
-        if (!_previews.TryRemove(previewId, out var preview))
+        if (!_previews.TryRemove(previewId, out var preview) || preview is null)
         {
             var expired = new ImportResult();
             expired.Errors.Add("Preview session expired. Please upload the file again.");
@@ -73,7 +73,7 @@ public sealed class ImportOrchestrationService : IImportOrchestrationService
 
     public async Task<ImportResult> StartImportFromPreviewAsync(string previewId, string importType, string? progressId = null)
     {
-        var result = new ImportResult { ProgressId = progressId ?? Guid.NewGuid().ToString("N") };
+        var result = new ImportResult { ProgressId = Guid.NewGuid().ToString("N") };
         _progressService.Start(result.ProgressId, importType);
 
         if (string.IsNullOrWhiteSpace(previewId))
@@ -83,7 +83,7 @@ public sealed class ImportOrchestrationService : IImportOrchestrationService
             return result;
         }
 
-        if (!_previews.TryRemove(previewId, out var preview))
+        if (!_previews.TryRemove(previewId, out var preview) || preview is null)
         {
             result.Errors.Add("Preview session expired. Please upload the file again.");
             _progressService.SetStatus(result.ProgressId, "Preview session expired");

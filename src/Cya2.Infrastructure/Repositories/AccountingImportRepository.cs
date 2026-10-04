@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Text;
 using Cya2.Core.DTOs;
 using Cya2.Core.Interfaces;
+using Cya2.Application.Diagnostics;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using MySql.Data.MySqlClient;
@@ -98,7 +99,7 @@ public sealed class AccountingImportRepository : IAccountingImportRepository
         catch (Exception ex)
         {
             _logger.LogError(ex, "Accounting backup/delete failed");
-            _progress.UpdateStep(progressId, "Database Backup", $"Failed: {ex.Message}");
+            _progress.UpdateStep(progressId, "Database Backup", "Failed");
             throw;
         }
     }
@@ -227,7 +228,7 @@ public sealed class AccountingImportRepository : IAccountingImportRepository
                 catch (Exception ex)
                 {
                     _logger.LogError(ex, "Row-by-row accounting insert failed");
-                    result.Errors.Add(ex.Message);
+                    result.Errors.Add(ImportDiagnosticMessages.ImportFailed());
                 }
             }
             return result;
@@ -235,7 +236,7 @@ public sealed class AccountingImportRepository : IAccountingImportRepository
         catch (Exception ex)
         {
             _logger.LogError(ex, "AccountingImportRepository.BulkInsertAsync failed");
-            result.Errors.Add(ex.Message);
+            result.Errors.Add(ImportDiagnosticMessages.ImportFailed());
             return result;
         }
         finally
