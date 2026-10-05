@@ -43,7 +43,9 @@ public sealed class ImportOrchestrationService : IImportOrchestrationService
         var data = await _uploadValidator.ReadAndValidateAsync(file, fileName, cancellationToken);
 
         var previewId = Guid.NewGuid().ToString("N");
-        _previews.Set(previewId, new ImportPreview(data, fileName ?? string.Empty, contentType ?? string.Empty, DateTime.UtcNow));
+        if (!_previews.TrySet(previewId, new ImportPreview(data, fileName ?? string.Empty, contentType ?? string.Empty, DateTime.UtcNow)))
+            throw new ImportUploadCapacityException("The application is at its limit for retained upload previews. Please try again after an existing preview is imported or expires.");
+
         _logger.LogInformation("Created {ImportType} import preview {PreviewId} ({Size} bytes)", importType, previewId, data.Length);
 
         return new FilePreviewResult

@@ -48,6 +48,10 @@ namespace cya2.Controllers
                 var preview = await _importService.PreviewAsync(stream, "donations", file.FileName, file.ContentType ?? string.Empty, ct);
                 return Ok(preview);
             }
+            catch (ImportUploadCapacityException exception)
+            {
+                return StatusCode(StatusCodes.Status429TooManyRequests, exception.Message);
+            }
             catch (ImportUploadValidationException exception)
             {
                 return BadRequest(exception.Message);
@@ -86,6 +90,10 @@ namespace cya2.Controllers
             {
                 var preview = await _importService.PreviewAsync(stream, "accounting", file.FileName, file.ContentType ?? string.Empty, ct);
                 return Ok(preview);
+            }
+            catch (ImportUploadCapacityException exception)
+            {
+                return StatusCode(StatusCodes.Status429TooManyRequests, exception.Message);
             }
             catch (ImportUploadValidationException exception)
             {

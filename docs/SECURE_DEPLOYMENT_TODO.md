@@ -62,14 +62,14 @@ Use this checklist to prepare the application for safe local setup, deployment, 
 
 ### 5. Put firm limits on uploads
 
-- [ ] Determine the largest legitimate spreadsheet currently used.
-- [x] Set an explicit maximum upload size based on that limit. The limit is 5,000 KB (5,120,000 bytes); current workbooks are below 3,000 KB.
+- [x] Determine the largest legitimate spreadsheet currently used. Review of files used over the last 20+ years found that the largest file was no more than 2,600 KB as of September 2026.
+- [x] Set an explicit maximum upload size based on that limit. The limit is 5,000 KB (5,120,000 bytes), providing headroom above the 2,600 KB largest file identified through September 2026.
 - [x] Accept only the expected `.xlsx` file type.
 - [x] Validate the file signature and extension.
-- [ ] Validate that the file can be opened as a valid workbook.
+- [x] Validate that the file can be opened as a valid workbook. Upload validation opens the OOXML package with EPPlus and requires at least one worksheet before storing the preview.
 - [x] Return a controlled validation error for invalid workbooks.
 - [x] Reject oversized files before processing them.
-- [ ] Avoid keeping unrestricted uploaded files in memory. Uploads are bounded to 5,000 KB, but previews remain in bounded in-memory storage.
+- [x] Avoid keeping unrestricted uploaded files in memory. Uploads are bounded to 5,000 KB, preview validation is limited to two simultaneous operations, and retained previews are limited to two previews/10 MB in aggregate. Because this is a single-location monolith with unusually low concurrent upload activity, bounded in-memory preview storage is acceptable; temporary-file or distributed storage is not currently required.
 - [x] Add tests for oversized, wrong-type, corrupt, and valid OOXML package uploads.
 
 ### 6. Clean up import data

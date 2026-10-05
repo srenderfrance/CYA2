@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using Microsoft.Extensions.Options;
 
 namespace Cya2.Application.Services;
 
@@ -6,12 +7,52 @@ public sealed record ImportPreview(byte[] Data, string FileName, string ContentT
 
 public sealed class ImportPreviewStore
 {
+    private readonly int _maximumRetainedPreviews;
+    private readonly long _maximumRetainedBytes;
     private readonly ConcurrentDictionary<string, ImportPreview> _previews = new(StringComparer.Ordinal);
+    private long _retainedBytes;
 
-    public void Set(string previewId, ImportPreview preview) => _previews[previewId] = preview;
+    public ImportPreviewStore(IOptions<ImportUploadOptions> options)
+    {
+        var settings = options.Value;
+        if (settings.MaximumRetainedPreviews <= 0 || settings.MaximumRetainedPreviewBytes <= 0)
+            throw new InvalidOperationException("Preview retention limits must be greater than zero.");
+
+        _maximumRetainedPreviews = settings.MaximumRetainedPreviews;
+        _maximumRetainedBytes = settings.MaximumRetainedPreviewBytes;
+    }
+
+    public bool TrySet(string previewId, ImportPreview preview)
+    {
+        lock (_previews)
+        {
+            if (_previews.Count >= _maximumRetainedPreviews ||
+                _retainedBytes > _maximumRetainedBytes - preview.Data.LongLength)
+            {
+                return false;
+            }
+
+            if (_previews.TryAdd(previewId, preview))
+            {
+                _retainedBytes += preview.Data.LongLength;
+                return true;
+            }
+
+            return false;
+        }
+    }
 
     public bool TryRemove(string previewId, out ImportPreview? preview)
-        => _previews.TryRemove(previewId, out preview);
+    {
+        lock (_previews)
+        {
+            if (!_previews.TryRemove(previewId, out preview) || preview is null)
+                return false;
+
+            _retainedBytes -= preview.Data.LongLength;
+            return true;
+        }
+    }
 
     public int RemoveExpired(DateTime utcNow, TimeSpan lifetime)
     {
@@ -23,9 +64,13 @@ public sealed class ImportPreviewStore
                 continue;
             }
 
-            if (_previews.TryRemove(new KeyValuePair<string, ImportPreview>(entry.Key, entry.Value)))
+            lock (_previews)
             {
-                removed++;
+                if (_previews.TryRemove(new KeyValuePair<string, ImportPreview>(entry.Key, entry.Value)))
+                {
+                    _retainedBytes -= entry.Value.Data.LongLength;
+                    removed++;
+                }
             }
         }
 
