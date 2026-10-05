@@ -22,8 +22,8 @@ WHERE AccountNumber IN ('SYNTH-ACCOUNT-001', 'SYNTH-INTERN-001');
 INSERT INTO Accounts
 	(Fund, AccountingClass, AccountNumber, Overhead, SoftCredit, BalanceAdjustment, OtherFunds)
 VALUES
-	(@fixture_fund, 'General Administration:Fundraising:General Giving', 'SYNTH-ACCOUNT-001', 0.00, '', 0.00, FALSE),
-	(@intern_fund, 'General Administration:Fundraising:General Giving', 'SYNTH-INTERN-001', 0.00, '', 0.00, FALSE);
+	(@fixture_fund, 'SyntheticData:Donations:General', 'SYNTH-ACCOUNT-001', 0.00, '', 0.00, FALSE),
+	(@intern_fund, 'SyntheticData:Donations:General', 'SYNTH-INTERN-001', 0.00, '', 0.00, FALSE);
 
 SET @primary_account_id = (SELECT AccountId FROM Accounts WHERE Fund = @fixture_fund LIMIT 1);
 

@@ -3,7 +3,7 @@
 -- against an isolated development database. It removes only its own fixture
 -- rows before inserting the data so it can be rerun safely.
 
-SET @fixture_class = 'General Administration:Fundraising:General Giving';
+SET @fixture_class = 'SyntheticData:Fundraising:General';
 SET @fixture_fund = 'Synthetic Accounting';
 
 DELETE FROM AccountingData
