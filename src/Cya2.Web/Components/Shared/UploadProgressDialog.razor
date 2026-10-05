@@ -3,6 +3,7 @@
 @inject NavigationManager Navigation
 @inject DialogService DialogService
 @inject cya2.Services.Imports.ImportProgressService ProgressService
+@inject Cya2.Application.Interfaces.IImportAuthorizationContext ImportAuthorizationContext
 @inject IStringLocalizer<Resource> Localizer
 
 @code {
@@ -64,7 +65,8 @@
                 return;
             }
 
-            var srv = ProgressService.Get(ProgressId);
+            var actor = await ImportAuthorizationContext.GetCurrentActorAsync();
+            var srv = actor is null ? null : ProgressService.GetOwned(ProgressId, actor.UserId);
             if (srv == null)
             {
                 _p.Status = GetLocalizedString("InitializingImport", "Initializing import...");

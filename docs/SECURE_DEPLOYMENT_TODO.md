@@ -86,14 +86,14 @@ Production policy: upload previews and in-memory import progress records are ret
 
 ### 7. Tie imports to the admin who started them
 
-- [ ] Record the authenticated admin ID when creating an import preview.
-- [ ] Record the authenticated admin ID when creating an import progress record.
-- [ ] Check the current admin permission when confirming an import.
-- [ ] Require the requesting admin to own the preview or progress record.
-- [ ] Prevent another signed-in user from viewing import progress by ID alone.
-- [ ] Prevent another signed-in user from confirming an import by ID alone.
-- [ ] Return a controlled authorization response for unauthorized access.
-- [ ] Add tests for cross-user preview and progress access.
+- [x] Record the authenticated admin ID when creating an import preview.
+- [x] Record the authenticated admin ID when creating an import progress record.
+- [x] Check the current admin permission when confirming an import.
+- [x] Require the requesting admin to own the preview or progress record.
+- [x] Prevent another signed-in user from viewing import progress by ID alone.
+- [x] Prevent another signed-in user from confirming an import by ID alone.
+- [x] Return a controlled authorization response for unauthorized access.
+- [x] Add tests for cross-user preview and progress access.
 
 ### 8. Handle revoked access promptly
 

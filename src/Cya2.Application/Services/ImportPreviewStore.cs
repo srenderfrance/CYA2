@@ -3,7 +3,7 @@ using Microsoft.Extensions.Options;
 
 namespace Cya2.Application.Services;
 
-public sealed record ImportPreview(byte[] Data, string FileName, string ContentType, DateTime CreatedAtUtc);
+public sealed record ImportPreview(byte[] Data, string FileName, string ContentType, DateTime CreatedAtUtc, string OwnerUserId, string ImportType);
 
 public sealed class ImportPreviewStore
 {
@@ -20,6 +20,26 @@ public sealed class ImportPreviewStore
 
         _maximumRetainedPreviews = settings.MaximumRetainedPreviews;
         _maximumRetainedBytes = settings.MaximumRetainedPreviewBytes;
+    }
+
+    public bool TryRemoveOwned(string previewId, string ownerUserId, string importType, out ImportPreview? preview)
+    {
+        lock (_previews)
+        {
+            if (!_previews.TryGetValue(previewId, out var candidate) ||
+                !string.Equals(candidate.OwnerUserId, ownerUserId, StringComparison.Ordinal) ||
+                !string.Equals(candidate.ImportType, importType, StringComparison.OrdinalIgnoreCase))
+            {
+                preview = null;
+                return false;
+            }
+
+            if (!_previews.TryRemove(previewId, out preview) || preview is null)
+                return false;
+
+            _retainedBytes -= preview.Data.LongLength;
+            return true;
+        }
     }
 
     public bool TrySet(string previewId, ImportPreview preview)

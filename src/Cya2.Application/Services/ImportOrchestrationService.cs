@@ -13,6 +13,7 @@ public sealed class ImportOrchestrationService : IImportOrchestrationService
     private readonly ILogger<ImportOrchestrationService> _logger;
     private readonly ImportPreviewStore _previews;
     private readonly ImportUploadValidator _uploadValidator;
+    private readonly IImportAuthorizationContext _authorizationContext;
 
     public ImportOrchestrationService(
         IEnumerable<IImportProcessor> processors,
@@ -20,6 +21,7 @@ public sealed class ImportOrchestrationService : IImportOrchestrationService
         IImportWorkQueue workQueue,
         ImportPreviewStore previews,
         ImportUploadValidator uploadValidator,
+        IImportAuthorizationContext authorizationContext,
         ILogger<ImportOrchestrationService> logger)
     {
         _processors = processors.ToDictionary(p => p.ImportType, StringComparer.OrdinalIgnoreCase);
@@ -27,6 +29,7 @@ public sealed class ImportOrchestrationService : IImportOrchestrationService
         _workQueue = workQueue;
         _previews = previews;
         _uploadValidator = uploadValidator;
+        _authorizationContext = authorizationContext;
         _logger = logger;
     }
 
@@ -40,10 +43,14 @@ public sealed class ImportOrchestrationService : IImportOrchestrationService
         ArgumentNullException.ThrowIfNull(file);
         GetProcessor(importType);
 
+        var actor = await _authorizationContext.GetCurrentActorAsync();
+        if (actor is null)
+            throw new ImportAuthorizationException();
+
         var data = await _uploadValidator.ReadAndValidateAsync(file, fileName, cancellationToken);
 
         var previewId = Guid.NewGuid().ToString("N");
-        if (!_previews.TrySet(previewId, new ImportPreview(data, fileName ?? string.Empty, contentType ?? string.Empty, DateTime.UtcNow)))
+        if (!_previews.TrySet(previewId, new ImportPreview(data, fileName ?? string.Empty, contentType ?? string.Empty, DateTime.UtcNow, actor.UserId, importType)))
             throw new ImportUploadCapacityException("The application is at its limit for retained upload previews. Please try again after an existing preview is imported or expires.");
 
         _logger.LogInformation("Created {ImportType} import preview {PreviewId} ({Size} bytes)", importType, previewId, data.Length);
@@ -62,7 +69,8 @@ public sealed class ImportOrchestrationService : IImportOrchestrationService
         if (string.IsNullOrWhiteSpace(previewId))
             throw new ArgumentException("PreviewId is required", nameof(previewId));
 
-        if (!_previews.TryRemove(previewId, out var preview) || preview is null)
+        var actor = await _authorizationContext.GetCurrentActorAsync();
+        if (actor is null || !_previews.TryRemoveOwned(previewId, actor.UserId, importType, out var preview) || preview is null)
         {
             var expired = new ImportResult();
             expired.Errors.Add("Preview session expired. Please upload the file again.");
@@ -70,7 +78,7 @@ public sealed class ImportOrchestrationService : IImportOrchestrationService
         }
 
         var progressId = Guid.NewGuid().ToString("N");
-        _progressService.Start(progressId, importType);
+        _progressService.Start(progressId, importType, actor.UserId);
         await using var stream = new MemoryStream(preview.Data, writable: false);
         return await GetProcessor(importType).ProcessAsync(stream, progressId, cancellationToken);
     }
@@ -78,7 +86,12 @@ public sealed class ImportOrchestrationService : IImportOrchestrationService
     public async Task<ImportResult> StartImportFromPreviewAsync(string previewId, string importType, string? progressId = null)
     {
         var result = new ImportResult { ProgressId = Guid.NewGuid().ToString("N") };
-        _progressService.Start(result.ProgressId, importType);
+        var actor = await _authorizationContext.GetCurrentActorAsync();
+        if (actor is null)
+        {
+            result.Errors.Add("The import is no longer available.");
+            return result;
+        }
 
         if (string.IsNullOrWhiteSpace(previewId))
         {
@@ -87,13 +100,14 @@ public sealed class ImportOrchestrationService : IImportOrchestrationService
             return result;
         }
 
-        if (!_previews.TryRemove(previewId, out var preview) || preview is null)
+        if (!_previews.TryRemoveOwned(previewId, actor.UserId, importType, out var preview) || preview is null)
         {
             result.Errors.Add("Preview session expired. Please upload the file again.");
-            _progressService.SetStatus(result.ProgressId, "Preview session expired");
+            result.ProgressId = null;
             return result;
         }
 
+        _progressService.Start(result.ProgressId!, importType, actor.UserId);
         var id = result.ProgressId;
         _logger.LogInformation("Queueing background {ImportType} import. PreviewId={PreviewId}, ProgressId={ProgressId}", importType, previewId, id);
         await _workQueue.EnqueueAsync(new ImportWorkItem(importType, previewId, id, preview.Data));

@@ -48,6 +48,10 @@ namespace cya2.Controllers
                 var preview = await _importService.PreviewAsync(stream, "donations", file.FileName, file.ContentType ?? string.Empty, ct);
                 return Ok(preview);
             }
+            catch (ImportAuthorizationException)
+            {
+                return NotFound("The import is no longer available.");
+            }
             catch (ImportUploadCapacityException exception)
             {
                 return StatusCode(StatusCodes.Status429TooManyRequests, exception.Message);
@@ -67,8 +71,15 @@ namespace cya2.Controllers
             }
 
             _logger.LogInformation("Confirming donation import for preview {PreviewId}", request.PreviewId);
-            var result = await _importService.ImportFromPreviewAsync(request.PreviewId, "donations", ct);
-            return Ok(result);
+            try
+            {
+                var result = await _importService.ImportFromPreviewAsync(request.PreviewId, "donations", ct);
+                return Ok(result);
+            }
+            catch (ImportAuthorizationException)
+            {
+                return NotFound("The import is no longer available.");
+            }
         }
 
         [HttpPost("accounting/preview")]
@@ -91,6 +102,10 @@ namespace cya2.Controllers
                 var preview = await _importService.PreviewAsync(stream, "accounting", file.FileName, file.ContentType ?? string.Empty, ct);
                 return Ok(preview);
             }
+            catch (ImportAuthorizationException)
+            {
+                return NotFound("The import is no longer available.");
+            }
             catch (ImportUploadCapacityException exception)
             {
                 return StatusCode(StatusCodes.Status429TooManyRequests, exception.Message);
@@ -110,8 +125,15 @@ namespace cya2.Controllers
             }
 
             _logger.LogInformation("Confirming accounting import for preview {PreviewId}", request.PreviewId);
-            var result = await _importService.ImportFromPreviewAsync(request.PreviewId, "accounting", ct);
-            return Ok(result);
+            try
+            {
+                var result = await _importService.ImportFromPreviewAsync(request.PreviewId, "accounting", ct);
+                return Ok(result);
+            }
+            catch (ImportAuthorizationException)
+            {
+                return NotFound("The import is no longer available.");
+            }
         }
     }
 

@@ -13,6 +13,13 @@ public sealed class FilePreviewResult
     public string ContentType { get; set; } = string.Empty;
 }
 
+public sealed record ImportActor(string UserId, bool IsAdmin);
+
+public interface IImportAuthorizationContext
+{
+    Task<ImportActor?> GetCurrentActorAsync();
+}
+
 public sealed class ImportResult
 {
     public int TotalRows { get; set; }
