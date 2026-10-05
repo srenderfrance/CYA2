@@ -6,7 +6,7 @@ namespace Cya2.Core.Interfaces;
 /// </summary>
 public interface IImportProgressService
 {
-    void Start(string id, string importType);
+    void Start(string id, string importType, string ownerUserId);
     void AddStep(string id, string stepName, string status = "Starting...");
     void UpdateStep(string id, string stepName, string status, string? details = null);
     void CompleteStep(string id, string stepName, string completionStatus, string? details = null);

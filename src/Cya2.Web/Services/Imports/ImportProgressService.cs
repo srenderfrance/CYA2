@@ -27,6 +27,7 @@ namespace cya2.Services.Imports
         public bool IsComplete { get; set; }
         public List<ImportStep> Steps { get; } = new List<ImportStep>();
         public string ImportType { get; set; } = string.Empty; // "Donations" or "Accounting"
+        internal string OwnerUserId { get; set; } = string.Empty;
     }
 
     public sealed class ImportProgressService : IImportProgressService
@@ -47,10 +48,10 @@ namespace cya2.Services.Imports
             _store[id] = prog;
         }
 
-        public void Start(string id, string importType)
+        public void Start(string id, string importType, string ownerUserId)
         {
             var now = DateTime.UtcNow;
-            var prog = new ImportProgress { ImportType = importType, CreatedAtUtc = now, LastUpdatedAtUtc = now };
+            var prog = new ImportProgress { ImportType = importType, OwnerUserId = ownerUserId, CreatedAtUtc = now, LastUpdatedAtUtc = now };
             _store[id] = prog;
         }
 
@@ -185,6 +186,36 @@ namespace cya2.Services.Imports
         {
             if (_store.TryGetValue(id, out var prog)) return prog;
             return null;
+        }
+
+        public ImportProgress? GetOwned(string id, string ownerUserId, string importType)
+        {
+            var progress = GetOwned(id, ownerUserId);
+            return progress is not null && string.Equals(progress.ImportType, importType, StringComparison.OrdinalIgnoreCase)
+                ? progress
+                : null;
+        }
+
+        public ImportProgress? GetOwned(string id, string ownerUserId)
+        {
+            if (_store.TryGetValue(id, out var prog) &&
+                string.Equals(prog.OwnerUserId, ownerUserId, StringComparison.Ordinal))
+            {
+                return prog;
+            }
+
+            return null;
+        }
+
+        public bool RemoveOwned(string id, string ownerUserId)
+        {
+            if (!_store.TryGetValue(id, out var progress) ||
+                !string.Equals(progress.OwnerUserId, ownerUserId, StringComparison.Ordinal))
+            {
+                return false;
+            }
+
+            return _store.TryRemove(new KeyValuePair<string, ImportProgress>(id, progress));
         }
     }
 }

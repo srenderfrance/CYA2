@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.RateLimiting;
 using cya2.Services.Imports;
+using Cya2.Application.Interfaces;
 
 namespace cya2.Controllers
 {
@@ -12,17 +13,22 @@ namespace cya2.Controllers
     public class ImportProgressController : ControllerBase
     {
         private readonly ImportProgressService _progressService;
+        private readonly IImportAuthorizationContext _authorizationContext;
 
-        public ImportProgressController(ImportProgressService progressService)
+        public ImportProgressController(
+            ImportProgressService progressService,
+            IImportAuthorizationContext authorizationContext)
         {
             _progressService = progressService;
+            _authorizationContext = authorizationContext;
         }
 
         [HttpGet("{id}")]
-        public IActionResult Get(string id)
+        public async Task<IActionResult> Get(string id)
         {
-            var p = _progressService.Get(id);
-            if (p == null) return NotFound();
+            var actor = await _authorizationContext.GetCurrentActorAsync();
+            var p = actor is null ? null : _progressService.GetOwned(id, actor.UserId);
+            if (p == null) return NotFound("The import is no longer available.");
             
             object steps;
             if (p.Steps != null)
