@@ -32,6 +32,7 @@
 @inject IImportCacheInvalidator ImportCacheInvalidator
 @inject Cya2.Application.Services.AdminFundWriteService AdminFundWriteService
 @inject Cya2.Application.Interfaces.IUserIdResolver UserIdResolver
+@inject Cya2.Application.Interfaces.IUserAuthorizationService UserAuthorizationService
 @inject IAccountImportService AccountImportService
 
 <RadzenStack Orientation="Orientation.Vertical" Gap="1rem" Class="rz-pt-0 rz-px-4 rz-pb-4" Style="max-width:100%; overflow-x:hidden; box-sizing:border-box;">
@@ -937,7 +938,9 @@
                 var authState = await AuthStateProvider.GetAuthenticationStateAsync();
                 var user = authState.User;
 
-                if (!user.IsInRole("Admin"))
+                var resolvedUserIdForAuthorization = UserIdResolver.ResolveUserId(user, SessionUserStateService.CurrentUserId);
+                var authorization = await UserAuthorizationService.ValidateUserAsync(resolvedUserIdForAuthorization);
+                if (!authorization.IsAuthorized || !authorization.IsAdmin)
                 {
                     Navigation.NavigateTo("/", true);
                     return;

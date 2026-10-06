@@ -17,6 +17,7 @@ public class DonationService : IDonationService
     private readonly IAccountSnapshotCache _accountSnapshotCache;
     private readonly IAccountSnapshotLoader _accountSnapshotLoader;
     private readonly ILogger<DonationService> _logger;
+    private readonly IUserAuthorizationService _authorizationService;
 
     public DonationService(
         IUserAccountContextService userAccountContextService,
@@ -24,7 +25,8 @@ public class DonationService : IDonationService
         ISessionDonationDataCacheService donationCache,
         IAccountSnapshotCache accountSnapshotCache,
         IAccountSnapshotLoader accountSnapshotLoader,
-        ILogger<DonationService> logger)
+        ILogger<DonationService> logger,
+        IUserAuthorizationService authorizationService)
     {
         _userAccountContextService = userAccountContextService;
         _donationReadRepository = donationReadRepository;
@@ -32,6 +34,7 @@ public class DonationService : IDonationService
         _accountSnapshotCache = accountSnapshotCache;
         _accountSnapshotLoader = accountSnapshotLoader;
         _logger = logger;
+        _authorizationService = authorizationService;
     }
 
     public async Task<DonationDataDto> GetDonationDataAsync(string accountName, string? subAccountSelection, DateRange dateRange, string userId, bool isAdminOrViewer = false, bool forceRefresh = false)
@@ -45,6 +48,9 @@ public class DonationService : IDonationService
 
         try
         {
+            if (!(await _authorizationService.ValidateAccountAccessAsync(userId, accountName)).IsAuthorized)
+                return result;
+
             if (!forceRefresh && !bypassSubAccountCache && !string.IsNullOrWhiteSpace(userId) && !string.IsNullOrWhiteSpace(accountName) && _donationCache != null &&
                 !IsCanonicalSnapshotRange(cacheQueryRange))
             {

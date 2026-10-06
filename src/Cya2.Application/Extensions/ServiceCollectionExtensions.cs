@@ -25,6 +25,7 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<ISessionImportProgressService, SessionImportProgressService>();
         services.AddScoped<IDateRangeStateService, DateRangeStateService>();
         services.AddScoped<IUserAccountContextService, UserAccountContextService>();
+        services.AddScoped<IUserAuthorizationService, UserAuthorizationService>();
         services.AddSingleton<ICacheInvalidationVersion, CacheInvalidationVersion>();
         services.AddSingleton<IAccountSnapshotCache, AccountSnapshotCache>();
         services.AddScoped<IAccountSnapshotLoader, AccountSnapshotLoader>();

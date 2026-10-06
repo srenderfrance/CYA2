@@ -8,13 +8,16 @@ public sealed class DonorExportService : IDonorExportService
 {
     private readonly IDonorService _donorService;
     private readonly IUserAccountContextService _userAccountContextService;
+    private readonly IUserAuthorizationService _authorizationService;
 
     public DonorExportService(
         IDonorService donorService,
-        IUserAccountContextService userAccountContextService)
+        IUserAccountContextService userAccountContextService,
+        IUserAuthorizationService authorizationService)
     {
         _donorService = donorService;
         _userAccountContextService = userAccountContextService;
+        _authorizationService = authorizationService;
     }
 
     public async Task<DonorExportResult> GetExportDataAsync(
@@ -30,6 +33,12 @@ public sealed class DonorExportService : IDonorExportService
             .Select(f => f.Trim())
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
+
+        foreach (var fund in requestedFunds)
+        {
+            if (!(await _authorizationService.ValidateAccountAccessAsync(userId, fund)).IsAuthorized)
+                return DonorExportResult.Forbidden(requestedFunds);
+        }
 
         var context = await _userAccountContextService.GetContextAsync(userId, isAdminOrViewerHint);
         if (context == null)

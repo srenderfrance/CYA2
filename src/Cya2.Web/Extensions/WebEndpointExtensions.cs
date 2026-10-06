@@ -64,12 +64,18 @@ public static class WebEndpointExtensions
                 return Results.Empty;
             }
 
+            var returnUrl = ctx.Request.Query["returnUrl"].ToString();
+            if (string.IsNullOrWhiteSpace(returnUrl) || !returnUrl.StartsWith('/') || returnUrl.StartsWith("//"))
+            {
+                returnUrl = "/";
+            }
+
             var props = new AuthenticationProperties
             {
-                RedirectUri = "/",
+                RedirectUri = returnUrl,
                 AllowRefresh = true,
-                ExpiresUtc = DateTimeOffset.UtcNow.AddHours(24),
-                IsPersistent = true,
+                ExpiresUtc = DateTimeOffset.UtcNow.Add(AuthenticationServiceCollectionExtensions.SessionLifetime),
+                IsPersistent = false,
                 Items = { { "ts", DateTimeOffset.UtcNow.ToUnixTimeSeconds().ToString() } }
             };
 

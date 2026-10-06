@@ -75,13 +75,37 @@ public class UserManagementService
     {
         try
         {
-            return await Task.FromResult(true);
+            var user = await ResolveUserAsync(userId);
+            if (user is null)
+            {
+                return false;
+            }
+
+            if (user.CanViewAllAccounts())
+            {
+                return true;
+            }
+
+            var account = await _accountRepository.GetByFundAsync(accountFund);
+            return account is not null && await _userAccountAccessRepository.HasAccessAsync(user.Id, account.AccountId);
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error validating user access for user {UserId} and account {AccountFund}", userId, accountFund);
             return false;
         }
+    }
+
+    private async Task<Cya2.Core.Entities.User?> ResolveUserAsync(string userId)
+    {
+        if (int.TryParse(userId, out var parsedUserId))
+        {
+            var user = await _userRepository.GetByIdAsync(parsedUserId);
+            if (user is not null) return user;
+        }
+
+        var byEmail = await _userRepository.GetByEmailAsync(userId);
+        return byEmail ?? await _userRepository.GetByExternalIdAsync(userId);
     }
 
     public async Task<List<AdminUserDto>> GetAdminUsersAsync()

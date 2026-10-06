@@ -22,6 +22,7 @@ public class ExpenseService : IExpenseService
     private readonly IAccountSnapshotCache _accountSnapshotCache;
     private readonly IAccountSnapshotLoader _accountSnapshotLoader;
     private readonly IAccountingTransactionProcessor _accountingTransactionProcessor;
+    private readonly IUserAuthorizationService _authorizationService;
 
     public ExpenseService(
         IExpenseReadRepository expenseReadRepository,
@@ -30,7 +31,8 @@ public class ExpenseService : IExpenseService
         ISessionExpenseDataCacheService expenseCache,
         IAccountSnapshotCache accountSnapshotCache,
         IAccountSnapshotLoader accountSnapshotLoader,
-        IAccountingTransactionProcessor accountingTransactionProcessor)
+        IAccountingTransactionProcessor accountingTransactionProcessor,
+        IUserAuthorizationService authorizationService)
     {
         _expenseReadRepository = expenseReadRepository;
         _logger = logger;
@@ -39,6 +41,7 @@ public class ExpenseService : IExpenseService
         _accountSnapshotCache = accountSnapshotCache;
         _accountSnapshotLoader = accountSnapshotLoader;
         _accountingTransactionProcessor = accountingTransactionProcessor;
+        _authorizationService = authorizationService;
     }
 
     public async Task<List<AccountOptionDto>> GetUserAccountsAsync(string userId, bool isAdminOrViewer = false)
@@ -63,6 +66,9 @@ public class ExpenseService : IExpenseService
         var sw = Stopwatch.StartNew();
         try
         {
+            if (!(await _authorizationService.ValidateAccountAccessAsync(userId, accountName)).IsAuthorized)
+                return new ExpenseDataDto();
+
             if (!string.IsNullOrWhiteSpace(accountName) &&
                 _expenseCache.TryGetExpenseData(userId, accountName, dateRange.StartDate, dateRange.EndDate, out var directCached))
             {
