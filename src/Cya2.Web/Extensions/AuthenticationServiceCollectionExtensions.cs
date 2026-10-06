@@ -13,6 +13,8 @@ namespace cya2.Extensions;
 
 public static class AuthenticationServiceCollectionExtensions
 {
+    public static readonly TimeSpan SessionLifetime = TimeSpan.FromHours(4);
+
     public static IServiceCollection AddCya2Authentication(
         this IServiceCollection services,
         IConfiguration configuration)
@@ -34,8 +36,9 @@ public static class AuthenticationServiceCollectionExtensions
             options.Cookie.Name = "cya2.auth";
             options.LoginPath = "/api/login";
             options.AccessDeniedPath = "/not-authorized";
-            options.ExpireTimeSpan = TimeSpan.FromHours(24);
+            options.ExpireTimeSpan = SessionLifetime;
             options.SlidingExpiration = false;
+            options.Cookie.IsEssential = true;
             options.Cookie.HttpOnly = true;
             options.Cookie.SecurePolicy = CookieSecurePolicy.Always;
             options.Cookie.SameSite = SameSiteMode.Lax;

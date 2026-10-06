@@ -1,6 +1,17 @@
 ﻿@inherits LayoutComponentBase
 @using static Microsoft.AspNetCore.Components.Web.RenderMode
+@using System.Globalization
+@using Microsoft.AspNetCore.Components
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.JSInterop
 @inject IConfiguration Configuration
+@inject IJSRuntime JS
+@inject NavigationManager Navigation
+@inject AuthenticationStateProvider AuthStateProvider
+@inject Cya2.Application.Interfaces.ISessionUserStateService SessionUserStateService
+@inject Cya2.Application.Interfaces.IUserIdResolver UserIdResolver
+@inject Cya2.Application.Interfaces.IUserAuthorizationService UserAuthorizationService
+@implements IDisposable
 
 <HeadContent>
     <!-- Viewport meta tag for proper positioning -->
@@ -53,6 +64,137 @@
 <script type="module" src="/js/autocomplete-tab.js"></script>
 
 @code {
-    // No additional code required here.
+    private bool resumeProcessed;
+    private bool wasAuthenticated;
+    private bool wasAdmin;
+    private CancellationTokenSource? revalidationCancellation;
+
+    protected override void OnInitialized()
+    {
+        Navigation.LocationChanged += OnLocationChanged;
+        AuthStateProvider.AuthenticationStateChanged += OnAuthenticationStateChanged;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender || resumeProcessed)
+        {
+            return;
+        }
+
+        resumeProcessed = true;
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        if (authState.User.Identity?.IsAuthenticated != true)
+        {
+            return;
+        }
+
+        wasAuthenticated = true;
+        wasAdmin = authState.User.IsInRole("Admin");
+        revalidationCancellation = new CancellationTokenSource();
+        _ = RevalidateSessionAsync(revalidationCancellation.Token);
+
+        var resume = await JS.InvokeAsync<BrowserResumeState?>("authHelpers.consumeResumeState");
+        if (resume is null)
+        {
+            await SaveResumeStateAsync();
+            return;
+        }
+
+        if (!string.IsNullOrWhiteSpace(resume.Account))
+        {
+            SessionUserStateService.SelectedAccountFund = resume.Account;
+        }
+
+        if (DateTime.TryParse(resume.StartDate, CultureInfo.InvariantCulture, DateTimeStyles.None, out var startDate))
+        {
+            SessionUserStateService.SelectedStartDate = startDate;
+        }
+
+        if (DateTime.TryParse(resume.EndDate, CultureInfo.InvariantCulture, DateTimeStyles.None, out var endDate))
+        {
+            SessionUserStateService.SelectedEndDate = endDate;
+        }
+
+        SessionUserStateService.SelectedDatePreset = resume.Preset ?? string.Empty;
+        var currentRoute = new Uri(Navigation.Uri).PathAndQuery;
+        if (!string.Equals(currentRoute, resume.Route, StringComparison.Ordinal))
+        {
+            Navigation.NavigateTo(resume.Route, replace: true);
+        }
+    }
+
+    private async void OnLocationChanged(object? sender, LocationChangedEventArgs e)
+    {
+        await SaveResumeStateAsync();
+    }
+
+    private async Task RevalidateSessionAsync(CancellationToken cancellationToken)
+    {
+        using var timer = new PeriodicTimer(TimeSpan.FromMinutes(1));
+        try
+        {
+            while (await timer.WaitForNextTickAsync(cancellationToken))
+            {
+                var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+                var user = authState.User;
+                if (user.Identity?.IsAuthenticated != true)
+                    return;
+
+                var userId = UserIdResolver.ResolveUserId(user, SessionUserStateService.CurrentUserId);
+                var authorization = await UserAuthorizationService.ValidateUserAsync(userId);
+                if (!authorization.IsAuthorized || (wasAdmin && !authorization.IsAdmin))
+                {
+                    await JS.InvokeVoidAsync("authHelpers.clearResumeState");
+                    Navigation.NavigateTo("/api/login", forceLoad: true);
+                    return;
+                }
+            }
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+        }
+    }
+
+    private async void OnAuthenticationStateChanged(Task<AuthenticationState> authenticationStateTask)
+    {
+        var authState = await authenticationStateTask;
+        if (wasAuthenticated && authState.User.Identity?.IsAuthenticated != true)
+        {
+            await SaveResumeStateAsync();
+            var returnUrl = Uri.EscapeDataString(new Uri(Navigation.Uri).PathAndQuery);
+            Navigation.NavigateTo($"/api/login?returnUrl={returnUrl}", forceLoad: true);
+        }
+    }
+
+    private async Task SaveResumeStateAsync()
+    {
+        var uri = new Uri(Navigation.Uri);
+        await JS.InvokeVoidAsync("authHelpers.saveResumeState", new BrowserResumeState
+        {
+            Route = uri.PathAndQuery,
+            Account = SessionUserStateService.SelectedAccountFund,
+            StartDate = SessionUserStateService.SelectedStartDate?.ToString("O", CultureInfo.InvariantCulture),
+            EndDate = SessionUserStateService.SelectedEndDate?.ToString("O", CultureInfo.InvariantCulture),
+            Preset = SessionUserStateService.SelectedDatePreset
+        });
+    }
+
+    public void Dispose()
+    {
+        revalidationCancellation?.Cancel();
+        revalidationCancellation?.Dispose();
+        Navigation.LocationChanged -= OnLocationChanged;
+        AuthStateProvider.AuthenticationStateChanged -= OnAuthenticationStateChanged;
+    }
+
+    private sealed class BrowserResumeState
+    {
+        public string Route { get; set; } = "/";
+        public string Account { get; set; } = string.Empty;
+        public string? StartDate { get; set; }
+        public string? EndDate { get; set; }
+        public string? Preset { get; set; }
+    }
 }
 

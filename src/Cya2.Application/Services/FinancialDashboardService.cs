@@ -13,28 +13,35 @@ public class FinancialDashboardService : IFinancialDashboardService
     private readonly ISessionAccountDataCacheService _sessionAccountDataCache;
     private readonly IUserAccountContextService _userAccountContextService;
     private readonly IDonationService _donationService;
+    private readonly IUserAuthorizationService _authorizationService;
 
     public FinancialDashboardService(
         ILogger<FinancialDashboardService> logger,
         IAccountCalculationService accountCalculationService,
         ISessionAccountDataCacheService sessionAccountDataCache,
         IUserAccountContextService userAccountContextService,
-        IDonationService donationService)
+        IDonationService donationService,
+        IUserAuthorizationService authorizationService)
     {
         _logger = logger;
         _accountCalculationService = accountCalculationService;
         _sessionAccountDataCache = sessionAccountDataCache;
         _userAccountContextService = userAccountContextService;
         _donationService = donationService;
+        _authorizationService = authorizationService;
     }
 
     public async Task<FinancialDashboardDto> GetDashboardDataAsync(string accountFund, string userId)
     {
+        if (!(await _authorizationService.ValidateAccountAccessAsync(userId, accountFund)).IsAuthorized)
+            return new FinancialDashboardDto();
         return await GetDashboardDataInternalAsync(accountFund, userId, useSessionAccountDataCache: true);
     }
 
     public async Task<FinancialDashboardDto> GetDashboardSummaryDataAsync(string accountFund, string userId)
     {
+        if (!(await _authorizationService.ValidateAccountAccessAsync(userId, accountFund)).IsAuthorized)
+            return new FinancialDashboardDto();
         return await GetDashboardDataInternalAsync(accountFund, userId, useSessionAccountDataCache: false);
     }
 
@@ -44,6 +51,8 @@ public class FinancialDashboardService : IFinancialDashboardService
         DateTime endDate,
         string userId)
     {
+        if (!(await _authorizationService.ValidateAccountAccessAsync(userId, accountFund)).IsAuthorized)
+            return new FinancialSummaryDto { Period = $"{startDate:MM/dd/yyyy} - {endDate:MM/dd/yyyy}" };
         if (endDate.Date < startDate.Date)
         {
             throw new ArgumentException("The custom summary end date must be on or after the start date.");

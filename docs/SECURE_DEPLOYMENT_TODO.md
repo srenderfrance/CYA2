@@ -97,14 +97,18 @@ Production policy: upload previews and in-memory import progress records are ret
 
 ### 8. Handle revoked access promptly
 
-- [ ] Shorten the authentication cookie lifetime from the current 24-hour period.
-- [ ] Decide on an appropriate cookie lifetime for the application.
-- [ ] Revalidate the user and current admin role for sensitive operations.
-- [ ] Ensure a removed user cannot import after their access is removed.
-- [ ] Ensure a revoked admin cannot perform administrative changes.
-- [ ] Ensure authorization changes do not depend on cookie expiration.
-- [ ] Invalidate or refresh affected authentication sessions where appropriate.
-- [ ] Add tests for removed users and revoked administrators.
+- [x] Shorten the authentication cookie lifetime from the current 24-hour period. The cookie now has a four-hour absolute lifetime.
+- [x] Decide on an appropriate cookie lifetime for the application. The policy is four hours, non-sliding, and non-persistent.
+- [x] Preserve the current local route, selected account, and date range through reauthentication while the browser remains open, using sessionStorage only. Browser close clears this resume state.
+- [x] Revalidate the current database user and role before account selection and account-specific dashboard, donation, expense, and export reads; stale authentication claims cannot grant all-account access.
+- [x] Revalidate regular-user account membership before account selection and account-specific reads; removed `AccountsUsers` links are denied even when prior data was cached.
+- [x] Ensure a removed user cannot use protected account data or imports after access is removed. Missing database users are treated as revoked; existing import ownership/current-admin checks remain enforced.
+- [x] Ensure a revoked Admin cannot enter the Admin page or perform administrative changes. Admin status is rechecked against the database.
+- [x] Ensure authorization changes do not depend on cookie expiration. Active circuits revalidate the database user every minute and force the login challenge after deletion or Admin downgrade.
+- [x] Invalidate or refresh affected authentication sessions where appropriate. Deleted users and downgraded Admins have resume state cleared and are sent through login; revoking one account link does not terminate the entire user session.
+- [x] Add tests for removed users, current roles, and revoked/current account memberships. 83 application tests pass.
+
+Active-session revocation detection is polling-based with a maximum normal interval of one minute. Sensitive account reads and selections revalidate immediately before use.
 
 ### 9. Separate database setup permissions from everyday permissions
 

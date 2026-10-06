@@ -1,23 +1,36 @@
-// Simple auth redirect helper
+// Browser-session authentication resume state. Do not store donor data,
+// uploaded files, tokens, or import identifiers here.
 window.authHelpers = {
-    // Essential redirect helper for login preparation
-    prepareForLogin: function() {
-        console.log('prepareForLogin called');
-        // Clear any existing redirect flags and auth state
-        sessionStorage.clear();
-        
-        // Clear specific cookies
-        document.cookie = '.AspNetCore.Cookies=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
+    saveResumeState: function (state) {
+        if (!state || typeof state.route !== 'string' || !state.route.startsWith('/') || state.route.startsWith('//')) {
+            return;
+        }
+
+        sessionStorage.setItem('cya2.auth.resume', JSON.stringify({
+            route: state.route,
+            account: typeof state.account === 'string' ? state.account : '',
+            startDate: typeof state.startDate === 'string' ? state.startDate : null,
+            endDate: typeof state.endDate === 'string' ? state.endDate : null,
+            preset: typeof state.preset === 'string' ? state.preset : ''
+        }));
     },
-    
-    // Clear auth in progress state
-    clearAuthInProgress: function() {
-        sessionStorage.removeItem('authInProgress');
+
+    consumeResumeState: function () {
+        const value = sessionStorage.getItem('cya2.auth.resume');
+        sessionStorage.removeItem('cya2.auth.resume');
+        if (!value) {
+            return null;
+        }
+
+        try {
+            const state = JSON.parse(value);
+            return state && typeof state.route === 'string' && state.route.startsWith('/') && !state.route.startsWith('//') ? state : null;
+        } catch {
+            return null;
+        }
+    },
+
+    clearResumeState: function () {
+        sessionStorage.removeItem('cya2.auth.resume');
     }
 };
-
-// Run on page load
-(function() {
-    console.log('Auth redirect helper loaded');
-    window.authHelpers.clearAuthInProgress();
-})();

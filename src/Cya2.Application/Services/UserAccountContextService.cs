@@ -36,23 +36,26 @@ public class UserAccountContextService : IUserAccountContextService
         }
 
         var normalizedUserId = userId.Trim();
-        if (_contextCache.TryGetValue(normalizedUserId, out var cachedContext)
-            && cachedContext.CacheVersion == _cacheInvalidationVersion.Current)
+        var currentUser = await ResolveUserAsync(normalizedUserId);
+        if (currentUser is null)
         {
-            // _logger.LogInformation(
-            //     "User account context source=cache user={UserId} isAdminOrViewer={IsAdminOrViewer} defaultAccountId={DefaultAccountId} accounts={AccountCount}",
-            //     normalizedUserId,
-            //     cachedContext.IsAdminOrViewer,
-            //     cachedContext.DefaultAccountId,
-            //     cachedContext.Accounts?.Count ?? 0);
-            return CloneContext(cachedContext);
+            Invalidate(normalizedUserId);
+            return null;
         }
 
+        var currentCanAccessAllAccounts = currentUser.CanViewAllAccounts();
         try
         {
+            if (_contextCache.TryGetValue(normalizedUserId, out var cachedContext)
+                && cachedContext.CacheVersion == _cacheInvalidationVersion.Current
+                && cachedContext.IsAdminOrViewer == currentCanAccessAllAccounts)
+            {
+                return CloneContext(cachedContext);
+            }
+
             var stopwatch = System.Diagnostics.Stopwatch.StartNew();
             _logger.LogInformation("User account context phase=user-start user={UserId}", normalizedUserId);
-            var user = await ResolveUserAsync(normalizedUserId);
+            var user = currentUser;
             // _logger.LogInformation("User account context phase=user-complete elapsedMs={ElapsedMs} found={Found}", stopwatch.ElapsedMilliseconds, user is not null);
             if (user == null)
             {
@@ -63,14 +66,7 @@ public class UserAccountContextService : IUserAccountContextService
             var isAdmin = string.Equals(authLevel, "Admin", StringComparison.OrdinalIgnoreCase);
             var isViewer = string.Equals(authLevel, "Viewer", StringComparison.OrdinalIgnoreCase);
 
-            // Honor trusted caller hint (derived from authenticated claims) to avoid false negatives
-            // when DB AuthLevel is stale or inconsistent.
-            var canAccessAllAccounts = isAdmin || isViewer || isAdminOrViewerHint;
-
-            if (isAdminOrViewerHint && !(isAdmin || isViewer))
-            {
-                _logger.LogWarning("Applying admin/viewer hint for user {UserId} with DB AuthLevel '{AuthLevel}'", normalizedUserId, authLevel);
-            }
+            var canAccessAllAccounts = isAdmin || isViewer;
 
             var context = new UserAccountContext
             {
