@@ -33,6 +33,19 @@ public sealed class UserAuthorizationServiceTests
     }
 
     [Fact]
+    public async Task ValidateUserAsync_RejectsAdminAfterDatabaseDowngrade()
+    {
+        var user = new User { Id = 7, Email = "admin@example.test", AuthLevel = "User" };
+        var service = CreateService(user, new Dictionary<int, HashSet<int>>());
+
+        var result = await service.ValidateUserAsync("7");
+
+        Assert.True(result.IsAuthorized);
+        Assert.False(result.IsAdmin);
+        Assert.False(result.CanAccessAllAccounts);
+    }
+
+    [Fact]
     public async Task ValidateAccountAccessAsync_RejectsRevokedAccount()
     {
         var user = new User { Id = 7, Email = "user@example.test", AuthLevel = "User" };
@@ -42,6 +55,19 @@ public sealed class UserAuthorizationServiceTests
 
         Assert.False(result.IsAuthorized);
         Assert.True(result.UserExists);
+    }
+
+    [Fact]
+    public async Task ValidateAccountAccessAsync_PreservesUnrelatedCurrentMembership()
+    {
+        var user = new User { Id = 7, Email = "user@example.test", AuthLevel = "User" };
+        var service = CreateService(user, new Dictionary<int, HashSet<int>> { [7] = [12, 14] });
+
+        var revoked = await service.ValidateAccountAccessAsync("7", 13);
+        var current = await service.ValidateAccountAccessAsync("7", 14);
+
+        Assert.False(revoked.IsAuthorized);
+        Assert.True(current.IsAuthorized);
     }
 
     [Fact]
