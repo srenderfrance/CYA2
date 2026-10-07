@@ -114,15 +114,27 @@ database/schema/001_InitialSchema.sql
 
 This script creates the clean application schema, including the operational tables and rollback tables. It does not load donor data, accounting data, fake data, users, or secrets.
 
-Create an empty local database using the setup account, select that database, and apply the schema:
+Create an empty local database first. Then initialize it with the standalone runner using the setup account:
 
-```text
-mysql --host=<host> --port=<port> --user=<setup-user> --password <database-name> < database/schema/001_InitialSchema.sql
+```powershell
+$env:CYA2_SCHEMA_CONNECTION_STRING = "Server=<local-host>;Port=<port>;Database=<database-name>;User ID=<setup-user>;Password=<setup-password>;SslMode=<local-development-mode>;"
+dotnet run --project tools/Cya2.DatabaseMigrator -- --connection-string "$env:CYA2_SCHEMA_CONNECTION_STRING" --initialize
 ```
 
 The command above is an example only. Do not replace the placeholders with real credentials in this document.
 
-The application assumes the schema has already been applied. It does not create, alter, or drop persistent tables during normal operation. Donation imports create session-scoped temporary staging tables; the runtime account therefore needs the separate MySQL `CREATE TEMPORARY TABLES` permission for that workflow.
+The `--initialize` option applies `database/schema/001_InitialSchema.sql`, records the baseline, and then applies any pending scripts in `database/migrations`. It is safe only for an empty application database; the runner refuses initialization when application tables already exist. The application does not create, alter, or drop persistent tables during normal operation. Donation imports create session-scoped temporary staging tables; the runtime account therefore needs the separate MySQL `CREATE TEMPORARY TABLES` permission for that workflow.
+
+For later schema changes, use the standalone migration runner with the setup account rather than the web application:
+
+```powershell
+$env:CYA2_SCHEMA_CONNECTION_STRING = "Server=<local-host>;Port=<port>;Database=<database-name>;User ID=<setup-user>;Password=<setup-password>;SslMode=<local-development-mode>;"
+dotnet run --project tools/Cya2.DatabaseMigrator -- --connection-string "$env:CYA2_SCHEMA_CONNECTION_STRING"
+```
+
+The runner applies numbered scripts from `database/migrations` in order and records successful applications in `Cya2SchemaMigrations`. It is not invoked by Blazor startup. Existing databases created from `database/schema/001_InitialSchema.sql` require explicit schema verification before the deployment process adopts that baseline; do not insert a baseline history row without that verification.
+
+The setup account and restricted application account are MySQL database-infrastructure users. Create them with the DBA, hosting provider, or a protected provisioning process. The Blazor application and migration runner consume their connection strings but do not create database users or manage their passwords.
 
 Use two database accounts:
 
