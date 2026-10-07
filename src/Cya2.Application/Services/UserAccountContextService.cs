@@ -62,7 +62,7 @@ public class UserAccountContextService : IUserAccountContextService
                 return null;
             }
 
-            var authLevel = user.AuthLevel ?? string.Empty;
+            var authLevel = user.AuthLevel?.Trim() ?? string.Empty;
             var isAdmin = string.Equals(authLevel, "Admin", StringComparison.OrdinalIgnoreCase);
             var isViewer = string.Equals(authLevel, "Viewer", StringComparison.OrdinalIgnoreCase);
 

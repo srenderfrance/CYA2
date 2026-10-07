@@ -48,7 +48,10 @@ public class DonationService : IDonationService
 
         try
         {
-            if (!(await _authorizationService.ValidateAccountAccessAsync(userId, accountName)).IsAuthorized)
+            var authorization = string.IsNullOrWhiteSpace(accountName)
+                ? await _authorizationService.ValidateUserAsync(userId)
+                : await _authorizationService.ValidateAccountAccessAsync(userId, accountName);
+            if (!authorization.IsAuthorized)
                 return result;
 
             if (!forceRefresh && !bypassSubAccountCache && !string.IsNullOrWhiteSpace(userId) && !string.IsNullOrWhiteSpace(accountName) && _donationCache != null &&

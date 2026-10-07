@@ -184,3 +184,7 @@ app.UseCya2WebPipeline();
 app.MapCya2Endpoints();
 
 app.Run();
+
+public partial class Program
+{
+}

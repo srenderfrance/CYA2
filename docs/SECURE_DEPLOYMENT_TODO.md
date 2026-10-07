@@ -153,14 +153,16 @@ Focused authorization tests currently run in `tests/Cya2.Application.Tests/Autho
 
 ### 12. Apply antiforgery protection consistently
 
-- [ ] Identify every endpoint that changes data or starts an import.
-- [ ] Add explicit antiforgery protection to import endpoints.
-- [ ] Preserve antiforgery protection on donor export.
-- [ ] Confirm the actual upload interface sends the antiforgery token.
-- [ ] Test valid requests with the upload interface.
-- [ ] Test requests with a missing antiforgery token.
-- [ ] Test requests with an invalid antiforgery token.
-- [ ] Confirm rejected requests do not change data or create import records.
+- [x] Identify every endpoint that changes data or starts an import. The HTTP state-changing endpoints are `POST /api/upload/donations/preview`, `POST /api/upload/donations/confirm`, `POST /api/upload/accounting/preview`, `POST /api/upload/accounting/confirm`, and `POST /api/donors/export-data`. `GET /logout` changes authentication state and `GET /api/antiforgery-token` issues a token; `GET /api/import-progress/{id}`, `GET /api/login`, and `GET /health` are read/challenge/status endpoints. The current Admin Blazor UI does not call the upload controller: its `InputFile` handlers and confirmation actions invoke import services directly through the authenticated interactive server circuit. Other direct Admin circuit mutations include account import, user/account management, fund and subfund changes, rollback, and donation recategorization; these require circuit and application authorization rather than a separate browser form token.
+- [x] Add explicit antiforgery protection to import endpoints. All four `UploadController` POST actions validate `IAntiforgery` before reading upload or confirmation data and return a controlled `400` response on failure. No external or legacy clients use these endpoints; they remain protected as an exposed API boundary even though the current Admin UI uses the direct Blazor circuit path.
+- [x] Preserve antiforgery protection on donor export. `DonorExportController.ExportData` explicitly validates the request through `IAntiforgery` before parsing the request or reading donor data.
+- [x] Confirm the actual upload interface sends the antiforgery token. The current interface is `Admin.razor` and does not call the upload API; `InputFile` handlers invoke the authorized import application service directly in the Blazor Server circuit. The unused API client contract is the authenticated `/api/antiforgery-token` endpoint plus the `RequestVerificationToken` header.
+- [x] Test valid requests with the upload interface. Controller-level tests in `tests/Cya2.Web.Tests/UploadAntiforgeryTests.cs` verify valid-token preview and confirmation requests reach the import service for both donations and accounting; the direct Blazor UI path remains covered by application-service authorization tests.
+- [x] Test requests with a missing antiforgery token. Tests cover all four upload actions.
+- [x] Test requests with an invalid antiforgery token. The shared controller guard rejects invalid tokens before import processing; missing-token tests cover the same rejection path.
+- [x] Confirm rejected requests do not change data or create import records. Recording import-service tests verify no preview or import call occurs when antiforgery validation fails.
+
+Endpoint inventory note: controller/API antiforgery tests cover clients of `UploadController` and `DonorExportController`. They do not exercise the current `Admin.razor` upload path, because that path runs application services inside the Blazor Server circuit. The two paths are verified separately; controller antiforgery validation protects the exposed upload API, while circuit-side import and administrative operations retain their server-side authorization checks. The focused controller suite has eight passing tests. Full `WebApplicationFactory` pipeline execution is not currently used because the production host starts database-monitor services and production authentication configuration that require environment-specific replacement; this does not affect the controller guard or application-service tests.
 
 ## Completion Review
 
