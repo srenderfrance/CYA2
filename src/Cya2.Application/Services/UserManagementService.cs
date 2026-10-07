@@ -1,4 +1,5 @@
 using Cya2.Application.DTOs;
+using Cya2.Application.Interfaces;
 using Cya2.Core.Interfaces;
 using Cya2.Core.Utilities;
 using Microsoft.Extensions.Logging;
@@ -13,17 +14,20 @@ public class UserManagementService
     private readonly IUserRepository _userRepository;
     private readonly IUserAccountAccessRepository _userAccountAccessRepository;
     private readonly IAccountRepository _accountRepository;
+    private readonly IAdminAuthorizationContext _adminAuthorizationContext;
     private readonly ILogger<UserManagementService> _logger;
 
     public UserManagementService(
         IUserRepository userRepository,
         IUserAccountAccessRepository userAccountAccessRepository,
         IAccountRepository accountRepository,
+        IAdminAuthorizationContext adminAuthorizationContext,
         ILogger<UserManagementService> logger)
     {
         _userRepository = userRepository;
         _userAccountAccessRepository = userAccountAccessRepository;
         _accountRepository = accountRepository;
+        _adminAuthorizationContext = adminAuthorizationContext;
         _logger = logger;
     }
 
@@ -112,6 +116,11 @@ public class UserManagementService
     {
         try
         {
+            if (!await _adminAuthorizationContext.IsCurrentUserAdminAsync())
+            {
+                return new List<AdminUserDto>();
+            }
+
             _logger.LogInformation("UserManagementService.GetAdminUsersAsync: requesting all users from repository.");
             var users = await _userRepository.GetAllAsync();
             _logger.LogInformation("UserManagementService.GetAdminUsersAsync: repository returned {Count} users.", users?.Count ?? 0);
@@ -140,6 +149,11 @@ public class UserManagementService
     {
         try
         {
+            if (!await _adminAuthorizationContext.IsCurrentUserAdminAsync())
+            {
+                return NotAuthorized();
+            }
+
             if (request.UserId <= 0)
             {
                 return new AdminUserOperationDto { IsSuccess = false, Message = "Invalid user id." };
@@ -184,6 +198,11 @@ public class UserManagementService
     {
         try
         {
+            if (!await _adminAuthorizationContext.IsCurrentUserAdminAsync())
+            {
+                return new List<Cya2.Core.Entities.Account>();
+            }
+
             return await _userAccountAccessRepository.GetUserAccountsAsync(userId);
         }
         catch (Exception ex)
@@ -197,6 +216,11 @@ public class UserManagementService
     {
         try
         {
+            if (!await _adminAuthorizationContext.IsCurrentUserAdminAsync())
+            {
+                return NotAuthorized();
+            }
+
             if (userId <= 0) return new AdminUserOperationDto { IsSuccess = false, Message = "Selected user not found" };
             if (accountId <= 0) return new AdminUserOperationDto { IsSuccess = false, Message = "Selected account not found" };
 
@@ -236,6 +260,11 @@ public class UserManagementService
     {
         try
         {
+            if (!await _adminAuthorizationContext.IsCurrentUserAdminAsync())
+            {
+                return NotAuthorized();
+            }
+
             if (userId <= 0) return new AdminUserOperationDto { IsSuccess = false, Message = "Selected user not found" };
             if (accountId <= 0) return new AdminUserOperationDto { IsSuccess = false, Message = "Please select an account to remove" };
 
@@ -261,6 +290,11 @@ public class UserManagementService
     {
         try
         {
+            if (!await _adminAuthorizationContext.IsCurrentUserAdminAsync())
+            {
+                return NotAuthorized();
+            }
+
             if (string.IsNullOrWhiteSpace(name))
                 return new AdminUserOperationDto { IsSuccess = false, Message = "Name is required" };
 
@@ -336,6 +370,11 @@ public class UserManagementService
     {
         try
         {
+            if (!await _adminAuthorizationContext.IsCurrentUserAdminAsync())
+            {
+                return NotAuthorized();
+            }
+
             if (userId <= 0)
                 return new AdminUserOperationDto { IsSuccess = false, Message = "Selected user not found" };
 
@@ -354,6 +393,9 @@ public class UserManagementService
             return new AdminUserOperationDto { IsSuccess = false, Message = $"Error: {ex.Message}" };
         }
     }
+
+    private static AdminUserOperationDto NotAuthorized()
+        => new() { IsSuccess = false, Message = "Administrator authorization is required." };
 
     private async Task<Cya2.Core.Entities.Account?> EnsureInternAccountAccessAsync(Cya2.Core.Entities.User user, string? originalName = null)
     {

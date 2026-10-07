@@ -26,6 +26,7 @@ public static class HostServiceCollectionExtensions
         services.AddSingleton<ImportProgressService>();
         services.AddSingleton<IImportProgressService>(sp => sp.GetRequiredService<ImportProgressService>());
         services.AddScoped<IImportAuthorizationContext, ImportAuthorizationContext>();
+        services.AddScoped<IAdminAuthorizationContext, AdminAuthorizationContext>();
         services.AddHostedService<ImportRetentionCleanupService>();
         services.AddSingleton<ImportWorkQueue>();
         services.AddSingleton<IImportWorkQueue>(sp => sp.GetRequiredService<ImportWorkQueue>());

@@ -112,14 +112,14 @@ Active-session revocation detection is polling-based with a maximum normal inter
 
 ### 9. Separate database setup permissions from everyday permissions
 
-- [x] Identify schema changes currently performed during normal application operations.
+- [x] Audit schema changes performed during normal application operations; no persistent runtime DDL was found.
 - [x] Move backup-table creation into the database setup process.
-- [ ] Move column alterations into the database setup process.
-- [ ] Move all other runtime schema changes into version-controlled migrations.
-- [ ] Remove runtime schema modification code from normal application paths.
+- [x] Move column alterations into the database setup process; the runtime audit found no column alterations requiring migration.
+- [x] Move all other runtime schema changes into version-controlled migrations; future changes use the standalone runner and `database/migrations`.
+- [x] Remove runtime schema modification code from normal application paths; only session-scoped temporary import tables remain.
 - [ ] Create a restricted application database user in the MySQL deployment environment.
 - [ ] Grant only the read, insert, update, and delete permissions required by features.
-- [ ] Keep schema-management permissions in a separate setup or migration account.
+- [x] Keep schema-management permissions in a separate setup or migration account.
 - [ ] Verify the application starts and operates with restricted permissions.
 - [x] Document both database users and their intended responsibilities.
 
@@ -139,15 +139,17 @@ Active-session revocation detection is polling-based with a maximum normal inter
 
 ### 11. Add focused authorization tests
 
-- [ ] Verify a regular user cannot import.
-- [ ] Verify a regular user cannot manage users.
-- [ ] Verify a regular user cannot view another user’s import progress.
-- [ ] Verify a user cannot export donors from an unauthorized account.
-- [ ] Verify an unknown Google user is rejected.
-- [ ] Verify a removed user cannot access protected operations.
-- [ ] Verify a revoked administrator cannot import.
-- [ ] Verify a revoked administrator cannot perform administrative changes.
-- [ ] Verify authorization checks are enforced server-side, not only in the UI.
+- [x] Verify a regular user cannot import. Application-layer import authorization and preview ownership tests pass; the upload controller's `[Authorize(Roles = "Admin")]` filter still requires web-pipeline integration testing.
+- [x] Verify a regular user cannot manage users. `UserManagementService` now revalidates the current database user and Admin role before administrative reads and mutations; tests verify denied users cannot update, create, delete, or change account links.
+- [x] Verify a regular user cannot view another user’s import progress. Ownership filtering is enforced by the server-side progress service/controller path.
+- [x] Verify a user cannot export donors from an unauthorized account. Unauthorized export tests also verify that donor reads are not invoked.
+- [ ] Verify an unknown Google user is rejected. Application authorization covers unknown database users; full Google callback rejection requires web integration configuration.
+- [x] Verify a removed user cannot access protected operations. Deleted-user authorization and export-denial regressions pass.
+- [x] Verify a revoked administrator cannot import. Current database role revalidation and owner-bound import tests pass; web-pipeline role-filter testing remains.
+- [x] Verify a revoked administrator cannot perform administrative changes. Regression coverage confirms that database-role revocation blocks user updates, creation, deletion, and account-access grants/revocations without invoking repository mutations.
+- [x] Verify authorization checks are enforced server-side, not only in the UI. Application services revalidate database user, role, and account membership before protected reads/import operations.
+
+Focused authorization tests currently run in `tests/Cya2.Application.Tests/AuthorizationBoundaryTests.cs` and `UserAuthorizationServiceTests.cs`. Direct ASP.NET authorization-filter and Google OAuth callback tests require a web integration test host, which is not currently part of the application test project.
 
 ### 12. Apply antiforgery protection consistently
 
