@@ -33,16 +33,26 @@ public class FinancialDashboardService : IFinancialDashboardService
 
     public async Task<FinancialDashboardDto> GetDashboardDataAsync(string accountFund, string userId)
     {
-        if (!(await _authorizationService.ValidateAccountAccessAsync(userId, accountFund)).IsAuthorized)
+        if (!await IsAuthorizedForDashboardLoadAsync(accountFund, userId))
             return new FinancialDashboardDto();
         return await GetDashboardDataInternalAsync(accountFund, userId, useSessionAccountDataCache: true);
     }
 
     public async Task<FinancialDashboardDto> GetDashboardSummaryDataAsync(string accountFund, string userId)
     {
-        if (!(await _authorizationService.ValidateAccountAccessAsync(userId, accountFund)).IsAuthorized)
+        if (!await IsAuthorizedForDashboardLoadAsync(accountFund, userId))
             return new FinancialDashboardDto();
         return await GetDashboardDataInternalAsync(accountFund, userId, useSessionAccountDataCache: false);
+    }
+
+    private async Task<bool> IsAuthorizedForDashboardLoadAsync(string accountFund, string userId)
+    {
+        if (string.IsNullOrWhiteSpace(accountFund))
+        {
+            return (await _authorizationService.ValidateUserAsync(userId)).IsAuthorized;
+        }
+
+        return (await _authorizationService.ValidateAccountAccessAsync(userId, accountFund)).IsAuthorized;
     }
 
     public async Task<FinancialSummaryDto> GetCustomSummaryAsync(

@@ -32,8 +32,8 @@ namespace cya2.Middleware
 
                 if (context.User?.Identity?.IsAuthenticated == true && !context.Response.HasStarted)
                 {
-                    var authLevel = context.User.FindFirstValue("AuthLevel");
-                    var redirectPath = authLevel == "Admin" ? "/admin" : "/";
+                    var authLevel = context.User.FindFirstValue("AuthLevel")?.Trim();
+                    var redirectPath = string.Equals(authLevel, "Admin", StringComparison.OrdinalIgnoreCase) ? "/admin" : "/";
 
                     // Simplified redirect - no need for JavaScript
                     context.Response.Redirect(redirectPath, false);

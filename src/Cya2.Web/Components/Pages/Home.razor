@@ -1306,7 +1306,7 @@ private bool showMissingGiftDialog = false;
                 return;
             }
 
-            var authLevel = user.FindFirstValue("AuthLevel") ?? string.Empty;
+            var authLevel = user.FindFirstValue("AuthLevel")?.Trim() ?? string.Empty;
             isAdminUser = user.IsInRole("Admin") || string.Equals(authLevel, "Admin", StringComparison.OrdinalIgnoreCase);
 
             userName = user.FindFirstValue("UserName") ??

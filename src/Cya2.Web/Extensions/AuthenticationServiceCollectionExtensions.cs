@@ -195,15 +195,16 @@ internal static class GoogleAuthenticationEvents
             }
 
             var user = signInResult.User!;
-            identity.AddClaim(new Claim(ClaimTypes.Role, user.AuthLevel ?? "User"));
-            identity.AddClaim(new Claim("AuthLevel", user.AuthLevel ?? string.Empty));
+            var authLevel = user.AuthLevel?.Trim() ?? "User";
+            identity.AddClaim(new Claim(ClaimTypes.Role, authLevel));
+            identity.AddClaim(new Claim("AuthLevel", authLevel));
             identity.AddClaim(new Claim("DefaultAccount", user.DefaultAccount?.ToString() ?? string.Empty));
             identity.AddClaim(new Claim("Language", user.Language ?? string.Empty));
             identity.AddClaim(new Claim("UserId", user.Id.ToString()));
             identity.AddClaim(new Claim("UserName", user.Name ?? string.Empty));
 
             context.Properties ??= new AuthenticationProperties();
-            context.Properties.RedirectUri = user.AuthLevel == "Admin" ? "/admin" : "/";
+            context.Properties.RedirectUri = string.Equals(authLevel, "Admin", StringComparison.OrdinalIgnoreCase) ? "/admin" : "/";
         }
         catch (InvalidOperationException ex) when (ex.Message.Contains("Database is currently unavailable", StringComparison.OrdinalIgnoreCase))
         {

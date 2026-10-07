@@ -31,22 +31,22 @@ public class User : BaseEntity
     // Simple helper methods for authorization checks
     public bool IsAdmin()
     {
-        return string.Equals(AuthLevel, "Admin", StringComparison.OrdinalIgnoreCase);
+        return string.Equals(AuthLevel?.Trim(), "Admin", StringComparison.OrdinalIgnoreCase);
     }
 
     public bool IsViewer()
     {
-        return string.Equals(AuthLevel, "Viewer", StringComparison.OrdinalIgnoreCase);
+        return string.Equals(AuthLevel?.Trim(), "Viewer", StringComparison.OrdinalIgnoreCase);
     }
 
     public bool IsUser()
     {
-        return string.Equals(AuthLevel, "User", StringComparison.OrdinalIgnoreCase);
+        return string.Equals(AuthLevel?.Trim(), "User", StringComparison.OrdinalIgnoreCase);
     }
 
     public bool IsIntern()
     {
-        return string.Equals(AuthLevel, "Intern", StringComparison.OrdinalIgnoreCase);
+        return string.Equals(AuthLevel?.Trim(), "Intern", StringComparison.OrdinalIgnoreCase);
     }
 
     public bool CanViewAllAccounts()

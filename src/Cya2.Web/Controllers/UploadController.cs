@@ -3,6 +3,7 @@ using System.Threading.Tasks;
 using Cya2.Application.Interfaces;
 using Cya2.Application.Services;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
@@ -17,21 +18,27 @@ namespace cya2.Controllers
         private readonly IImportOrchestrationService _importService;
         private readonly ILogger<UploadController> _logger;
         private readonly ImportUploadOptions _uploadOptions;
+        private readonly IAntiforgery _antiforgery;
 
         public UploadController(
             IImportOrchestrationService importService,
             ILogger<UploadController> logger,
-            Microsoft.Extensions.Options.IOptions<ImportUploadOptions> uploadOptions)
+            Microsoft.Extensions.Options.IOptions<ImportUploadOptions> uploadOptions,
+            IAntiforgery antiforgery)
         {
             _importService = importService;
             _logger = logger;
             _uploadOptions = uploadOptions.Value;
+            _antiforgery = antiforgery;
         }
 
         [HttpPost("donations/preview")]
         [RequestSizeLimit(ImportUploadOptions.DefaultMaximumUploadBytes)]
         public async Task<ActionResult<FilePreviewResult>> PreviewDonations([FromForm] IFormFile file, CancellationToken ct)
         {
+            if (!await ValidateAntiforgeryAsync())
+                return BadRequest("Antiforgery validation failed.");
+
             if (file == null || file.Length == 0)
             {
                 return BadRequest("No file uploaded");
@@ -65,6 +72,9 @@ namespace cya2.Controllers
         [HttpPost("donations/confirm")]
         public async Task<ActionResult<ImportResult>> ConfirmDonations([FromBody] ConfirmImportRequest request, CancellationToken ct)
         {
+            if (!await ValidateAntiforgeryAsync())
+                return BadRequest("Antiforgery validation failed.");
+
             if (request == null || string.IsNullOrWhiteSpace(request.PreviewId))
             {
                 return BadRequest("PreviewId is required");
@@ -86,6 +96,9 @@ namespace cya2.Controllers
         [RequestSizeLimit(ImportUploadOptions.DefaultMaximumUploadBytes)]
         public async Task<ActionResult<FilePreviewResult>> PreviewAccounting([FromForm] IFormFile file, CancellationToken ct)
         {
+            if (!await ValidateAntiforgeryAsync())
+                return BadRequest("Antiforgery validation failed.");
+
             if (file == null || file.Length == 0)
             {
                 return BadRequest("No file uploaded");
@@ -119,6 +132,9 @@ namespace cya2.Controllers
         [HttpPost("accounting/confirm")]
         public async Task<ActionResult<ImportResult>> ConfirmAccounting([FromBody] ConfirmImportRequest request, CancellationToken ct)
         {
+            if (!await ValidateAntiforgeryAsync())
+                return BadRequest("Antiforgery validation failed.");
+
             if (request == null || string.IsNullOrWhiteSpace(request.PreviewId))
             {
                 return BadRequest("PreviewId is required");
@@ -133,6 +149,25 @@ namespace cya2.Controllers
             catch (ImportAuthorizationException)
             {
                 return NotFound("The import is no longer available.");
+            }
+        }
+
+        private async Task<bool> ValidateAntiforgeryAsync()
+        {
+            try
+            {
+                await _antiforgery.ValidateRequestAsync(HttpContext);
+                return true;
+            }
+            catch (AntiforgeryValidationException exception)
+            {
+                _logger.LogWarning(exception,
+                    "Antiforgery validation failed for upload endpoint {Path}. HasHeaderToken={HasHeaderToken}, HasFormToken={HasFormToken}, ContentType={ContentType}",
+                    Request.Path,
+                    Request.Headers.ContainsKey("RequestVerificationToken"),
+                    Request.HasFormContentType && Request.Form.ContainsKey("__RequestVerificationToken"),
+                    Request.ContentType ?? string.Empty);
+                return false;
             }
         }
     }
