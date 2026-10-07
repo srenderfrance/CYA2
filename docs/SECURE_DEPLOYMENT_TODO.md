@@ -117,11 +117,11 @@ Active-session revocation detection is polling-based with a maximum normal inter
 - [ ] Move column alterations into the database setup process.
 - [ ] Move all other runtime schema changes into version-controlled migrations.
 - [ ] Remove runtime schema modification code from normal application paths.
-- [ ] Create a restricted application database user.
+- [ ] Create a restricted application database user in the MySQL deployment environment.
 - [ ] Grant only the read, insert, update, and delete permissions required by features.
 - [ ] Keep schema-management permissions in a separate setup or migration account.
 - [ ] Verify the application starts and operates with restricted permissions.
-- [ ] Document both database users and their intended responsibilities.
+- [x] Document both database users and their intended responsibilities.
 
 ### 10. Remove personal values from diagnostics
 
