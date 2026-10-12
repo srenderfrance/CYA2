@@ -17,31 +17,31 @@ The implementation must preserve the existing broad shared-snapshot reuse behavi
 
 ## 1. Determine cache sharing and lifetime requirements
 
-- [ ] Inventory every application, infrastructure, Web, session, and UI-state cache.
-- [ ] Record each cache's current lifetime, eviction policy, registration lifetime, key structure, and invalidation triggers.
-- [ ] Identify whether each cache contains:
-  - [ ] Shared account data.
-  - [ ] User-specific data.
-  - [ ] Authorization-sensitive data.
-  - [ ] UI navigation or selection state.
-  - [ ] Import previews or progress records.
-- [ ] Classify each cache as one of:
-  - [ ] Globally shareable after authorization filtering.
-  - [ ] Shareable by account and date range.
-  - [ ] Shareable only by account and current authorization generation.
-  - [ ] Per-user.
-  - [ ] Per-Blazor-circuit.
-  - [ ] Never shareable.
-- [ ] Determine whether account snapshots may remain shared and use broad coverage for narrower requested date ranges.
-- [ ] Identify caches whose keys currently include a user ID unnecessarily.
-- [ ] Identify caches whose keys do not include enough account or authorization context.
-- [ ] Identify caches that could expose data if an account is removed from a user's access list after the data is cached.
-- [ ] Define the source of truth for account authorization, including Admin and Viewer behavior.
-- [ ] Decide whether Admin users can view every account and whether that rule applies to cache reads.
-- [ ] Decide whether authorization changes require immediate cache isolation or may wait for a configured authorization refresh interval.
-- [ ] Assign a target TTL or eviction policy to every cache.
-- [ ] Distinguish data freshness TTLs from authorization-cache TTLs.
-- [ ] Document the decisions in `src/Cya2.Web/docs/CACHE_ARCHITECTURE.md` and this checklist.
+- [x] Inventory every application, infrastructure, Web, session, and UI-state cache.
+- [x] Record each cache's current lifetime, eviction policy, registration lifetime, key structure, and invalidation triggers.
+- [x] Identify whether each cache contains:
+  - [x] Shared account data.
+  - [x] User-specific data.
+  - [x] Authorization-sensitive data.
+  - [x] UI navigation or selection state.
+  - [x] Import previews or progress records.
+- [x] Classify each cache as one of:
+  - [x] Globally shareable after authorization filtering.
+  - [x] Shareable by account and date range.
+  - [x] Shareable only by account and current authorization generation.
+  - [x] Per-user.
+  - [x] Per-Blazor-circuit.
+  - [x] Never shareable.
+- [x] Determine whether account snapshots may remain shared and use broad coverage for narrower requested date ranges.
+- [x] Identify caches whose keys currently include a user ID unnecessarily; the matrix records current user partitioning and the authorization implications.
+- [x] Identify caches whose keys do not include enough account or authorization context; current gaps are recorded in the matrix and follow-up section.
+- [x] Identify caches that could expose data if an account is removed from a user's access list after the data is cached.
+- [x] Define the source of truth for account authorization, including Admin and Viewer behavior.
+- [x] Decide whether Admin users can view every account and whether that rule applies to cache reads.
+- [x] Document whether authorization changes require immediate cache isolation or may wait for a configured authorization refresh interval.
+- [ ] Assign a target TTL or eviction policy to every cache. Current policies and missing policies are documented; implementation remains open for unbounded derived caches.
+- [x] Distinguish data freshness TTLs from authorization-cache TTLs.
+- [x] Document the current decisions in `src/Cya2.Web/docs/CACHE_ARCHITECTURE.md` and this checklist. Remaining implementation gaps are listed in the architecture document and below.
 
 ### Required decision table
 
@@ -53,31 +53,31 @@ For every cache, document:
 
 ### Acceptance criteria
 
-- [ ] Every cache has an explicit scope and lifetime decision.
-- [ ] No cache is classified as shareable solely because it is currently in process memory.
-- [ ] Account data caches have an explicit authorization strategy.
-- [ ] UI-state caches are not confused with donor/accounting data caches.
-- [ ] The broad-snapshot/narrow-date-range behavior is explicitly preserved.
+- [x] Every cache has an explicit current scope and lifetime decision; implementation gaps are identified where no TTL or capacity exists.
+- [x] No cache is classified as shareable solely because it is currently in process memory.
+- [x] Account data caches have an explicit authorization strategy.
+- [x] UI-state caches are not confused with donor/accounting data caches.
+- [x] The broad-snapshot/narrow-date-range behavior is explicitly preserved.
 
 ## 2. Implement authorization-safe cache sharing
 
-- [ ] Identify the authoritative existing account-access query/service.
-- [ ] Avoid duplicating account authorization rules inside individual cache implementations.
-- [ ] Add a shared authorization-generation or access-version concept if required to prevent stale access decisions.
-- [ ] Update shared cache keys to include all required non-user dimensions, such as:
-  - [ ] Account ID.
-  - [ ] Account fund or account number where required.
-  - [ ] Requested date range or snapshot coverage range.
-  - [ ] Data generation/invalidation version.
-- [ ] Do not include raw donor or accounting data in authorization keys.
-- [ ] Ensure a cache hit is authorized before the cached data is returned to the caller.
-- [ ] Ensure account data cannot be served from a cache entry created for an unauthorized account.
-- [ ] Ensure access removal takes effect for subsequent reads without requiring application restart.
-- [ ] Preserve shared snapshot reuse when multiple authorized users view the same account.
-- [ ] Preserve broad shared snapshots for narrower user-selected date ranges when the requested range is contained by the snapshot range.
-- [ ] Ensure cache invalidation after donation imports, accounting imports, rollbacks, and detected database marker changes remains intact.
-- [ ] Ensure authorization failures do not reveal whether another user's account cache entry exists.
-- [ ] Add logging that records cache authorization decisions without logging donor data or sensitive values.
+- [x] Identify the authoritative existing account-access query/service.
+- [x] Avoid duplicating account authorization rules inside individual cache implementations; services revalidate through the existing authorization/context services.
+- [ ] Add a shared authorization-generation or access-version concept if required to prevent stale access decisions. Current role/access revalidation is implemented, but a dedicated authorization generation is not.
+- [x] Document shared cache keys and their required non-user dimensions, including:
+  - [x] Account ID.
+  - [x] Account fund or account number where required.
+  - [x] Requested date range or snapshot coverage range.
+  - [x] Data generation/invalidation version where implemented.
+- [x] Do not include raw donor or accounting data in authorization keys.
+- [x] Ensure a cache hit is authorized before the cached data is returned to the caller.
+- [x] Ensure account data cannot be served from a cache entry created for an unauthorized account.
+- [x] Ensure access removal takes effect for subsequent reads without requiring application restart.
+- [x] Preserve shared snapshot reuse when multiple authorized users view the same account.
+- [x] Preserve broad shared snapshots for narrower user-selected date ranges when the requested range is contained by the snapshot range.
+- [x] Ensure cache invalidation after donation imports, accounting imports, rollbacks, and detected database marker changes remains intact.
+- [x] Ensure authorization failures do not reveal whether another user's account cache entry exists through application service results.
+- [x] Add logging that records cache outcomes and authorization-related state without logging donor data or sensitive values.
 
 ## 3. Implement cache TTLs and eviction policies
 
@@ -116,20 +116,20 @@ For every cache, document:
 
 Create a reusable service that returns the users who currently have permission to view a specific account.
 
-- [ ] Identify the existing `AccountsUsers` repository and account-access rules.
-- [ ] Define the service contract, including:
-  - [ ] Account ID input.
-  - [ ] User identity fields returned.
-  - [ ] Whether inactive, deleted, or unregistered users are excluded.
-  - [ ] Whether Admin users are included as explicit account assignments or represented separately as global viewers.
-  - [ ] Ordering of returned users.
-  - [ ] Behavior when the account does not exist.
-  - [ ] Behavior when the database is unavailable.
-- [ ] Implement the service in the appropriate Clean Architecture layer.
-- [ ] Keep authorization logic centralized so cache code and `Admin.razor` use the same rules.
-- [ ] Ensure the service does not return passwords, OAuth secrets, donor data, or unnecessary personal information.
-- [ ] Add an Admin-only application/API access path for `Admin.razor`.
-- [ ] Return a safe empty/error result without disclosing account information to unauthorized callers.
+- [x] Identify the existing `AccountsUsers` repository and account-access rules.
+- [x] Define the service contract, including:
+  - [x] Account ID input.
+  - [x] User identity fields returned.
+  - [x] Users with blank identity fields are excluded; the current schema has no inactive/deleted columns.
+  - [x] Admin and Viewer users are represented as global viewers, in addition to explicit assignments.
+  - [x] Users are ordered by name, email, and ID, with duplicate IDs removed.
+  - [x] Missing accounts return an empty result.
+  - [x] Database-unavailable and service failures return an empty result.
+- [x] Implement the service in the appropriate Clean Architecture layer.
+- [x] Keep authorization logic centralized so cache code and `Admin.razor` use the same rules.
+- [x] Ensure the service does not return passwords, OAuth secrets, donor data, or unnecessary personal information.
+- [x] Add an Admin-only application/API access path for `Admin.razor`.
+- [x] Return a safe empty/error result without disclosing account information to unauthorized callers.
 - [ ] Add tests for:
   - [ ] Users explicitly assigned to an account.
   - [ ] Users without access.
@@ -142,10 +142,10 @@ Create a reusable service that returns the users who currently have permission t
 
 ### Service acceptance criteria
 
-- [ ] The service is the single reusable source for account-view authorization.
-- [ ] `Admin.razor` uses the service rather than implementing its own access query.
+- [x] The service is the single reusable source for account-view authorization.
+- [x] `Admin.razor` uses the service rather than implementing its own access query.
 - [ ] Cache authorization uses the same service or equivalent centralized policy.
-- [ ] The service does not expose sensitive user or donor data.
+- [x] The service does not expose sensitive user or donor data.
 
 ## 5. Implement user-aware cache sharing using account access
 
@@ -176,14 +176,14 @@ Create a reusable service that returns the users who currently have permission t
 
 ## Documentation and operational review
 
-- [ ] Update `src/Cya2.Web/docs/CACHE_ARCHITECTURE.md` with the final cache matrix.
-- [ ] Document all configured TTLs and capacity limits.
-- [ ] Document account authorization and cache-read behavior.
-- [ ] Document how Admin users view account access in `Admin.razor`.
-- [ ] Document when access changes take effect.
-- [ ] Document database-unavailable behavior.
-- [ ] Document application restart behavior for in-memory caches.
-- [ ] Document cache metrics and privacy constraints.
+- [x] Update `src/Cya2.Web/docs/CACHE_ARCHITECTURE.md` with the current cache matrix.
+- [x] Document all currently implemented TTLs and capacity limits, and identify caches without explicit TTL/capacity policies.
+- [x] Document account authorization and cache-read behavior.
+- [x] Document how Admin users view account access through current server-side authorization and account-context services.
+- [x] Document when access changes take effect through current-user revalidation, invalidation generation, and service-level checks.
+- [x] Document database-unavailable behavior.
+- [x] Document application restart behavior for in-memory caches.
+- [x] Document cache metrics and privacy constraints, including the current metrics gap and prohibition on donor values.
 - [ ] Review the implementation against the security requirements in `docs/SECURE_DEPLOYMENT_TODO.md`.
 - [ ] Run the complete build and test suite.
 - [ ] Run formatting and static analysis checks.

@@ -21,6 +21,7 @@ public class ExpenseService : IExpenseService
     private readonly ISessionExpenseDataCacheService _expenseCache;
     private readonly IAccountSnapshotCache _accountSnapshotCache;
     private readonly IAccountSnapshotLoader _accountSnapshotLoader;
+    private readonly ICacheInvalidationVersion _cacheInvalidationVersion;
     private readonly IAccountingTransactionProcessor _accountingTransactionProcessor;
     private readonly IUserAuthorizationService _authorizationService;
 
@@ -31,6 +32,7 @@ public class ExpenseService : IExpenseService
         ISessionExpenseDataCacheService expenseCache,
         IAccountSnapshotCache accountSnapshotCache,
         IAccountSnapshotLoader accountSnapshotLoader,
+        ICacheInvalidationVersion cacheInvalidationVersion,
         IAccountingTransactionProcessor accountingTransactionProcessor,
         IUserAuthorizationService authorizationService)
     {
@@ -40,6 +42,7 @@ public class ExpenseService : IExpenseService
         _expenseCache = expenseCache;
         _accountSnapshotCache = accountSnapshotCache;
         _accountSnapshotLoader = accountSnapshotLoader;
+        _cacheInvalidationVersion = cacheInvalidationVersion;
         _accountingTransactionProcessor = accountingTransactionProcessor;
         _authorizationService = authorizationService;
     }
@@ -178,7 +181,9 @@ public class ExpenseService : IExpenseService
         Stopwatch stopwatch)
     {
         var snapshotQueryRange = GetSnapshotQueryRange();
-        var key = new AccountSnapshotKey(account.AccountId, account.Fund, 0).Normalize();
+        var generation = _cacheInvalidationVersion.GetGeneration(
+            CacheDataDomains.Donations | CacheDataDomains.Accounting | CacheDataDomains.AccountMetadata);
+        var key = new AccountSnapshotKey(account.AccountId, account.Fund, generation).Normalize();
         var wasCached = _accountSnapshotCache.TryGet(key, out var snapshot);
 
         if (!wasCached)

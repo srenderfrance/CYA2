@@ -33,6 +33,20 @@ ORDER BY a.Fund";
         return rows.ToList();
     }
 
+    public async Task<List<User>> GetAccountUsersAsync(int accountId)
+    {
+        _dbGuard.ThrowIfUnavailable();
+        const string sql = @"
+SELECT u.Id, u.GoogleId, u.Email, u.Name, u.Language, u.AuthLevel, u.DefaultAccount
+FROM Users u
+INNER JOIN AccountsUsers au ON u.Id = au.UserId
+WHERE au.AccountId = @AccountId
+ORDER BY u.Name, u.Email, u.Id";
+        await using var conn = new MySqlConnection(ConnStr);
+        var rows = await conn.QueryAsync<User>(sql, new { AccountId = accountId });
+        return rows.ToList();
+    }
+
     public async Task<Account?> GetAccountByIdAsync(int accountId)
     {
         _dbGuard.ThrowIfUnavailable();

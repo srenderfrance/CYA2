@@ -14,6 +14,8 @@ public class FinancialDashboardService : IFinancialDashboardService
     private readonly IUserAccountContextService _userAccountContextService;
     private readonly IDonationService _donationService;
     private readonly IUserAuthorizationService _authorizationService;
+    private readonly IAccountBalanceCache _accountBalanceCache;
+    private readonly ICacheInvalidationVersion _cacheInvalidationVersion;
 
     public FinancialDashboardService(
         ILogger<FinancialDashboardService> logger,
@@ -21,7 +23,9 @@ public class FinancialDashboardService : IFinancialDashboardService
         ISessionAccountDataCacheService sessionAccountDataCache,
         IUserAccountContextService userAccountContextService,
         IDonationService donationService,
-        IUserAuthorizationService authorizationService)
+        IUserAuthorizationService authorizationService,
+        IAccountBalanceCache accountBalanceCache,
+        ICacheInvalidationVersion cacheInvalidationVersion)
     {
         _logger = logger;
         _accountCalculationService = accountCalculationService;
@@ -29,6 +33,8 @@ public class FinancialDashboardService : IFinancialDashboardService
         _userAccountContextService = userAccountContextService;
         _donationService = donationService;
         _authorizationService = authorizationService;
+        _accountBalanceCache = accountBalanceCache;
+        _cacheInvalidationVersion = cacheInvalidationVersion;
     }
 
     public async Task<FinancialDashboardDto> GetDashboardDataAsync(string accountFund, string userId)
@@ -99,20 +105,43 @@ public class FinancialDashboardService : IFinancialDashboardService
             endDate.Date,
             $"{startDate:MM/dd/yyyy} - {endDate:MM/dd/yyyy}");
 
-        var endingBalanceTask = _accountCalculationService.CalculateBalanceAsync(
-            selectedAccount,
-            null,
-            endDate.Date);
-        var startingBalanceTask = _accountCalculationService.CalculateBalanceAsync(
-            selectedAccount,
-            null,
-            startDate.Date.AddDays(-1));
+        var endingBalanceTask = CalculateCachedHomeBalanceAsync(selectedAccount, endDate.Date);
+        var startingBalanceTask = CalculateCachedHomeBalanceAsync(selectedAccount, startDate.Date.AddDays(-1));
         await Task.WhenAll(endingBalanceTask, startingBalanceTask);
 
-        result.Summary.StartingBalance = startingBalanceTask.Result.TotalBalance;
-        result.Summary.Balance = endingBalanceTask.Result.TotalBalance;
+        result.Summary.StartingBalance = startingBalanceTask.Result;
+        result.Summary.Balance = endingBalanceTask.Result;
 
         return result.Summary;
+    }
+
+    private async Task<decimal> CalculateCachedHomeBalanceAsync(
+        UserAccountContextAccount account,
+        DateTime asOfDate)
+    {
+        var generation = _cacheInvalidationVersion.Current;
+        if (_accountBalanceCache.TryGet(
+                account.AccountId,
+                account.AccountingClass,
+                account.AccountNumber,
+                account.BalanceAdjustment,
+                generation,
+                asOfDate,
+                out var cachedBalance))
+        {
+            return cachedBalance;
+        }
+
+        var calculated = await _accountCalculationService.CalculateBalanceAsync(account, null, asOfDate);
+        _accountBalanceCache.Set(
+            account.AccountId,
+            account.AccountingClass,
+            account.AccountNumber,
+            account.BalanceAdjustment,
+            generation,
+            asOfDate,
+            calculated.TotalBalance);
+        return calculated.TotalBalance;
     }
 
     private async Task<FinancialDashboardDto> GetDashboardDataInternalAsync(string accountFund, string userId, bool useSessionAccountDataCache)
@@ -352,7 +381,7 @@ public class FinancialDashboardService : IFinancialDashboardService
                     monthStart,
                     monthEnd).TotalDonations;
                 var expenseTask = _accountCalculationService.CalculateBalanceAsync(selectedAccount, monthStart, monthEnd);
-                var balanceTask = _accountCalculationService.CalculateBalanceAsync(selectedAccount, null, monthEnd);
+                var balanceTask = CalculateCachedHomeBalanceAsync(selectedAccount, monthEnd);
 
                 await Task.WhenAll(expenseTask, balanceTask);
 
@@ -363,7 +392,7 @@ public class FinancialDashboardService : IFinancialDashboardService
                     DonationTotal = donationTotal,
                     OverheadTotal = _accountCalculationService.CalculateOverheadAmount(selectedAccount, donationTotal),
                     ExpenseTotal = expenseTask.Result.ExpenseTotal,
-                    Balance = balanceTask.Result.TotalBalance
+                    Balance = balanceTask.Result
                 });
 
                 cursor = cursor.AddMonths(1);
@@ -474,18 +503,12 @@ public class FinancialDashboardService : IFinancialDashboardService
     {
         var tasks = periods.Select(async period =>
         {
-            var startingBalanceTask = _accountCalculationService.CalculateBalanceAsync(
-                account,
-                null,
-                period.Start.AddDays(-1));
-            var endingBalanceTask = _accountCalculationService.CalculateBalanceAsync(
-                account,
-                null,
-                period.End);
+            var startingBalanceTask = CalculateCachedHomeBalanceAsync(account, period.Start.AddDays(-1));
+            var endingBalanceTask = CalculateCachedHomeBalanceAsync(account, period.End);
 
             await Task.WhenAll(startingBalanceTask, endingBalanceTask);
-            period.Summary.StartingBalance = startingBalanceTask.Result.TotalBalance;
-            period.Summary.Balance = endingBalanceTask.Result.TotalBalance;
+            period.Summary.StartingBalance = startingBalanceTask.Result;
+            period.Summary.Balance = endingBalanceTask.Result;
         });
 
         await Task.WhenAll(tasks);
@@ -543,14 +566,14 @@ public class FinancialDashboardService : IFinancialDashboardService
             startDate,
             endDate);
         var expenseTask = _accountCalculationService.CalculateBalanceAsync(account, startDate, endDate);
-        var balanceTask = _accountCalculationService.CalculateBalanceAsync(account, null, endDate);
-        var startingBalanceTask = _accountCalculationService.CalculateBalanceAsync(account, null, startDate.AddDays(-1));
+        var balanceTask = CalculateCachedHomeBalanceAsync(account, endDate);
+        var startingBalanceTask = CalculateCachedHomeBalanceAsync(account, startDate.AddDays(-1));
         await Task.WhenAll(expenseTask, balanceTask, startingBalanceTask);
 
         var balanceCalculation = expenseTask.Result;
         var expenseTotal = balanceCalculation.ExpenseTotal;
         var transferTotal = balanceCalculation.TransferTotal;
-        var balance = balanceTask.Result.TotalBalance;
+        var balance = balanceTask.Result;
         // _logger.LogInformation("Dashboard summary period-complete period={Period} account={Account} elapsedMs={ElapsedMs}", period, account.Fund, stopwatch.ElapsedMilliseconds);
 
         return new HomeSummaryResult
@@ -564,7 +587,7 @@ public class FinancialDashboardService : IFinancialDashboardService
                 TotalExpenses = expenseTotal,
                 InternalTransfers = transferTotal,
                 SeparateSubfundTotals = new Dictionary<string, decimal>(donationTotals.SeparateSubfundTotals, StringComparer.OrdinalIgnoreCase),
-                StartingBalance = startingBalanceTask.Result.TotalBalance,
+                StartingBalance = startingBalanceTask.Result,
                 Balance = balance
             },
             OtherAccounts = balanceCalculation.OtherTransactions

@@ -5,6 +5,7 @@ namespace Cya2.Core.Interfaces;
 public interface IUserAccountAccessRepository
 {
     Task<List<Account>> GetUserAccountsAsync(int userId);
+    Task<List<User>> GetAccountUsersAsync(int accountId);
     Task<Account?> GetAccountByIdAsync(int accountId);
     Task<bool> HasAccessAsync(int userId, int accountId);
     Task<bool> GrantAccessAsync(int userId, int accountId);

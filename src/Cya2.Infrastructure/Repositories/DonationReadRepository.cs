@@ -151,7 +151,7 @@ WHERE d.Date >= @StartDate
     {
         _dbGuard.ThrowIfUnavailable();
         await using var conn = new MySqlConnection(ConnStr);
-        var rows = await conn.QueryAsync<DonationRecord>(
+        var rows = (await conn.QueryAsync<DonationRecord>(
             $@"{DonationProjection}
 WHERE d.Date >= @StartDate
   AND d.Date <= @EndDate
@@ -163,8 +163,61 @@ WHERE d.Date >= @StartDate
             WHERE AccountId = @AccountId AND Kind = 'Merged'
        )
   )",
-            new { AccountId = accountId, Fund = fundName, StartDate = startDate, EndDate = endDate });
-        return rows.ToList();
+             new { AccountId = accountId, Fund = fundName, StartDate = startDate, EndDate = endDate })).ToList();
+
+        if (rows.Count == 0)
+        {
+            var diagnostics = await conn.QuerySingleAsync<DonationQueryDiagnostics>(
+                @"
+SELECT
+    (SELECT COUNT(*)
+     FROM DonationData
+     WHERE Date >= @StartDate AND Date <= @EndDate) AS DateRows,
+    (SELECT COUNT(*)
+     FROM DonationData d
+     WHERE d.Date >= @StartDate
+       AND d.Date <= @EndDate
+       AND (
+            d.Fund COLLATE utf8mb4_0900_ai_ci = @Fund COLLATE utf8mb4_0900_ai_ci
+            OR d.Fund COLLATE utf8mb4_0900_ai_ci IN (
+                 SELECT SubFund COLLATE utf8mb4_0900_ai_ci
+                 FROM SubAccounts
+                 WHERE AccountId = @AccountId AND Kind = 'Merged'
+            )
+       )) AS FundDateRows,
+    (SELECT COUNT(*)
+     FROM DonationData d
+     INNER JOIN Donors dn ON dn.Id = d.DonorId
+     WHERE d.Date >= @StartDate
+       AND d.Date <= @EndDate
+       AND (
+            d.Fund COLLATE utf8mb4_0900_ai_ci = @Fund COLLATE utf8mb4_0900_ai_ci
+            OR d.Fund COLLATE utf8mb4_0900_ai_ci IN (
+                 SELECT SubFund COLLATE utf8mb4_0900_ai_ci
+                 FROM SubAccounts
+                 WHERE AccountId = @AccountId AND Kind = 'Merged'
+            )
+       )) AS DonorJoinRows",
+                new { AccountId = accountId, Fund = fundName, StartDate = startDate, EndDate = endDate });
+
+            _logger.LogWarning(
+                "Donation query returned no rows: accountId={AccountId} range={StartDate:yyyy-MM-dd HH:mm:ss}..{EndDate:yyyy-MM-dd HH:mm:ss} dateRows={DateRows} fundDateRows={FundDateRows} donorJoinRows={DonorJoinRows}",
+                accountId,
+                startDate,
+                endDate,
+                diagnostics.DateRows,
+                diagnostics.FundDateRows,
+                diagnostics.DonorJoinRows);
+        }
+
+        return rows;
+    }
+
+    private sealed class DonationQueryDiagnostics
+    {
+        public int DateRows { get; init; }
+        public int FundDateRows { get; init; }
+        public int DonorJoinRows { get; init; }
     }
 
     public Task<List<DonationRecord>> GetDonationsByFundsAndDonorAsync(IEnumerable<string> fundNames, string donorName)

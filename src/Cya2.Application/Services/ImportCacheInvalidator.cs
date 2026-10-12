@@ -16,6 +16,9 @@ public sealed class ImportCacheInvalidator : IImportCacheInvalidator
     private readonly ISessionExpenseDataCacheService _expenseCache;
     private readonly ISessionDashboardDtoCacheService _dashboardCache;
     private readonly IAccountSnapshotCache _accountSnapshotCache;
+    private readonly IAdminSharedCache _adminSharedCache;
+    private readonly IAccountBalanceCache _accountBalanceCache;
+    private readonly IAdminCacheWarmupCoordinator _adminCacheWarmupCoordinator;
     private readonly ICacheInvalidationVersion _cacheInvalidationVersion;
     private readonly ILogger<ImportCacheInvalidator> _logger;
 
@@ -26,6 +29,9 @@ public sealed class ImportCacheInvalidator : IImportCacheInvalidator
         ISessionExpenseDataCacheService expenseCache,
         ISessionDashboardDtoCacheService dashboardCache,
         IAccountSnapshotCache accountSnapshotCache,
+        IAdminSharedCache adminSharedCache,
+        IAccountBalanceCache accountBalanceCache,
+        IAdminCacheWarmupCoordinator adminCacheWarmupCoordinator,
         ICacheInvalidationVersion cacheInvalidationVersion,
         ILogger<ImportCacheInvalidator> logger)
     {
@@ -35,6 +41,9 @@ public sealed class ImportCacheInvalidator : IImportCacheInvalidator
         _expenseCache  = expenseCache;
         _dashboardCache = dashboardCache;
         _accountSnapshotCache = accountSnapshotCache;
+        _adminSharedCache = adminSharedCache;
+        _accountBalanceCache = accountBalanceCache;
+        _adminCacheWarmupCoordinator = adminCacheWarmupCoordinator;
         _cacheInvalidationVersion = cacheInvalidationVersion;
         _logger        = logger;
     }
@@ -47,7 +56,10 @@ public sealed class ImportCacheInvalidator : IImportCacheInvalidator
         _expenseCache.InvalidateAll();
         _dashboardCache.InvalidateAll();
         _accountSnapshotCache.InvalidateAll();
-        _cacheInvalidationVersion.Invalidate();
+        _adminSharedCache.InvalidateAll();
+        _accountBalanceCache.InvalidateAll();
+        _cacheInvalidationVersion.Invalidate(CacheDataDomains.All);
+        _adminCacheWarmupCoordinator.QueueWarmup();
         _logger.LogInformation("All session and account snapshot caches cleared after import/rollback");
     }
 }

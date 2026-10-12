@@ -15,6 +15,7 @@ public sealed class AccountSnapshotWarmupService : IAccountSnapshotWarmupService
 
     private readonly IAccountSnapshotCache _snapshotCache;
     private readonly IAccountSnapshotLoader _snapshotLoader;
+    private readonly ICacheInvalidationVersion _cacheInvalidationVersion;
     private readonly IFinancialDashboardService _dashboardService;
     private readonly ISessionDashboardDtoCacheService _dashboardCache;
     private readonly IDonationService _donationService;
@@ -35,6 +36,7 @@ public sealed class AccountSnapshotWarmupService : IAccountSnapshotWarmupService
     public AccountSnapshotWarmupService(
         IAccountSnapshotCache snapshotCache,
         IAccountSnapshotLoader snapshotLoader,
+        ICacheInvalidationVersion cacheInvalidationVersion,
         IFinancialDashboardService dashboardService,
         ISessionDashboardDtoCacheService dashboardCache,
         IDonationService donationService,
@@ -44,6 +46,7 @@ public sealed class AccountSnapshotWarmupService : IAccountSnapshotWarmupService
     {
         _snapshotCache = snapshotCache;
         _snapshotLoader = snapshotLoader;
+        _cacheInvalidationVersion = cacheInvalidationVersion;
         _dashboardService = dashboardService;
         _dashboardCache = dashboardCache;
         _donationService = donationService;
@@ -491,8 +494,12 @@ public sealed class AccountSnapshotWarmupService : IAccountSnapshotWarmupService
     private static bool IsValid(UserAccountContextAccount account)
         => account.AccountId > 0 && !string.IsNullOrWhiteSpace(account.Fund);
 
-    private static AccountSnapshotKey GetKey(UserAccountContextAccount account)
-        => new AccountSnapshotKey(account.AccountId, account.Fund, 0).Normalize();
+    private AccountSnapshotKey GetKey(UserAccountContextAccount account)
+        => new AccountSnapshotKey(
+            account.AccountId,
+            account.Fund,
+            _cacheInvalidationVersion.GetGeneration(
+                CacheDataDomains.Donations | CacheDataDomains.Accounting | CacheDataDomains.AccountMetadata)).Normalize();
 
     private static UserAccountContextAccount ToContextAccount(Account account)
         => new()

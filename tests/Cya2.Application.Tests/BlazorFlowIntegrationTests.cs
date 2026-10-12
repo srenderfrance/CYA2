@@ -29,6 +29,9 @@ public sealed class BlazorFlowIntegrationTests
         var expense = new TrackingExpenseCache();
         var dashboard = new TrackingDashboardCache();
         var snapshots = new TrackingSnapshotCache();
+        var adminShared = new AdminSharedCache();
+        var accountBalances = new AccountBalanceCache();
+        var warmup = new NoOpAdminCacheWarmupCoordinator();
         var version = new CacheInvalidationVersion();
         var invalidator = new ImportCacheInvalidator(
             donation,
@@ -37,6 +40,9 @@ public sealed class BlazorFlowIntegrationTests
             expense,
             dashboard,
             snapshots,
+            adminShared,
+            accountBalances,
+            warmup,
             version,
             Microsoft.Extensions.Logging.Abstractions.NullLogger<ImportCacheInvalidator>.Instance);
 
@@ -49,7 +55,76 @@ public sealed class BlazorFlowIntegrationTests
         Assert.Equal(1, expense.InvalidationCount);
         Assert.Equal(1, dashboard.InvalidationCount);
         Assert.Equal(1, snapshots.InvalidationCount);
+        Assert.False(adminShared.TryGetStaff(0, out _));
         Assert.Equal(initialVersion + 1, version.Current);
+    }
+
+    private sealed class NoOpAdminCacheWarmupCoordinator : IAdminCacheWarmupCoordinator
+    {
+        public void QueueWarmup() { }
+    }
+
+    [Fact]
+    public void AdminSharedCache_IsolatedByGenerationAndCopiesValues()
+    {
+        var cache = new AdminSharedCache();
+        var staff = new[] { new AdminUserDto() };
+
+        cache.SetStaff(4, staff);
+        staff[0] = new AdminUserDto();
+
+        Assert.True(cache.TryGetStaff(4, out var cachedStaff));
+        Assert.Single(cachedStaff);
+        Assert.False(cache.TryGetStaff(5, out _));
+
+        cache.InvalidateAll();
+
+        Assert.False(cache.TryGetStaff(4, out _));
+    }
+
+    [Fact]
+    public void AdminSharedCache_BoundsOverviewEntries()
+    {
+        var cache = new AdminSharedCache();
+        var start = new DateTime(2025, 1, 1);
+
+        for (var month = 0; month < 5; month++)
+        {
+            var rangeStart = start.AddMonths(month);
+            cache.SetOverview(1, rangeStart, rangeStart.AddMonths(12), Array.Empty<AdminAccountOverviewDto>());
+        }
+
+        Assert.False(cache.TryGetOverview(1, start, start.AddMonths(12), out _));
+        Assert.True(cache.TryGetOverview(1, start.AddMonths(4), start.AddMonths(16), out _));
+    }
+
+    [Fact]
+    public void AccountBalanceCache_IsolatedByGenerationAndNormalizesFutureDates()
+    {
+        var cache = new AccountBalanceCache();
+        var today = DateTime.UtcNow.Date;
+
+        cache.Set(42, "CLASS", "NUMBER", 10m, 3, today.AddDays(30), 123.45m);
+
+        Assert.True(cache.TryGet(42, " CLASS ", "NUMBER", 10m, 3, today, out var balance));
+        Assert.Equal(123.45m, balance);
+        Assert.False(cache.TryGet(42, "CLASS", "NUMBER", 10m, 4, today, out _));
+    }
+
+    [Fact]
+    public void AccountBalanceCache_EvictsLeastRecentlyUsedEntries()
+    {
+        var cache = new AccountBalanceCache();
+        var date = new DateTime(2026, 1, 1);
+
+        for (var accountId = 1; accountId <= 257; accountId++)
+        {
+            cache.Set(accountId, "CLASS", accountId.ToString(), 0m, 1, date, accountId);
+        }
+
+        Assert.Equal(256, cache.Count);
+        Assert.False(cache.TryGet(1, "CLASS", "1", 0m, 1, date, out _));
+        Assert.True(cache.TryGet(257, "CLASS", "257", 0m, 1, date, out _));
     }
 
     private sealed class TrackingMissingGiftCache : ISessionMissingGiftCacheService
