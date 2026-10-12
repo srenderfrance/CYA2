@@ -41,6 +41,7 @@ public class DonationService : IDonationService
     {
         var sw = Stopwatch.StartNew();
         var result = new DonationDataDto();
+        dateRange = NormalizeDateRange(dateRange);
         var normalizedSubSelection = string.IsNullOrWhiteSpace(subAccountSelection) ? "All" : subAccountSelection;
         var bypassSubAccountCache = !string.Equals(normalizedSubSelection, "All", StringComparison.OrdinalIgnoreCase);
         var requestedInternAccount = InternAccountUtility.IsInternFund(accountName);
@@ -602,10 +603,10 @@ public class DonationService : IDonationService
     {
         var now = DateTime.UtcNow;
         var baselineStart = new DateTime(now.Year - 2, 1, 1);
-        var baselineEnd = new DateTime(now.Year, 12, 31);
+        var baselineEnd = EndOfDay(new DateTime(now.Year, 12, 31));
 
         var start = requested.StartDate.Date < baselineStart ? requested.StartDate.Date : baselineStart;
-        var end = requested.EndDate.Date > baselineEnd ? requested.EndDate.Date : baselineEnd;
+        var end = requested.EndDate.Date > baselineEnd.Date ? EndOfDay(requested.EndDate) : baselineEnd;
 
         if ((end - start).TotalDays > 1461)
         {
@@ -621,6 +622,14 @@ public class DonationService : IDonationService
         return range.StartDate.Date == new DateTime(now.Year - 2, 1, 1) &&
                range.EndDate.Date == new DateTime(now.Year, 12, 31);
     }
+
+    private static DateRange NormalizeDateRange(DateRange range)
+    {
+        return new DateRange(range.StartDate.Date, EndOfDay(range.EndDate));
+    }
+
+    private static DateTime EndOfDay(DateTime date)
+        => date.Date.AddDays(1).AddTicks(-1);
 
     private static string GetFrequencyLabel(Cya2.Core.Enums.DonorFrequency? frequency) => frequency switch
     {

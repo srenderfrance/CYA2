@@ -33,6 +33,7 @@ public sealed class AccountSnapshotWarmupTests
         using var warmup = new AccountSnapshotWarmupService(
             snapshotCache,
             new NoOpSnapshotLoader(),
+            new CacheInvalidationVersion(),
             dashboard,
             new NoOpDashboardCache(),
             donations,
@@ -67,6 +68,7 @@ public sealed class AccountSnapshotWarmupTests
         using var warmup = new AccountSnapshotWarmupService(
             snapshotCache,
             loader,
+            new CacheInvalidationVersion(),
             new TrackingDashboardService(),
             new NoOpDashboardCache(),
             new TrackingDonationService(),
@@ -102,6 +104,7 @@ public sealed class AccountSnapshotWarmupTests
         using var warmup = new AccountSnapshotWarmupService(
             snapshotCache,
             loader,
+            new CacheInvalidationVersion(),
             new TrackingDashboardService(),
             new NoOpDashboardCache(),
             new TrackingDonationService(),
@@ -137,6 +140,7 @@ public sealed class AccountSnapshotWarmupTests
         using var warmup = new AccountSnapshotWarmupService(
             new TrackingSnapshotCache(),
             loader,
+            new CacheInvalidationVersion(),
             new TrackingDashboardService(),
             new NoOpDashboardCache(),
             new TrackingDonationService(),
@@ -171,6 +175,7 @@ public sealed class AccountSnapshotWarmupTests
         using var warmup = new AccountSnapshotWarmupService(
             snapshotCache,
             new NoOpSnapshotLoader(),
+            new CacheInvalidationVersion(),
             dashboard,
             new NoOpDashboardCache(),
             donations,
@@ -215,6 +220,7 @@ public sealed class AccountSnapshotWarmupTests
         using var warmup = new AccountSnapshotWarmupService(
             snapshotCache,
             new NoOpSnapshotLoader(),
+            new CacheInvalidationVersion(),
             dashboard,
             new NoOpDashboardCache(),
             donations,

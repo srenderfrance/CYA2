@@ -1,9 +1,11 @@
 using Cya2.Application.Interfaces;
+using Cya2.Application.Models;
 using Cya2.Core.Interfaces;
 using Cya2.Core.Entities;
 using Cya2.Core.ReadModels;
 using Cya2.Core.Services;
 using Cya2.Core.Utilities;
+using Cya2.Core.ValueObjects;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 
@@ -19,6 +21,9 @@ public class AccountCalculationService : IAccountCalculationService
     private readonly IDonationReadRepository _donationReadRepository;
     private readonly ExpenseClassificationService _expenseClassificationService;
     private readonly IAccountingTransactionProcessor _accountingTransactionProcessor;
+    private readonly IAccountSnapshotCache? _accountSnapshotCache;
+    private readonly IAccountSnapshotLoader? _accountSnapshotLoader;
+    private readonly ICacheInvalidationVersion? _cacheInvalidationVersion;
     private readonly ILogger<AccountCalculationService> _logger;
 
     public AccountCalculationService(
@@ -31,7 +36,10 @@ public class AccountCalculationService : IAccountCalculationService
             donationReadRepository,
             expenseClassificationService,
             new AccountingTransactionProcessor(expenseClassificationService),
-            logger)
+            logger,
+            null,
+            null,
+            null)
     {
     }
 
@@ -40,12 +48,18 @@ public class AccountCalculationService : IAccountCalculationService
         IDonationReadRepository donationReadRepository,
         ExpenseClassificationService expenseClassificationService,
         IAccountingTransactionProcessor accountingTransactionProcessor,
-        ILogger<AccountCalculationService>? logger = null)
+        ILogger<AccountCalculationService>? logger = null,
+        IAccountSnapshotCache? accountSnapshotCache = null,
+        IAccountSnapshotLoader? accountSnapshotLoader = null,
+        ICacheInvalidationVersion? cacheInvalidationVersion = null)
     {
         _expenseReadRepository = expenseReadRepository;
         _donationReadRepository = donationReadRepository;
         _expenseClassificationService = expenseClassificationService;
         _accountingTransactionProcessor = accountingTransactionProcessor;
+        _accountSnapshotCache = accountSnapshotCache;
+        _accountSnapshotLoader = accountSnapshotLoader;
+        _cacheInvalidationVersion = cacheInvalidationVersion;
         _logger = logger ?? NullLogger<AccountCalculationService>.Instance;
     }
 
@@ -56,6 +70,21 @@ public class AccountCalculationService : IAccountCalculationService
     {
         var actualStartDate = startDate ?? DateTime.MinValue;
         var actualEndDate = endDate ?? DateTime.MaxValue;
+
+        if (CanUseAccountSnapshot(actualStartDate, actualEndDate) && CanUseAccountSnapshotServices())
+        {
+            var snapshotTasks = accounts.ToDictionary(
+                account => account.AccountId,
+                account => LoadAccountingDataFromSnapshotAsync(account, actualStartDate, actualEndDate));
+            await Task.WhenAll(snapshotTasks.Values);
+
+            return accounts.ToDictionary(
+                account => account.AccountId,
+                account => _accountingTransactionProcessor.Process(
+                    account,
+                    snapshotTasks[account.AccountId].Result));
+        }
+
         var accountKeys = accounts
             .Select(account => (account.AccountId, account.AccountingClass, account.AccountNumber))
             .ToList();
@@ -81,11 +110,13 @@ public class AccountCalculationService : IAccountCalculationService
 
         try
         {
-            var records = await _expenseReadRepository.GetAccountingDataForAccountAsync(
-                account.AccountingClass,
-                account.AccountNumber,
-                actualStartDate,
-                actualEndDate);
+            var records = CanUseAccountSnapshot(actualStartDate, actualEndDate) && CanUseAccountSnapshotServices()
+                ? await LoadAccountingDataFromSnapshotAsync(account, actualStartDate, actualEndDate)
+                : await _expenseReadRepository.GetAccountingDataForAccountAsync(
+                    account.AccountingClass,
+                    account.AccountNumber,
+                    actualStartDate,
+                    actualEndDate);
 
             return _accountingTransactionProcessor.Process(
                 account,
@@ -95,6 +126,33 @@ public class AccountCalculationService : IAccountCalculationService
         {
             throw new Exception($"Error calculating balance from repository data: {ex.Message}", ex);
         }
+    }
+
+    private bool CanUseAccountSnapshotServices()
+        => _accountSnapshotCache is not null &&
+           _accountSnapshotLoader is not null &&
+           _cacheInvalidationVersion is not null;
+
+    private async Task<List<AccountingRecord>> LoadAccountingDataFromSnapshotAsync(
+        UserAccountContextAccount account,
+        DateTime startDate,
+        DateTime endDate)
+    {
+        var generation = _cacheInvalidationVersion!.GetGeneration(
+            CacheDataDomains.Donations | CacheDataDomains.Accounting | CacheDataDomains.AccountMetadata);
+        var key = new AccountSnapshotKey(account.AccountId, account.Fund, generation).Normalize();
+        var snapshot = await _accountSnapshotCache!.GetOrCreateAsync(
+            key,
+            cancellationToken => _accountSnapshotLoader!.LoadAsync(
+                account,
+                GetSnapshotQueryRange(),
+                key,
+                cancellationToken));
+
+        return snapshot.Accounting
+            .Where(record => record.Date.Date >= startDate.Date && record.Date.Date <= endDate.Date)
+            .Select(ToAccountingRecord)
+            .ToList();
     }
 
     /// <summary>
@@ -108,6 +166,20 @@ public class AccountCalculationService : IAccountCalculationService
             startDate,
             endDate);
     }
+
+    private static AccountingRecord ToAccountingRecord(AccountingSnapshot record)
+        => new()
+        {
+            Id = record.Id,
+            AccountingClass = record.AccountingClass,
+            Date = record.Date,
+            Num = record.Num,
+            Amount = record.Amount,
+            AccountNumber = record.AccountNumber,
+            Account = record.Account,
+            Type = record.Type,
+            DateCreated = record.DateCreated
+        };
 
     public BalanceCalculationResult CalculateBalanceFromData(
         UserAccountContextAccount account,
@@ -130,7 +202,22 @@ public class AccountCalculationService : IAccountCalculationService
         var end = endDate ?? DateTime.MaxValue;
 
         var data = await LoadDonationCalculationDataAsync(account, start, end);
-        return CalculateDonationTotalsFromData(account, data.Donations, data.SubAccounts, start, end);
+        _logger.LogInformation(
+            "Donation calculation inputs: accountId={AccountId} donations={DonationCount} subAccounts={SubAccountCount} range={Start:yyyy-MM-dd}..{End:yyyy-MM-dd}",
+            account.AccountId,
+            data.Donations.Count,
+            data.SubAccounts.Count,
+            start,
+            end);
+
+        var result = CalculateDonationTotalsFromData(account, data.Donations, data.SubAccounts, start, end);
+        _logger.LogInformation(
+            "Donation calculation result: accountId={AccountId} primary={Primary} merged={Merged} total={Total}",
+            account.AccountId,
+            result.PrimaryDonations,
+            result.MergedSubfundDonations,
+            result.TotalDonations);
+        return result;
     }
 
     public async Task<DonationCalculationData> LoadDonationCalculationDataAsync(
@@ -140,6 +227,30 @@ public class AccountCalculationService : IAccountCalculationService
     {
         if (account == null)
             throw new ArgumentNullException(nameof(account));
+
+        if (_accountSnapshotCache is not null &&
+            _accountSnapshotLoader is not null &&
+            _cacheInvalidationVersion is not null &&
+            !InternAccountUtility.IsInternFund(account.Fund) &&
+            CanUseAccountSnapshot(startDate, endDate))
+        {
+            var generation = _cacheInvalidationVersion.GetGeneration(
+                CacheDataDomains.Donations | CacheDataDomains.Accounting | CacheDataDomains.AccountMetadata);
+            var key = new AccountSnapshotKey(account.AccountId, account.Fund, generation).Normalize();
+            var snapshot = await _accountSnapshotCache.GetOrCreateAsync(
+                key,
+                cancellationToken => _accountSnapshotLoader.LoadAsync(
+                    account,
+                    GetSnapshotQueryRange(),
+                    key,
+                    cancellationToken));
+
+            return new DonationCalculationData
+            {
+                Donations = snapshot.Donations.Select(ToDonationRecord).ToList(),
+                SubAccounts = snapshot.SubAccounts.Select(ToSubAccount).ToList()
+            };
+        }
 
         var subAccounts = await _donationReadRepository.GetSubAccountsByAccountIdAsync(account.AccountId)
             ?? new List<SubAccount>();
@@ -168,6 +279,60 @@ public class AccountCalculationService : IAccountCalculationService
             SubAccounts = subAccounts
         };
     }
+
+    private static bool CanUseAccountSnapshot(DateTime startDate, DateTime endDate)
+    {
+        var now = DateTime.UtcNow;
+        var snapshotStart = new DateTime(now.Year - 2, 1, 1);
+        var snapshotEnd = new DateTime(now.Year, 12, 31);
+        return startDate.Date >= snapshotStart && endDate.Date <= snapshotEnd;
+    }
+
+    private static DateRange GetSnapshotQueryRange()
+    {
+        var now = DateTime.UtcNow;
+        return new DateRange(
+            new DateTime(now.Year - 2, 1, 1),
+            new DateTime(now.Year, 12, 31));
+    }
+
+    private static DonationRecord ToDonationRecord(DonationSnapshot record)
+        => new()
+        {
+            Id = record.Id,
+            DonorId = record.DonorId,
+            DonorDisplayName = record.DonorDisplayName,
+            Date = record.Date,
+            Frequency = record.Frequency,
+            AccountName = record.AccountName,
+            PaymentMethod = record.PaymentMethod,
+            GiftType = record.GiftType,
+            Amount = record.Amount,
+            Fund = record.Fund,
+            Intern = record.Intern,
+            HonorMemorialName = record.HonorMemorialName,
+            Addressee = record.Addressee,
+            SoftCreditName = record.SoftCreditName,
+            Address = record.Address,
+            City = record.City,
+            State = record.State,
+            PostalCode = record.PostalCode,
+            Country = record.Country,
+            Email = record.Email,
+            PhoneFixed = record.PhoneFixed,
+            PhoneMobile = record.PhoneMobile,
+            DateCreated = record.DateCreated,
+            IsAnonymous = record.IsAnonymous
+        };
+
+    private static SubAccount ToSubAccount(SubAccountSnapshot record)
+        => new()
+        {
+            Id = record.Id,
+            AccountId = record.AccountId,
+            SubFund = record.SubFund,
+            Kind = record.Kind
+        };
 
     public DonationTotalsResult CalculateDonationTotalsFromData(
         UserAccountContextAccount account,
@@ -212,7 +377,7 @@ public class AccountCalculationService : IAccountCalculationService
         }
 
         decimal primaryTotal = donationRows
-            .Where(d => string.Equals(d.Fund, account.Fund, StringComparison.OrdinalIgnoreCase))
+            .Where(d => string.Equals(d.Fund?.Trim(), account.Fund?.Trim(), StringComparison.OrdinalIgnoreCase))
             .Sum(d => Convert.ToDecimal(d.Amount));
 
         var separateTotals = new Dictionary<string, decimal>(StringComparer.OrdinalIgnoreCase);
@@ -221,7 +386,7 @@ public class AccountCalculationService : IAccountCalculationService
         foreach (var sub in accountSubAccounts)
         {
             decimal subTotal = donationRows
-                .Where(d => string.Equals(d.Fund, sub.SubFund, StringComparison.OrdinalIgnoreCase))
+                .Where(d => string.Equals(d.Fund?.Trim(), sub.SubFund?.Trim(), StringComparison.OrdinalIgnoreCase))
                 .Sum(d => Convert.ToDecimal(d.Amount));
 
             if (string.Equals(sub.Kind?.Trim(), "Merged", StringComparison.OrdinalIgnoreCase))

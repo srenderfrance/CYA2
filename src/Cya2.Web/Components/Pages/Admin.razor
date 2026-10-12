@@ -20,6 +20,7 @@
 @inject TooltipService tooltipService
 @using System.Text.Json
 @using Cya2.Application.Interfaces
+@using Cya2.Application.DTOs
 @inject IRollbackService RollbackService
 @inject IImportOrchestrationService ImportOrchestrationService
 @using Microsoft.AspNetCore.Components.Forms
@@ -31,6 +32,7 @@
 @inject IUserAccountContextService UserAccountContextService
 @inject IImportCacheInvalidator ImportCacheInvalidator
 @inject Cya2.Application.Services.AdminFundWriteService AdminFundWriteService
+@inject IAccountAccessListingService AccountAccessListingService
 @inject Cya2.Application.Interfaces.IUserIdResolver UserIdResolver
 @inject Cya2.Application.Interfaces.IUserAuthorizationService UserAuthorizationService
 @inject IAccountImportService AccountImportService
@@ -319,6 +321,33 @@
 
             @if (!createSubFund)
             {
+                 <div style="border:1px solid #e0e0e0; border-radius:6px; padding:0.75rem; background:#fff; margin-top:1rem; max-width:900px;">
+                     <RadzenStack Orientation="Orientation.Vertical" Gap="0.5rem">
+                         <RadzenText TextStyle="TextStyle.Subtitle2" Style="font-weight: bold; margin:0;">Users With Account Access</RadzenText>
+                         <div style="border: 1px solid #ccc; border-radius: 4px; padding: 0.75rem; max-height: 200px; overflow-y: auto; background-color: #f0f0f0; min-height: 120px;">
+                             @if (!selectedAccountId.HasValue || selectedAccountId.Value <= 0)
+                             {
+                                 <RadzenText TextStyle="TextStyle.Body1">Select an account to view access.</RadzenText>
+                             }
+                             else if (accountAccessUsers.Count == 0)
+                             {
+                                 <RadzenText TextStyle="TextStyle.Body1" Style="color: #666;">None</RadzenText>
+                             }
+                             else
+                             {
+                                 <ul style="list-style-type: none; padding: 0; margin: 0;">
+                                     @foreach (var user in accountAccessUsers)
+                                     {
+                                         <li style="padding: 0.25rem 0; border-bottom: 1px solid #eee;">
+                                             <RadzenText TextStyle="TextStyle.Body1">@user.Name (@user.Email)@(user.IsGlobalViewer ? " - All accounts" : string.Empty)</RadzenText>
+                                         </li>
+                                     }
+                                 </ul>
+                             }
+                         </div>
+                     </RadzenStack>
+                 </div>
+
                 <!-- Primary Account Management Buttons -->
                 <div class="admin-fund-actions admin-action-row">
                     <RadzenButton 
@@ -849,6 +878,7 @@
         private List<Account> accountsOptions = new List<Account>(); // unified data source for all account dropdowns
         private List<SharedAccountBool> sharedAccountsBool = new List<SharedAccountBool>();
         private List<Account> userAccounts = new List<Account>();
+         private IReadOnlyList<AccountAccessUserDto> accountAccessUsers = Array.Empty<AccountAccessUserDto>();
         private int selectedLinkedAccountId = 0;
 
         // Accounts to assign when adding a new user
@@ -1757,6 +1787,7 @@
                 // Clear the selected account when adding new
                 selectedFundAccount = null;
                 selectedAccountId = null;
+                 accountAccessUsers = Array.Empty<AccountAccessUserDto>();
                 // Clear input fields for new fund entry
                 ClearFundInputFields();
                 StateHasChanged(); // Trigger UI update for HasSecondaryFunds indicator
@@ -1769,6 +1800,7 @@
             {
                 selectedFundAccount = selectedItem.Account;
                 selectedAccountId = selectedItem.Account.AccountId;
+                 accountAccessUsers = await AccountAccessListingService.GetUsersWithAccessAsync(selectedAccountId.Value);
                 SessionUserStateService.SelectedAccountFund = selectedItem.Account.Fund ?? string.Empty;
                 var resolvedUserId = UserIdResolver.ResolveUserId(
                     (await AuthStateProvider.GetAuthenticationStateAsync()).User,
@@ -1794,6 +1826,7 @@
             {
                 selectedFundAccount = null;
                 selectedAccountId = null;
+                 accountAccessUsers = Array.Empty<AccountAccessUserDto>();
                 ClearFundInputFields();
             }
 

@@ -1,9 +1,12 @@
 using Cya2.Application.Interfaces;
+using Cya2.Application.Models;
 using Cya2.Application.Services;
 using Cya2.Core.Entities;
 using Cya2.Core.Interfaces;
 using Cya2.Core.ReadModels;
 using Cya2.Core.Services;
+using Cya2.Core.ValueObjects;
+using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
 
 namespace Cya2.Application.Tests;
@@ -380,6 +383,113 @@ public sealed class ExpenseCalculationTests
     }
 
     [Fact]
+    public async Task DonationTotals_UsesSharedSnapshotForBoundedNormalAccount()
+    {
+        var snapshotCache = new AccountSnapshotCache(NullLogger<AccountSnapshotCache>.Instance);
+        var snapshotLoader = new CalculationSnapshotLoader();
+        var service = new AccountCalculationService(
+            new EmptyExpenseRepository(),
+            new EmptyDonationRepository(),
+            new ExpenseClassificationService(),
+            new AccountingTransactionProcessor(new ExpenseClassificationService()),
+            null,
+            snapshotCache,
+            snapshotLoader,
+            new CacheInvalidationVersion());
+        var account = new UserAccountContextAccount { AccountId = 3, Fund = "PRIMARY" };
+        var now = DateTime.UtcNow;
+
+        var result = await service.CalculateDonationTotalsAsync(
+            account,
+            new DateTime(now.Year, 1, 1),
+            now.Date);
+
+        Assert.Equal(125m, result.TotalDonations);
+        Assert.Equal(1, snapshotLoader.CallCount);
+    }
+
+    [Fact]
+    public async Task CalculateBalanceAsync_UsesSharedSnapshotForBoundedRange()
+    {
+        var expenseRepository = new TrackingExpenseRepository();
+        var snapshotLoader = new CalculationSnapshotLoader();
+        var service = CreateSnapshotCalculationService(expenseRepository, snapshotLoader);
+        var account = CreateAccount(4, "PRIMARY", "Class1", "Number1");
+        var now = DateTime.UtcNow;
+
+        var result = await service.CalculateBalanceAsync(account, new DateTime(now.Year, 1, 1), now.Date);
+
+        Assert.Equal(10m, result.TotalBalance);
+        Assert.Equal(1, snapshotLoader.CallCount);
+        Assert.Equal(0, expenseRepository.SingleCallCount);
+    }
+
+    [Fact]
+    public async Task CalculateBalancesAsync_ReusesSharedSnapshotPerAccount()
+    {
+        var expenseRepository = new TrackingExpenseRepository();
+        var snapshotLoader = new CalculationSnapshotLoader();
+        var service = CreateSnapshotCalculationService(expenseRepository, snapshotLoader);
+        var accounts = new[]
+        {
+            CreateAccount(5, "PRIMARY", "Class1", "Number1"),
+            CreateAccount(6, "SECONDARY", "Class2", "Number2")
+        };
+        var now = DateTime.UtcNow;
+
+        var result = await service.CalculateBalancesAsync(accounts, new DateTime(now.Year, 1, 1), now.Date);
+
+        Assert.Equal(2, result.Count);
+        Assert.Equal(2, snapshotLoader.CallCount);
+        Assert.Equal(0, expenseRepository.BatchCallCount);
+    }
+
+    [Fact]
+    public async Task CalculateBalanceAsync_UsesRepositoryOutsideSnapshotCoverage()
+    {
+        var expenseRepository = new TrackingExpenseRepository();
+        var snapshotLoader = new CalculationSnapshotLoader();
+        var service = CreateSnapshotCalculationService(expenseRepository, snapshotLoader);
+
+        var result = await service.CalculateBalanceAsync(
+            CreateAccount(7, "PRIMARY", "Class1", "Number1"),
+            DateTime.UtcNow.AddYears(-5),
+            DateTime.UtcNow.AddYears(-4));
+
+        Assert.Equal(7m, result.TotalBalance);
+        Assert.Equal(0, snapshotLoader.CallCount);
+        Assert.Equal(1, expenseRepository.SingleCallCount);
+    }
+
+    private static AccountCalculationService CreateSnapshotCalculationService(
+        IExpenseReadRepository expenseRepository,
+        IAccountSnapshotLoader snapshotLoader)
+    {
+        return new AccountCalculationService(
+            expenseRepository,
+            new EmptyDonationRepository(),
+            new ExpenseClassificationService(),
+            new AccountingTransactionProcessor(new ExpenseClassificationService()),
+            null,
+            new AccountSnapshotCache(NullLogger<AccountSnapshotCache>.Instance),
+            snapshotLoader,
+            new CacheInvalidationVersion());
+    }
+
+    private static UserAccountContextAccount CreateAccount(
+        int accountId,
+        string fund,
+        string accountingClass,
+        string accountNumber)
+        => new()
+        {
+            AccountId = accountId,
+            Fund = fund,
+            AccountingClass = accountingClass,
+            AccountNumber = accountNumber
+        };
+
+    [Fact]
     public void CalculateOverheadAmount_UsesCoreAccountRule()
     {
         var service = new AccountCalculationService(
@@ -392,6 +502,27 @@ public sealed class ExpenseCalculationTests
 
         Assert.Equal(new Account { Overhead = 12.5m }.CalculateOverheadAmount(100m), result);
         Assert.Equal(12.5m, result);
+    }
+
+    private sealed class TrackingExpenseRepository : IExpenseReadRepository
+    {
+        public int SingleCallCount { get; private set; }
+        public int BatchCallCount { get; private set; }
+
+        public Task<List<AccountingRecord>> GetAccountingDataForAccountAsync(string accountingClass, string accountNumber, DateTime startDate, DateTime endDate)
+        {
+            SingleCallCount++;
+            return Task.FromResult(new List<AccountingRecord>
+            {
+                new() { AccountingClass = accountingClass, AccountNumber = accountNumber, Account = "Income", Amount = 7 }
+            });
+        }
+
+        public Task<IReadOnlyDictionary<int, List<AccountingRecord>>> GetAccountingDataForAccountsAsync(IReadOnlyList<(int AccountId, string AccountingClass, string AccountNumber)> accounts, DateTime startDate, DateTime endDate)
+        {
+            BatchCallCount++;
+            return Task.FromResult<IReadOnlyDictionary<int, List<AccountingRecord>>>(new Dictionary<int, List<AccountingRecord>>());
+        }
     }
 
     [Fact]
@@ -436,5 +567,29 @@ public sealed class ExpenseCalculationTests
         public Task<List<DonationRecord>> SearchDonationsByFundsAndDonorAsync(IEnumerable<string> fundNames, string searchTerm) => Task.FromResult(new List<DonationRecord>());
         public Task<List<DonationRecord>> SearchDonationsByAccountAndDonorAsync(int accountId, string fundName, string searchTerm) => Task.FromResult(new List<DonationRecord>());
         public Task<List<DonationRecord>> GetInternDonationsByDesignationAndDateRangeAsync(string internDesignationName, DateTime startDate, DateTime endDate) => Task.FromResult(new List<DonationRecord>());
+    }
+
+    private sealed class CalculationSnapshotLoader : IAccountSnapshotLoader
+    {
+        public int CallCount { get; private set; }
+
+        public Task<AccountDataSnapshot> LoadAsync(
+            UserAccountContextAccount account,
+            DateRange queryRange,
+            AccountSnapshotKey key,
+            CancellationToken cancellationToken = default)
+        {
+            CallCount++;
+            return Task.FromResult(new AccountDataSnapshot(
+                key,
+                [
+                    new DonationSnapshot(1, 1, "Donor", DateTime.UtcNow.Date, null, "Donor", "Check", "Gift", 100, "PRIMARY", null, null, null, null, null, null, null, null, null, null, null, null, DateTime.UtcNow, false),
+                    new DonationSnapshot(2, 2, "Donor 2", DateTime.UtcNow.Date, null, "Donor 2", "Check", "Gift", 25, "MERGED", null, null, null, null, null, null, null, null, null, null, null, null, DateTime.UtcNow, false)
+                ],
+                [new AccountingSnapshot(1, account.AccountingClass, DateTime.UtcNow.Date, "1", 10, account.AccountNumber, "Income", "", DateTime.UtcNow)],
+                [new SubAccountSnapshot(1, account.AccountId, "MERGED", "Merged")],
+                DateTime.UtcNow,
+                0));
+        }
     }
 }

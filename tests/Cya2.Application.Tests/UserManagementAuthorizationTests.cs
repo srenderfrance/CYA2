@@ -161,6 +161,7 @@ public sealed class UserManagementAuthorizationTests
         public int AccessRevokes { get; private set; }
 
         public Task<List<Account>> GetUserAccountsAsync(int userId) => Task.FromResult(new List<Account>());
+        public Task<List<User>> GetAccountUsersAsync(int accountId) => Task.FromResult(new List<User>());
         public Task<Account?> GetAccountByIdAsync(int accountId) => Task.FromResult<Account?>(new Account { AccountId = accountId, Fund = "Test" });
         public Task<bool> HasAccessAsync(int userId, int accountId) => Task.FromResult(false);
         public Task<bool> GrantAccessAsync(int userId, int accountId) { AccessGrants++; return Task.FromResult(true); }

@@ -28,6 +28,9 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IUserAuthorizationService, UserAuthorizationService>();
         services.AddSingleton<ICacheInvalidationVersion, CacheInvalidationVersion>();
         services.AddSingleton<IAccountSnapshotCache, AccountSnapshotCache>();
+        services.AddSingleton<IAdminSharedCache, AdminSharedCache>();
+        services.AddSingleton<IAccountBalanceCache, AccountBalanceCache>();
+        services.AddSingleton<IAdminCacheWarmupCoordinator, AdminCacheWarmupCoordinator>();
         services.AddScoped<IAccountSnapshotLoader, AccountSnapshotLoader>();
         services.AddScoped<IAccountSelectionCoordinator, AccountSelectionCoordinator>();
 
@@ -48,6 +51,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IUserSettingsService, UserSettingsService>();
         services.AddScoped<IGoogleSignInService, GoogleSignInService>();
         services.AddScoped<UserManagementService>();
+        services.AddScoped<IAccountAccessListingService, AccountAccessListingService>();
         services.AddScoped<AdminFundReadService>();
         services.AddScoped<AdminFundWriteService>();
         services.AddScoped<IAdminPreloadService, AdminPreloadService>();

@@ -1,9 +1,11 @@
 using Cya2.Application.Interfaces;
 using Cya2.Application.DTOs;
+using Cya2.Application.Models;
 using Cya2.Application.Services;
 using Cya2.Core.Entities;
 using Cya2.Core.Interfaces;
 using Cya2.Core.ReadModels;
+using Cya2.Core.ValueObjects;
 using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
 
@@ -59,11 +61,11 @@ public sealed class CacheInvalidationTests
     public async Task DashboardSessionCacheService_ReloadsAccountDataAfterInvalidation()
     {
         var version = new CacheInvalidationVersion();
-        var expenseRepository = new FakeExpenseReadRepository();
-        var donationRepository = new FakeDonationReadRepository();
+        var snapshotCache = new AccountSnapshotCache(NullLogger<AccountSnapshotCache>.Instance);
+        var snapshotLoader = new FakeAccountSnapshotLoader();
         var service = new DashboardSessionCacheService(
-            expenseRepository,
-            donationRepository,
+            snapshotCache,
+            snapshotLoader,
             version,
             NullLogger<DashboardSessionCacheService>.Instance);
         var account = new UserAccountContextAccount
@@ -83,8 +85,63 @@ public sealed class CacheInvalidationTests
 
         Assert.Same(first, cached);
         Assert.NotSame(first, refreshed);
-        Assert.Equal(2, expenseRepository.CallCount);
-        Assert.Equal(2, donationRepository.CallCount);
+        Assert.Equal(2, snapshotLoader.CallCount);
+    }
+
+    [Fact]
+    public async Task DashboardSessionCaches_ReuseTheSharedAccountSnapshot()
+    {
+        var version = new CacheInvalidationVersion();
+        var snapshotCache = new AccountSnapshotCache(NullLogger<AccountSnapshotCache>.Instance);
+        var snapshotLoader = new FakeAccountSnapshotLoader();
+        var firstService = new DashboardSessionCacheService(
+            snapshotCache,
+            snapshotLoader,
+            version,
+            NullLogger<DashboardSessionCacheService>.Instance);
+        var secondService = new DashboardSessionCacheService(
+            snapshotCache,
+            snapshotLoader,
+            version,
+            NullLogger<DashboardSessionCacheService>.Instance);
+        var account = new UserAccountContextAccount
+        {
+            AccountId = 42,
+            Fund = "TEST",
+            AccountingClass = "CLASS",
+            AccountNumber = "1000"
+        };
+        var start = new DateTime(2025, 1, 1);
+        var end = new DateTime(2025, 12, 31);
+
+        var first = await firstService.GetOrLoadAccountDataAsync(account, start, end, false);
+        var second = await secondService.GetOrLoadAccountDataAsync(account, start, end, false);
+
+        Assert.Equal(first.Fund, second.Fund);
+        Assert.Equal(first.WindowStart, second.WindowStart);
+        Assert.Equal(first.WindowEnd, second.WindowEnd);
+        Assert.Equal(1, snapshotLoader.CallCount);
+    }
+
+    private sealed class FakeAccountSnapshotLoader : IAccountSnapshotLoader
+    {
+        public int CallCount { get; private set; }
+
+        public Task<AccountDataSnapshot> LoadAsync(
+            UserAccountContextAccount account,
+            DateRange queryRange,
+            AccountSnapshotKey key,
+            CancellationToken cancellationToken = default)
+        {
+            CallCount++;
+            return Task.FromResult(new AccountDataSnapshot(
+                key,
+                [],
+                [],
+                [],
+                DateTime.UtcNow,
+                0));
+        }
     }
 
     [Fact]
@@ -119,6 +176,36 @@ public sealed class CacheInvalidationTests
         Assert.Equal(next, version.Current);
     }
 
+    [Fact]
+    public void CacheInvalidationVersion_TracksDomainGenerationsIndependently()
+    {
+        var version = new CacheInvalidationVersion();
+
+        var initialAccounting = version.Accounting;
+        var initialDonations = version.Donations;
+        var initialAggregate = version.Current;
+
+        version.Invalidate(CacheDataDomains.Accounting);
+
+        Assert.Equal(initialAccounting + 1, version.Accounting);
+        Assert.Equal(initialDonations, version.Donations);
+        Assert.Equal(initialAggregate + 1, version.Current);
+        Assert.Equal(version.Accounting, version.GetGeneration(CacheDataDomains.Accounting));
+    }
+
+    [Fact]
+    public void CacheInvalidationVersion_CompositeGenerationChangesWhenAnySnapshotDomainChanges()
+    {
+        var version = new CacheInvalidationVersion();
+        var domains = CacheDataDomains.Donations | CacheDataDomains.Accounting | CacheDataDomains.AccountMetadata;
+        var initial = version.GetGeneration(domains);
+
+        version.Invalidate(CacheDataDomains.Donations);
+
+        Assert.NotEqual(initial, version.GetGeneration(domains));
+        Assert.Equal(version.Current, version.GetGeneration(domains));
+    }
+
     private sealed class FakeUserRepository(User user) : IUserRepository
     {
         public Task<User?> GetByIdAsync(int id) => Task.FromResult<User?>(id == user.Id ? user : null);
@@ -142,6 +229,7 @@ public sealed class CacheInvalidationTests
             GetUserAccountsCallCount++;
             return Task.FromResult(new List<Account> { account });
         }
+        public Task<List<User>> GetAccountUsersAsync(int accountId) => Task.FromResult(new List<User>());
         public Task<Account?> GetAccountByIdAsync(int accountId) => Task.FromResult<Account?>(account.AccountId == accountId ? account : null);
         public Task<bool> HasAccessAsync(int userId, int accountId) => Task.FromResult(account.AccountId == accountId);
         public Task<bool> GrantAccessAsync(int userId, int accountId) => Task.FromResult(true);

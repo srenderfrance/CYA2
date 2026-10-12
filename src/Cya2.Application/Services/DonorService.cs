@@ -30,6 +30,7 @@ namespace Cya2.Application.Services
         private readonly ISessionMissingGiftCacheService _missingGiftCache;
         private readonly IAccountSnapshotCache _accountSnapshotCache;
         private readonly IAccountSnapshotLoader _accountSnapshotLoader;
+        private readonly ICacheInvalidationVersion _cacheInvalidationVersion;
         private readonly DonorFrequencyService _frequencyService;
         private readonly DonorMissingGiftService _missingGiftService;
         private readonly DonorIdentityResolver _identityResolver;
@@ -45,6 +46,7 @@ namespace Cya2.Application.Services
             ISessionMissingGiftCacheService missingGiftCache,
             IAccountSnapshotCache accountSnapshotCache,
             IAccountSnapshotLoader accountSnapshotLoader,
+            ICacheInvalidationVersion cacheInvalidationVersion,
             DonorFrequencyService frequencyService,
             DonorMissingGiftService missingGiftService,
             DonorIdentityResolver identityResolver)
@@ -56,6 +58,7 @@ namespace Cya2.Application.Services
             _missingGiftCache = missingGiftCache;
             _accountSnapshotCache = accountSnapshotCache;
             _accountSnapshotLoader = accountSnapshotLoader;
+            _cacheInvalidationVersion = cacheInvalidationVersion;
             _frequencyService = frequencyService;
             _missingGiftService = missingGiftService;
             _identityResolver = identityResolver;
@@ -401,7 +404,9 @@ namespace Cya2.Application.Services
         private async Task<(AccountDataSnapshot Snapshot, bool WasCached)> LoadAccountSnapshotAsync(
             AccountOptionDto account)
         {
-            var key = new AccountSnapshotKey(account.AccountId, account.Fund, 0).Normalize();
+            var generation = _cacheInvalidationVersion.GetGeneration(
+                CacheDataDomains.Donations | CacheDataDomains.Accounting | CacheDataDomains.AccountMetadata);
+            var key = new AccountSnapshotKey(account.AccountId, account.Fund, generation).Normalize();
             var queryRange = GetSnapshotQueryRange();
             var wasCached = _accountSnapshotCache.TryGet(key, out var snapshot);
 

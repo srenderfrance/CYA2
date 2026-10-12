@@ -12,6 +12,7 @@ This is a .net 10 app that uses blazor, dapper and mysql, radzen components and 
 
 ## Data Management
 - The Donors and DonorContacts tables are application display projections, not the organization's official donor database. Contact data should be current-state only: each upload must remove contact values no longer present and retain DateCreated plus DateModified, without historical contact rows.
+- Do not log the DonationData `Fund` field because it contains the donor name; donation diagnostics must omit Fund while retaining only non-personal debugging metadata.
 
 ## Tooltip Styles
 - Use two semantic tooltip styles throughout the app: an attention/warning style for important instructions users must notice (currently Admin account-creation guidance, red emphasis), and a neutral informational style for optional contextual help.

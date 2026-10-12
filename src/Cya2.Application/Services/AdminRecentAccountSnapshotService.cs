@@ -14,6 +14,7 @@ public sealed class AdminRecentAccountSnapshotService : IAdminRecentAccountSnaps
 
     private readonly IAccountSnapshotCache _snapshotCache;
     private readonly IAccountSnapshotLoader _snapshotLoader;
+    private readonly ICacheInvalidationVersion _cacheInvalidationVersion;
     private readonly ILogger<AdminRecentAccountSnapshotService> _logger;
     private readonly object _sync = new();
     private readonly LinkedList<AccountSnapshotKey> _recentKeys = new();
@@ -24,10 +25,12 @@ public sealed class AdminRecentAccountSnapshotService : IAdminRecentAccountSnaps
     public AdminRecentAccountSnapshotService(
         IAccountSnapshotCache snapshotCache,
         IAccountSnapshotLoader snapshotLoader,
+        ICacheInvalidationVersion cacheInvalidationVersion,
         ILogger<AdminRecentAccountSnapshotService> logger)
     {
         _snapshotCache = snapshotCache;
         _snapshotLoader = snapshotLoader;
+        _cacheInvalidationVersion = cacheInvalidationVersion;
         _logger = logger;
     }
 
@@ -48,7 +51,9 @@ public sealed class AdminRecentAccountSnapshotService : IAdminRecentAccountSnaps
             return;
         }
 
-        var key = new AccountSnapshotKey(account.AccountId, account.Fund, 0).Normalize();
+        var generation = _cacheInvalidationVersion.GetGeneration(
+            CacheDataDomains.Donations | CacheDataDomains.Accounting | CacheDataDomains.AccountMetadata);
+        var key = new AccountSnapshotKey(account.AccountId, account.Fund, generation).Normalize();
         lock (_sync)
         {
             if (isDefault)

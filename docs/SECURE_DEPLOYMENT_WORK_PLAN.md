@@ -11,10 +11,10 @@ Status and ordering are based on the repository review performed on 2026-10-01.
 - The schema defines tables, columns, indexes, foreign keys, rollback tables, and temporary-table-compatible import behavior.
 - All current projects target `net10.0`; the Azure workflow installs the .NET 10 SDK family and publishes `src/Cya2.Web/cya2.csproj`.
 - `docs/LOCAL_SETUP.md` now documents the relocated solution/project paths and all current projects targeting .NET 10.
-- The repository does not contain approved fake donor data, accounting data, or Excel fixtures.
-- Upload endpoints still allow unrestricted request sizes; uploaded filenames and content types are no longer written to operational logs.
-- Import progress is held in memory and is not currently scoped to the user who created it.
-- Import endpoints do not yet have the explicit antiforgery protections described in the official checklist.
+- The repository contains synthetic donor fixtures; approved synthetic accounting data and fake donor/accounting import workbooks still require review or creation.
+- Upload and workbook validation limits are implemented: requests/files are bounded, `.xlsx` and OOXML validation are enforced, EPPlus validates workbooks before preview storage, and retained previews are bounded in memory.
+- Import previews and progress records are scoped to the authenticated administrator, ownership is enforced, and expired records are cleaned up under the documented 15-minute policy.
+- The exposed upload and donor-export endpoints explicitly validate antiforgery tokens. The current Admin upload path uses the authenticated Blazor Server circuit and application-service authorization rather than those HTTP endpoints.
 - No persistent runtime schema DDL was found in the reviewed application paths; imports use session-scoped temporary tables.
 
 ## Work for the project owner
@@ -72,7 +72,7 @@ Ordered from simplest and lowest risk to most complex and highest risk. User dec
 
 ### 2. Low-risk tests and diagnostics review
 
-- [ ] Add tests for authorization boundaries that do not require production credentials.
+- [x] Add tests for authorization boundaries that do not require production credentials.
 - [x] Review diagnostics for emails, uploaded filenames, workbook values, exception text, and validation details.
 - [x] Replace personal values in logs and progress responses with row numbers, field names, categories, counts, and correlation identifiers.
 - [x] Add structured logging or redaction rules for sensitive fields.
@@ -82,9 +82,9 @@ Ordered from simplest and lowest risk to most complex and highest risk. User dec
 
 - [x] Add an explicit maximum request and file size after the owner chooses legitimate spreadsheet limits. The configured limit is 5,000 KB (5,120,000 bytes).
 - [x] Accept only the expected `.xlsx` extension and validate the OOXML package signature.
-- [ ] Validate the workbook with EPPlus before processing.
+- [x] Validate the workbook with EPPlus before processing.
 - [x] Reject oversized, empty, wrong-type, corrupt, and invalid package uploads with controlled responses.
-- [ ] Avoid unrestricted upload streams and memory usage during validation and processing. The upload is bounded, but previews remain in bounded in-memory storage.
+- [x] Avoid unrestricted upload streams and memory usage during validation and processing. Uploads, validation concurrency, and retained in-memory previews are bounded; temporary-file or distributed storage is not currently required for this deployment model.
 - [x] Add tests for valid, oversized, wrong-type, corrupt, and malformed package uploads.
 
 ### 4. Import retention and cleanup
@@ -99,38 +99,38 @@ Production policy and implementation note: previews and progress records are hel
 
 ### 5. Import ownership and authorization
 
-- [ ] Record the authenticated admin ID when creating a preview and progress record.
-- [ ] Require the requesting admin to own the preview or progress record.
-- [ ] Check current admin permission when confirming an import.
-- [ ] Prevent another signed-in user from viewing progress by ID alone.
-- [ ] Prevent another signed-in user from confirming an import by ID alone.
-- [ ] Return controlled unauthorized or forbidden responses.
-- [ ] Add focused tests for regular, unknown, removed, and revoked users.
+- [x] Record the authenticated admin ID when creating a preview and progress record.
+- [x] Require the requesting admin to own the preview or progress record.
+- [x] Check current admin permission when confirming an import.
+- [x] Prevent another signed-in user from viewing progress by ID alone.
+- [x] Prevent another signed-in user from confirming an import by ID alone.
+- [x] Return controlled unauthorized or forbidden responses.
+- [x] Add focused tests for regular, unknown, removed, and revoked users. Full Google callback and HTTP pipeline verification remain integration-test work.
 
 ### 6. Authentication revocation and session security
 
-- [ ] Apply the owner-approved authentication cookie lifetime.
-- [ ] Revalidate the current user and admin role for sensitive operations.
-- [ ] Ensure removed users and revoked administrators cannot continue protected operations.
-- [ ] Invalidate or refresh affected sessions where appropriate.
-- [ ] Add tests for removed users, revoked administrators, and server-side authorization enforcement.
+- [x] Apply the approved four-hour, non-sliding, non-persistent authentication cookie lifetime.
+- [x] Revalidate the current user and admin role for sensitive operations.
+- [x] Ensure removed users and revoked administrators cannot continue protected operations.
+- [x] Invalidate or refresh affected sessions where appropriate.
+- [x] Add tests for removed users, revoked administrators, and server-side authorization enforcement.
 
 ### 7. Database permissions and schema evolution
 
-- [ ] Move future column alterations and other structural changes into ordered version-controlled scripts.
-- [ ] Add a migration/setup runner that records applied scripts and handles schema drift safely.
-- [ ] Remove any discovered runtime schema modification from normal application paths.
+- [x] Move future column alterations and other structural changes into ordered version-controlled scripts.
+- [x] Add a migration/setup runner that records applied scripts and handles schema drift safely.
+- [x] Remove any discovered runtime schema modification from normal application paths; imports use only session-scoped temporary tables.
 - [ ] Verify limited-mode startup and normal operation with the restricted runtime account.
 - [ ] Add checks proving the runtime account cannot create, alter, or drop persistent schema objects.
 - [ ] Document and validate the separation between schema-management and application permissions.
 
 ### 8. Antiforgery and end-to-end verification
 
-- [ ] Identify every endpoint that changes data or starts an import.
-- [ ] Add explicit antiforgery protection to import preview and confirmation endpoints.
-- [ ] Preserve and verify antiforgery protection on donor export.
-- [ ] Confirm the Blazor upload interface sends the antiforgery token.
-- [ ] Test valid requests, missing tokens, and invalid tokens end to end.
+- [x] Identify every endpoint that changes data or starts an import.
+- [x] Add explicit antiforgery protection to import preview and confirmation endpoints.
+- [x] Preserve and verify antiforgery protection on donor export.
+- [x] Confirm the current Blazor upload interface uses the authenticated server circuit and application-service authorization; it does not call the separate upload HTTP API.
+- [x] Test valid requests, missing tokens, and invalid tokens at the controller boundary. Full host-pipeline testing remains pending because the production host requires environment-specific database and authentication replacements.
 - [ ] Complete a clean-checkout setup, CI build, deployment, database connection, import, rollback, and authorization verification.
 
 ## Relationship to the official checklist

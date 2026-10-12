@@ -1,16 +1,16 @@
 using System.Text.Json;
 using Cya2.Application.Interfaces;
-using Cya2.Core.Interfaces;
+using Cya2.Application.Models;
+using Cya2.Core.Entities;
 using Cya2.Core.ReadModels;
-using Cya2.Core.Utilities;
 using Microsoft.Extensions.Logging;
 
 namespace Cya2.Application.Services;
 
 public class DashboardSessionCacheService : ISessionAccountDataCacheService
 {
-    private readonly IExpenseReadRepository _expenseReadRepository;
-    private readonly IDonationReadRepository _donationReadRepository;
+    private readonly IAccountSnapshotCache _accountSnapshotCache;
+    private readonly IAccountSnapshotLoader _accountSnapshotLoader;
     private readonly ICacheInvalidationVersion _cacheInvalidationVersion;
     private readonly ILogger<DashboardSessionCacheService> _logger;
 
@@ -20,13 +20,13 @@ public class DashboardSessionCacheService : ISessionAccountDataCacheService
     private string? _recentNonDefaultFund;
 
     public DashboardSessionCacheService(
-        IExpenseReadRepository expenseReadRepository,
-        IDonationReadRepository donationReadRepository,
+        IAccountSnapshotCache accountSnapshotCache,
+        IAccountSnapshotLoader accountSnapshotLoader,
         ICacheInvalidationVersion cacheInvalidationVersion,
         ILogger<DashboardSessionCacheService> logger)
     {
-        _expenseReadRepository = expenseReadRepository;
-        _donationReadRepository = donationReadRepository;
+        _accountSnapshotCache = accountSnapshotCache;
+        _accountSnapshotLoader = accountSnapshotLoader;
         _cacheInvalidationVersion = cacheInvalidationVersion;
         _logger = logger;
     }
@@ -96,24 +96,70 @@ public class DashboardSessionCacheService : ISessionAccountDataCacheService
 
     private async Task<DashboardAccountCacheData> LoadAccountDataAsync(UserAccountContextAccount account, DateTime windowStart, DateTime windowEnd)
     {
-        var accounting = await _expenseReadRepository.GetAccountingDataForAccountAsync(
-            account.AccountingClass,
-            account.AccountNumber,
-            windowStart,
-            windowEnd);
+        var generation = _cacheInvalidationVersion.Current;
+        var key = new AccountSnapshotKey(account.AccountId, account.Fund, generation).Normalize();
+        var snapshot = await _accountSnapshotCache.GetOrCreateAsync(
+            key,
+            cancellationToken => _accountSnapshotLoader.LoadAsync(
+                account,
+                new Cya2.Core.ValueObjects.DateRange(windowStart, windowEnd),
+                key,
+                cancellationToken));
 
-        var subAccounts = await _donationReadRepository.GetSubAccountsByAccountIdAsync(account.AccountId);
-        var donations = InternAccountUtility.IsInternFund(account.Fund) &&
-                        InternAccountUtility.TryGetInternDesignationName(account.Fund, out var designation)
-            ? await _donationReadRepository.GetInternDonationsByDesignationAndDateRangeAsync(
-                designation,
-                windowStart,
-                windowEnd)
-            : await _donationReadRepository.GetDonationsForAccountTotalAsync(
-                account.AccountId,
-                account.Fund,
-                windowStart,
-                windowEnd);
+        var accounting = snapshot.Accounting
+            .Select(record => new AccountingRecord
+            {
+                Id = record.Id,
+                AccountingClass = record.AccountingClass,
+                Date = record.Date,
+                Num = record.Num,
+                Amount = record.Amount,
+                AccountNumber = record.AccountNumber,
+                Account = record.Account,
+                Type = record.Type,
+                DateCreated = record.DateCreated
+            })
+            .ToList();
+
+        var donations = snapshot.Donations
+            .Select(record => new DonationRecord
+            {
+                Id = record.Id,
+                DonorId = record.DonorId,
+                DonorDisplayName = record.DonorDisplayName,
+                Date = record.Date,
+                Frequency = record.Frequency,
+                AccountName = record.AccountName,
+                PaymentMethod = record.PaymentMethod,
+                GiftType = record.GiftType,
+                Amount = record.Amount,
+                Fund = record.Fund,
+                Intern = record.Intern,
+                HonorMemorialName = record.HonorMemorialName,
+                Addressee = record.Addressee,
+                SoftCreditName = record.SoftCreditName,
+                Address = record.Address,
+                City = record.City,
+                State = record.State,
+                PostalCode = record.PostalCode,
+                Country = record.Country,
+                Email = record.Email,
+                PhoneFixed = record.PhoneFixed,
+                PhoneMobile = record.PhoneMobile,
+                DateCreated = record.DateCreated,
+                IsAnonymous = record.IsAnonymous
+            })
+            .ToList();
+
+        var subAccounts = snapshot.SubAccounts
+            .Select(subAccount => new SubAccount
+            {
+                Id = subAccount.Id,
+                AccountId = subAccount.AccountId,
+                SubFund = subAccount.SubFund,
+                Kind = subAccount.Kind
+            })
+            .ToList();
 
         var payload = new DashboardAccountCacheData
         {
