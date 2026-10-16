@@ -29,7 +29,6 @@
 @inject Cya2.Application.Services.AdminFundReadService AdminFundReadService
 @inject IAdminPreloadService AdminPreloadService
 @inject IAccountSnapshotWarmupService AccountSnapshotWarmupService
-@inject IUserAccountContextService UserAccountContextService
 @inject IImportCacheInvalidator ImportCacheInvalidator
 @inject Cya2.Application.Services.AdminFundWriteService AdminFundWriteService
 @inject IAccountAccessListingService AccountAccessListingService
@@ -124,12 +123,12 @@
                                 <RadzenText TextStyle="TextStyle.Subtitle2" Class="admin-label" Style="font-weight: bold; margin:0;">@Localizer["FundraisingAccount"]</RadzenText>
                             </RadzenStack>
                             <RadzenFormField Variant="Variant.Outlined" Style="flex: 1;">
-                                <CustomDropdown TItem="FundDisplayItem" TValue="string"
+                                <CustomDropdown TItem="FundDisplayItem" TValue="int"
                                                 Data="@fundsWithAddOption"
                                                 TextSelector="@(f => f.DisplayText)"
-                                                ValueSelector="@(f => f.DisplayText)"
-                                                Value="@selectedFund"
-                                                ValueChanged="@(async (string v) => await fundSelection(v))"
+                                                ValueSelector="@(f => f.Account.AccountId)"
+                                                Value="@selectedFundAccountId"
+                                                ValueChanged="@(async (int v) => await fundSelectionById(v))"
                                                  Placeholder="@Localizer["SelectAccount"]"
                                                  Searchable="true"
                                                  SearchPlaceholder="@Localizer["Search"]" />
@@ -421,12 +420,12 @@
                         <RadzenStack Orientation="Orientation.Vertical" Gap="0.75rem">
                             <RadzenText TextStyle="TextStyle.Subtitle2" Style="font-weight: bold; margin:0;">@Localizer["Name"]</RadzenText>
                             <div style="width:100%;">
-                                <CustomDropdown TItem="Cya2.Application.DTOs.AdminUserDto" TValue="string"
+                                <CustomDropdown TItem="Cya2.Application.DTOs.AdminUserDto" TValue="int"
                                                 Data="@staffWithAddOption"
                                                 TextSelector="@(u => u.Name)"
-                                                ValueSelector="@(u => u.Name)"
-                                                Value="@staffMember"
-                                                ValueChanged="@(async (string val) => { staffMember = val; await staffSelection(val); })"
+                                                ValueSelector="@(u => u.Id)"
+                                                Value="@selectedStaffId"
+                                                ValueChanged="@(async (int val) => await staffSelectionById(val))"
                                                 Placeholder="@Localizer["SelectUser"]" />
                             </div>
                             <RadzenTextBox @bind-value="@newName" Placeholder="@Localizer["EnterUpdateName"]" />
@@ -844,8 +843,8 @@
         private string AddNewLabel => Localizer["AddNewUser"];
         private string AddNewAccountLabel => Localizer["AddNewAccount"]; 
         private string SelectAccountLabel => Localizer["SelectAccount"]; 
-        private bool IsAddNewSelected => string.Equals(staffMember, AddNewLabel, StringComparison.Ordinal);
-        private bool IsAddNewAccountSelected => string.Equals(selectedFund, AddNewAccountLabel, StringComparison.Ordinal);
+        private bool IsAddNewSelected => selectedStaffId == 0;
+        private bool IsAddNewAccountSelected => selectedFundAccountId == 0;
 
         // ElementReference for tooltip icons
         private ElementReference accountNumberIcon;
@@ -854,6 +853,7 @@
         private ElementReference classIcon;
 
         private string? staffMember;
+        private int selectedStaffId;
         private List<Cya2.Application.DTOs.AdminUserDto> staff = new List<Cya2.Application.DTOs.AdminUserDto>();
         private IEnumerable<Cya2.Application.DTOs.AdminUserDto> staffWithAddOption => staff.Concat(new[] { new Cya2.Application.DTOs.AdminUserDto { Id = 0, Name = AddNewLabel } });
 
@@ -894,6 +894,7 @@
 
         // Fund management properties
         private string? selectedFund;
+        private int selectedFundAccountId;
         private List<Account> allFunds = new List<Account>();
         private IEnumerable<FundDisplayItem> fundsWithAddOption => 
             new[] { new FundDisplayItem { 
@@ -941,7 +942,6 @@
         private bool showAdminToolbarButtons = false;
          private bool adminInitializationStarted;
          private bool adminControlsLoaded;
-         private bool adminSecondaryInitializationStarted;
          private string? resolvedAdminUserId;
         private string rollbackTarget = string.Empty; // "donations", "accounting", "both"
         private string rollbackStatus = string.Empty;
@@ -997,11 +997,6 @@
                 adminInitializationStarted = true;
                 _ = InitializeAdminDataAsync();
             }
-            else if (adminControlsLoaded && !adminSecondaryInitializationStarted)
-            {
-                adminSecondaryInitializationStarted = true;
-                _ = InitializeAdminSecondaryDataAsync();
-            }
 
             return Task.CompletedTask;
         }
@@ -1044,44 +1039,6 @@
                 errorMessage = $"Error initializing admin page: {ex.Message}";
                 _logger.LogError(ex, "Error initializing Admin data after first render");
                 await InvokeAsync(StateHasChanged);
-            }
-        }
-
-        private async Task InitializeAdminSecondaryDataAsync()
-        {
-            try
-            {
-                var userContext = await UserAccountContextService.GetContextAsync(
-                    resolvedAdminUserId ?? string.Empty,
-                    isAdminOrViewerHint: true);
-                if (userContext?.DefaultAccountId is int defaultAccountId)
-                {
-                    var defaultAccount = allAccounts.FirstOrDefault(a => a.AccountId == defaultAccountId);
-                    if (defaultAccount is not null)
-                    {
-                        AccountSnapshotWarmupService.WarmDefaultAccount(defaultAccount);
-                    }
-                }
-
-                _ = PreloadAdminDataAsync(resolvedAdminUserId ?? string.Empty);
-                _logger.LogInformation("Admin secondary snapshot and preload work started after controls rendered.");
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Admin secondary initialization failed");
-            }
-        }
-
-        private async Task PreloadAdminDataAsync(string userId)
-        {
-            try
-            {
-                await AdminPreloadService.PreloadAsync(userId);
-                _logger.LogInformation("Admin preload completed after first render.");
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Admin preload failed after first render");
             }
         }
 
@@ -1148,6 +1105,7 @@
             var selectedUser = staff.FirstOrDefault(u => u.Name == staffName);
             if (selectedUser != null)
             {
+                selectedStaffId = selectedUser.Id;
                 selectedStaffEmail = selectedUser.Email;
                 selectedStaffAuthLevel = selectedUser.AuthLevel;
 
@@ -1157,6 +1115,21 @@
                 accountToAddId = 0;
                 selectedLinkedAccountId = 0;
             }
+        }
+
+        private async Task staffSelectionById(int userId)
+        {
+            selectedStaffId = userId;
+            var selectedUser = staff.FirstOrDefault(user => user.Id == userId);
+            if (selectedUser is null)
+            {
+                staffMember = AddNewLabel;
+                await staffSelection(staffMember);
+                return;
+            }
+
+            staffMember = selectedUser.Name;
+            await staffSelection(staffMember);
         }
 
         private async Task LoadUserAccounts(int userId)
@@ -1325,6 +1298,7 @@
                 // Refresh staff list and reset selection
                 await LoadAllStaff();
                 staffMember = AddNewLabel;
+                selectedStaffId = 0;
                 selectedStaff = string.Empty;
                 selectedStaffEmail = string.Empty;
                 selectedStaffAuthLevel = string.Empty;
@@ -1489,6 +1463,7 @@
                     staffUpdateSuccess = op.Message;
 
                     staffMember = string.Empty;
+                selectedStaffId = 0;
                     selectedStaff = string.Empty;
                     selectedStaffEmail = string.Empty;
                     selectedStaffAuthLevel = string.Empty;
@@ -1544,7 +1519,6 @@
                 fundUpdateSuccess = op.Message;
                 AdminPreloadService.Invalidate();
                 AccountSnapshotWarmupService.Invalidate();
-                ImportCacheInvalidator.InvalidateAll();
 
                 // Refresh funds and reset selection
                 await LoadAllAccounts();
@@ -1601,7 +1575,6 @@
                 fundUpdateSuccess = op.Message;
                 AdminPreloadService.Invalidate();
                 AccountSnapshotWarmupService.Invalidate();
-                ImportCacheInvalidator.InvalidateAll();
 
                 ClearFundInputFields();
                 await LoadAllAccounts();
@@ -1666,7 +1639,6 @@
                     fundUpdateSuccess = op.Message;
                     AdminPreloadService.Invalidate();
                     AccountSnapshotWarmupService.Invalidate();
-                    ImportCacheInvalidator.InvalidateAll();
 
                     subAccountNameEdit = string.Empty;
                     subAccountKindEdit = subFundKinds.FirstOrDefault() ?? "Merged";
@@ -1739,7 +1711,6 @@
 
                 AdminPreloadService.Invalidate();
                 AccountSnapshotWarmupService.Invalidate();
-                ImportCacheInvalidator.InvalidateAll();
 
                 ClearFundInputFields();
                 await LoadAllAccounts();
@@ -1784,6 +1755,7 @@
 
             if (string.Equals(displayText, AddNewAccountLabel, StringComparison.Ordinal))
             {
+                selectedFundAccountId = 0;
                 // Clear the selected account when adding new
                 selectedFundAccount = null;
                 selectedAccountId = null;
@@ -1799,6 +1771,7 @@
             if (selectedItem != null)
             {
                 selectedFundAccount = selectedItem.Account;
+                selectedFundAccountId = selectedItem.Account.AccountId;
                 selectedAccountId = selectedItem.Account.AccountId;
                  accountAccessUsers = await AccountAccessListingService.GetUsersWithAccessAsync(selectedAccountId.Value);
                 SessionUserStateService.SelectedAccountFund = selectedItem.Account.Fund ?? string.Empty;
@@ -1806,8 +1779,6 @@
                     (await AuthStateProvider.GetAuthenticationStateAsync()).User,
                     SessionUserStateService.CurrentUserId);
                 UserSelectionService.SetSelectedAccount(resolvedUserId, selectedItem.Account.Fund ?? string.Empty);
-                AccountSnapshotWarmupService.RecordSelection(selectedItem.Account);
-                
                 // Populate form fields with existing account data
                 newFundName = selectedItem.Account.Fund ?? string.Empty;
                 accountNumber = selectedItem.Account.AccountNumber ?? string.Empty;
@@ -1824,6 +1795,7 @@
             }
             else
             {
+                selectedFundAccountId = 0;
                 selectedFundAccount = null;
                 selectedAccountId = null;
                  accountAccessUsers = Array.Empty<AccountAccessUserDto>();
@@ -1832,6 +1804,12 @@
 
             StateHasChanged(); // Trigger UI update for HasSecondaryFunds indicator
             return;
+        }
+
+        private async Task fundSelectionById(int accountId)
+        {
+            var selectedItem = fundsWithAddOption.FirstOrDefault(item => item.Account.AccountId == accountId);
+            await fundSelection(selectedItem?.DisplayText ?? AddNewAccountLabel);
         }
 
         private async Task LoadAllAccounts()
@@ -2371,7 +2349,6 @@
                 subAccountUpdateSuccess = op.Message;
                 AdminPreloadService.Invalidate();
                 AccountSnapshotWarmupService.Invalidate();
-                ImportCacheInvalidator.InvalidateAll();
                 await LoadSubAccounts(selectedSubAccount.AccountId);
                 selectedPrincipleAccountId = selectedSubAccount.AccountId;
                 RefreshFilteredSubAccounts();
@@ -2409,7 +2386,6 @@
                 subAccountUpdateSuccess = op.Message;
                 AdminPreloadService.Invalidate();
                 AccountSnapshotWarmupService.Invalidate();
-                ImportCacheInvalidator.InvalidateAll();
                 var accountId = selectedSubAccount.AccountId;
                 await LoadSubAccounts(accountId);
                 selectedPrincipleAccountId = accountId;

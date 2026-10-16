@@ -52,7 +52,7 @@ namespace Cya2.Infrastructure.Services
         public async Task<DonationRecategorizationResult> RecategorizeAllDonationsAsync(CancellationToken ct)
         {
             var updated = await _donationRepository.RecategorizeAllDonationsAsync(ct);
-            _cacheInvalidator.InvalidateAll();
+            _cacheInvalidator.Invalidate(CacheDataDomains.Donations);
             return new DonationRecategorizationResult { DonationDataRowsUpdated = updated };
         }
 
@@ -157,7 +157,7 @@ namespace Cya2.Infrastructure.Services
                     Amount = amount,
                     Fund = fund ?? string.Empty,
                     GiftImportId = GetCellText(ws, rowNumber, map["Gift Import ID"]),
-                    HonorMemorialName = GetCellText(ws, rowNumber, honorMemorialColumnName),
+                    InternName = GetCellText(ws, rowNumber, honorMemorialColumnName),
                     PrimaryAddressee = isAnonymous ? null : addressee,
                     SoftCreditName = isAnonymous ? null : softCredit,
                     Address = isAnonymous ? null : GetCellText(ws, rowNumber, map["Preferred Address Line 1"]),
@@ -226,7 +226,7 @@ namespace Cya2.Infrastructure.Services
             _progressService.CompleteStep(progressId, "Data Import", "Completed", $"{result.InsertedRows:N0} records imported, {result.FailedRows:N0} failed");
             _progressService.AddErrors(progressId, result.Errors);
             _progressService.Complete(progressId);
-            _cacheInvalidator.InvalidateAll();
+            _cacheInvalidator.Invalidate(CacheDataDomains.Donations);
             _logger.LogInformation("Donation import complete. Total={Total}, Canonical={Canonical}, Inserted={Inserted}, DuplicatesMerged={DuplicatesMerged}, Failed={Failed}", result.TotalRows, canonicalRows.Count, result.InsertedRows, result.DuplicateRowsMerged, result.FailedRows);
             return result;
         }
@@ -370,10 +370,9 @@ namespace Cya2.Infrastructure.Services
                 GiftType = row.GiftType,
                 Amount = Convert.ToDecimal(row.Amount),
                 Fund = row.Fund,
-                Intern = row.Intern,
+                InternName = row.InternName,
                 PrimaryAddressee = row.PrimaryAddressee,
                 SoftCreditName = row.SoftCreditName,
-                 HonorMemorialName = row.HonorMemorialName,
                 IsAnonymous = row.IsAnonymous,
                 Frequency = row.Frequency,
                 Contacts = BuildContacts(row)

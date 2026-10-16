@@ -9,6 +9,7 @@ public interface IAccountBalanceCache
         decimal balanceAdjustment,
         long generation,
         DateTime asOfDate,
+        string userId,
         out decimal totalBalance);
 
     void Set(
@@ -18,7 +19,10 @@ public interface IAccountBalanceCache
         decimal balanceAdjustment,
         long generation,
         DateTime asOfDate,
+        string userId,
         decimal totalBalance);
+
+    void RemoveStaleGeneration(long currentGeneration);
 
     void InvalidateAll();
     int Count { get; }

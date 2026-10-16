@@ -1,5 +1,6 @@
 using Cya2.Application.DTOs;
 using Cya2.Application.Interfaces;
+using Cya2.Application.Models;
 using Cya2.Core.Entities;
 using Cya2.Core.Interfaces;
 using Cya2.Core.Utilities;
@@ -14,8 +15,13 @@ public sealed class AdminPreloadService : IAdminPreloadService
     private readonly UserManagementService _userManagementService;
     private readonly IAccountCalculationService _accountCalculationService;
     private readonly IAdminSharedCache _sharedCache;
+    private readonly IAccountMetadataCache _accountMetadataCache;
     private readonly IAccountBalanceCache _accountBalanceCache;
+    private readonly IFundReferenceService _fundReferenceService;
     private readonly ICacheInvalidationVersion _cacheInvalidationVersion;
+    private readonly IAdminCacheWarmupCoordinator _cacheWarmupCoordinator;
+    private readonly IDonationReadRepository _donationReadRepository;
+    private readonly IExpenseReadRepository _expenseReadRepository;
     private readonly ILogger<AdminPreloadService> _logger;
     private readonly object _sync = new();
     private long _localGeneration = -1;
@@ -29,17 +35,92 @@ public sealed class AdminPreloadService : IAdminPreloadService
         UserManagementService userManagementService,
         IAccountCalculationService accountCalculationService,
         IAdminSharedCache sharedCache,
+        IAccountMetadataCache accountMetadataCache,
         IAccountBalanceCache accountBalanceCache,
+        IFundReferenceService fundReferenceService,
         ICacheInvalidationVersion cacheInvalidationVersion,
+        IAdminCacheWarmupCoordinator cacheWarmupCoordinator,
+        IDonationReadRepository donationReadRepository,
+        IExpenseReadRepository expenseReadRepository,
         ILogger<AdminPreloadService> logger)
     {
         _fundReadService = fundReadService;
         _userManagementService = userManagementService;
         _accountCalculationService = accountCalculationService;
         _sharedCache = sharedCache;
+        _accountMetadataCache = accountMetadataCache;
         _accountBalanceCache = accountBalanceCache;
+        _fundReferenceService = fundReferenceService;
         _cacheInvalidationVersion = cacheInvalidationVersion;
+        _cacheWarmupCoordinator = cacheWarmupCoordinator;
+        _donationReadRepository = donationReadRepository;
+        _expenseReadRepository = expenseReadRepository;
         _logger = logger;
+    }
+
+    public async Task<AdminPreloadState> PreloadMetadataAsync(CancellationToken cancellationToken = default)
+    {
+        var accounts = await GetAccountsAsync(cancellationToken);
+        var subAccounts = await GetSubAccountsAsync(cancellationToken);
+        var staff = await GetStaffAsync(cancellationToken);
+        return new AdminPreloadState
+        {
+            Accounts = accounts,
+            SubAccounts = subAccounts,
+            Staff = staff
+        };
+    }
+
+    public Task<IReadOnlyList<AdminAccountOverviewDto>> RebuildOverviewFromDataAsync(
+        CacheRebuildData data,
+        CancellationToken cancellationToken = default)
+    {
+        var (startDate, endDate) = GetOverviewRange();
+        var generation = _cacheInvalidationVersion.Current;
+        var result = new List<AdminAccountOverviewDto>(data.Accounts.Count);
+
+        foreach (var account in data.Accounts)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var contextAccount = ToContextAccount(account);
+            var donations = data.DonationsByAccountId.TryGetValue(account.AccountId, out var accountDonations)
+                ? accountDonations
+                : [];
+            var accounting = data.AccountingByAccountId.TryGetValue(account.AccountId, out var accountAccounting)
+                ? accountAccounting
+                : [];
+            var totals = _accountCalculationService.CalculateDonationTotalsFromData(
+                contextAccount,
+                donations,
+                data.SubAccounts.Where(subAccount => subAccount.AccountId == account.AccountId),
+                startDate,
+                endDate);
+            var balance = _accountCalculationService.CalculateBalanceFromData(
+                contextAccount,
+                accounting,
+                null,
+                endDate);
+
+            _accountBalanceCache.Set(
+                account.AccountId,
+                account.AccountingClass,
+                account.AccountNumber,
+                account.BalanceAdjustment,
+                generation,
+                endDate,
+                string.Empty,
+                balance.TotalBalance);
+
+            result.Add(new AdminAccountOverviewDto
+            {
+                Fund = account.Fund ?? string.Empty,
+                CurrentBalance = balance.TotalBalance,
+                Last12MonthsDonations = totals.TotalDonations
+            });
+        }
+
+        _sharedCache.SetOverview(generation, startDate, endDate, result);
+        return Task.FromResult<IReadOnlyList<AdminAccountOverviewDto>>(result);
     }
 
     public Task<AdminPreloadState> PreloadAsync(string userId, CancellationToken cancellationToken = default)
@@ -50,6 +131,7 @@ public sealed class AdminPreloadService : IAdminPreloadService
 
     public async Task<IReadOnlyList<Account>> GetAccountsAsync(CancellationToken cancellationToken = default)
     {
+        await _fundReferenceService.GetAllAsync(cancellationToken);
         ResetForGenerationChange();
         if (_sharedCache.TryGetAccounts(_cacheInvalidationVersion.Current, out var sharedAccounts))
         {
@@ -89,6 +171,12 @@ public sealed class AdminPreloadService : IAdminPreloadService
         ResetForGenerationChange();
         var (startDate, endDate) = GetOverviewRange();
         if (_sharedCache.TryGetOverview(_cacheInvalidationVersion.Current, startDate, endDate, out var sharedOverview))
+        {
+            return sharedOverview;
+        }
+
+        await _cacheWarmupCoordinator.WaitForWarmupAsync(cancellationToken);
+        if (_sharedCache.TryGetOverview(_cacheInvalidationVersion.Current, startDate, endDate, out sharedOverview))
         {
             return sharedOverview;
         }
@@ -153,7 +241,20 @@ public sealed class AdminPreloadService : IAdminPreloadService
     private async Task<IReadOnlyList<SubAccount>> LoadSubAccountsAsync()
     {
         var subAccounts = await _fundReadService.GetSubAccountsAsync();
+        var generation = _cacheInvalidationVersion.AccountMetadata;
         _sharedCache.SetSubAccounts(_cacheInvalidationVersion.Current, subAccounts);
+
+        var accounts = await GetAccountsAsync();
+        foreach (var account in accounts)
+        {
+            _accountMetadataCache.Set(
+                account.AccountId,
+                generation,
+                new Cya2.Application.Models.AccountMetadataSnapshot(
+                    account,
+                    subAccounts.Where(subAccount => subAccount.AccountId == account.AccountId)));
+        }
+
         return subAccounts;
     }
 
@@ -168,72 +269,43 @@ public sealed class AdminPreloadService : IAdminPreloadService
     {
         var stopwatch = Stopwatch.StartNew();
         var accounts = await GetAccountsAsync();
-        _logger.LogInformation("Admin overview calculation started: accountCount={Count}", accounts.Count);
-        var trailingStart = DateTime.UtcNow.Date.AddMonths(-12);
-        var trailingEnd = DateTime.UtcNow.Date;
+        var subAccounts = await GetSubAccountsAsync();
+        var (trailingStart, trailingEnd) = GetOverviewRange();
         _logger.LogInformation(
-            "Admin overview donation range: start={Start:yyyy-MM-dd} end={End:yyyy-MM-dd}",
+            "Admin overview bulk fallback started: accountCount={Count} start={Start:yyyy-MM-dd} end={End:yyyy-MM-dd}",
+            accounts.Count,
             trailingStart,
             trailingEnd);
-        var balanceAccounts = accounts.Select(ToContextAccount).ToList();
-        var balancesTask = _accountCalculationService.CalculateBalancesAsync(balanceAccounts, null, trailingEnd);
-        var balances = await balancesTask;
-        var generation = _cacheInvalidationVersion.Current;
-        foreach (var account in balanceAccounts)
+        var normalAccounts = accounts
+            .Where(account => !string.IsNullOrWhiteSpace(account.Fund))
+            .Select(account => (
+                account.AccountId,
+                account.Fund,
+                MergedSubFunds: (IReadOnlyList<string>)subAccounts
+                    .Where(subAccount => subAccount.AccountId == account.AccountId &&
+                        string.Equals(subAccount.Kind, "Merged", StringComparison.OrdinalIgnoreCase))
+                    .Select(subAccount => subAccount.SubFund)
+                    .ToList()))
+            .ToList();
+        var donationTask = _donationReadRepository.GetDonationsForAccountsAsync(normalAccounts, trailingStart, trailingEnd);
+        var accountingTask = _expenseReadRepository.GetAccountingDataForAccountsAsync(
+            accounts.Select(account => (account.AccountId, account.AccountingClass, account.AccountNumber)).ToList(),
+            trailingStart,
+            trailingEnd);
+        await Task.WhenAll(donationTask, accountingTask);
+
+        var data = new CacheRebuildData
         {
-            if (balances.TryGetValue(account.AccountId, out var balance))
-            {
-                _accountBalanceCache.Set(
-                    account.AccountId,
-                    account.AccountingClass,
-                    account.AccountNumber,
-                    account.BalanceAdjustment,
-                    generation,
-                    trailingEnd,
-                    balance.TotalBalance);
-            }
-        }
-        using var concurrencyGate = new SemaphoreSlim(2);
-        var tasks = accounts.Select(async account =>
-        {
-            await concurrencyGate.WaitAsync();
-            var accountStopwatch = Stopwatch.StartNew();
-            try
-            {
-                var contextAccount = ToContextAccount(account);
-                var donationTotals = await _accountCalculationService.CalculateDonationTotalsAsync(
-                    contextAccount,
-                    trailingStart,
-                    trailingEnd);
-
-                _logger.LogInformation(
-                    "Admin overview donation total: accountId={AccountId} total={Total} elapsedMs={ElapsedMs}",
-                    account.AccountId,
-                    donationTotals.TotalDonations,
-                    accountStopwatch.ElapsedMilliseconds);
-
-                return new AdminAccountOverviewDto
-                {
-                    Fund = account.Fund ?? string.Empty,
-                    CurrentBalance = balances.GetValueOrDefault(account.AccountId)?.TotalBalance ?? 0m,
-                    Last12MonthsDonations = donationTotals.TotalDonations
-                };
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex, "Admin overview calculation failed for accountId={AccountId} elapsedMs={ElapsedMs}", account.AccountId, accountStopwatch.ElapsedMilliseconds);
-                return new AdminAccountOverviewDto { Fund = account.Fund ?? string.Empty };
-            }
-            finally
-            {
-                _logger.LogDebug("Admin overview account completed: accountId={AccountId} elapsedMs={ElapsedMs}", account.AccountId, accountStopwatch.ElapsedMilliseconds);
-                concurrencyGate.Release();
-            }
-        });
-
-        var result = await Task.WhenAll(tasks);
-        _sharedCache.SetOverview(_cacheInvalidationVersion.Current, trailingStart, trailingEnd, result);
-        _logger.LogInformation("Admin overview calculation completed: accountCount={Count} elapsedMs={ElapsedMs}", result.Length, stopwatch.ElapsedMilliseconds);
+            Accounts = accounts,
+            SubAccounts = subAccounts,
+            DonationsByAccountId = donationTask.Result,
+            AccountingByAccountId = accountingTask.Result
+        };
+        var result = await RebuildOverviewFromDataAsync(data);
+        _logger.LogInformation(
+            "Admin overview bulk fallback completed: accountCount={Count} elapsedMs={ElapsedMs}",
+            result.Count,
+            stopwatch.ElapsedMilliseconds);
         return result;
     }
 

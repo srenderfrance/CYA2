@@ -29,9 +29,10 @@ public sealed class AccountBalanceCache : IAccountBalanceCache
         decimal balanceAdjustment,
         long generation,
         DateTime asOfDate,
+        string userId,
         out decimal totalBalance)
     {
-        var key = NormalizeKey(accountId, accountingClass, accountNumber, balanceAdjustment, generation, asOfDate);
+        var key = NormalizeKey(accountId, accountingClass, accountNumber, balanceAdjustment, generation, asOfDate, userId);
         lock (_sync)
         {
             if (_generation == generation && _entries.TryGetValue(key, out totalBalance))
@@ -52,9 +53,10 @@ public sealed class AccountBalanceCache : IAccountBalanceCache
         decimal balanceAdjustment,
         long generation,
         DateTime asOfDate,
+        string userId,
         decimal totalBalance)
     {
-        var key = NormalizeKey(accountId, accountingClass, accountNumber, balanceAdjustment, generation, asOfDate);
+        var key = NormalizeKey(accountId, accountingClass, accountNumber, balanceAdjustment, generation, asOfDate, userId);
         lock (_sync)
         {
             PrepareGeneration(generation);
@@ -72,6 +74,32 @@ public sealed class AccountBalanceCache : IAccountBalanceCache
             _entries.Clear();
             _lru.Clear();
             _nodes.Clear();
+        }
+    }
+
+    public void RemoveStaleGeneration(long currentGeneration)
+    {
+        lock (_sync)
+        {
+            var staleKeys = new List<BalanceKey>();
+            foreach (var key in _entries.Keys)
+            {
+                if (key.Generation != currentGeneration)
+                {
+                    staleKeys.Add(key);
+                }
+            }
+
+            foreach (var key in staleKeys)
+            {
+                _entries.Remove(key);
+                if (_nodes.Remove(key, out var node))
+                {
+                    _lru.Remove(node);
+                }
+            }
+
+            _generation = currentGeneration;
         }
     }
 
@@ -115,7 +143,8 @@ public sealed class AccountBalanceCache : IAccountBalanceCache
         string accountNumber,
         decimal balanceAdjustment,
         long generation,
-        DateTime asOfDate)
+        DateTime asOfDate,
+        string userId)
     {
         var normalizedAsOfDate = asOfDate.Date > DateTime.UtcNow.Date
             ? DateTime.UtcNow.Date
@@ -127,7 +156,8 @@ public sealed class AccountBalanceCache : IAccountBalanceCache
             accountNumber?.Trim() ?? string.Empty,
             balanceAdjustment,
             generation,
-            normalizedAsOfDate);
+            normalizedAsOfDate,
+            userId?.Trim() ?? string.Empty);
     }
 
     private readonly record struct BalanceKey(
@@ -136,5 +166,6 @@ public sealed class AccountBalanceCache : IAccountBalanceCache
         string AccountNumber,
         decimal BalanceAdjustment,
         long Generation,
-        DateTime AsOfDate);
+        DateTime AsOfDate,
+        string UserId);
 }

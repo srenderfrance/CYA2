@@ -91,6 +91,7 @@ builder.Services.AddCya2Authentication(builder.Configuration);
 builder.Services.AddCya2WebHostServices();
 
 var app = builder.Build();
+var lifecycleLogger = app.Services.GetRequiredService<ILogger<Program>>();
 
 var effectiveConnectionString = app.Configuration.GetConnectionString("default") ?? string.Empty;
 try
@@ -162,20 +163,52 @@ TaskScheduler.UnobservedTaskException += (sender, args) =>
 
 // Initialize monitor service
 dbMonitorService = app.Services.GetRequiredService<IDatabaseAvailabilityMonitor>();
+var cacheWarmupCoordinator = app.Services.GetRequiredService<IAdminCacheWarmupCoordinator>();
+
+dbMonitorService.ConnectionStatusChanged += (_, isConnected) =>
+{
+    if (!isConnected)
+    {
+        return;
+    }
+
+    GlobalSettings.AllowMySqlLoading = true;
+    lifecycleLogger.LogInformation("Database became available; queueing central cache creation");
+    cacheWarmupCoordinator.QueueWarmup();
+};
 
 app.Lifetime.ApplicationStarted.Register(() =>
 {
-    Task.Delay(5000).ContinueWith(_ =>
+    lifecycleLogger.LogInformation(
+        "ApplicationStarted cache warmup hook registered: initialDbConnected={InitialDbConnected}",
+        initialDbConnected);
+
+    _ = Task.Run(async () =>
     {
+        await Task.Delay(5000);
         try
         {
+            lifecycleLogger.LogInformation(
+                "ApplicationStarted cache warmup delay elapsed: initialDbConnected={InitialDbConnected}",
+                initialDbConnected);
+
             if (initialDbConnected)
             {
                 GlobalSettings.AllowMySqlLoading = true;
                 dbMonitorService?.Resume();
+                lifecycleLogger.LogInformation("Starting central cache creation after application startup delay");
+                cacheWarmupCoordinator.QueueWarmup();
+            }
+            else
+            {
+                app.Services.GetRequiredService<ILogger<Program>>()
+                    .LogWarning("Central cache creation skipped because the startup database connectivity check failed");
             }
         }
-        catch { }
+        catch (Exception ex)
+        {
+            lifecycleLogger.LogError(ex, "Unable to start central cache creation after application startup delay");
+        }
     });
 });
 

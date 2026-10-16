@@ -4,6 +4,13 @@ namespace Cya2.Application.Services;
 
 public class SessionUserStateService : ISessionUserStateService
 {
+    private readonly IUserScopedCacheInvalidator _overflowCacheInvalidator;
+
+    public SessionUserStateService(IUserScopedCacheInvalidator overflowCacheInvalidator)
+    {
+        _overflowCacheInvalidator = overflowCacheInvalidator;
+    }
+
     public string CurrentUserId { get; set; } = string.Empty;
     public string SelectedAccountFund { get; set; } = string.Empty;
     public string DefaultAccountFund { get; set; } = string.Empty;
@@ -18,6 +25,8 @@ public class SessionUserStateService : ISessionUserStateService
         {
             return;
         }
+
+        _overflowCacheInvalidator.RemoveUser(CurrentUserId);
 
         CurrentUserId = userId;
         SelectedAccountFund = string.Empty;

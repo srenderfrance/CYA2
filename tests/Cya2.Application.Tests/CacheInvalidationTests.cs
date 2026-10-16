@@ -58,110 +58,56 @@ public sealed class CacheInvalidationTests
     }
 
     [Fact]
-    public async Task DashboardSessionCacheService_ReloadsAccountDataAfterInvalidation()
+    public async Task UserAccountContextService_DonationAndAccountingChangesReuseContext()
     {
         var version = new CacheInvalidationVersion();
-        var snapshotCache = new AccountSnapshotCache(NullLogger<AccountSnapshotCache>.Instance);
-        var snapshotLoader = new FakeAccountSnapshotLoader();
-        var service = new DashboardSessionCacheService(
-            snapshotCache,
-            snapshotLoader,
-            version,
-            NullLogger<DashboardSessionCacheService>.Instance);
-        var account = new UserAccountContextAccount
+        var user = new User { Id = 902, Email = $"cache-test-{Guid.NewGuid():N}@example.test", AuthLevel = "User" };
+        var account = new Account
         {
-            AccountId = 42,
-            Fund = "TEST",
+            AccountId = 43,
+            Fund = "TEST-DOMAINS",
             AccountingClass = "CLASS",
-            AccountNumber = "1000"
+            AccountNumber = "1001"
         };
-        var start = new DateTime(2025, 1, 1);
-        var end = new DateTime(2025, 12, 31);
+        var users = new FakeUserRepository(user);
+        var access = new FakeUserAccountAccessRepository(account);
+        var service = new UserAccountContextService(
+            users,
+            access,
+            new FakeAccountRepository(account),
+            version,
+            NullLogger<UserAccountContextService>.Instance);
 
-        var first = await service.GetOrLoadAccountDataAsync(account, start, end, false);
-        var cached = await service.GetOrLoadAccountDataAsync(account, start, end, false);
-        version.Invalidate();
-        var refreshed = await service.GetOrLoadAccountDataAsync(account, start, end, false);
+        await service.GetContextAsync(user.Id.ToString());
+        version.Invalidate(CacheDataDomains.Donations);
+        await service.GetContextAsync(user.Id.ToString());
+        version.Invalidate(CacheDataDomains.Accounting);
+        await service.GetContextAsync(user.Id.ToString());
 
-        Assert.Same(first, cached);
-        Assert.NotSame(first, refreshed);
-        Assert.Equal(2, snapshotLoader.CallCount);
+        Assert.Equal(1, access.GetUserAccountsCallCount);
     }
 
     [Fact]
-    public async Task DashboardSessionCaches_ReuseTheSharedAccountSnapshot()
+    public async Task UserAccountContextService_ReloadsContextAfterMetadataOrAuthorizationInvalidation()
     {
         var version = new CacheInvalidationVersion();
-        var snapshotCache = new AccountSnapshotCache(NullLogger<AccountSnapshotCache>.Instance);
-        var snapshotLoader = new FakeAccountSnapshotLoader();
-        var firstService = new DashboardSessionCacheService(
-            snapshotCache,
-            snapshotLoader,
+        var user = new User { Id = 903, Email = $"cache-test-{Guid.NewGuid():N}@example.test", AuthLevel = "User" };
+        var account = new Account { AccountId = 44, Fund = "TEST-RELOAD", AccountingClass = "CLASS", AccountNumber = "1002" };
+        var access = new FakeUserAccountAccessRepository(account);
+        var service = new UserAccountContextService(
+            new FakeUserRepository(user),
+            access,
+            new FakeAccountRepository(account),
             version,
-            NullLogger<DashboardSessionCacheService>.Instance);
-        var secondService = new DashboardSessionCacheService(
-            snapshotCache,
-            snapshotLoader,
-            version,
-            NullLogger<DashboardSessionCacheService>.Instance);
-        var account = new UserAccountContextAccount
-        {
-            AccountId = 42,
-            Fund = "TEST",
-            AccountingClass = "CLASS",
-            AccountNumber = "1000"
-        };
-        var start = new DateTime(2025, 1, 1);
-        var end = new DateTime(2025, 12, 31);
+            NullLogger<UserAccountContextService>.Instance);
 
-        var first = await firstService.GetOrLoadAccountDataAsync(account, start, end, false);
-        var second = await secondService.GetOrLoadAccountDataAsync(account, start, end, false);
+        await service.GetContextAsync(user.Id.ToString());
+        version.Invalidate(CacheDataDomains.AccountMetadata);
+        await service.GetContextAsync(user.Id.ToString());
+        version.Invalidate(CacheDataDomains.Authorization);
+        await service.GetContextAsync(user.Id.ToString());
 
-        Assert.Equal(first.Fund, second.Fund);
-        Assert.Equal(first.WindowStart, second.WindowStart);
-        Assert.Equal(first.WindowEnd, second.WindowEnd);
-        Assert.Equal(1, snapshotLoader.CallCount);
-    }
-
-    private sealed class FakeAccountSnapshotLoader : IAccountSnapshotLoader
-    {
-        public int CallCount { get; private set; }
-
-        public Task<AccountDataSnapshot> LoadAsync(
-            UserAccountContextAccount account,
-            DateRange queryRange,
-            AccountSnapshotKey key,
-            CancellationToken cancellationToken = default)
-        {
-            CallCount++;
-            return Task.FromResult(new AccountDataSnapshot(
-                key,
-                [],
-                [],
-                [],
-                DateTime.UtcNow,
-                0));
-        }
-    }
-
-    [Fact]
-    public void SessionDashboardDtoCacheService_ReusesAndInvalidatesAccountDashboard()
-    {
-        var service = new SessionDashboardDtoCacheService(
-            NullLogger<SessionDashboardDtoCacheService>.Instance);
-        var dashboard = new FinancialDashboardDto
-        {
-            SelectedAccount = " FUND-A "
-        };
-
-        service.SetDashboard(" user-1 ", " FUND-A ", dashboard);
-
-        Assert.True(service.TryGetDashboard("user-1", "FUND-A", out var cached));
-        Assert.Same(dashboard, cached);
-
-        service.InvalidateAll();
-
-        Assert.False(service.TryGetDashboard("user-1", "FUND-A", out _));
+        Assert.Equal(3, access.GetUserAccountsCallCount);
     }
 
     [Fact]
@@ -203,7 +149,7 @@ public sealed class CacheInvalidationTests
         version.Invalidate(CacheDataDomains.Donations);
 
         Assert.NotEqual(initial, version.GetGeneration(domains));
-        Assert.Equal(version.Current, version.GetGeneration(domains));
+        Assert.NotEqual(version.Current, version.GetGeneration(domains));
     }
 
     private sealed class FakeUserRepository(User user) : IUserRepository
@@ -230,6 +176,7 @@ public sealed class CacheInvalidationTests
             return Task.FromResult(new List<Account> { account });
         }
         public Task<List<User>> GetAccountUsersAsync(int accountId) => Task.FromResult(new List<User>());
+        public Task<Dictionary<int, List<int>>> GetAccountUserIdsAsync() => Task.FromResult(new Dictionary<int, List<int>>());
         public Task<Account?> GetAccountByIdAsync(int accountId) => Task.FromResult<Account?>(account.AccountId == accountId ? account : null);
         public Task<bool> HasAccessAsync(int userId, int accountId) => Task.FromResult(account.AccountId == accountId);
         public Task<bool> GrantAccessAsync(int userId, int accountId) => Task.FromResult(true);
@@ -286,7 +233,7 @@ public sealed class CacheInvalidationTests
         public Task<List<DonationRecord>> GetDonationsByAccountAndDonorAsync(int accountId, string fundName, string donorName) => Load();
         public Task<List<DonationRecord>> SearchDonationsByFundsAndDonorAsync(IEnumerable<string> fundNames, string searchTerm) => Load();
         public Task<List<DonationRecord>> SearchDonationsByAccountAndDonorAsync(int accountId, string fundName, string searchTerm) => Load();
-        public Task<List<DonationRecord>> GetInternDonationsByDesignationAndDateRangeAsync(string internDesignationName, DateTime startDate, DateTime endDate) => Load();
+        public Task<List<DonationRecord>> GetInternDonationsByInternNameAndDateRangeAsync(string internName, DateTime startDate, DateTime endDate) => Load();
         private Task<List<DonationRecord>> Load()
         {
             CallCount++;

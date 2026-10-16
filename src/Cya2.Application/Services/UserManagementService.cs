@@ -15,6 +15,7 @@ public class UserManagementService
     private readonly IUserAccountAccessRepository _userAccountAccessRepository;
     private readonly IAccountRepository _accountRepository;
     private readonly IAdminAuthorizationContext _adminAuthorizationContext;
+    private readonly IImportCacheInvalidator? _cacheInvalidator;
     private readonly ILogger<UserManagementService> _logger;
 
     public UserManagementService(
@@ -22,13 +23,15 @@ public class UserManagementService
         IUserAccountAccessRepository userAccountAccessRepository,
         IAccountRepository accountRepository,
         IAdminAuthorizationContext adminAuthorizationContext,
-        ILogger<UserManagementService> logger)
+        ILogger<UserManagementService> logger,
+        IImportCacheInvalidator? cacheInvalidator = null)
     {
         _userRepository = userRepository;
         _userAccountAccessRepository = userAccountAccessRepository;
         _accountRepository = accountRepository;
         _adminAuthorizationContext = adminAuthorizationContext;
         _logger = logger;
+        _cacheInvalidator = cacheInvalidator;
     }
 
     public async Task<UserDto?> GetUserByEmailAsync(string email)
@@ -185,6 +188,8 @@ public class UserManagementService
                 await EnsureInternAccountAccessAsync(user, originalName);
             }
 
+            _cacheInvalidator?.Invalidate(CacheDataDomains.Authorization);
+
             return new AdminUserOperationDto { IsSuccess = true, Message = "User updated successfully" };
         }
         catch (Exception ex)
@@ -247,6 +252,8 @@ public class UserManagementService
                 await _userAccountAccessRepository.SetUserDefaultAccountAsync(userId, accountId);
             }
 
+            _cacheInvalidator?.Invalidate(CacheDataDomains.Authorization);
+
             return new AdminUserOperationDto { IsSuccess = true, Message = $"Successfully linked account '{account.Fund}'" };
         }
         catch (Exception ex)
@@ -276,6 +283,8 @@ public class UserManagementService
             {
                 return new AdminUserOperationDto { IsSuccess = false, Message = "Failed to remove account link" };
             }
+
+            _cacheInvalidator?.Invalidate(CacheDataDomains.Authorization);
 
             return new AdminUserOperationDto { IsSuccess = true, Message = $"Successfully removed account '{accountName}'" };
         }
@@ -353,6 +362,8 @@ public class UserManagementService
                 await _userAccountAccessRepository.SetUserDefaultAccountAsync(user.Id, realAccountIds[0]);
             }
 
+            _cacheInvalidator?.Invalidate(CacheDataDomains.Authorization);
+
             return new AdminUserOperationDto
             {
                 IsSuccess = true,
@@ -384,6 +395,7 @@ public class UserManagementService
 
             await _userAccountAccessRepository.RevokeAllAccessAsync(userId);
             await _userRepository.DeleteAsync(userId);
+            _cacheInvalidator?.Invalidate(CacheDataDomains.Authorization);
 
             return new AdminUserOperationDto { IsSuccess = true, Message = "User deleted successfully" };
         }

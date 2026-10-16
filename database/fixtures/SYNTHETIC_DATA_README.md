@@ -40,7 +40,7 @@ The script creates and cleans up its synthetic account numbers `SYNTH-ACCOUNT-00
 | Donor9 Sporadic | Irregular spacing | Gifts are two and seven month boundaries apart. The amounts are intentionally 100, 5, and 5 so the gaps are not interpreted as catch-up or prepayment coverage. The pattern is neither monthly, quarterly, nor yearly, so the donor is `Sporadic`. |
 | Donor10 Separate Subaccount | Separate subaccount | The `Synthetic Separate Fund` gift is excluded from the primary donation total and appears in `SeparateSubfundTotals` for the `Separate` subaccount. |
 | Donor11 Merged Subaccount | Merged subaccount | The `Synthetic Merged Fund` gift is included in the `Test Fund` total and contributes to `MergedSubfundDonations` because the subaccount kind is `Merged`. |
-| Donors12-13 | Intern designation and Honor/Memorial display | The selectable account is `Intern: Synthetic Intern`. Both gifts are matched by `Intern = 'Synthetic Intern'`, regardless of their `Fund` value, and total 100.00. `HonorMemorialName` is also `Synthetic Intern` so the intern designation column can be inspected in donation details. |
+| Donors12-13 | Intern designation and Honor/Memorial display | The selectable account is `Intern: Synthetic Intern`. Both gifts are matched by `InternName = 'Synthetic Intern'`, regardless of their `Fund` value, and total 100.00. `InternName` is also `Synthetic Intern` so the intern designation column can be inspected in donation details. |
 
 ### Donor verification queries
 
@@ -63,7 +63,7 @@ WHERE DonorId BETWEEN 900001 AND 900013
 ORDER BY DonorId, ContactType;
 ```
 
-Donor search and donor lists should use the `Donors.DisplayName` values above. Donation detail views should show `PrimaryAddressee`, `SoftCreditName`, and `HonorMemorialName` where present. Contact values are current-state projections in `DonorContacts`, not historical contact records. The anonymous donor must not display `Hidden Account` or contact information.
+Donor search and donor lists should use the `Donors.DisplayName` values above. Donation detail views should show `PrimaryAddressee`, `SoftCreditName`, and `InternName` where present. Contact values are current-state projections in `DonorContacts`, not historical contact records. The anonymous donor must not display `Hidden Account` or contact information.
 
 ### Account and subaccount verification query
 

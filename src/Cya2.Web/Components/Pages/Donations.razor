@@ -4,7 +4,6 @@
 @using Radzen
 @using Microsoft.AspNetCore.Components.Authorization
 @using System.Security.Claims
-@using System.Diagnostics
 @using cya2.Components.Shared
 @inject AuthenticationStateProvider AuthStateProvider
 @inject Cya2.Application.Interfaces.ISessionUserStateService SessionUserStateService
@@ -17,7 +16,6 @@
 @inject Cya2.Application.Interfaces.IUserSelectionService UserSelectionService
 @inject Cya2.Application.Interfaces.IUserDateRangeSelectionService DateRangeSelectionService
 @inject cya2.Services.UserSessionHydrationService SessionHydrationService
-@inject Cya2.Application.Interfaces.IAccountSnapshotWarmupService AccountSnapshotWarmupService
 @inject Cya2.Application.Interfaces.IAccountSelectionCoordinator AccountSelectionCoordinator
 @implements IDisposable
 @attribute [Authorize]
@@ -27,13 +25,10 @@
 @using Cya2.Application.DTOs
 @using DateRangePreset = Cya2.Application.DTOs.DateRangePreset
 @using Cya2.Core.ValueObjects
-@inject Cya2.Application.Interfaces.ISessionDonationDataCacheService SessionDonationDataCacheService
 @inject IDonationService DonationService
 @inject IDonationPresentationService DonationPresentationService
 @inject IUserAccountContextService UserAccountContextService
 @inject IDateRangeStateService DateRangeStateService
-@inject Cya2.Application.Interfaces.ISessionDashboardDtoCacheService SessionDashboardDtoCacheService
-@inject cya2.Services.Diagnostics.PageLoadCorrelationContext PageLoadCorrelation
 
 @attribute [StreamRendering]
 
@@ -318,12 +313,14 @@
                     <RadzenLabel Text="@Localizer["Account"]" />
                     <AccountSelector TItem="AccountOptionDto" TValue="string"
                                      Data="@donationData.UserAccounts"
-                                     TextProperty="Fund"
-                                     ValueProperty="Fund"
+                                     TextProperty="DisplayName"
+                                     ValueProperty="SelectionKey"
                                      Value="@selectedAccount"
                                      Change="@OnAccountDropdownChanged"
                                      Placeholder="@Localizer["ChooseAccount"]"
-                                      TextSelector="@(account => DisplayFormatter.FormatFundDisplay(account.Fund))" />
+                                       TextSelector="@(account => string.IsNullOrWhiteSpace(account.InternName)
+                                           ? DisplayFormatter.FormatFundDisplay(account.Fund)
+                                           : account.InternName)" />
                 </div>
 
                 <!-- SubAccount dropdown - only shown for accounts with Separate sub accounts -->
@@ -432,7 +429,7 @@
                                 }
                                 else
                                 {
-                                    <span class="donor-cell" @onclick="@(() => OnDonorClick(row.Donor))">@row.Donor</span>
+                                    <span class="donor-cell" @onclick="@(() => OnDonorClick(row.DonorId, row.Donor))">@row.Donor</span>
                                 }
                             </Template>
                             <FooterTemplate>
@@ -524,7 +521,7 @@
                                     }
                                     else
                                     {
-                                        <span class="donor-cell" @onclick="@(() => OnDonorClick(donation.Donor))">@donation.Donor</span>
+                                        <span class="donor-cell" @onclick="@(() => OnDonorClick(donation.DonorId, donation.Donor))">@donation.Donor</span>
                                     }
                                 </Template>
                             </RadzenDataGridColumn>
@@ -785,8 +782,6 @@
 
     protected override async Task OnInitializedAsync()
     {
-        // using var operationScope = PageLoadCorrelation.BeginOperation(Logger, nameof(Donations), "Initialize");
-        var initSw = Stopwatch.StartNew();
         try
         {
             var authState = await AuthStateProvider.GetAuthenticationStateAsync();
@@ -808,42 +803,7 @@
             // UI will display server-chosen account from service response but we won't persist it unless the user explicitly selects.
             selectedAccount = SessionUserStateService.SelectedAccountFund ?? string.Empty;
 
-            // Try to use embedded dashboard donation payload from session dashboard cache first
-            if (!string.IsNullOrWhiteSpace(selectedAccount) && SessionDashboardDtoCacheService != null && !string.IsNullOrWhiteSpace(userId))
-            {
-                if (SessionDashboardDtoCacheService.TryGetDashboard(userId, selectedAccount, out var cachedDashboard) &&
-                    cachedDashboard.SelectedAccountDonations?.Donations?.Any() == true &&
-                    CacheCoversCurrentDateRange(cachedDashboard.SelectedAccountDonations))
-                {
-                    donationData = cachedDashboard.SelectedAccountDonations;
-                    // Ensure UserAccounts are present on donation data for UI binding
-                    donationData.UserAccounts = cachedDashboard.UserAccounts.Select(u => new AccountOptionDto
-                    {
-                        AccountId = u.AccountId,
-                        Fund = u.Fund,
-                        AccountingClass = u.AccountingClass,
-                        AccountNumber = u.AccountNumber,
-                        Overhead = u.Overhead
-                    }).ToList();
-
-                    donations = donationData.Donations ?? new List<DonationRowDto>();
-                }
-                else if (SessionDonationDataCacheService != null &&
-                         SessionDonationDataCacheService.TryGetDonationData(userId, selectedAccount, out var cachedDto) &&
-                         CacheCoversCurrentDateRange(cachedDto))
-                {
-                    donationData = cachedDto;
-                    donations = donationData.Donations ?? new List<DonationRowDto>();
-                }
-                else
-                {
-                    await LoadDonationsData(selectedAccount, selectedSubAccount);
-                }
-            }
-            else
-            {
-                await LoadDonationsData(selectedAccount, selectedSubAccount);
-            }
+            await LoadDonationsData(selectedAccount, selectedSubAccount);
             
             if (!SessionUserStateService.SelectedStartDate.HasValue || !SessionUserStateService.SelectedEndDate.HasValue)
             {
@@ -861,35 +821,11 @@
         {
             errorMessage = $"Error loading data: {ex.Message}";
             isLoading = false;
-            // Logger.LogWarning(ex, "Donations init failed after {ElapsedMs}ms", initSw.ElapsedMilliseconds);
         }
-    }
-
-    private bool CacheCoversCurrentDateRange(DonationDataDto dto)
-    {
-        if (dto is null)
-        {
-            return false;
-        }
-
-        if (dto.CachedStartDate == default || dto.CachedEndDate == default)
-        {
-            return false;
-        }
-
-        var rangeStart = dateRangeState.StartDate.Date;
-        var rangeEnd = dateRangeState.EndDate.Date;
-        var cacheStart = dto.CachedStartDate.Date;
-        var cacheEnd = dto.CachedEndDate.Date;
-
-        var covers = cacheStart <= rangeStart && cacheEnd >= rangeEnd;
-
-        return covers;
     }
 
     private async Task LoadDonationsData(string accountName, string subAccountValue, bool explicitSelection = false)
     {
-        var loadSw = Stopwatch.StartNew();
         try
         {
             isLoading = true;
@@ -931,25 +867,25 @@
             else if (string.IsNullOrWhiteSpace(selectedAccount) && dtoUserAccounts.Count > 0)
             {
                 // If we had no session/middleware value, fall back to the first available account from the service (UI-only, not persisted).
-                selectedAccount = dtoUserAccounts.First().Fund;
+                selectedAccount = dtoUserAccounts.First().SelectionKey;
             }
              selectedSubAccount = dto.SelectedSubAccount;
              showSubAccountDropdown = dto.ShowSubAccountDropdown;
              subAccountOptions = dto.SubAccountOptions;
              currentFundNamesForSelection = dto.FundNamesForSelection;
              lastRawDonationFunds = dto.RawDonationFunds;
-            currentAccount = dtoUserAccounts.FirstOrDefault(a => a.Fund == selectedAccount);
+            currentAccount = dtoUserAccounts.FirstOrDefault(a => a.SelectionKey == selectedAccount);
             donations = dtoDonations;
 
             if (string.IsNullOrWhiteSpace(selectedAccount) && dtoUserAccounts.Count > 0)
             {
                 // choose a sensible UI fallback but do NOT persist it to session or to server
-                selectedAccount = dtoUserAccounts.First().Fund;
+                selectedAccount = dtoUserAccounts.First().SelectionKey;
             }
 
             var defaultFundFromDto = !string.IsNullOrWhiteSpace(SessionUserStateService.DefaultAccountFund)
                 ? SessionUserStateService.DefaultAccountFund
-                : dtoUserAccounts.FirstOrDefault()?.Fund ?? string.Empty;
+                : dtoUserAccounts.FirstOrDefault()?.SelectionKey ?? string.Empty;
 
             // Only persist the selection into session/server when the selection was explicit (user interacted with dropdown).
             if (explicitSelection && !string.IsNullOrWhiteSpace(passedAccount))
@@ -1002,7 +938,6 @@
         catch (Exception ex)
         {
             errorMessage = $"Error loading donation data: {ex.Message}";
-            // Logger.LogWarning(ex, "Donations data load failed after {ElapsedMs}ms", loadSw.ElapsedMilliseconds);
         }
         finally
         {
@@ -1090,7 +1025,7 @@
     {
         if (string.IsNullOrEmpty(accountName)) return;
 
-        currentAccount = donationData.UserAccounts.FirstOrDefault(a => a.Fund == accountName);
+        currentAccount = donationData.UserAccounts.FirstOrDefault(a => a.SelectionKey == accountName);
         if (currentAccount is not null)
         {
             var account = new UserAccountContextAccount
@@ -1345,7 +1280,7 @@
         TooltipService.Close();
     }
 
-    private async Task OnDonorClick(string? donorName)
+    private async Task OnDonorClick(long donorId, string? donorName)
     {
         if (string.IsNullOrWhiteSpace(donorName) || donorName == Localizer["Unknown"] || donorName == Localizer["Anonymous"])
         {
@@ -1354,34 +1289,35 @@
 
         try
         {
-            var donorDonations = selectedDonations
-                .Where(d => string.Equals(d.Donor?.Trim(), donorName?.Trim(), StringComparison.OrdinalIgnoreCase))
-                .ToList();
+            var donorDonations = donorId > 0
+                ? selectedDonations.Where(d => d.DonorId == donorId).ToList()
+                : selectedDonations
+                    .Where(d => string.Equals(d.Donor?.Trim(), donorName?.Trim(), StringComparison.OrdinalIgnoreCase))
+                    .ToList();
 
             if (!donorDonations.Any())
             {
                 return;
             }
 
-            var donorTotal = donorDonations.Sum(d => Convert.ToDecimal(d.Amount));
-            var donorLastDate = donorDonations.Max(d => d.Date);
-            var donationCount = donorDonations.Count;
-
-            var mostRecent = donorDonations.OrderByDescending(d => d.Date).First();
+            if (donorId <= 0 || !donationData.DonorContacts.TryGetValue(donorId, out var contact))
+            {
+                return;
+            }
 
             await DialogService.OpenAsync<DonorDetailsDialog>(
                 title: Localizer["ContactInformation"],
                     parameters: new Dictionary<string, object?>
                 {
                     { nameof(DonorDetailsDialog.DonorName), donorName },
-                    { nameof(DonorDetailsDialog.DonorEmail), mostRecent.Email ?? string.Empty },
-                    { nameof(DonorDetailsDialog.DonorPhoneMobile), mostRecent.PhoneMobile ?? string.Empty },
-                    { nameof(DonorDetailsDialog.DonorPhoneFixed), mostRecent.PhoneFixed ?? string.Empty },
-                    { nameof(DonorDetailsDialog.DonorAddress), mostRecent.Address ?? string.Empty },
-                    { nameof(DonorDetailsDialog.DonorCity), mostRecent.City ?? string.Empty },
-                    { nameof(DonorDetailsDialog.DonorState), mostRecent.State ?? string.Empty },
-                    { nameof(DonorDetailsDialog.DonorPostal), mostRecent.PostalCode ?? string.Empty },
-                    { nameof(DonorDetailsDialog.DonorCountry), mostRecent.Country ?? string.Empty }
+                    { nameof(DonorDetailsDialog.DonorEmail), contact.Email },
+                    { nameof(DonorDetailsDialog.DonorPhoneMobile), contact.PhoneMobile },
+                    { nameof(DonorDetailsDialog.DonorPhoneFixed), contact.PhoneFixed },
+                    { nameof(DonorDetailsDialog.DonorAddress), contact.Address },
+                    { nameof(DonorDetailsDialog.DonorCity), contact.City },
+                    { nameof(DonorDetailsDialog.DonorState), contact.State },
+                    { nameof(DonorDetailsDialog.DonorPostal), contact.PostalCode },
+                    { nameof(DonorDetailsDialog.DonorCountry), contact.Country }
                 },
                 options: new DialogOptions
                 {

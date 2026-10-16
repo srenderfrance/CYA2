@@ -9,9 +9,10 @@ public interface IDonorService
     Task<List<DonorSummaryDto>> GetDonorSummariesAsync(string accountFund, DateRange dateRange);
     Task<List<DonorSummaryDto>> GetDonorSummariesAsync(IEnumerable<string> fundNames, DateRange dateRange);
     Task<List<DonorSummaryDto>> GetDonorSummariesForAccountAsync(int accountId, string accountFund, DateRange dateRange);
-    Task<List<DonorSummaryDto>> GetDonorSummariesForAccountAsync(AccountOptionDto account, DateRange dateRange);
-    Task<List<DonorSummaryDto>> GetDonorSummariesForSelectionAsync(AccountOptionDto account, string selectedSubAccount, DateRange? dateRange);
+    Task<List<DonorSummaryDto>> GetDonorSummariesForAccountAsync(AccountOptionDto account, DateRange dateRange, string userId = "");
+    Task<List<DonorSummaryDto>> GetDonorSummariesForSelectionAsync(AccountOptionDto account, string selectedSubAccount, DateRange? dateRange, string userId = "");
     Task<List<DonorSummaryDto>> GetMissingGiftDonorsAsync(AccountOptionDto account, DateRange dateRange);
+    Task WarmMissingGiftDonorsFromDataAsync(AccountOptionDto account, IReadOnlyList<Cya2.Core.ReadModels.DonationRecord> donations, DateRange dateRange, CancellationToken cancellationToken = default);
     Task<List<DonorSummaryDto>> GetAllDonorSummariesAsync(int accountId, string accountFund);
     Task<List<DonorSummaryDto>> GetAllDonorSummariesAsync(IEnumerable<string> fundNames);
     Task<DonorDetailDto?> GetDonorDetailAsync(string donorName, string accountFund);

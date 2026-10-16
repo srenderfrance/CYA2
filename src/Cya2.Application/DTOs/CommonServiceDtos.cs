@@ -4,6 +4,9 @@ public class AccountOptionDto
 {
     public int AccountId { get; set; }
     public string Fund { get; set; } = string.Empty;
+    public string InternName { get; set; } = string.Empty;
+    public string DisplayName { get; set; } = string.Empty;
+    public string SelectionKey => string.IsNullOrWhiteSpace(InternName) ? Fund : InternName;
     public string AccountingClass { get; set; } = string.Empty;
     public string AccountNumber { get; set; } = string.Empty;
     public decimal Overhead { get; set; }
@@ -46,7 +49,13 @@ public class DonorContactDto
     public string Name { get; set; } = string.Empty;
     public string Email { get; set; } = string.Empty;
     public string Phone { get; set; } = string.Empty;
+    public string PhoneFixed { get; set; } = string.Empty;
+    public string PhoneMobile { get; set; } = string.Empty;
     public string Address { get; set; } = string.Empty;
+    public string City { get; set; } = string.Empty;
+    public string State { get; set; } = string.Empty;
+    public string PostalCode { get; set; } = string.Empty;
+    public string Country { get; set; } = string.Empty;
 }
 
 /// <summary>

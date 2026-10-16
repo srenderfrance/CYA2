@@ -23,6 +23,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IAccountRepository, AccountRepository>();
         services.AddScoped<ISubAccountRepository, SubAccountRepository>();
         services.AddScoped<IDonationReadRepository, DonationReadRepository>();
+        services.AddScoped<IDonorContactReadRepository, DonorContactReadRepository>();
         services.AddScoped<IExpenseReadRepository, ExpenseReadRepository>();
         services.AddScoped<IDonationRepository, DonationRepository>();
         services.AddScoped<IAccountingImportRepository, AccountingImportRepository>();

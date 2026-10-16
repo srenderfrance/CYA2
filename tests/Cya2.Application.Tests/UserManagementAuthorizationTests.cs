@@ -162,6 +162,7 @@ public sealed class UserManagementAuthorizationTests
 
         public Task<List<Account>> GetUserAccountsAsync(int userId) => Task.FromResult(new List<Account>());
         public Task<List<User>> GetAccountUsersAsync(int accountId) => Task.FromResult(new List<User>());
+        public Task<Dictionary<int, List<int>>> GetAccountUserIdsAsync() => Task.FromResult(new Dictionary<int, List<int>>());
         public Task<Account?> GetAccountByIdAsync(int accountId) => Task.FromResult<Account?>(new Account { AccountId = accountId, Fund = "Test" });
         public Task<bool> HasAccessAsync(int userId, int accountId) => Task.FromResult(false);
         public Task<bool> GrantAccessAsync(int userId, int accountId) { AccessGrants++; return Task.FromResult(true); }

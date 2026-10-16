@@ -24,6 +24,49 @@ public sealed class DonationReadRepository : IDonationReadRepository
 
     private string ConnStr => _configuration.GetConnectionString("default") ?? string.Empty;
 
+    public async Task<List<string>> GetCurrentInternNamesAsync()
+    {
+        if (!_dbGuard.IsAvailable)
+        {
+            return [];
+        }
+
+        const string sql = @"
+SELECT DISTINCT TRIM(InternName)
+FROM DonationData
+WHERE InternName IS NOT NULL
+  AND TRIM(InternName) <> ''";
+
+        await using var connection = new MySqlConnection(ConnStr);
+        var names = await connection.QueryAsync<string>(sql);
+        return names.Where(name => !string.IsNullOrWhiteSpace(name)).ToList();
+    }
+
+    public async Task<Dictionary<string, string>> GetCurrentInternNamesByFundsAsync(IEnumerable<string> funds)
+    {
+        var fundList = funds
+            .Where(fund => !string.IsNullOrWhiteSpace(fund))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+        if (fundList.Length == 0 || !_dbGuard.IsAvailable)
+        {
+            return new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        }
+
+        const string sql = @"
+SELECT Fund, MAX(NULLIF(TRIM(InternName), '')) AS InternName
+FROM DonationData
+WHERE Fund IN @Funds
+  AND InternName IS NOT NULL
+  AND TRIM(InternName) <> ''
+GROUP BY Fund";
+
+        await using var connection = new MySqlConnection(ConnStr);
+        var rows = await connection.QueryAsync<(string Fund, string InternName)>(sql, new { Funds = fundList });
+        return rows.ToDictionary(row => row.Fund, row => row.InternName, StringComparer.OrdinalIgnoreCase);
+    }
+
     private const string DonationProjection = @"
 SELECT
     d.Id,
@@ -36,18 +79,9 @@ SELECT
     d.GiftType,
     d.Amount,
     d.Fund,
-    d.Intern,
+    d.InternName,
     d.PrimaryAddressee AS Addressee,
     d.SoftCreditName,
-    -- Projection intentionally reads only current-state DonorContacts rows; reconciliation removes obsolete values.
-    (SELECT GROUP_CONCAT(DISTINCT CASE WHEN c.ContactType = 'AddressLine1' THEN c.ContactValue END SEPARATOR '; ') FROM DonorContacts c WHERE c.DonorId = d.DonorId) AS Address,
-    (SELECT GROUP_CONCAT(DISTINCT CASE WHEN c.ContactType = 'City' THEN c.ContactValue END SEPARATOR '; ') FROM DonorContacts c WHERE c.DonorId = d.DonorId) AS City,
-    (SELECT GROUP_CONCAT(DISTINCT CASE WHEN c.ContactType = 'State' THEN c.ContactValue END SEPARATOR '; ') FROM DonorContacts c WHERE c.DonorId = d.DonorId) AS State,
-    (SELECT GROUP_CONCAT(DISTINCT CASE WHEN c.ContactType = 'PostalCode' THEN c.ContactValue END SEPARATOR '; ') FROM DonorContacts c WHERE c.DonorId = d.DonorId) AS PostalCode,
-    (SELECT GROUP_CONCAT(DISTINCT CASE WHEN c.ContactType = 'Country' THEN c.ContactValue END SEPARATOR '; ') FROM DonorContacts c WHERE c.DonorId = d.DonorId) AS Country,
-    (SELECT GROUP_CONCAT(DISTINCT CASE WHEN c.ContactType = 'Email' THEN c.ContactValue END SEPARATOR '; ') FROM DonorContacts c WHERE c.DonorId = d.DonorId) AS Email,
-    (SELECT GROUP_CONCAT(DISTINCT CASE WHEN c.ContactType = 'HomePhone' THEN c.ContactValue END SEPARATOR '; ') FROM DonorContacts c WHERE c.DonorId = d.DonorId) AS PhoneFixed,
-    (SELECT GROUP_CONCAT(DISTINCT CASE WHEN c.ContactType = 'MobilePhone' THEN c.ContactValue END SEPARATOR '; ') FROM DonorContacts c WHERE c.DonorId = d.DonorId) AS PhoneMobile,
     d.DateCreated,
     d.IsAnonymous
 FROM DonationData d
@@ -62,17 +96,35 @@ INNER JOIN Donors dn ON dn.Id = d.DonorId";
             new { AccountId = accountId });
         var subAccounts = rows.ToList();
         _logger.LogInformation(
-            "Subaccounts loaded: accountId={AccountId}, count={Count}, kinds={Kinds}, funds={Funds}",
+            "Subaccounts loaded: accountId={AccountId}, count={Count}, kinds={Kinds}",
             accountId,
             subAccounts.Count,
-            string.Join("|", subAccounts.Select(s => s.Kind?.Trim() ?? string.Empty).Distinct(StringComparer.OrdinalIgnoreCase)),
-            string.Join("|", subAccounts.Select(s => s.SubFund)));
+            string.Join("|", subAccounts.Select(s => s.Kind?.Trim() ?? string.Empty).Distinct(StringComparer.OrdinalIgnoreCase)));
         return subAccounts;
     }
 
     public Task<List<DonationRecord>> GetDonationsForAccountTotalAsync(int accountId, string fundName, DateTime startDate, DateTime endDate)
     {
         return GetDonationsByAccountAndDateRangeAsync(accountId, fundName, startDate, endDate);
+    }
+
+    public async Task<List<DonationRecord>> GetDonationsForAccountScopeAsync(int accountId, string fundName, DateTime startDate, DateTime endDate)
+    {
+        _dbGuard.ThrowIfUnavailable();
+        await using var conn = new MySqlConnection(ConnStr);
+        var rows = await conn.QueryAsync<DonationRecord>(
+            $@"{DonationProjection}
+WHERE d.Date >= @StartDate
+  AND d.Date <= @EndDate
+  AND d.Fund COLLATE utf8mb4_0900_ai_ci IN (
+      SELECT @Fund
+      UNION
+      SELECT SubFund
+      FROM SubAccounts
+      WHERE AccountId = @AccountId
+  )",
+            new { AccountId = accountId, Fund = fundName, StartDate = startDate, EndDate = endDate });
+        return rows.ToList();
     }
 
     public Task<List<DonationRecord>> GetDonationsByFundsAsync(IEnumerable<string> fundNames)
@@ -294,16 +346,16 @@ WHERE dn.DisplayName LIKE @SearchTerm
         return rows.ToList();
     }
 
-    public async Task<List<DonationRecord>> GetInternDonationsByDesignationAndDateRangeAsync(string internDesignationName, DateTime startDate, DateTime endDate)
+    public async Task<List<DonationRecord>> GetInternDonationsByInternNameAndDateRangeAsync(string internName, DateTime startDate, DateTime endDate)
     {
         _dbGuard.ThrowIfUnavailable();
 
-        if (string.IsNullOrWhiteSpace(internDesignationName))
+        if (string.IsNullOrWhiteSpace(internName))
         {
             return new List<DonationRecord>();
         }
 
-        var criteria = InternAccountUtility.CreateDesignationCriteria(internDesignationName);
+        var criteria = InternAccountUtility.CreateDesignationCriteria(internName);
 
         await using var conn = new MySqlConnection(ConnStr);
 
@@ -312,12 +364,12 @@ WHERE dn.DisplayName LIKE @SearchTerm
 FROM DonationData
 WHERE Date >= @StartDate
   AND Date <= @EndDate
-  AND Intern COLLATE utf8mb4_0900_ai_ci = @InternDesignationName COLLATE utf8mb4_0900_ai_ci",
+  AND InternName COLLATE utf8mb4_0900_ai_ci = @InternName COLLATE utf8mb4_0900_ai_ci",
             new
             {
                 StartDate = startDate,
                 EndDate = endDate,
-                InternDesignationName = criteria.InternDesignationName
+                InternName = criteria.InternDesignationName
             });
 
         var alternateMatchCount = criteria.HasAlternateDesignation
@@ -326,7 +378,7 @@ WHERE Date >= @StartDate
 FROM DonationData
 WHERE Date >= @StartDate
   AND Date <= @EndDate
-  AND Intern COLLATE utf8mb4_0900_ai_ci = @AlternateDesignation COLLATE utf8mb4_0900_ai_ci",
+  AND InternName COLLATE utf8mb4_0900_ai_ci = @AlternateDesignation COLLATE utf8mb4_0900_ai_ci",
                 new
                 {
                     StartDate = startDate,
@@ -341,10 +393,10 @@ WHERE Date >= @StartDate
 FROM DonationData
 WHERE Date >= @StartDate
   AND Date <= @EndDate
-  AND Intern IS NOT NULL
+  AND InternName IS NOT NULL
   AND (
-      Intern COLLATE utf8mb4_0900_ai_ci LIKE @FirstToken COLLATE utf8mb4_0900_ai_ci
-      OR Intern COLLATE utf8mb4_0900_ai_ci LIKE @LastToken COLLATE utf8mb4_0900_ai_ci
+      InternName COLLATE utf8mb4_0900_ai_ci LIKE @FirstToken COLLATE utf8mb4_0900_ai_ci
+      OR InternName COLLATE utf8mb4_0900_ai_ci LIKE @LastToken COLLATE utf8mb4_0900_ai_ci
   )",
                 new
                 {
@@ -361,8 +413,8 @@ FROM DonationData
 WHERE Date >= @StartDate
   AND Date <= @EndDate
   AND (
-      LOWER(REPLACE(REPLACE(REPLACE(REPLACE(COALESCE(Intern,''), ' ', ''), ',', ''), '.', ''), '-', '')) = @DesignationLookupKey
-      OR (@HasAlternateLookupKey = 1 AND LOWER(REPLACE(REPLACE(REPLACE(REPLACE(COALESCE(Intern,''), ' ', ''), ',', ''), '.', ''), '-', '')) = @AlternateLookupKey)
+      LOWER(REPLACE(REPLACE(REPLACE(REPLACE(COALESCE(InternName,''), ' ', ''), ',', ''), '.', ''), '-', '')) = @DesignationLookupKey
+      OR (@HasAlternateLookupKey = 1 AND LOWER(REPLACE(REPLACE(REPLACE(REPLACE(COALESCE(InternName,''), ' ', ''), ',', ''), '.', ''), '-', '')) = @AlternateLookupKey)
   )",
             new
             {
@@ -374,15 +426,7 @@ WHERE Date >= @StartDate
             });
 
         _logger.LogInformation(
-            "Intern donation query debug: designation='{Designation}', alternate='{Alternate}', hasAlternate={HasAlternate}, firstName='{FirstName}', lastName='{LastName}', hasNameTokens={HasNameTokens}, lookupKey='{LookupKey}', alternateLookupKey='{AlternateLookupKey}', exactMatches={ExactMatches}, alternateMatches={AlternateMatches}, tokenMatches={TokenMatches}, normalizedMatches={NormalizedMatches}, range={StartDate:yyyy-MM-dd}..{EndDate:yyyy-MM-dd}",
-            criteria.InternDesignationName,
-            criteria.AlternateDesignation,
-            criteria.HasAlternateDesignation,
-            criteria.FirstName,
-            criteria.LastName,
-            criteria.HasNameTokens,
-            criteria.DesignationLookupKey,
-            criteria.AlternateLookupKey,
+            "Intern donation query debug: exactMatches={ExactMatches}, alternateMatches={AlternateMatches}, tokenMatches={TokenMatches}, normalizedMatches={NormalizedMatches}, range={StartDate:yyyy-MM-dd}..{EndDate:yyyy-MM-dd}",
             exactMatchCount,
             alternateMatchCount,
             tokenMatchCount,
@@ -395,44 +439,44 @@ WHERE Date >= @StartDate
 WHERE d.Date >= @StartDate
   AND d.Date <= @EndDate
   AND (
-      d.Intern COLLATE utf8mb4_0900_ai_ci = @InternDesignationName COLLATE utf8mb4_0900_ai_ci
-      OR (@HasAlternateDesignation = 1 AND d.Intern COLLATE utf8mb4_0900_ai_ci = @AlternateDesignation COLLATE utf8mb4_0900_ai_ci)
+      d.InternName COLLATE utf8mb4_0900_ai_ci = @InternName COLLATE utf8mb4_0900_ai_ci
+      OR (@HasAlternateDesignation = 1 AND d.InternName COLLATE utf8mb4_0900_ai_ci = @AlternateDesignation COLLATE utf8mb4_0900_ai_ci)
       OR (
-          LOCATE(',', d.Intern) > 0
+          LOCATE(',', d.InternName) > 0
           AND TRIM(CONCAT(
-              TRIM(SUBSTRING_INDEX(d.Intern, ',', -1)),
+              TRIM(SUBSTRING_INDEX(d.InternName, ',', -1)),
               ' ',
-              TRIM(SUBSTRING_INDEX(d.Intern, ',', 1))
-          )) COLLATE utf8mb4_0900_ai_ci = @InternDesignationName COLLATE utf8mb4_0900_ai_ci
+              TRIM(SUBSTRING_INDEX(d.InternName, ',', 1))
+          )) COLLATE utf8mb4_0900_ai_ci = @InternName COLLATE utf8mb4_0900_ai_ci
       )
       OR (
           @HasAlternateDesignation = 1
-          AND LOCATE(',', d.Intern) > 0
+          AND LOCATE(',', d.InternName) > 0
           AND TRIM(CONCAT(
-              TRIM(SUBSTRING_INDEX(d.Intern, ',', -1)),
+              TRIM(SUBSTRING_INDEX(d.InternName, ',', -1)),
               ' ',
-              TRIM(SUBSTRING_INDEX(d.Intern, ',', 1))
+              TRIM(SUBSTRING_INDEX(d.InternName, ',', 1))
           )) COLLATE utf8mb4_0900_ai_ci = @AlternateDesignation COLLATE utf8mb4_0900_ai_ci
       )
       OR (
           @HasNameTokens = 1
-          AND d.Intern IS NOT NULL
-          AND d.Intern COLLATE utf8mb4_0900_ai_ci LIKE @FirstToken COLLATE utf8mb4_0900_ai_ci
-          AND d.Intern COLLATE utf8mb4_0900_ai_ci LIKE @LastToken COLLATE utf8mb4_0900_ai_ci
+          AND d.InternName IS NOT NULL
+          AND d.InternName COLLATE utf8mb4_0900_ai_ci LIKE @FirstToken COLLATE utf8mb4_0900_ai_ci
+          AND d.InternName COLLATE utf8mb4_0900_ai_ci LIKE @LastToken COLLATE utf8mb4_0900_ai_ci
       )
       OR (
-          LOWER(REPLACE(REPLACE(REPLACE(REPLACE(COALESCE(d.Intern,''), ' ', ''), ',', ''), '.', ''), '-', '')) = @DesignationLookupKey
+          LOWER(REPLACE(REPLACE(REPLACE(REPLACE(COALESCE(d.InternName,''), ' ', ''), ',', ''), '.', ''), '-', '')) = @DesignationLookupKey
       )
       OR (
           @HasAlternateLookupKey = 1
-          AND LOWER(REPLACE(REPLACE(REPLACE(REPLACE(COALESCE(d.Intern,''), ' ', ''), ',', ''), '.', ''), '-', '')) = @AlternateLookupKey
+          AND LOWER(REPLACE(REPLACE(REPLACE(REPLACE(COALESCE(d.InternName,''), ' ', ''), ',', ''), '.', ''), '-', '')) = @AlternateLookupKey
       )
   )",
             new
             {
                 StartDate = startDate,
                 EndDate = endDate,
-                InternDesignationName = criteria.InternDesignationName,
+                InternName = criteria.InternDesignationName,
                 AlternateDesignation = criteria.AlternateDesignation,
                 HasAlternateDesignation = criteria.HasAlternateDesignation ? 1 : 0,
                 HasNameTokens = criteria.HasNameTokens ? 1 : 0,
@@ -444,36 +488,133 @@ WHERE d.Date >= @StartDate
             });
 
         var rowList = rows.ToList();
-        if (rowList.Count == 0)
-        {
-            var topInternValues = await conn.QueryAsync<string>(
-                @"SELECT COALESCE(Intern, '')
-FROM DonationData
-WHERE Date >= @StartDate
-  AND Date <= @EndDate
-  AND Intern IS NOT NULL
-  AND Intern <> ''
-GROUP BY Intern
-ORDER BY COUNT(*) DESC
-LIMIT 5",
-                new
-                {
-                    StartDate = startDate,
-                    EndDate = endDate
-                });
+        _logger.LogInformation(
+            "Intern donation query returned {RowCount} rows",
+            rowList.Count);
 
-            _logger.LogInformation(
-                "Intern donation query sample values in range: {InternSamples}",
-                string.Join(" | ", topInternValues));
+        return rowList;
+    }
+
+    public async Task<IReadOnlyDictionary<int, List<DonationRecord>>> GetDonationsForAccountsAsync(
+        IReadOnlyList<(int AccountId, string Fund, IReadOnlyList<string> MergedSubFunds)> accounts,
+        DateTime startDate,
+        DateTime endDate)
+    {
+        _dbGuard.ThrowIfUnavailable();
+
+        var scopedAccounts = accounts
+            .Where(account => !string.IsNullOrWhiteSpace(account.Fund))
+            .Distinct()
+            .ToList();
+
+        var result = scopedAccounts
+            .Select(account => account.AccountId)
+            .Distinct()
+            .ToDictionary(accountId => accountId, _ => new List<DonationRecord>());
+
+        if (scopedAccounts.Count == 0)
+        {
+            return result;
+        }
+
+        var fundsByAccountId = scopedAccounts.ToDictionary(
+            account => account.AccountId,
+            account => account.MergedSubFunds
+                .Append(account.Fund)
+                .Where(fund => !string.IsNullOrWhiteSpace(fund))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToArray());
+        var accountIdsByFund = fundsByAccountId
+            .SelectMany(pair => pair.Value.Select(fund => (Fund: fund, pair.Key)))
+            .GroupBy(item => item.Fund, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(
+                group => group.Key,
+                group => group.Select(item => item.Key).ToArray(),
+                StringComparer.OrdinalIgnoreCase);
+        var funds = accountIdsByFund.Keys.ToArray();
+
+        const string sql = $@"{DonationProjection}
+WHERE d.Date >= @StartDate
+  AND d.Date <= @EndDate
+  AND d.Fund COLLATE utf8mb4_0900_ai_ci IN @Funds";
+
+        await using var connection = new MySqlConnection(ConnStr);
+        var rows = (await connection.QueryAsync<DonationRecord>(
+            sql,
+            new { Funds = funds, StartDate = startDate, EndDate = endDate })).ToList();
+
+        foreach (var row in rows)
+        {
+            if (!accountIdsByFund.TryGetValue(row.Fund ?? string.Empty, out var accountIds))
+            {
+                continue;
+            }
+
+            foreach (var accountId in accountIds)
+            {
+                result[accountId].Add(row);
+            }
         }
 
         _logger.LogInformation(
-            "Intern donation query returned {RowCount} rows for designation='{Designation}' (alternate='{Alternate}')",
-            rowList.Count,
-            criteria.InternDesignationName,
-            criteria.AlternateDesignation);
+            "Normal account donations loaded in one batch: accountCount={AccountCount}, fundCount={FundCount}, rowCount={RowCount}",
+            scopedAccounts.Count,
+            funds.Length,
+            rows.Count);
 
-        return rowList;
+        return result;
+    }
+
+    public async Task<IReadOnlyDictionary<string, List<DonationRecord>>> GetInternDonationsByNamesAndDateRangeAsync(
+        IReadOnlyList<string> internNames,
+        DateTime startDate,
+        DateTime endDate)
+    {
+        _dbGuard.ThrowIfUnavailable();
+
+        var names = internNames
+            .Where(name => !string.IsNullOrWhiteSpace(name))
+            .Select(name => name.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        var result = names.ToDictionary(name => name, _ => new List<DonationRecord>(), StringComparer.OrdinalIgnoreCase);
+        if (names.Count == 0)
+        {
+            return result;
+        }
+
+        const string sql = $@"{DonationProjection}
+WHERE d.Date >= @StartDate
+  AND d.Date <= @EndDate
+  AND d.InternName COLLATE utf8mb4_0900_ai_ci IN @InternNames";
+
+        await using var conn = new MySqlConnection(ConnStr);
+        var rows = (await conn.QueryAsync<DonationRecord>(
+            sql,
+            new
+            {
+                StartDate = startDate,
+                EndDate = endDate,
+                InternNames = names
+            })).ToList();
+
+        foreach (var row in rows)
+        {
+            if (!string.IsNullOrWhiteSpace(row.InternName) && result.TryGetValue(row.InternName.Trim(), out var donations))
+            {
+                donations.Add(row);
+            }
+        }
+
+        _logger.LogInformation(
+            "Intern donations loaded in bulk: requestedCount={RequestedCount}, rowCount={RowCount}, range={StartDate:yyyy-MM-dd}..{EndDate:yyyy-MM-dd}",
+            names.Count,
+            rows.Count,
+            startDate,
+            endDate);
+
+        return result;
     }
 
     private async Task<List<DonationRecord>> LoadByFundsAsync(

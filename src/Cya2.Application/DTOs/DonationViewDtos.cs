@@ -2,6 +2,7 @@ namespace Cya2.Application.DTOs;
 
 public class DonationPivotRowDto
 {
+    public long DonorId { get; set; }
     public string Donor { get; set; } = string.Empty;
     public bool IsAnonymous { get; set; }
     public Dictionary<DateTime, decimal> Monthly { get; set; } = new();

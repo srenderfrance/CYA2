@@ -3,7 +3,7 @@ namespace Cya2.Application.Interfaces;
 public interface IUserAccountContextService
 {
     Task<UserAccountContext?> GetContextAsync(string userId, bool isAdminOrViewerHint = false);
-    UserAccountContextAccount? ResolveSelectedAccount(UserAccountContext context, string? preferredFund);
+    UserAccountContextAccount? ResolveSelectedAccount(UserAccountContext context, string? preferredIdentity);
     void Invalidate(string userId);
 }
 
@@ -11,8 +11,11 @@ public sealed class UserAccountContext
 {
     public int UserId { get; set; }
     public bool IsAdminOrViewer { get; set; }
+    public bool IsViewer { get; set; }
     public int? DefaultAccountId { get; set; }
     public long CacheVersion { get; set; }
+    public bool IsIntern { get; set; }
+    public string InternName { get; set; } = string.Empty;
     public List<UserAccountContextAccount> Accounts { get; set; } = new();
 }
 
@@ -27,4 +30,6 @@ public sealed class UserAccountContextAccount
     public string SoftCredit { get; set; } = string.Empty;
     public decimal BalanceAdjustment { get; set; }
     public bool OtherFunds { get; set; }
+    public string InternName { get; set; } = string.Empty;
+    public string DisplayName { get; set; } = string.Empty;
 }

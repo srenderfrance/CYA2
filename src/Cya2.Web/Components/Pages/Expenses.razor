@@ -5,7 +5,6 @@
 @using Radzen.Blazor
 @using Microsoft.AspNetCore.Components.Authorization
 @using System.Security.Claims
-@using System.Diagnostics
 @using Cya2.Application.DTOs
 @using Cya2.Application.Interfaces
 @using Cya2.Core.ValueObjects
@@ -13,19 +12,15 @@
 @inject IExpenseService ExpenseService
 @inject Cya2.Application.Interfaces.ISessionUserStateService SessionUserStateService
 @inject IDateRangeStateService DateRangeStateService
-@inject Cya2.Application.Interfaces.IUserIdResolver UserIdResolver
 @inject Cya2.Application.Interfaces.IUserSelectionService UserSelectionService
 @inject Cya2.Application.Interfaces.IUserDateRangeSelectionService DateRangeSelectionService
 @inject cya2.Services.UserSessionHydrationService SessionHydrationService
-@inject cya2.Services.Diagnostics.PageLoadCorrelationContext PageLoadCorrelation
-@inject Cya2.Application.Interfaces.IAccountSnapshotWarmupService AccountSnapshotWarmupService
 @inject Cya2.Application.Interfaces.IAccountSelectionCoordinator AccountSelectionCoordinator
 
 @rendermode @(new InteractiveServerRenderMode(prerender: false))
 @attribute [StreamRendering]
 @attribute [Authorize(Policy = "CanAccessExpenses")]
 @inject IStringLocalizer<Resource> Localizer
-@inject ILogger<Expenses> Logger
 
 <PageTitle>@Localizer["Expenses"]</PageTitle>
 
@@ -101,7 +96,7 @@
                     <RadzenLabel Text="@Localizer["Account"]" />
                     <AccountSelector TItem="AccountOptionDto" TValue="string"
                                      Data="@((expenseData.UserAccounts ?? new List<AccountOptionDto>()))"
-                                     TextProperty="Fund"
+                                     TextProperty="DisplayName"
                                      ValueProperty="Fund"
                                      Value="@selectedAccount"
                                      ValueChanged="@(value => selectedAccount = value)"
@@ -277,8 +272,6 @@
 
     protected override async Task OnInitializedAsync()
     {
-        // using var operationScope = PageLoadCorrelation.BeginOperation(Logger, nameof(Expenses), "Initialize");
-        var initSw = Stopwatch.StartNew();
         try
         {
             isLoading = true;
@@ -357,13 +350,6 @@
         finally
         {
             isLoading = false;
-            // Logger.LogInformation("Expenses init complete user={UserId} selectedAccount={SelectedAccount} accounts={AccountCount} expenses={ExpenseCount} transfers={TransferCount} elapsedMs={ElapsedMs}",
-            //     userId,
-            //     selectedAccount,
-            //     expenseData.UserAccounts?.Count ?? 0,
-            //     expenseData.ExpenseTransactions?.Count ?? 0,
-            //     expenseData.TransferTransactions?.Count ?? 0,
-            //     initSw.ElapsedMilliseconds);
         }
     }
 
@@ -422,7 +408,6 @@
             return;
         }
 
-        var loadSw = Stopwatch.StartNew();
         try
         {
             isLoading = true;
@@ -465,14 +450,6 @@
         finally
         {
             isLoading = false;
-            // Logger.LogInformation("Expenses data load complete user={UserId} selectedAccount={SelectedAccount} range={Start:yyyy-MM-dd}..{End:yyyy-MM-dd} expenses={ExpenseCount} transfers={TransferCount} elapsedMs={ElapsedMs}",
-            //     userId,
-            //     selectedAccount,
-            //     dateRangeState.StartDate,
-            //     dateRangeState.EndDate,
-            //     expenseData.ExpenseTransactions?.Count ?? 0,
-            //     expenseData.TransferTransactions?.Count ?? 0,
-            //     loadSw.ElapsedMilliseconds);
             await InvokeAsync(StateHasChanged);
         }
     }

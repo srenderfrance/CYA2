@@ -33,6 +33,17 @@ ORDER BY a.Fund";
         return rows.ToList();
     }
 
+    public async Task<Dictionary<int, List<int>>> GetAccountUserIdsAsync()
+    {
+        _dbGuard.ThrowIfUnavailable();
+        const string sql = "SELECT AccountId, UserId FROM AccountsUsers ORDER BY AccountId, UserId";
+        await using var conn = new MySqlConnection(ConnStr);
+        var rows = await conn.QueryAsync<(int AccountId, int UserId)>(sql);
+        return rows
+            .GroupBy(row => row.AccountId)
+            .ToDictionary(group => group.Key, group => group.Select(row => row.UserId).ToList());
+    }
+
     public async Task<List<User>> GetAccountUsersAsync(int accountId)
     {
         _dbGuard.ThrowIfUnavailable();

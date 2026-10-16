@@ -7,6 +7,7 @@
 @attribute [Authorize]
 @rendermode @(new InteractiveServerRenderMode(prerender: false))
 @attribute [StreamRendering]
+@implements IDisposable
 @using System.Security.Claims
 @using System.Globalization
 @using Cya2.Shared.Utilities
@@ -16,11 +17,11 @@
 @using Cya2.Application.Interfaces
 @using Cya2.Application.DTOs
 @inject IFinancialDashboardService DashboardService
-@inject ISessionDashboardDtoCacheService SessionDashboardDtoCacheService
 @inject Cya2.Application.Interfaces.ISessionUserStateService SessionUserStateService
 @inject ILogger<Home> Logger
 @inject IJSRuntime JS
 @inject Cya2.Application.Interfaces.IUserIdResolver UserIdResolver
+@inject Cya2.Application.Interfaces.IHomeAuthorizationService HomeAuthorizationService
 @inject Cya2.Application.Interfaces.IUserSelectionService UserSelectionService
 @inject Cya2.Application.Interfaces.IUserDateRangeSelectionService DateRangeSelectionService
 @inject Cya2.Application.Interfaces.IDonorService DonorService
@@ -406,12 +407,14 @@ else
                     <RadzenLabel Text="@Localizer["Account"]" />
                     <AccountSelector TItem="UserAccountDto" TValue="string"
                                      Data="@dashboardData.UserAccounts"
-                                     TextProperty="Fund"
-                                     ValueProperty="Fund"
+                                     TextProperty="DisplayName"
+                                     ValueProperty="SelectionKey"
                                      Value="@selectedAccount"
                                      Change="@OnAccountSelectionAsync"
                                      Placeholder="@Localizer["ChooseAccount"]"
-                                     TextSelector="@(account => DisplayFormatter.FormatFundDisplay(account.Fund))"
+                                      TextSelector="@(account => string.IsNullOrWhiteSpace(account.InternName)
+                                          ? DisplayFormatter.FormatFundDisplay(account.Fund)
+                                          : account.InternName)"
                                      Class="account-selector-dropdown-inline" />
                 </div>
 
@@ -1157,6 +1160,14 @@ private string debugMessage = string.Empty;
 private const int MaxDashboardMemoryCacheItems = 15;
 
 private string cachedUserId = string.Empty;
+private readonly Guid componentInstanceId = Guid.NewGuid();
+private bool isHomeInitialized;
+private bool isHomeInitializing;
+private long accountRequestVersion;
+private long customSummaryRequestVersion;
+private long visualizationRequestVersion;
+private readonly CancellationTokenSource homeCancellation = new();
+private bool isDisposed;
 
 private bool showVisualizations;
 private bool isVisualizationLoading;
@@ -1187,6 +1198,13 @@ private sealed class DatePresetOption
     public string Text { get; set; } = string.Empty;
     public DateRangeHelper.DateRangePreset Value { get; set; }
 }
+
+    public void Dispose()
+    {
+        isDisposed = true;
+        homeCancellation.Cancel();
+        homeCancellation.Dispose();
+    }
 
 private enum VisualizationGraphType { Line, Area, Column }
 
@@ -1294,6 +1312,17 @@ private bool showMissingGiftDialog = false;
 
     private async Task InitializeHomeAsync()
     {
+        if (isHomeInitializing || isHomeInitialized || isDisposed)
+        {
+            return;
+        }
+
+        isHomeInitializing = true;
+        var initializationStopwatch = System.Diagnostics.Stopwatch.StartNew();
+        Logger.LogInformation(
+            "Home initialization started: instance={InstanceId}, embedded={Embedded}",
+            componentInstanceId,
+            EmbedMode);
         try
         {
             // Logger.LogInformation("Home init phase=auth-start elapsedMs={ElapsedMs}", initSw.ElapsedMilliseconds);
@@ -1305,9 +1334,6 @@ private bool showMissingGiftDialog = false;
             {
                 return;
             }
-
-            var authLevel = user.FindFirstValue("AuthLevel")?.Trim() ?? string.Empty;
-            isAdminUser = user.IsInRole("Admin") || string.Equals(authLevel, "Admin", StringComparison.OrdinalIgnoreCase);
 
             userName = user.FindFirstValue("UserName") ??
                       user.FindFirstValue(ClaimTypes.GivenName) ??
@@ -1338,31 +1364,25 @@ private bool showMissingGiftDialog = false;
                 ? SessionUserStateService.SelectedAccountFund
                 : SessionUserStateService.DefaultAccountFund;
 
-            FinancialDashboardDto requestedCachedDashboard = new();
-            var hasRequestedCache = !string.IsNullOrWhiteSpace(requestedFund) &&
-                                    SessionDashboardDtoCacheService.TryGetDashboard(cachedUserId, requestedFund, out requestedCachedDashboard);
-            // Logger.LogInformation("Home init phase=dashboard-cache-checked elapsedMs={ElapsedMs} cacheHit={CacheHit} requestedFund={RequestedFund}", initSw.ElapsedMilliseconds, hasRequestedCache, requestedFund);
-
-            if (hasRequestedCache)
+            var homeAuthorization = await HomeAuthorizationService.AuthorizeAsync(cachedUserId, requestedFund);
+            if (!homeAuthorization.IsAuthorized || homeAuthorization.SelectedAccount is null)
             {
-                dashboardData = requestedCachedDashboard;
-                selectedAccount = ResolveSelectedAccount(dashboardData);
-                BuildDebugMessage("session-dto-cache-hit-requested");
-            }
-            else
-            {
-                // Logger.LogInformation("Home init phase=dashboard-load-start elapsedMs={ElapsedMs}", initSw.ElapsedMilliseconds);
-                dashboardData = await DashboardService.GetDashboardSummaryDataAsync(requestedFund ?? string.Empty, cachedUserId);
-                // Logger.LogInformation("Home init phase=dashboard-load-complete elapsedMs={ElapsedMs} accounts={AccountCount}", initSw.ElapsedMilliseconds, dashboardData.UserAccounts?.Count ?? 0);
-                selectedAccount = ResolveSelectedAccount(dashboardData);
-                CacheDashboard(selectedAccount, dashboardData, prioritize: true);
-                BuildDebugMessage(string.IsNullOrWhiteSpace(requestedFund) ? "initial-summary-load" : "initial-summary-load-requested-fund");
+                Logger.LogWarning("Home access denied for user {UserId}: {Reason}", cachedUserId, homeAuthorization.Reason);
+                return;
             }
 
-            var defaultFundFromDto = dashboardData.UserAccounts.FirstOrDefault(a => a.IsDefault)?.Fund;
+            isAdminUser = false;
+            requestedFund = homeAuthorization.Context?.IsIntern == true
+                ? homeAuthorization.Context.InternName
+                : homeAuthorization.SelectedAccount.Fund;
+            dashboardData = await DashboardService.GetDashboardSummaryDataAsync(requestedFund, cachedUserId);
+            selectedAccount = ResolveSelectedAccount(dashboardData);
+            BuildDebugMessage(string.IsNullOrWhiteSpace(requestedFund) ? "initial-summary-load" : "initial-summary-load-requested-fund");
+
+            var defaultFundFromDto = dashboardData.UserAccounts.FirstOrDefault(a => a.IsDefault)?.SelectionKey;
             if (string.IsNullOrWhiteSpace(defaultFundFromDto))
             {
-                defaultFundFromDto = dashboardData.UserAccounts.FirstOrDefault()?.Fund ?? string.Empty;
+                defaultFundFromDto = dashboardData.UserAccounts.FirstOrDefault()?.SelectionKey ?? string.Empty;
             }
 
             SessionUserStateService.SelectedAccountFund = selectedAccount;
@@ -1384,6 +1404,8 @@ private bool showMissingGiftDialog = false;
                 }
             }
 
+            isHomeInitialized = true;
+
         }
         catch (Exception ex)
         {
@@ -1392,8 +1414,14 @@ private bool showMissingGiftDialog = false;
         }
         finally
         {
+            isHomeInitializing = false;
             isLoading = false;
             isAccountDataLoading = false;
+            Logger.LogInformation(
+                "Home initialization completed: instance={InstanceId}, embedded={Embedded}, elapsedMs={ElapsedMs}",
+                componentInstanceId,
+                EmbedMode,
+                initializationStopwatch.ElapsedMilliseconds);
             ScheduleInitialDeferredWork();
             ScheduleInitialWarmup();
             await InvokeAsync(StateHasChanged);
@@ -1430,25 +1458,36 @@ private bool showMissingGiftDialog = false;
         }
 
         isCustomSummaryLoading = true;
+        var requestVersion = Interlocked.Increment(ref customSummaryRequestVersion);
         try
         {
-            customSummary = await DashboardService.GetCustomSummaryAsync(
+            var result = await DashboardService.GetCustomSummaryAsync(
                 selectedAccount,
                 customStartDate,
                 customEndDate,
                 cachedUserId);
+            if (requestVersion == customSummaryRequestVersion)
+            {
+                customSummary = result;
+            }
         }
         catch (Exception ex)
         {
             Logger.LogWarning(ex, "Home: failed to load custom date range summary for {Account}", selectedAccount);
-            customSummary = new FinancialSummaryDto
+            if (requestVersion == customSummaryRequestVersion)
             {
-                Period = $"{customStartDate:MM/dd/yyyy} - {customEndDate:MM/dd/yyyy}"
-            };
+                customSummary = new FinancialSummaryDto
+                {
+                    Period = $"{customStartDate:MM/dd/yyyy} - {customEndDate:MM/dd/yyyy}"
+                };
+            }
         }
         finally
         {
-            isCustomSummaryLoading = false;
+            if (requestVersion == customSummaryRequestVersion)
+            {
+                isCustomSummaryLoading = false;
+            }
         }
     }
 
@@ -1467,8 +1506,14 @@ private bool showMissingGiftDialog = false;
 
     private void ScheduleInitialDeferredWork()
     {
+        if (EmbedMode)
+        {
+            return;
+        }
+
         _ = InvokeAsync(async () =>
         {
+            if (isDisposed) return;
             await Task.Delay(TimeSpan.FromMilliseconds(100));
 
             await ComputeMissingGiftAlertsAsync();
@@ -1483,6 +1528,11 @@ private bool showMissingGiftDialog = false;
 
     private void ScheduleInitialWarmup()
     {
+        if (EmbedMode)
+        {
+            return;
+        }
+
         _ = InvokeAsync(async () =>
         {
             if (dashboardData.UserAccounts.Count == 0)
@@ -1508,7 +1558,8 @@ private bool showMissingGiftDialog = false;
                 cachedUserId,
                 isAdminUser,
                 GetDonorSummaryWarmupRange(),
-                isAdminUser: isAdminUser);
+                isAdminUser: isAdminUser,
+                cancellationToken: homeCancellation.Token);
         });
     }
 
@@ -1522,50 +1573,56 @@ private bool showMissingGiftDialog = false;
 
     private async Task OnAccountSelectionAsync(object args)
     {
+        var requestVersion = 0L;
+        Logger.LogInformation(
+            "Home account selection event received: instance={InstanceId}, embedded={Embedded}",
+            componentInstanceId,
+            EmbedMode);
         try
         {
+            if (!isHomeInitialized || isHomeInitializing || isDisposed)
+            {
+                return;
+            }
+
             var accountName = args?.ToString() ?? string.Empty;
             if (string.IsNullOrWhiteSpace(accountName) || string.Equals(accountName, selectedAccount, StringComparison.OrdinalIgnoreCase))
             {
                 return;
             }
 
-            var hasImmediateCache = SessionDashboardDtoCacheService.TryGetDashboard(cachedUserId, accountName, out var cachedSelection);
-            Logger.LogInformation("Home account selection started: account={Account}, dashboardCacheHit={DashboardCacheHit}", accountName, hasImmediateCache);
-            isAccountDataLoading = !hasImmediateCache;
+            Logger.LogInformation("Home account selection started: account={Account}", accountName);
+            requestVersion = Interlocked.Increment(ref accountRequestVersion);
+            isAccountDataLoading = true;
             StateHasChanged();
 
             selectedAccount = accountName;
             RefreshSelectedAccountMode();
 
-            if (hasImmediateCache)
+            var selectionAuthState = await AuthStateProvider.GetAuthenticationStateAsync();
+            var selectionUser = selectionAuthState.User;
+            var selectionUserId = UserIdResolver.ResolveUserId(selectionUser, cachedUserId);
+
+            if (string.IsNullOrWhiteSpace(cachedUserId))
             {
-                dashboardData = cachedSelection;
-                SessionDashboardDtoCacheService.SetDashboard(cachedUserId, selectedAccount, dashboardData, prioritize: true);
-                Logger.LogInformation("Home.accountSelection: used session DTO cache for {Account}", selectedAccount);
+                cachedUserId = selectionUserId;
             }
-            else
+
+            var result = await DashboardService.GetDashboardDataAsync(selectedAccount, selectionUserId);
+            if (requestVersion != accountRequestVersion)
             {
-                var authState = await AuthStateProvider.GetAuthenticationStateAsync();
-                var user = authState.User;
-                var userId = UserIdResolver.ResolveUserId(user, cachedUserId);
-
-                if (string.IsNullOrWhiteSpace(cachedUserId))
-                {
-                    cachedUserId = userId;
-                }
-
-                dashboardData = await DashboardService.GetDashboardDataAsync(selectedAccount, userId);
-                CacheDashboard(selectedAccount, dashboardData, prioritize: true);
-                Logger.LogInformation("Home.accountSelection: fetched dashboard for {Account} from service", selectedAccount);
-
+                return;
             }
+
+            dashboardData = result;
+            Logger.LogInformation("Home.accountSelection: fetched dashboard for {Account} from service", selectedAccount);
+
 
             selectedAccount = ResolveSelectedAccount(dashboardData);
             SessionUserStateService.SelectedAccountFund = selectedAccount;
             SetAccountSummaryFromCurrentMonth();
             var selectedAccountDto = dashboardData.UserAccounts.FirstOrDefault(account =>
-                string.Equals(account.Fund, selectedAccount, StringComparison.OrdinalIgnoreCase));
+                string.Equals(account.SelectionKey, selectedAccount, StringComparison.OrdinalIgnoreCase));
             if (selectedAccountDto is not null)
             {
                 await AccountSnapshotWarmupService.WarmSelectedAccountAsync(new UserAccountContextAccount
@@ -1575,7 +1632,7 @@ private bool showMissingGiftDialog = false;
                     AccountingClass = selectedAccountDto.AccountingClass,
                     AccountNumber = selectedAccountDto.AccountNumber,
                     Overhead = selectedAccountDto.Overhead
-                }, cachedUserId, isAdminUser, GetDonorSummaryWarmupRange());
+                }, cachedUserId, isAdminUser, GetDonorSummaryWarmupRange(), homeCancellation.Token);
                 Logger.LogInformation("Home account selection warmup completed: account={Account}", selectedAccount);
             }
             try
@@ -1609,7 +1666,10 @@ private bool showMissingGiftDialog = false;
         }
         finally
         {
-            isAccountDataLoading = false;
+            if (requestVersion == accountRequestVersion)
+            {
+                isAccountDataLoading = false;
+            }
             await InvokeAsync(StateHasChanged);
         }
     }
@@ -1655,17 +1715,25 @@ private bool showMissingGiftDialog = false;
         }
 
         isVisualizationLoading = true;
+        var requestVersion = Interlocked.Increment(ref visualizationRequestVersion);
         try
         {
-            accountVisualizationSeries = await DashboardService.GetMonthlyVisualizationAsync(
+            var result = await DashboardService.GetMonthlyVisualizationAsync(
                 selectedAccount,
                 visualizationStartDate,
                 visualizationEndDate,
                 cachedUserId);
+            if (requestVersion == visualizationRequestVersion)
+            {
+                accountVisualizationSeries = result;
+            }
         }
         finally
         {
-            isVisualizationLoading = false;
+            if (requestVersion == visualizationRequestVersion)
+            {
+                isVisualizationLoading = false;
+            }
             await InvokeAsync(StateHasChanged);
         }
     }
@@ -1677,16 +1745,6 @@ private bool showMissingGiftDialog = false;
         return decimal.TryParse(value?.ToString(), out var parsed)
             ? parsed.ToString("C0", CultureInfo.CurrentCulture)
             : 0m.ToString("C0", CultureInfo.CurrentCulture);
-    }
-
-    private void CacheDashboard(string fund, FinancialDashboardDto dto, bool prioritize)
-    {
-        if (string.IsNullOrWhiteSpace(cachedUserId) || string.IsNullOrWhiteSpace(fund) || dto == null)
-        {
-            return;
-        }
-
-        SessionDashboardDtoCacheService.SetDashboard(cachedUserId, fund, dto, prioritize);
     }
 
     private string ResolveSelectedAccount(FinancialDashboardDto data)
@@ -1719,10 +1777,6 @@ private bool showMissingGiftDialog = false;
     {
         try
         {
-            var sessionFunds = string.IsNullOrWhiteSpace(cachedUserId)
-                ? Array.Empty<string>()
-                : SessionDashboardDtoCacheService.GetFunds(cachedUserId);
-
             var lines = new List<string>
             {
                 $"Source={source}",
@@ -1731,8 +1785,6 @@ private bool showMissingGiftDialog = false;
                 $"Dashboard.SelectedAccount={dashboardData.SelectedAccount}",
                 $"HasAccountData={dashboardData.HasAccountData}",
                 $"UserAccounts={dashboardData.UserAccounts?.Count ?? 0}",
-                $"SessionDtoCacheCount={sessionFunds.Count}",
-                $"SessionDtoCacheFunds={string.Join(",", sessionFunds)}",
                 $"CurrentMonth: Donations={dashboardData.CurrentMonth?.TotalDonations:C2}, Expenses={dashboardData.CurrentMonth?.TotalExpenses:C2}, Overhead={dashboardData.CurrentMonth?.TotalOverhead:C2}, InternalTransfers={dashboardData.CurrentMonth?.InternalTransfers:C2}",
                 $"PriorMonth: Donations={dashboardData.PriorMonth?.TotalDonations:C2}, Expenses={dashboardData.PriorMonth?.TotalExpenses:C2}",
                 $"CurrentYear: Donations={dashboardData.CurrentYear?.TotalDonations:C2}, Expenses={dashboardData.CurrentYear?.TotalExpenses:C2}"

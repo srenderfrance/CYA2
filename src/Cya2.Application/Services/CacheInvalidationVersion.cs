@@ -1,4 +1,5 @@
 using Cya2.Application.Interfaces;
+using Cya2.Core.Interfaces;
 using System.Threading;
 
 namespace Cya2.Application.Services;
@@ -26,7 +27,22 @@ public sealed class CacheInvalidationVersion : ICacheInvalidationVersion
         if (domains == CacheDataDomains.AccountMetadata) return AccountMetadata;
         if (domains == CacheDataDomains.DonorContacts) return DonorContacts;
         if (domains == CacheDataDomains.Authorization) return Authorization;
-        return Current;
+
+        if (domains == CacheDataDomains.All)
+        {
+            return Current;
+        }
+
+        unchecked
+        {
+            var generation = 17L;
+            if (domains.HasFlag(CacheDataDomains.Donations)) generation = (generation * 31) + Donations;
+            if (domains.HasFlag(CacheDataDomains.Accounting)) generation = (generation * 31) + Accounting;
+            if (domains.HasFlag(CacheDataDomains.AccountMetadata)) generation = (generation * 31) + AccountMetadata;
+            if (domains.HasFlag(CacheDataDomains.DonorContacts)) generation = (generation * 31) + DonorContacts;
+            if (domains.HasFlag(CacheDataDomains.Authorization)) generation = (generation * 31) + Authorization;
+            return generation;
+        }
     }
 
     public long Invalidate() => Invalidate(CacheDataDomains.All);

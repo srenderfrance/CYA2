@@ -15,23 +15,36 @@ public static class ServiceCollectionExtensions
         // Financial dashboard service for Home.razor transformation  
         services.AddScoped<IFinancialDashboardService, FinancialDashboardService>();
         services.AddScoped<IAccountCalculationService, AccountCalculationService>();
+        services.AddSingleton<IReverseBalanceCalculationService, ReverseBalanceCalculationService>();
         services.AddScoped<IAccountingTransactionProcessor, AccountingTransactionProcessor>();
         services.AddSingleton<ExpenseClassificationService>();
         services.AddSingleton<DonorFrequencyService>();
         services.AddSingleton<DonorMissingGiftService>();
-        services.AddScoped<ISessionAccountDataCacheService, DashboardSessionCacheService>();
-        services.AddSingleton<ISessionDashboardDtoCacheService, SessionDashboardDtoCacheService>();
         services.AddScoped<ISessionUserStateService, SessionUserStateService>();
+        services.AddScoped<IAccountFactDataService, AccountFactDataService>();
         services.AddSingleton<ISessionImportProgressService, SessionImportProgressService>();
         services.AddScoped<IDateRangeStateService, DateRangeStateService>();
         services.AddScoped<IUserAccountContextService, UserAccountContextService>();
+        services.AddScoped<IHomeAuthorizationService, HomeAuthorizationService>();
         services.AddScoped<IUserAuthorizationService, UserAuthorizationService>();
         services.AddSingleton<ICacheInvalidationVersion, CacheInvalidationVersion>();
-        services.AddSingleton<IAccountSnapshotCache, AccountSnapshotCache>();
+        services.AddSingleton<IDonationDataCache, DonationDataCache>();
+        services.AddSingleton<IAccountingDataCache, AccountingDataCache>();
+        services.AddSingleton<IUserDonationDataCache, UserDonationDataCache>();
+        services.AddSingleton<IUserAccountingDataCache, UserAccountingDataCache>();
+        services.AddSingleton<IUserScopedCacheInvalidator, UserScopedCacheInvalidator>();
+        services.AddSingleton<IHomeSummaryCache, HomeSummaryCache>();
         services.AddSingleton<IAdminSharedCache, AdminSharedCache>();
+        services.AddSingleton<IAccountMetadataCache, AccountMetadataCache>();
+        services.AddSingleton<IFundReferenceCache, FundReferenceCache>();
+        services.AddScoped<IFundReferenceService, FundReferenceService>();
+        services.AddSingleton<IDonorContactCache, DonorContactCache>();
+        services.AddScoped<IDonorContactHydrationService, DonorContactHydrationService>();
         services.AddSingleton<IAccountBalanceCache, AccountBalanceCache>();
         services.AddSingleton<IAdminCacheWarmupCoordinator, AdminCacheWarmupCoordinator>();
-        services.AddScoped<IAccountSnapshotLoader, AccountSnapshotLoader>();
+        services.AddScoped<ICacheRebuildService, CacheRebuildService>();
+        services.AddScoped<IDonationDataCacheLoader, DonationDataCacheLoader>();
+        services.AddScoped<IAccountingDataCacheLoader, AccountingDataCacheLoader>();
         services.AddScoped<IAccountSelectionCoordinator, AccountSelectionCoordinator>();
 
         // Common business services - working implementations
@@ -40,12 +53,10 @@ public static class ServiceCollectionExtensions
         // Expense management services - enabled for Expenses.razor migration
         services.AddScoped<IExpenseService, ExpenseService>();
         services.AddScoped<IExpensePresentationService, ExpensePresentationService>();
-        services.AddSingleton<ISessionExpenseDataCacheService, SessionExpenseDataCacheService>();
 
         // Donation management services - enabled for Donations.razor migration
         services.AddScoped<IDonationService, DonationService>();
         services.AddScoped<IDonationPresentationService, DonationPresentationService>();
-        services.AddSingleton<ISessionDonationDataCacheService, SessionDonationDataCacheService>();
 
         // User settings service - enabled for UserSettings.razor migration
         services.AddScoped<IUserSettingsService, UserSettingsService>();
@@ -56,12 +67,13 @@ public static class ServiceCollectionExtensions
         services.AddScoped<AdminFundWriteService>();
         services.AddScoped<IAdminPreloadService, AdminPreloadService>();
         services.AddScoped<IAccountSnapshotWarmupService, AccountSnapshotWarmupService>();
+        services.AddScoped<IAdminRecentAccountSnapshotService, AdminRecentAccountSnapshotService>();
 
         // Donor management services - enabled for Donors.razor migration
         services.AddScoped<IDonorService, DonorService>();
         services.AddScoped<IDonorExportService, DonorExportService>();
-        services.AddSingleton<ISessionDonorSummaryCacheService, SessionDonorSummaryCacheService>();
-        services.AddSingleton<ISessionMissingGiftCacheService, SessionMissingGiftCacheService>();
+        services.AddSingleton<IDonorSummaryCache, DonorSummaryCache>();
+        services.AddSingleton<IMissingGiftCache, MissingGiftCache>();
 
         // Cache invalidation — clears all session caches after import or rollback
         services.AddSingleton<IImportCacheInvalidator, ImportCacheInvalidator>();
