@@ -31,13 +31,16 @@ public class DonationPresentationService : IDonationPresentationService
             return result;
         }
 
-        var byDonor = selectedDonations.GroupBy(d => d.Donor).OrderBy(g => g.Key ?? string.Empty);
+        var byDonor = selectedDonations
+            .GroupBy(d => d.DonorId > 0 ? $"id:{d.DonorId}" : $"name:{d.Donor}")
+            .OrderBy(g => g.First().Donor ?? string.Empty);
 
         foreach (var g in byDonor)
         {
             var row = new DonationPivotRowDto
             {
-                Donor = g.Key ?? unknownDonorLabel,
+                DonorId = g.First().DonorId,
+                Donor = g.First().Donor ?? unknownDonorLabel,
                 IsAnonymous = g.All(d => d.IsAnonymous)
             };
 

@@ -210,10 +210,10 @@ WHERE backup.BackupId = @BackupId";
                     restoreCmd.CommandText = $@"
                         INSERT INTO DonationData
                         (Id, DonorId, Date, GiftImportId, AccountName, PaymentMethod, GiftType,
-                         Amount, Fund, Intern, PrimaryAddressee, SoftCreditName, HonorMemorialName,
+                         Amount, Fund, InternName, PrimaryAddressee, SoftCreditName,
                          IsAnonymous, Frequency, DateCreated)
                          SELECT Id, DonorId, Date, GiftImportId, AccountName, PaymentMethod, GiftType,
-                                Amount, Fund, Intern, PrimaryAddressee, SoftCreditName, HonorMemorialName,
+                                 Amount, Fund, InternName, PrimaryAddressee, SoftCreditName,
                                 COALESCE(IsAnonymous, 0), Frequency, DateCreated
                          FROM DonationDataBackup
                          WHERE BackupId = @BackupId

@@ -18,8 +18,7 @@ public class DonationRecord
     public string GiftType { get; set; } = string.Empty;
     public double Amount { get; set; }
     public string Fund { get; set; } = string.Empty;
-    public string? Intern { get; set; }
-    public string? HonorMemorialName { get; set; }
+    public string? InternName { get; set; }
     public string? Addressee { get; set; }
     public string? SoftCreditName { get; set; }
     public string? Address { get; set; }

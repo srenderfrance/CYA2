@@ -186,7 +186,7 @@ VALUES (@Fund, @AccountingClass, @AccountNumber, UTC_TIMESTAMP(), @Overhead, '',
             }
 
             await transaction.CommitAsync(cancellationToken);
-            _cacheInvalidator.InvalidateAll();
+            _cacheInvalidator.Invalidate(CacheDataDomains.AccountMetadata);
             _adminPreloadService.Invalidate();
             return new AccountImportResultDto
             {

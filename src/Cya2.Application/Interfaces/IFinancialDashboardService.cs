@@ -1,4 +1,5 @@
 using Cya2.Application.DTOs;
+using Cya2.Application.Models;
 using Cya2.Core.Entities;
 using Cya2.Core.ReadModels;
 
@@ -20,6 +21,9 @@ public interface IFinancialDashboardService
     /// </summary>
     Task<FinancialDashboardDto> GetDashboardSummaryDataAsync(string accountFund, string userId);
 
+    Task WarmHomeSummaryFromDataAsync(Account account, CacheRebuildData data, CancellationToken cancellationToken = default) => Task.CompletedTask;
+    Task WarmInternSummaryFromDataAsync(string internName, CacheRebuildData data, CancellationToken cancellationToken = default) => Task.CompletedTask;
+
     /// <summary>
     /// Get one financial summary for a caller-selected date range.
     /// </summary>
@@ -39,20 +43,6 @@ public interface IFinancialDashboardService
     /// Get monthly account visualization values for a date range.
     /// </summary>
     Task<List<MonthlyAccountVisualizationDto>> GetMonthlyVisualizationAsync(string accountFund, DateTime startDate, DateTime endDate, string userId);
-}
-
-public interface ISessionAccountDataCacheService
-{
-    Task<DashboardAccountCacheData> GetOrLoadAccountDataAsync(UserAccountContextAccount account, DateTime windowStart, DateTime windowEnd, bool isDefaultAccount);
-    void LogCacheStatus();
-}
-
-public interface ISessionDashboardDtoCacheService
-{
-    bool TryGetDashboard(string userId, string fund, out FinancialDashboardDto dashboard);
-    IReadOnlyCollection<string> GetFunds(string userId);
-    void SetDashboard(string userId, string fund, FinancialDashboardDto dashboard, bool prioritize = false);
-    void InvalidateAll();
 }
 
 public sealed class DashboardAccountCacheData

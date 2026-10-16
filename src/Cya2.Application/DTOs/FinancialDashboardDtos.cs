@@ -59,7 +59,9 @@ public class UserAccountDto
 {
     public int AccountId { get; set; }
     public string Fund { get; set; } = string.Empty;
+    public string InternName { get; set; } = string.Empty;
     public string DisplayName { get; set; } = string.Empty;
+    public string SelectionKey => string.IsNullOrWhiteSpace(InternName) ? Fund : InternName;
     public string AccountingClass { get; set; } = string.Empty;
     public string AccountNumber { get; set; } = string.Empty;
     public decimal Overhead { get; set; }

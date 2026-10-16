@@ -34,7 +34,10 @@
 
     @if (isLoading)
     {
-        <PageLoadingIndicator IsLoading="true" LoadingText="@Localizer["Loading"]" />
+        <RadzenCard Class="accounts-overview-loading">
+            <PageLoadingIndicator IsLoading="true" LoadingText="@loadingText" />
+            <div class="text-muted accounts-overview-loading-text">@loadingText</div>
+        </RadzenCard>
     }
     else
     {
@@ -97,6 +100,19 @@
         justify-content: flex-end;
     }
 
+    .accounts-overview-loading {
+        min-height: 8rem;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 0.5rem;
+    }
+
+    .accounts-overview-loading-text {
+        text-align: center;
+    }
+
     @@media (max-width: 768px) {
         .accounts-overview-toolbar {
             flex-direction: column !important;
@@ -138,6 +154,7 @@
     private bool showDonations12m = false; // default to balance view
     private bool financialsLoaded = false;
     private bool isLoading = true;
+    private string loadingText = "Loading accounts…";
 
     protected override Task OnInitializedAsync()
         => Task.CompletedTask;
@@ -157,12 +174,7 @@
         try
         {
             var accounts = await AdminPreloadService.GetAccountsAsync();
-
-            fundBalances = accounts
-                .OrderBy(a => a.Fund)
-                .Select(a => new FundBalanceRow { Fund = a.Fund })
-                .ToList();
-            isLoading = false;
+            loadingText = "Loading account balances and donations…";
             await InvokeAsync(StateHasChanged);
 
             var overview = await AdminPreloadService.GetAccountOverviewAsync();

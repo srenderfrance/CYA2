@@ -3,6 +3,7 @@ using Cya2.Application.Interfaces;
 using Cya2.Application.Services;
 using Cya2.Core.Entities;
 using Cya2.Core.Interfaces;
+using Cya2.Core.ReadModels;
 using Cya2.Core.ValueObjects;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
@@ -174,9 +175,10 @@ public sealed class AuthorizationBoundaryTests
         public Task<List<DonorSummaryDto>> GetDonorSummariesAsync(IEnumerable<string> fundNames, DateRange dateRange) { ReadCount++; return Task.FromResult(new List<DonorSummaryDto>()); }
         public Task<List<DonorSummaryDto>> GetDonorSummariesAsync(string accountFund, DateRange dateRange) => Task.FromResult(new List<DonorSummaryDto>());
         public Task<List<DonorSummaryDto>> GetDonorSummariesForAccountAsync(int accountId, string accountFund, DateRange dateRange) => Task.FromResult(new List<DonorSummaryDto>());
-        public Task<List<DonorSummaryDto>> GetDonorSummariesForAccountAsync(AccountOptionDto account, DateRange dateRange) => Task.FromResult(new List<DonorSummaryDto>());
-        public Task<List<DonorSummaryDto>> GetDonorSummariesForSelectionAsync(AccountOptionDto account, string selectedSubAccount, DateRange? dateRange) => Task.FromResult(new List<DonorSummaryDto>());
+        public Task<List<DonorSummaryDto>> GetDonorSummariesForAccountAsync(AccountOptionDto account, DateRange dateRange, string userId = "") => Task.FromResult(new List<DonorSummaryDto>());
+        public Task<List<DonorSummaryDto>> GetDonorSummariesForSelectionAsync(AccountOptionDto account, string selectedSubAccount, DateRange? dateRange, string userId = "") => Task.FromResult(new List<DonorSummaryDto>());
         public Task<List<DonorSummaryDto>> GetMissingGiftDonorsAsync(AccountOptionDto account, DateRange dateRange) => Task.FromResult(new List<DonorSummaryDto>());
+        public Task WarmMissingGiftDonorsFromDataAsync(AccountOptionDto account, IReadOnlyList<DonationRecord> donations, DateRange dateRange, CancellationToken cancellationToken = default) => Task.CompletedTask;
         public Task<List<DonorSummaryDto>> GetAllDonorSummariesAsync(int accountId, string accountFund) => Task.FromResult(new List<DonorSummaryDto>());
         public Task<DonorDetailDto?> GetDonorDetailAsync(string donorName, string accountFund) => Task.FromResult<DonorDetailDto?>(null);
         public Task<DonorDetailDto?> GetDonorDetailForAccountAsync(string donorName, AccountOptionDto account) => Task.FromResult<DonorDetailDto?>(null);
@@ -206,6 +208,7 @@ public sealed class AuthorizationBoundaryTests
         public Task<bool> HasAccessAsync(int userId, int accountId) => Task.FromResult(memberships.TryGetValue(userId, out var accounts) && accounts.Contains(accountId));
         public Task<List<Account>> GetUserAccountsAsync(int userId) => Task.FromResult(memberships.TryGetValue(userId, out var ids) ? ids.Select(id => new Account { AccountId = id, Fund = id == 12 ? "Allowed" : "Other" }).ToList() : []);
         public Task<List<User>> GetAccountUsersAsync(int accountId) => Task.FromResult(new List<User>());
+        public Task<Dictionary<int, List<int>>> GetAccountUserIdsAsync() => Task.FromResult(new Dictionary<int, List<int>>());
         public Task<Account?> GetAccountByIdAsync(int accountId) => Task.FromResult<Account?>(null);
         public Task<bool> GrantAccessAsync(int userId, int accountId) => Task.FromResult(true);
         public Task<bool> RevokeAccessAsync(int userId, int accountId) => Task.FromResult(true);

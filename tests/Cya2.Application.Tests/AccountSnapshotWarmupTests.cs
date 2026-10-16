@@ -22,20 +22,20 @@ public sealed class AccountSnapshotWarmupTests
             AccountingClass = "CLASS-7",
             AccountNumber = "ACCOUNT-7"
         };
-        var snapshotCache = new TrackingSnapshotCache();
-        var key = new AccountSnapshotKey(account.AccountId, account.Fund, 0).Normalize();
-        snapshotCache.Snapshot = new AccountDataSnapshot(key, [], [], [], DateTime.UtcNow, 0);
+        var donationCache = new TrackingDonationCache();
+        var accountingCache = new TrackingAccountingCache();
         var dashboard = new TrackingDashboardService();
         var donations = new TrackingDonationService();
         var expenses = new TrackingExpenseService();
         var donors = new TrackingDonorService();
 
         using var warmup = new AccountSnapshotWarmupService(
-            snapshotCache,
-            new NoOpSnapshotLoader(),
+            donationCache,
+            new NoOpDonationLoader(),
+            accountingCache,
+            new NoOpAccountingLoader(),
             new CacheInvalidationVersion(),
             dashboard,
-            new NoOpDashboardCache(),
             donations,
             expenses,
             donors,
@@ -61,26 +61,29 @@ public sealed class AccountSnapshotWarmupTests
                 AccountNumber = $"ACCOUNT-{id}"
             })
             .ToList();
-        var snapshotCache = new TrackingSnapshotCache();
-        var loader = new TrackingSnapshotLoader();
+        var donationCache = new TrackingDonationCache();
+        var donationLoader = new TrackingDonationLoader();
+        var accountingCache = new TrackingAccountingCache();
+        var accountingLoader = new TrackingAccountingLoader();
         var donors = new TrackingDonorService();
 
         using var warmup = new AccountSnapshotWarmupService(
-            snapshotCache,
-            loader,
+            donationCache,
+            donationLoader,
+            accountingCache,
+            accountingLoader,
             new CacheInvalidationVersion(),
             new TrackingDashboardService(),
-            new NoOpDashboardCache(),
             new TrackingDonationService(),
             new TrackingExpenseService(),
             donors,
             NullLogger<AccountSnapshotWarmupService>.Instance);
 
         await warmup.WarmInitialAccountsAsync(accounts, defaultAccountId: 1, userId: "user-1");
-        await loader.AllLoadsCompleted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await donationLoader.AllLoadsCompleted.Task.WaitAsync(TimeSpan.FromSeconds(5));
 
-        Assert.Equal(5, loader.LoadedAccountIds.Count);
-        Assert.Equal(accounts.Select(account => account.AccountId).ToHashSet(), loader.LoadedAccountIds.ToHashSet());
+        Assert.Equal(5, donationLoader.LoadedAccountIds.Count);
+        Assert.Equal(accounts.Select(account => account.AccountId).ToHashSet(), donationLoader.LoadedAccountIds.ToHashSet());
         Assert.Equal(5, donors.SummaryCalls);
         Assert.Equal(5, donors.MissingGiftCalls);
     }
@@ -97,16 +100,19 @@ public sealed class AccountSnapshotWarmupTests
                 AccountNumber = $"ACCOUNT-{id}"
             })
             .ToList();
-        var snapshotCache = new TrackingSnapshotCache();
-        var loader = new TrackingSnapshotLoader();
+        var donationCache = new TrackingDonationCache();
+        var donationLoader = new TrackingDonationLoader();
+        var accountingCache = new TrackingAccountingCache();
+        var accountingLoader = new TrackingAccountingLoader();
         var donors = new TrackingDonorService();
 
         using var warmup = new AccountSnapshotWarmupService(
-            snapshotCache,
-            loader,
+            donationCache,
+            donationLoader,
+            accountingCache,
+            accountingLoader,
             new CacheInvalidationVersion(),
             new TrackingDashboardService(),
-            new NoOpDashboardCache(),
             new TrackingDonationService(),
             new TrackingExpenseService(),
             donors,
@@ -115,8 +121,8 @@ public sealed class AccountSnapshotWarmupTests
         await warmup.WarmInitialAccountsAsync(accounts, defaultAccountId: 1, userId: "admin-1", isAdminUser: true);
         await Task.Delay(100);
 
-        Assert.Single(loader.LoadedAccountIds);
-        Assert.Equal(1, loader.LoadedAccountIds.Single());
+        Assert.Single(donationLoader.LoadedAccountIds);
+        Assert.Equal(1, donationLoader.LoadedAccountIds.Single());
         Assert.Equal(1, donors.SummaryCalls);
         Assert.Equal(1, donors.MissingGiftCalls);
     }
@@ -133,23 +139,25 @@ public sealed class AccountSnapshotWarmupTests
                 AccountNumber = $"ACCOUNT-{id}"
             })
             .ToList();
-        var loader = new TrackingSnapshotLoader();
+        var donationLoader = new TrackingDonationLoader();
+        var accountingLoader = new TrackingAccountingLoader();
         var donors = new TrackingDonorService();
         var warningRange = new DateRange(new DateTime(2026, 2, 28), new DateTime(2026, 8, 31));
 
         using var warmup = new AccountSnapshotWarmupService(
-            new TrackingSnapshotCache(),
-            loader,
+            new TrackingDonationCache(),
+            donationLoader,
+            new TrackingAccountingCache(),
+            accountingLoader,
             new CacheInvalidationVersion(),
             new TrackingDashboardService(),
-            new NoOpDashboardCache(),
             new TrackingDonationService(),
             new TrackingExpenseService(),
             donors,
             NullLogger<AccountSnapshotWarmupService>.Instance);
 
         await warmup.WarmInitialAccountsAsync(accounts, defaultAccountId: 1, userId: "user-1", donorSummaryRange: warningRange);
-        await loader.AllLoadsCompleted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await donationLoader.AllLoadsCompleted.Task.WaitAsync(TimeSpan.FromSeconds(5));
         await Task.Delay(100);
 
         Assert.Equal(5, donors.WarmedWarningRanges.Count);
@@ -166,18 +174,20 @@ public sealed class AccountSnapshotWarmupTests
             AccountingClass = "CLASS-8",
             AccountNumber = "ACCOUNT-8"
         };
-        var snapshotCache = new TrackingSnapshotCache();
+        var donationCache = new TrackingDonationCache();
+        var accountingCache = new TrackingAccountingCache();
         var dashboard = new TrackingDashboardService { BlockSummary = true };
         var donations = new TrackingDonationService();
         var expenses = new TrackingExpenseService();
         var donors = new TrackingDonorService();
 
         using var warmup = new AccountSnapshotWarmupService(
-            snapshotCache,
-            new NoOpSnapshotLoader(),
+            donationCache,
+            new NoOpDonationLoader(),
+            accountingCache,
+            new NoOpAccountingLoader(),
             new CacheInvalidationVersion(),
             dashboard,
-            new NoOpDashboardCache(),
             donations,
             expenses,
             donors,
@@ -196,97 +206,50 @@ public sealed class AccountSnapshotWarmupTests
         Assert.Equal(1, donors.SummaryCalls);
     }
 
-    [Fact]
-    public async Task WarmSelectedAccountAsync_ConcurrentRequestsWithExistingSnapshot_JoinDerivedWarmup()
+    private sealed class TrackingDonationCache : IDonationDataCache
     {
-        var account = new UserAccountContextAccount
+        private readonly Dictionary<DonationDataCacheKey, DonationDataCacheEntry> _entries = [];
+        public async Task<DonationDataCacheEntry> GetOrCreateAsync(DonationDataCacheKey key, Func<CancellationToken, Task<DonationDataCacheEntry>> factory, CancellationToken cancellationToken = default)
         {
-            AccountId = 9,
-            Fund = "FUND-9",
-            AccountingClass = "CLASS-9",
-            AccountNumber = "ACCOUNT-9"
-        };
-        var snapshotCache = new TrackingSnapshotCache
-        {
-            Snapshot = new AccountDataSnapshot(
-                new AccountSnapshotKey(account.AccountId, account.Fund, 0).Normalize(),
-                [], [], [], DateTime.UtcNow, 0)
-        };
-        var dashboard = new TrackingDashboardService { BlockSummary = true };
-        var donations = new TrackingDonationService();
-        var expenses = new TrackingExpenseService();
-        var donors = new TrackingDonorService();
-
-        using var warmup = new AccountSnapshotWarmupService(
-            snapshotCache,
-            new NoOpSnapshotLoader(),
-            new CacheInvalidationVersion(),
-            dashboard,
-            new NoOpDashboardCache(),
-            donations,
-            expenses,
-            donors,
-            NullLogger<AccountSnapshotWarmupService>.Instance);
-
-        var first = warmup.WarmSelectedAccountAsync(account, "user-9");
-        await dashboard.SummaryStarted.Task;
-        var second = warmup.WarmSelectedAccountAsync(account, "user-9");
-        dashboard.ReleaseSummary();
-
-        await Task.WhenAll(first, second);
-
-        Assert.Equal(1, dashboard.SummaryCalls);
-        Assert.Equal(1, donations.LoadCalls);
-        Assert.Equal(1, expenses.LoadCalls);
-        Assert.Equal(1, donors.SummaryCalls);
+            if (_entries.TryGetValue(key, out var entry)) return entry;
+            entry = await factory(cancellationToken);
+            _entries[key] = entry;
+            return entry;
+        }
+        public bool TryGet(DonationDataCacheKey key, out DonationDataCacheEntry entry) => _entries.TryGetValue(key, out entry!);
+        public void Remove(DonationDataCacheKey key) => _entries.Remove(key);
+        public void RemoveAccount(int accountId) { foreach (var key in _entries.Keys.Where(key => key.AccountId == accountId).ToList()) _entries.Remove(key); }
+        public void RemoveStaleGenerations(long generation) { foreach (var key in _entries.Keys.Where(key => key.DonationsGeneration != generation).ToList()) _entries.Remove(key); }
+        public void InvalidateAll() => _entries.Clear();
     }
 
-    private sealed class TrackingSnapshotCache : IAccountSnapshotCache
+    private sealed class TrackingAccountingCache : IAccountingDataCache
     {
-        private readonly Dictionary<AccountSnapshotKey, AccountDataSnapshot> _snapshots = [];
-        public AccountDataSnapshot? Snapshot
-        {
-            get => _snapshots.Values.FirstOrDefault();
-            set
-            {
-                if (value is not null)
-                {
-                    _snapshots[value.Key] = value;
-                }
-            }
-        }
-        public int Count => _snapshots.Count;
-        public async Task<AccountDataSnapshot> GetOrCreateAsync(AccountSnapshotKey key, Func<CancellationToken, Task<AccountDataSnapshot>> factory, CancellationToken cancellationToken = default)
-        {
-            if (_snapshots.TryGetValue(key, out var snapshot))
-            {
-                return snapshot;
-            }
-
-            snapshot = await factory(cancellationToken);
-            _snapshots[key] = snapshot;
-            return snapshot;
-        }
-        public bool TryGet(AccountSnapshotKey key, out AccountDataSnapshot snapshot)
-        {
-            return _snapshots.TryGetValue(key, out snapshot!);
-        }
-        public bool Remove(AccountSnapshotKey key) => _snapshots.Remove(key);
-        public void InvalidateAll() => _snapshots.Clear();
+        private readonly Dictionary<AccountingDataCacheKey, AccountingDataCacheEntry> _entries = [];
+        public async Task<AccountingDataCacheEntry> GetOrCreateAsync(AccountingDataCacheKey key, Func<CancellationToken, Task<AccountingDataCacheEntry>> factory, CancellationToken cancellationToken = default) { if (_entries.TryGetValue(key, out var entry)) return entry; entry = await factory(cancellationToken); _entries[key] = entry; return entry; }
+        public bool TryGet(AccountingDataCacheKey key, out AccountingDataCacheEntry entry) => _entries.TryGetValue(key, out entry!);
+        public void Remove(AccountingDataCacheKey key) => _entries.Remove(key);
+        public void RemoveAccount(int accountId) { foreach (var key in _entries.Keys.Where(key => key.AccountId == accountId).ToList()) _entries.Remove(key); }
+        public void RemoveStaleGenerations(long generation) { foreach (var key in _entries.Keys.Where(key => key.AccountingGeneration != generation).ToList()) _entries.Remove(key); }
+        public void InvalidateAll() => _entries.Clear();
     }
 
-    private sealed class NoOpSnapshotLoader : IAccountSnapshotLoader
+    private sealed class NoOpDonationLoader : IDonationDataCacheLoader
     {
-        public Task<AccountDataSnapshot> LoadAsync(UserAccountContextAccount account, DateRange queryRange, AccountSnapshotKey key, CancellationToken cancellationToken = default)
-            => Task.FromResult(new AccountDataSnapshot(key, [], [], [], DateTime.UtcNow, 0));
+        public Task<DonationDataCacheEntry> LoadAsync(UserAccountContextAccount account, DateRange queryRange, DonationDataCacheKey key, CancellationToken cancellationToken = default) => Task.FromResult(new DonationDataCacheEntry(key, [], [], DateTime.UtcNow));
     }
 
-    private sealed class TrackingSnapshotLoader : IAccountSnapshotLoader
+    private sealed class NoOpAccountingLoader : IAccountingDataCacheLoader
+    {
+        public Task<AccountingDataCacheEntry> LoadAsync(UserAccountContextAccount account, DateRange queryRange, AccountingDataCacheKey key, CancellationToken cancellationToken = default) => Task.FromResult(new AccountingDataCacheEntry(key, [], DateTime.UtcNow));
+    }
+
+    private sealed class TrackingDonationLoader : IDonationDataCacheLoader
     {
         public List<int> LoadedAccountIds { get; } = [];
         public TaskCompletionSource<bool> AllLoadsCompleted { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
-        public Task<AccountDataSnapshot> LoadAsync(UserAccountContextAccount account, DateRange queryRange, AccountSnapshotKey key, CancellationToken cancellationToken = default)
+        public Task<DonationDataCacheEntry> LoadAsync(UserAccountContextAccount account, DateRange queryRange, DonationDataCacheKey key, CancellationToken cancellationToken = default)
         {
             lock (LoadedAccountIds)
             {
@@ -297,16 +260,13 @@ public sealed class AccountSnapshotWarmupTests
                 }
             }
 
-            return Task.FromResult(new AccountDataSnapshot(key, [], [], [], DateTime.UtcNow, 0));
+            return Task.FromResult(new DonationDataCacheEntry(key, [], [], DateTime.UtcNow));
         }
     }
 
-    private sealed class NoOpDashboardCache : ISessionDashboardDtoCacheService
+    private sealed class TrackingAccountingLoader : IAccountingDataCacheLoader
     {
-        public bool TryGetDashboard(string userId, string fund, out FinancialDashboardDto dashboard) { dashboard = null!; return false; }
-        public IReadOnlyCollection<string> GetFunds(string userId) => [];
-        public void SetDashboard(string userId, string fund, FinancialDashboardDto dashboard, bool prioritize = false) { }
-        public void InvalidateAll() { }
+        public Task<AccountingDataCacheEntry> LoadAsync(UserAccountContextAccount account, DateRange queryRange, AccountingDataCacheKey key, CancellationToken cancellationToken = default) => Task.FromResult(new AccountingDataCacheEntry(key, [], DateTime.UtcNow));
     }
 
     private sealed class TrackingDashboardService : IFinancialDashboardService
@@ -359,8 +319,8 @@ public sealed class AccountSnapshotWarmupTests
         public int SummaryCalls { get; private set; }
         public int MissingGiftCalls { get; private set; }
         public List<DateRange> WarmedWarningRanges { get; } = [];
-        public Task<List<DonorSummaryDto>> GetDonorSummariesForAccountAsync(AccountOptionDto account, DateRange dateRange) { SummaryCalls++; return Task.FromResult(new List<DonorSummaryDto>()); }
-        public Task<List<DonorSummaryDto>> GetDonorSummariesForSelectionAsync(AccountOptionDto account, string selectedSubAccount, DateRange? dateRange) => Task.FromResult(new List<DonorSummaryDto>());
+        public Task<List<DonorSummaryDto>> GetDonorSummariesForAccountAsync(AccountOptionDto account, DateRange dateRange, string userId = "") { SummaryCalls++; return Task.FromResult(new List<DonorSummaryDto>()); }
+        public Task<List<DonorSummaryDto>> GetDonorSummariesForSelectionAsync(AccountOptionDto account, string selectedSubAccount, DateRange? dateRange, string userId = "") => Task.FromResult(new List<DonorSummaryDto>());
         public Task<List<DonorSummaryDto>> GetDonorSummariesAsync(string accountFund, DateRange dateRange) => Task.FromResult(new List<DonorSummaryDto>());
         public Task<List<DonorSummaryDto>> GetDonorSummariesAsync(IEnumerable<string> fundNames, DateRange dateRange) => Task.FromResult(new List<DonorSummaryDto>());
         public Task<List<DonorSummaryDto>> GetDonorSummariesForAccountAsync(int accountId, string accountFund, DateRange dateRange) => Task.FromResult(new List<DonorSummaryDto>());
@@ -374,6 +334,7 @@ public sealed class AccountSnapshotWarmupTests
 
             return Task.FromResult(new List<DonorSummaryDto>());
         }
+        public Task WarmMissingGiftDonorsFromDataAsync(AccountOptionDto account, IReadOnlyList<DonationRecord> donations, DateRange dateRange, CancellationToken cancellationToken = default) => Task.CompletedTask;
         public Task<List<DonorSummaryDto>> GetAllDonorSummariesAsync(int accountId, string accountFund) => Task.FromResult(new List<DonorSummaryDto>());
         public Task<List<DonorSummaryDto>> GetAllDonorSummariesAsync(IEnumerable<string> fundNames) => Task.FromResult(new List<DonorSummaryDto>());
         public Task<DonorDetailDto?> GetDonorDetailAsync(string donorName, string accountFund) => Task.FromResult<DonorDetailDto?>(null);

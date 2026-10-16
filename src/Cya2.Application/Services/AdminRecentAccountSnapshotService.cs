@@ -12,24 +12,30 @@ public sealed class AdminRecentAccountSnapshotService : IAdminRecentAccountSnaps
     private const int MaxRecentAccounts = 5;
     private const int MaxConcurrentWarmups = 2;
 
-    private readonly IAccountSnapshotCache _snapshotCache;
-    private readonly IAccountSnapshotLoader _snapshotLoader;
+    private readonly IDonationDataCache _donationDataCache;
+    private readonly IDonationDataCacheLoader _donationDataCacheLoader;
+    private readonly IAccountingDataCache _accountingDataCache;
+    private readonly IAccountingDataCacheLoader _accountingDataCacheLoader;
     private readonly ICacheInvalidationVersion _cacheInvalidationVersion;
     private readonly ILogger<AdminRecentAccountSnapshotService> _logger;
     private readonly object _sync = new();
-    private readonly LinkedList<AccountSnapshotKey> _recentKeys = new();
-    private readonly Dictionary<AccountSnapshotKey, Task> _warmups = new();
+    private readonly LinkedList<string> _recentKeys = new();
+    private readonly Dictionary<string, Task> _warmups = new();
     private readonly SemaphoreSlim _warmupGate = new(MaxConcurrentWarmups, MaxConcurrentWarmups);
-    private AccountSnapshotKey? _defaultKey;
+    private string? _defaultKey;
 
     public AdminRecentAccountSnapshotService(
-        IAccountSnapshotCache snapshotCache,
-        IAccountSnapshotLoader snapshotLoader,
+        IDonationDataCache donationDataCache,
+        IDonationDataCacheLoader donationDataCacheLoader,
+        IAccountingDataCache accountingDataCache,
+        IAccountingDataCacheLoader accountingDataCacheLoader,
         ICacheInvalidationVersion cacheInvalidationVersion,
         ILogger<AdminRecentAccountSnapshotService> logger)
     {
-        _snapshotCache = snapshotCache;
-        _snapshotLoader = snapshotLoader;
+        _donationDataCache = donationDataCache;
+        _donationDataCacheLoader = donationDataCacheLoader;
+        _accountingDataCache = accountingDataCache;
+        _accountingDataCacheLoader = accountingDataCacheLoader;
         _cacheInvalidationVersion = cacheInvalidationVersion;
         _logger = logger;
     }
@@ -51,9 +57,7 @@ public sealed class AdminRecentAccountSnapshotService : IAdminRecentAccountSnaps
             return;
         }
 
-        var generation = _cacheInvalidationVersion.GetGeneration(
-            CacheDataDomains.Donations | CacheDataDomains.Accounting | CacheDataDomains.AccountMetadata);
-        var key = new AccountSnapshotKey(account.AccountId, account.Fund, generation).Normalize();
+        var key = GetKey(account);
         lock (_sync)
         {
             if (isDefault)
@@ -62,7 +66,7 @@ public sealed class AdminRecentAccountSnapshotService : IAdminRecentAccountSnaps
                 _recentKeys.Remove(key);
             }
 
-            if (!isDefault && (!_defaultKey.HasValue || _defaultKey.Value != key))
+            if (!isDefault && (_defaultKey is null || _defaultKey != key))
             {
                 var existing = _recentKeys.Find(key);
                 if (existing is not null)
@@ -82,7 +86,7 @@ public sealed class AdminRecentAccountSnapshotService : IAdminRecentAccountSnaps
                 return;
             }
 
-            if (_snapshotCache.TryGet(key, out _))
+            if (HasAuthoritativeCaches(account))
             {
                 // _logger.LogDebug("Admin recent account snapshot already cached: accountId={AccountId}, fund={Fund}", key.AccountId, key.Fund);
                 return;
@@ -102,15 +106,16 @@ public sealed class AdminRecentAccountSnapshotService : IAdminRecentAccountSnaps
             _defaultKey = null;
         }
 
-        _snapshotCache.InvalidateAll();
+        _donationDataCache.InvalidateAll();
+        _accountingDataCache.InvalidateAll();
     }
 
-    private async Task WarmAsync(Account account, AccountSnapshotKey key)
+    private async Task WarmAsync(Account account, string key)
     {
         await _warmupGate.WaitAsync();
         try
         {
-            if (_snapshotCache.TryGet(key, out _))
+            if (HasAuthoritativeCaches(account))
             {
                 return;
             }
@@ -129,10 +134,25 @@ public sealed class AdminRecentAccountSnapshotService : IAdminRecentAccountSnaps
             };
 
             var queryRange = GetSnapshotQueryRange();
-            await _snapshotCache.GetOrCreateAsync(
-                key,
-                cancellationToken => _snapshotLoader.LoadAsync(contextAccount, queryRange, key, cancellationToken),
+            var donationKey = new DonationDataCacheKey(
+                account.AccountId, _cacheInvalidationVersion.Donations,
+                queryRange.StartDate, queryRange.EndDate).Normalize();
+            await _donationDataCache.GetOrCreateAsync(
+                donationKey,
+                cancellationToken => _donationDataCacheLoader.LoadAsync(contextAccount, queryRange, donationKey, cancellationToken),
                 CancellationToken.None);
+
+            if (!Cya2.Core.Utilities.InternAccountUtility.IsInternFund(account.Fund))
+            {
+                var accountingKey = new AccountingDataCacheKey(
+                    account.AccountId, account.AccountingClass ?? string.Empty, account.AccountNumber ?? string.Empty,
+                    _cacheInvalidationVersion.Accounting,
+                    queryRange.StartDate, queryRange.EndDate).Normalize();
+                await _accountingDataCache.GetOrCreateAsync(
+                    accountingKey,
+                    cancellationToken => _accountingDataCacheLoader.LoadAsync(contextAccount, queryRange, accountingKey, cancellationToken),
+                    CancellationToken.None);
+            }
 
             // _logger.LogInformation(
             //     "Admin warmed account snapshot: accountId={AccountId}, fund={Fund}, range={Start:yyyy-MM-dd}..{End:yyyy-MM-dd}",
@@ -147,7 +167,7 @@ public sealed class AdminRecentAccountSnapshotService : IAdminRecentAccountSnaps
         }
     }
 
-    private async Task ObserveWarmupAsync(AccountSnapshotKey key, Task warmup)
+    private async Task ObserveWarmupAsync(string key, Task warmup)
     {
         try
         {
@@ -155,7 +175,7 @@ public sealed class AdminRecentAccountSnapshotService : IAdminRecentAccountSnaps
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Admin account snapshot warmup failed: accountId={AccountId}, fund={Fund}", key.AccountId, key.Fund);
+            _logger.LogWarning(ex, "Admin account cache warmup failed: key={Key}", key);
         }
         finally
         {
@@ -170,10 +190,22 @@ public sealed class AdminRecentAccountSnapshotService : IAdminRecentAccountSnaps
     }
 
     private static DateRange GetSnapshotQueryRange()
+        => AccountFactCacheWindow.GetStandardWindow(DateTime.UtcNow);
+
+    private static string GetKey(Account account)
+        => $"{account.AccountId}:{account.Fund?.Trim()}";
+
+    private bool HasAuthoritativeCaches(Account account)
     {
-        var now = DateTime.UtcNow;
-        return new DateRange(
-            new DateTime(now.Year - 2, 1, 1),
-            new DateTime(now.Year, 12, 31));
+        var range = GetSnapshotQueryRange();
+        var donationKey = new DonationDataCacheKey(
+            account.AccountId, _cacheInvalidationVersion.Donations,
+            range.StartDate, range.EndDate).Normalize();
+        if (!_donationDataCache.TryGet(donationKey, out _)) return false;
+        if (Cya2.Core.Utilities.InternAccountUtility.IsInternFund(account.Fund)) return true;
+        var accountingKey = new AccountingDataCacheKey(
+            account.AccountId, account.AccountingClass, account.AccountNumber,
+            _cacheInvalidationVersion.Accounting, range.StartDate, range.EndDate).Normalize();
+        return _accountingDataCache.TryGet(accountingKey, out _);
     }
 }

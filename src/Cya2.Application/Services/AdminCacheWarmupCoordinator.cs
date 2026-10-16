@@ -20,31 +20,57 @@ public sealed class AdminCacheWarmupCoordinator : IAdminCacheWarmupCoordinator, 
         _logger = logger;
     }
 
-    public void QueueWarmup()
+    public void QueueWarmup(bool warmSummaries = true)
     {
         lock (_sync)
         {
-            if (_disposed || (_warmupTask is { IsCompleted: false }))
+            if (_disposed)
             {
+                _logger.LogWarning("Central cache warmup request ignored because the coordinator is disposed");
                 return;
             }
 
-            _warmupTask = Task.Run(WarmupAsync);
+            if (_warmupTask is { IsCompleted: false })
+            {
+                _logger.LogInformation("Central cache warmup request ignored because a rebuild is already running");
+                return;
+            }
+
+            _logger.LogInformation("Central cache warmup queued: summaryWarming={SummaryWarming}", warmSummaries);
+            _warmupTask = Task.Run(() => WarmupAsync(warmSummaries));
         }
     }
 
-    private async Task WarmupAsync()
+    public async Task WaitForWarmupAsync(CancellationToken cancellationToken = default)
+    {
+        Task? warmupTask;
+        lock (_sync)
+        {
+            warmupTask = _warmupTask;
+        }
+
+        if (warmupTask is null)
+        {
+            return;
+        }
+
+        await warmupTask.WaitAsync(cancellationToken);
+    }
+
+    private async Task WarmupAsync(bool warmSummaries)
     {
         try
         {
             await using var scope = _scopeFactory.CreateAsyncScope();
-            var preloadService = scope.ServiceProvider.GetRequiredService<IAdminPreloadService>();
-            await preloadService.PreloadAsync(string.Empty);
-            _logger.LogInformation("Admin shared cache warmup completed after cache invalidation");
+            var cacheRebuildService = scope.ServiceProvider.GetRequiredService<ICacheRebuildService>();
+            await cacheRebuildService.RebuildAsync(warmSummaries);
+            _logger.LogInformation(
+                "CACHE CREATION COMPLETED: metadata, bulk financial snapshot, Admin Overview, account balances, and {SummaryCacheStatus} are fully populated",
+                warmSummaries ? "Home financial summary caches" : "no Home financial summary caches");
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Admin shared cache warmup failed; the next authorized Admin request will retry");
+            _logger.LogError(ex, "CACHE CREATION FAILED: central cache rebuild did not complete");
         }
     }
 

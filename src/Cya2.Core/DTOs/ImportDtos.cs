@@ -11,10 +11,9 @@ public sealed class DonationImportRowDto
     public required string GiftType { get; init; }
     public required double Amount { get; init; }
     public required string Fund { get; init; }
-    private string? _intern;
+    private string? _internName;
     private string? _primaryAddressee;
     private string? _softCreditName;
-    private string? _honorMemorialName;
     private string? _address;
     private string? _city;
     private string? _state;
@@ -25,7 +24,7 @@ public sealed class DonationImportRowDto
     private string? _phoneMobile;
     private string? _giftImportId;
 
-    public string? Intern { get => IsAnonymous ? null : _intern; init => _intern = value; }
+    public string? InternName { get => IsAnonymous ? null : _internName; init => _internName = value; }
     public string? PrimaryAddressee { get => IsAnonymous ? null : _primaryAddressee; init => _primaryAddressee = value; }
     public string? Addressee
     {
@@ -33,7 +32,6 @@ public sealed class DonationImportRowDto
         init => _primaryAddressee = value;
     }
     public string? SoftCreditName { get => IsAnonymous ? null : _softCreditName; init => _softCreditName = value; }
-    public string? HonorMemorialName { get => IsAnonymous ? null : _honorMemorialName; init => _honorMemorialName = value; }
     public string? Address { get => IsAnonymous ? null : _address; set => _address = value; }
     public string? City { get => IsAnonymous ? null : _city; set => _city = value; }
     public string? State { get => IsAnonymous ? null : _state; set => _state = value; }

@@ -80,7 +80,7 @@ ON DUPLICATE KEY UPDATE
 
 INSERT INTO DonationData
 	(DonorId, Date, GiftImportId, AccountName, PaymentMethod, GiftType, Amount,
-	 Fund, Intern, PrimaryAddressee, SoftCreditName, HonorMemorialName,
+	 Fund, InternName, PrimaryAddressee, SoftCreditName,
 	 IsAnonymous, Frequency)
 VALUES
 	-- Donor1: AccountName fallback and one-time gift.

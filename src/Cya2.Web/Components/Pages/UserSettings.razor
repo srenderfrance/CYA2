@@ -73,7 +73,7 @@
                          <div class="account-selector-box">
                              <AccountSelector TItem="AccountOptionDto" TValue="string"
                                               Data="@defaultAccountOptions"
-                                              TextProperty="Fund"
+                                              TextProperty="DisplayName"
                                               ValueProperty="AccountingClass"
                                               Value="@selectedAccountingClass"
                                               ValueChanged="@(value => selectedAccountingClass = value)"
@@ -206,10 +206,12 @@
             {
                 AccountId = account.AccountId,
                 Fund = account.Fund,
+                InternName = account.InternName,
+                DisplayName = account.DisplayName,
                 AccountingClass = account.AccountingClass,
                 AccountNumber = account.AccountNumber,
                 Overhead = account.Overhead
-            }).ToList() ?? settings.UserAccounts ?? new List<AccountOptionDto>();
+            }).ToList() ?? new List<AccountOptionDto>();
 
             if (currentDefaultAccountId.HasValue)
             {
@@ -297,7 +299,7 @@
                 errorMessage = "DefaultAccountUpdateFailed";
             }
         }
-        catch (Exception ex)
+        catch (Exception)
         {
             errorMessage = Localizer["ErrorSavingAccountSetting"];
         }
@@ -337,7 +339,7 @@
                 errorMessage = Localizer["LanguageUpdateFailed"];
             }
         }
-        catch (Exception ex)
+        catch (Exception)
         {
             errorMessage = Localizer["ErrorSavingLanguage"];
         }

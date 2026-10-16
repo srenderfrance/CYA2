@@ -54,10 +54,10 @@ public sealed class DonationRepository : IDonationRepository
                 backup.CommandText = @"
 INSERT INTO DonationDataBackup
     (BackupId, Id, DonorId, Date, GiftImportId, AccountName, PaymentMethod, GiftType,
-     Amount, Fund, Intern, PrimaryAddressee, SoftCreditName, HonorMemorialName,
+     Amount, Fund, InternName, PrimaryAddressee, SoftCreditName,
      IsAnonymous, Frequency, DateCreated, BackupAt, Pinned, SourceRangeStart)
 SELECT @BackupId, Id, DonorId, Date, GiftImportId, AccountName, PaymentMethod, GiftType,
-       Amount, Fund, Intern, PrimaryAddressee, SoftCreditName, HonorMemorialName,
+       Amount, Fund, InternName, PrimaryAddressee, SoftCreditName,
        IsAnonymous, Frequency, DateCreated, UTC_TIMESTAMP(), 0, @SourceRangeStart
 FROM DonationData
 WHERE Date >= @SourceRangeStart";
@@ -491,10 +491,9 @@ CREATE TEMPORARY TABLE TempImportDonations
     PaymentMethod VARCHAR(255) NOT NULL,
     GiftType VARCHAR(255) NOT NULL,
     Amount DECIMAL(18,2) NOT NULL,
-    Intern VARCHAR(255) NULL,
+    InternName VARCHAR(255) NULL,
     PrimaryAddressee VARCHAR(255) NULL,
     SoftCreditName VARCHAR(255) NULL,
-    HonorMemorialName VARCHAR(255) NULL,
     IsAnonymous BOOLEAN NOT NULL,
     Frequency TINYINT NULL,
     PRIMARY KEY (StageId),
@@ -574,14 +573,13 @@ TRUNCATE TABLE TempImportContacts;", cancellationToken);
                 command.Parameters.AddWithValue($"@p{parameterIndex}", donation.PaymentMethod);
                 command.Parameters.AddWithValue($"@t{parameterIndex}", donation.GiftType);
                 command.Parameters.AddWithValue($"@m{parameterIndex}", donation.Amount);
-                command.Parameters.AddWithValue($"@n{parameterIndex}", (object?)donation.Intern ?? DBNull.Value);
+                command.Parameters.AddWithValue($"@n{parameterIndex}", (object?)donation.InternName ?? DBNull.Value);
                 command.Parameters.AddWithValue($"@r{parameterIndex}", (object?)donation.PrimaryAddressee ?? DBNull.Value);
                 command.Parameters.AddWithValue($"@s{parameterIndex}", (object?)donation.SoftCreditName ?? DBNull.Value);
-                command.Parameters.AddWithValue($"@h{parameterIndex}", (object?)donation.HonorMemorialName ?? DBNull.Value);
                 command.Parameters.AddWithValue($"@x{parameterIndex}", donation.IsAnonymous);
                 command.Parameters.AddWithValue($"@q{parameterIndex}", donation.Frequency.HasValue ? (object)(int)donation.Frequency.Value : DBNull.Value);
             }
-            command.CommandText = $"INSERT INTO TempImportDonations (Fund, IdentityKey, Date, GiftImportId, AccountName, PaymentMethod, GiftType, Amount, Intern, PrimaryAddressee, SoftCreditName, HonorMemorialName, IsAnonymous, Frequency) VALUES {values}";
+            command.CommandText = $"INSERT INTO TempImportDonations (Fund, IdentityKey, Date, GiftImportId, AccountName, PaymentMethod, GiftType, Amount, InternName, PrimaryAddressee, SoftCreditName, IsAnonymous, Frequency) VALUES {values}";
             await command.ExecuteNonQueryAsync(cancellationToken);
         }
     }
@@ -637,9 +635,9 @@ ON DUPLICATE KEY UPDATE
         return await ExecuteImportCommandAsync(connection, transaction, @"
 INSERT INTO DonationData
     (DonorId, Date, GiftImportId, AccountName, PaymentMethod, GiftType, Amount, Fund,
-     Intern, PrimaryAddressee, SoftCreditName, HonorMemorialName, IsAnonymous, Frequency)
+     InternName, PrimaryAddressee, SoftCreditName, IsAnonymous, Frequency)
 SELECT d.Id, s.Date, s.GiftImportId, s.AccountName, s.PaymentMethod, s.GiftType, s.Amount, s.Fund,
-       s.Intern, s.PrimaryAddressee, s.SoftCreditName, s.HonorMemorialName, s.IsAnonymous, s.Frequency
+       s.InternName, s.PrimaryAddressee, s.SoftCreditName, s.IsAnonymous, s.Frequency
 FROM TempImportDonations s
 JOIN Donors d ON d.Fund = s.Fund AND d.IdentityKey = s.IdentityKey;", cancellationToken);
     }
@@ -738,10 +736,10 @@ ON DUPLICATE KEY UPDATE
         command.CommandText = @"
 INSERT INTO DonationData
     (DonorId, Date, GiftImportId, AccountName, PaymentMethod, GiftType, Amount, Fund,
-     Intern, PrimaryAddressee, SoftCreditName, HonorMemorialName, IsAnonymous, Frequency)
+     InternName, PrimaryAddressee, SoftCreditName, IsAnonymous, Frequency)
 VALUES
     (@DonorId, @Date, @GiftImportId, @AccountName, @PaymentMethod, @GiftType, @Amount, @Fund,
-     @Intern, @PrimaryAddressee, @SoftCreditName, @HonorMemorialName, @IsAnonymous, @Frequency);";
+     @InternName, @PrimaryAddressee, @SoftCreditName, @IsAnonymous, @Frequency);";
         command.Parameters.AddWithValue("@DonorId", donorId);
         command.Parameters.AddWithValue("@Date", donation.Date);
         command.Parameters.AddWithValue("@GiftImportId", (object?)donation.GiftImportId ?? DBNull.Value);
@@ -750,10 +748,9 @@ VALUES
         command.Parameters.AddWithValue("@GiftType", donation.GiftType);
         command.Parameters.AddWithValue("@Amount", donation.Amount);
         command.Parameters.AddWithValue("@Fund", donation.Fund);
-        command.Parameters.AddWithValue("@Intern", (object?)donation.Intern ?? DBNull.Value);
+        command.Parameters.AddWithValue("@InternName", (object?)donation.InternName ?? DBNull.Value);
         command.Parameters.AddWithValue("@PrimaryAddressee", (object?)donation.PrimaryAddressee ?? DBNull.Value);
         command.Parameters.AddWithValue("@SoftCreditName", (object?)donation.SoftCreditName ?? DBNull.Value);
-        command.Parameters.AddWithValue("@HonorMemorialName", (object?)donation.HonorMemorialName ?? DBNull.Value);
         command.Parameters.AddWithValue("@IsAnonymous", donation.IsAnonymous);
         command.Parameters.AddWithValue("@Frequency", donation.Frequency.HasValue ? (object)(int)donation.Frequency.Value : DBNull.Value);
 

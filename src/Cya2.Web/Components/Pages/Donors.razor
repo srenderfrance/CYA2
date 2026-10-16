@@ -11,11 +11,9 @@
 @using Cya2.Core.ValueObjects
 @using Cya2.Core.Enums
 @using System.Security.Claims
-@using System.Diagnostics
 @inject AuthenticationStateProvider AuthStateProvider
 @inject ISessionUserStateService SessionUserStateService
 @inject IDateRangeStateService DateRangeStateService
-@inject Cya2.Application.Interfaces.IUserIdResolver UserIdResolver
 @rendermode @(new InteractiveServerRenderMode(prerender: false))
 @attribute [StreamRendering]
 @inject IStringLocalizer<Resource> Localizer
@@ -27,8 +25,6 @@
 @inject IUserSelectionService UserSelectionService
 @inject IUserDateRangeSelectionService DateRangeSelectionService
 @inject cya2.Services.UserSessionHydrationService SessionHydrationService
-@inject cya2.Services.Diagnostics.PageLoadCorrelationContext PageLoadCorrelation
-@inject Cya2.Application.Interfaces.IAccountSnapshotWarmupService AccountSnapshotWarmupService
 @inject Cya2.Application.Interfaces.IAccountSelectionCoordinator AccountSelectionCoordinator
 @attribute [Authorize]
 
@@ -106,13 +102,15 @@
                     <RadzenLabel Text="@Localizer["Account"]" />
                     <AccountSelector TItem="AccountOptionDto" TValue="string"
                                      Data="@userAccounts"
-                                     TextProperty="Fund"
-                                     ValueProperty="Fund"
+                                     TextProperty="DisplayName"
+                                     ValueProperty="SelectionKey"
                                      Value="@selectedAccount"
                                      ValueChanged="@(value => selectedAccount = value)"
                                      Change="@(async args => await accountSelection(args?.ToString() ?? string.Empty))"
                                      Placeholder="@Localizer["ChooseAccount"]"
-                                     TextSelector="@(account => DisplayFormatter.FormatFundDisplay(account.Fund))"
+                                      TextSelector="@(account => string.IsNullOrWhiteSpace(account.InternName)
+                                          ? DisplayFormatter.FormatFundDisplay(account.Fund)
+                                          : account.InternName)"
                                      Class="account-selector-dropdown-inline" />
                 </div>
             </div>
@@ -342,8 +340,6 @@
 
     protected override async Task OnInitializedAsync()
     {
-        // using var operationScope = PageLoadCorrelation.BeginOperation(Logger, nameof(Donors), "Initialize");
-        var initSw = Stopwatch.StartNew();
         try
         {
             var authState = await AuthStateProvider.GetAuthenticationStateAsync();
@@ -358,23 +354,27 @@
 
             presetOptions = GetPresetOptions();
             dateRangeState = DateRangeStateService.InitializeDateRange(SessionUserStateService);
-            Logger.LogInformation("[Donors] Init state user={UserId} preset={Preset} range={Start:yyyy-MM-dd}..{End:yyyy-MM-dd} sessionSelected='{SessionSelected}' sessionDefault='{SessionDefault}'",
+            Logger.LogInformation("[Donors] Init state user={UserId} preset={Preset} range={Start:yyyy-MM-dd}..{End:yyyy-MM-dd}",
                 userId,
                 dateRangeState.SelectedPreset,
                 dateRangeState.StartDate,
-                dateRangeState.EndDate,
-                SessionUserStateService.SelectedAccountFund,
-                SessionUserStateService.DefaultAccountFund);
+                dateRangeState.EndDate);
 
             var userContext = await UserAccountContextService.GetContextAsync(userId, isAdminOrViewer);
             userAccounts = userContext?.Accounts.Select(account => new AccountOptionDto
             {
                 AccountId = account.AccountId,
                 Fund = account.Fund,
+                InternName = userContext.IsIntern ? userContext.InternName : account.InternName,
+                DisplayName = userContext.IsIntern
+                    ? userContext.InternName
+                    : string.IsNullOrWhiteSpace(account.InternName) ? account.DisplayName : account.InternName,
                 AccountingClass = account.AccountingClass,
                 AccountNumber = account.AccountNumber,
                 Overhead = account.Overhead
-            }).ToList() ?? new List<AccountOptionDto>();
+            }).GroupBy(account => account.SelectionKey, StringComparer.OrdinalIgnoreCase)
+              .Select(group => group.First())
+              .ToList() ?? new List<AccountOptionDto>();
 
             if (userAccounts.Any())
             {
@@ -382,12 +382,12 @@
                     ? SessionUserStateService.SelectedAccountFund
                     : (!string.IsNullOrEmpty(SessionUserStateService.DefaultAccountFund)
                         ? SessionUserStateService.DefaultAccountFund
-                        : userAccounts.First().Fund);
+                        : userAccounts.First().SelectionKey);
 
-                currentAccount = userAccounts.FirstOrDefault(a => a.Fund == selectedAccount) ?? userAccounts.FirstOrDefault();
+                currentAccount = userAccounts.FirstOrDefault(a => a.SelectionKey == selectedAccount) ?? userAccounts.FirstOrDefault();
                 if (currentAccount != null)
                 {
-                    selectedAccount = currentAccount.Fund;
+                    selectedAccount = currentAccount.SelectionKey;
                     SessionUserStateService.SelectedAccountFund = selectedAccount;
                     if (!string.IsNullOrWhiteSpace(userId))
                     {
@@ -396,7 +396,7 @@
                 }
 
                 if (string.IsNullOrWhiteSpace(SessionUserStateService.DefaultAccountFund))
-                    SessionUserStateService.DefaultAccountFund = userAccounts.FirstOrDefault()?.Fund ?? string.Empty;
+                    SessionUserStateService.DefaultAccountFund = userAccounts.FirstOrDefault()?.SelectionKey ?? string.Empty;
 
                 if (currentAccount != null)
                 {
@@ -412,12 +412,6 @@
         finally
         {
             isLoading = false;
-            // Logger.LogInformation("Donors init complete user={UserId} selectedAccount={SelectedAccount} accounts={AccountCount} donors={DonorCount} elapsedMs={ElapsedMs}",
-            //     userId,
-            //     selectedAccount,
-            //     userAccounts?.Count ?? 0,
-            //     donorsInRange?.Count ?? 0,
-            //     initSw.ElapsedMilliseconds);
         }
     }
 
@@ -520,7 +514,6 @@
 
     private async Task BuildDonorsInRange(AccountOptionDto? account)
     {
-        var loadSw = Stopwatch.StartNew();
         donorsInRange = new List<DonorSummaryDto>();
         if (account is not { } currentAccount)
         {
@@ -539,12 +532,10 @@
 
         try
         {
-            Logger.LogInformation("[Donors] BuildDonorsInRange start user={UserId} account='{Account}' accountId={AccountId} preset={Preset} subAccount='{SubAccount}' range={Start:yyyy-MM-dd}..{End:yyyy-MM-dd} showSubAccountDropdown={ShowSubAccountDropdown}",
+            Logger.LogInformation("[Donors] BuildDonorsInRange start user={UserId} accountId={AccountId} preset={Preset} range={Start:yyyy-MM-dd}..{End:yyyy-MM-dd} showSubAccountDropdown={ShowSubAccountDropdown}",
                 userId,
-                currentAccount.Fund,
                 currentAccount.AccountId,
                 dateRangeState.SelectedPreset,
-                selectedSubAccount,
                 dateRangeState.StartDate,
                 dateRangeState.EndDate,
                 showSubAccountDropdown);
@@ -555,7 +546,8 @@
             donorsInRange = await DonorService.GetDonorSummariesForSelectionAsync(
                 currentAccount,
                 selectedSubAccount,
-                range);
+                range,
+                userId);
 
             PrepareDonorRows(donorsInRange);
             donorNames = donorsInRange
@@ -570,16 +562,7 @@
             if (!string.IsNullOrWhiteSpace(userId))
                 UserSelectionService.SetSelectedAccount(userId, currentAccount.Fund);
 
-            Logger.LogInformation("Loaded {Count} donors for account '{Fund}'", donorsInRange.Count, currentAccount.Fund);
-            // Logger.LogInformation("Donors data load complete user={UserId} account={Account} subAccount={SubAccount} preset={Preset} range={Start:yyyy-MM-dd}..{End:yyyy-MM-dd} rows={Rows} elapsedMs={ElapsedMs}",
-            //     userId,
-            //     currentAccount.Fund,
-            //     selectedSubAccount,
-            //     dateRangeState.SelectedPreset,
-            //     dateRangeState.StartDate,
-            //     dateRangeState.EndDate,
-            //     donorsInRange.Count,
-            //     loadSw.ElapsedMilliseconds);
+            Logger.LogInformation("Loaded {Count} donors for accountId={AccountId}", donorsInRange.Count, currentAccount.AccountId);
             lastDonorLoadKey = requestKey;
         }
         catch (Exception ex)
@@ -611,38 +594,8 @@
             donorCountry = selectedSummary.Country ?? string.Empty;
         }
 
-        if (currentAccount != null && string.IsNullOrWhiteSpace(donorEmail) &&
-            string.IsNullOrWhiteSpace(donorPhoneMobile) && string.IsNullOrWhiteSpace(donorPhoneFixed) &&
-            string.IsNullOrWhiteSpace(donorAddress) && string.IsNullOrWhiteSpace(donorCity) &&
-            string.IsNullOrWhiteSpace(donorState) && string.IsNullOrWhiteSpace(donorPostal) &&
-            string.IsNullOrWhiteSpace(donorCountry))
-        {
-            var detail = await GetDonorDetailForCurrentSelectionAsync(selectedDonor);
-            if (detail != null)
-            {
-                donorEmail = detail.Email;
-                donorPhoneMobile = detail.PhoneMobile;
-                donorPhoneFixed = detail.PhoneFixed;
-                donorAddress = detail.Address;
-                donorCity = detail.City;
-                donorState = detail.State;
-                donorPostal = detail.PostalCode;
-                donorCountry = detail.Country;
-            }
-        }
-
         await InvokeAsync(StateHasChanged);
         await JS.InvokeVoidAsync("scrollToIfHidden", "donor-info-card");
-    }
-
-    private async Task<DonorDetailDto?> GetDonorDetailForCurrentSelectionAsync(string donorName)
-    {
-        if (currentAccount == null)
-        {
-            return null;
-        }
-
-        return await DonorService.GetDonorDetailForAccountAsync(donorName, currentAccount);
     }
 
     private async Task<List<Cya2.Core.Entities.SubAccount>> GetSubAccountsForAccountAsync(int accountId)
@@ -878,7 +831,7 @@
         isLoading = true;
         try
         {
-            currentAccount = userAccounts.FirstOrDefault(a => a.Fund == accountName);
+            currentAccount = userAccounts.FirstOrDefault(a => a.SelectionKey == accountName);
             if (currentAccount != null)
             {
                 var account = new UserAccountContextAccount
@@ -913,7 +866,11 @@
             return;
         }
 
-        var payload = await DonorService.FormatDonorContactForCopyAsync(selectedDonor, currentAccount?.Fund ?? string.Empty);
+        var selectedSummary = donorsInRange.FirstOrDefault(donor =>
+            string.Equals(donor.Name, selectedDonor, StringComparison.OrdinalIgnoreCase));
+        var payload = selectedSummary == null
+            ? string.Empty
+            : FormatDonorContactForCopy(selectedSummary);
         if (string.IsNullOrWhiteSpace(payload))
         {
             NotificationService.Notify(new NotificationMessage { Severity = NotificationSeverity.Info, Summary = Localizer["Copy"], Detail = Localizer["NoDonorSelected"], Duration = 3000 });
@@ -922,6 +879,20 @@
 
         await JS.InvokeVoidAsync("navigator.clipboard.writeText", payload);
         NotificationService.Notify(new NotificationMessage { Severity = NotificationSeverity.Success, Summary = Localizer["Copy"], Detail = Localizer["CopiedToClipboard"], Duration = 3000 });
+    }
+
+    private static string FormatDonorContactForCopy(DonorSummaryDto donor)
+    {
+        var parts = new List<string> { donor.Name };
+        if (!string.IsNullOrWhiteSpace(donor.Email)) parts.Add(donor.Email);
+
+        var phones = new List<string>();
+        if (!string.IsNullOrWhiteSpace(donor.PhoneMobile)) phones.Add(donor.PhoneMobile);
+        if (!string.IsNullOrWhiteSpace(donor.PhoneFixed)) phones.Add(donor.PhoneFixed);
+        if (phones.Count > 0) parts.Add(string.Join("; ", phones));
+        if (!string.IsNullOrWhiteSpace(donor.AddressSummary)) parts.Add(donor.AddressSummary);
+
+        return string.Join("\n", parts);
     }
 
     private async Task CopyDonorsInRange()

@@ -43,6 +43,20 @@ public static class InternAccountUtility
         return !string.IsNullOrWhiteSpace(internDesignationName);
     }
 
+    public static string GetInternNameFromUserName(string? userName)
+    {
+        var normalized = NormalizeWhitespace(userName);
+        if (string.IsNullOrWhiteSpace(normalized))
+        {
+            return string.Empty;
+        }
+
+        var parts = normalized.Split(' ', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
+        return parts.Length < 2
+            ? normalized
+            : $"{parts[^1]}, {string.Join(' ', parts[..^1])}";
+    }
+
 public sealed record InternDesignationCriteria(
     string InternDesignationName,
     string AlternateDesignation,

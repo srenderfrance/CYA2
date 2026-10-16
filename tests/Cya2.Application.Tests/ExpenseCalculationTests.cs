@@ -86,10 +86,7 @@ public sealed class ExpenseCalculationTests
     [Fact]
     public void FundraisingTransactions_ReturnToTheirOriginalCategories()
     {
-        var service = new AccountCalculationService(
-            new EmptyExpenseRepository(),
-            new EmptyDonationRepository(),
-            new ExpenseClassificationService());
+        var service = CreateCalculationService();
         var transactions = new List<AccountingRecord>
         {
             new() { Account = "Fundraising: event", Amount = 100 },
@@ -109,10 +106,7 @@ public sealed class ExpenseCalculationTests
     [Fact]
     public void PayrollClearingInsurance_IsExcludedFromBalanceCalculations()
     {
-        var service = new AccountCalculationService(
-            new EmptyExpenseRepository(),
-            new EmptyDonationRepository(),
-            new ExpenseClassificationService());
+        var service = CreateCalculationService();
         var transactions = new List<AccountingRecord>
         {
             new() { Account = "Payroll Clearing Insurance", Amount = 100 },
@@ -132,10 +126,7 @@ public sealed class ExpenseCalculationTests
     [Fact]
     public void Prepaids_IsExcludedFromBalanceCalculations()
     {
-        var service = new AccountCalculationService(
-            new EmptyExpenseRepository(),
-            new EmptyDonationRepository(),
-            new ExpenseClassificationService());
+        var service = CreateCalculationService();
         var transactions = new List<AccountingRecord>
         {
             new() { Account = "Prepaids", Amount = 100 },
@@ -155,10 +146,7 @@ public sealed class ExpenseCalculationTests
     [Fact]
     public void GeneralGivingGeneralAccount_IsIncludedInBalanceButNotExpenseOrTransfer()
     {
-        var service = new AccountCalculationService(
-            new EmptyExpenseRepository(),
-            new EmptyDonationRepository(),
-            new ExpenseClassificationService());
+        var service = CreateCalculationService();
         var transactions = new List<AccountingRecord>
         {
             new()
@@ -227,20 +215,18 @@ public sealed class ExpenseCalculationTests
     [Fact]
     public async Task CalculateBalancesAsync_UsesTheSharedBalanceFormulaForEveryAccount()
     {
-        var repository = new BatchExpenseRepository();
         var service = new AccountCalculationService(
-            repository,
-            new EmptyDonationRepository(),
-            new ExpenseClassificationService());
+            new ExpenseClassificationService(),
+            new AccountingTransactionProcessor(new ExpenseClassificationService()),
+            new CalculationFactDataService());
         var accounts = new List<UserAccountContextAccount>
         {
             new() { AccountId = 1, AccountingClass = "Class1", AccountNumber = "Number1", BalanceAdjustment = 5m },
             new() { AccountId = 2, AccountingClass = "Class2", AccountNumber = "Number2" }
         };
 
-        var results = await service.CalculateBalancesAsync(accounts, DateTime.MinValue, DateTime.MaxValue);
+        var results = await service.CalculateBalancesAsync(accounts, "test-user", DateTime.MinValue, DateTime.MaxValue);
 
-        Assert.Equal(1, repository.CallCount);
         Assert.Equal(15m, results[1].TotalBalance);
         Assert.Equal(20m, results[2].TotalBalance);
         Assert.DoesNotContain(results[1].AllTransactions, transaction =>
@@ -287,10 +273,7 @@ public sealed class ExpenseCalculationTests
     [Fact]
     public void DonationTotals_IncludeMergedButRetainSeparateSubaccounts()
     {
-        var service = new AccountCalculationService(
-            new EmptyExpenseRepository(),
-            new EmptyDonationRepository(),
-            new ExpenseClassificationService());
+        var service = CreateCalculationService();
         var account = new UserAccountContextAccount { AccountId = 1, Fund = "PRIMARY" };
         var subAccounts = new List<SubAccount>
         {
@@ -314,10 +297,7 @@ public sealed class ExpenseCalculationTests
     [Fact]
     public void DonationTotals_TrimSubaccountKindWhenIncludingMergedFunds()
     {
-        var service = new AccountCalculationService(
-            new EmptyExpenseRepository(),
-            new EmptyDonationRepository(),
-            new ExpenseClassificationService());
+        var service = CreateCalculationService();
         var account = new UserAccountContextAccount { AccountId = 1, Fund = "PRIMARY" };
         var subAccounts = new List<SubAccount>
         {
@@ -338,10 +318,7 @@ public sealed class ExpenseCalculationTests
     [Fact]
     public void HomeDonationTotals_MatchCombinedDonationScopeWithoutSeparateSubaccounts()
     {
-        var service = new AccountCalculationService(
-            new EmptyExpenseRepository(),
-            new EmptyDonationRepository(),
-            new ExpenseClassificationService());
+        var service = CreateCalculationService();
         var account = new UserAccountContextAccount { AccountId = 1, Fund = "PRIMARY" };
         var subAccounts = new List<SubAccount>
         {
@@ -364,15 +341,12 @@ public sealed class ExpenseCalculationTests
     [Fact]
     public void DonationTotals_InternAccountUsesAllMatchedRowsAsTotal()
     {
-        var service = new AccountCalculationService(
-            new EmptyExpenseRepository(),
-            new EmptyDonationRepository(),
-            new ExpenseClassificationService());
+        var service = CreateCalculationService();
         var account = new UserAccountContextAccount { AccountId = 2, Fund = "Intern: Jane Doe" };
         var donations = new List<DonationRecord>
         {
-            new() { Fund = "unrelated", Intern = "Jane Doe", Amount = 80 },
-            new() { Fund = "unrelated", Intern = "Doe, Jane", Amount = 20 }
+            new() { Fund = "unrelated", InternName = "Jane Doe", Amount = 80 },
+            new() { Fund = "unrelated", InternName = "Doe, Jane", Amount = 20 }
         };
 
         var result = service.CalculateDonationTotalsFromData(account, donations, []);
@@ -383,98 +357,29 @@ public sealed class ExpenseCalculationTests
     }
 
     [Fact]
-    public async Task DonationTotals_UsesSharedSnapshotForBoundedNormalAccount()
+    public async Task DonationTotals_UsesAuthoritativeFactDataService()
     {
-        var snapshotCache = new AccountSnapshotCache(NullLogger<AccountSnapshotCache>.Instance);
-        var snapshotLoader = new CalculationSnapshotLoader();
         var service = new AccountCalculationService(
-            new EmptyExpenseRepository(),
-            new EmptyDonationRepository(),
             new ExpenseClassificationService(),
             new AccountingTransactionProcessor(new ExpenseClassificationService()),
-            null,
-            snapshotCache,
-            snapshotLoader,
-            new CacheInvalidationVersion());
+            new CalculationFactDataService());
         var account = new UserAccountContextAccount { AccountId = 3, Fund = "PRIMARY" };
         var now = DateTime.UtcNow;
 
         var result = await service.CalculateDonationTotalsAsync(
             account,
+            "test-user",
             new DateTime(now.Year, 1, 1),
             now.Date);
 
         Assert.Equal(125m, result.TotalDonations);
-        Assert.Equal(1, snapshotLoader.CallCount);
     }
 
-    [Fact]
-    public async Task CalculateBalanceAsync_UsesSharedSnapshotForBoundedRange()
-    {
-        var expenseRepository = new TrackingExpenseRepository();
-        var snapshotLoader = new CalculationSnapshotLoader();
-        var service = CreateSnapshotCalculationService(expenseRepository, snapshotLoader);
-        var account = CreateAccount(4, "PRIMARY", "Class1", "Number1");
-        var now = DateTime.UtcNow;
-
-        var result = await service.CalculateBalanceAsync(account, new DateTime(now.Year, 1, 1), now.Date);
-
-        Assert.Equal(10m, result.TotalBalance);
-        Assert.Equal(1, snapshotLoader.CallCount);
-        Assert.Equal(0, expenseRepository.SingleCallCount);
-    }
-
-    [Fact]
-    public async Task CalculateBalancesAsync_ReusesSharedSnapshotPerAccount()
-    {
-        var expenseRepository = new TrackingExpenseRepository();
-        var snapshotLoader = new CalculationSnapshotLoader();
-        var service = CreateSnapshotCalculationService(expenseRepository, snapshotLoader);
-        var accounts = new[]
-        {
-            CreateAccount(5, "PRIMARY", "Class1", "Number1"),
-            CreateAccount(6, "SECONDARY", "Class2", "Number2")
-        };
-        var now = DateTime.UtcNow;
-
-        var result = await service.CalculateBalancesAsync(accounts, new DateTime(now.Year, 1, 1), now.Date);
-
-        Assert.Equal(2, result.Count);
-        Assert.Equal(2, snapshotLoader.CallCount);
-        Assert.Equal(0, expenseRepository.BatchCallCount);
-    }
-
-    [Fact]
-    public async Task CalculateBalanceAsync_UsesRepositoryOutsideSnapshotCoverage()
-    {
-        var expenseRepository = new TrackingExpenseRepository();
-        var snapshotLoader = new CalculationSnapshotLoader();
-        var service = CreateSnapshotCalculationService(expenseRepository, snapshotLoader);
-
-        var result = await service.CalculateBalanceAsync(
-            CreateAccount(7, "PRIMARY", "Class1", "Number1"),
-            DateTime.UtcNow.AddYears(-5),
-            DateTime.UtcNow.AddYears(-4));
-
-        Assert.Equal(7m, result.TotalBalance);
-        Assert.Equal(0, snapshotLoader.CallCount);
-        Assert.Equal(1, expenseRepository.SingleCallCount);
-    }
-
-    private static AccountCalculationService CreateSnapshotCalculationService(
-        IExpenseReadRepository expenseRepository,
-        IAccountSnapshotLoader snapshotLoader)
-    {
-        return new AccountCalculationService(
-            expenseRepository,
-            new EmptyDonationRepository(),
+    private static AccountCalculationService CreateCalculationService()
+        => new(
             new ExpenseClassificationService(),
             new AccountingTransactionProcessor(new ExpenseClassificationService()),
-            null,
-            new AccountSnapshotCache(NullLogger<AccountSnapshotCache>.Instance),
-            snapshotLoader,
-            new CacheInvalidationVersion());
-    }
+            new CalculationFactDataService());
 
     private static UserAccountContextAccount CreateAccount(
         int accountId,
@@ -492,10 +397,7 @@ public sealed class ExpenseCalculationTests
     [Fact]
     public void CalculateOverheadAmount_UsesCoreAccountRule()
     {
-        var service = new AccountCalculationService(
-            new EmptyExpenseRepository(),
-            new EmptyDonationRepository(),
-            new ExpenseClassificationService());
+        var service = CreateCalculationService();
         var account = new UserAccountContextAccount { Overhead = 12.5m };
 
         var result = service.CalculateOverheadAmount(account, 100m);
@@ -528,10 +430,7 @@ public sealed class ExpenseCalculationTests
     [Fact]
     public void CalculateBalanceFromData_UsesCoreClassificationForTotalsAndBalance()
     {
-        var service = new AccountCalculationService(
-            new EmptyExpenseRepository(),
-            new EmptyDonationRepository(),
-            new ExpenseClassificationService());
+        var service = CreateCalculationService();
         var transactions = new List<AccountingRecord>
         {
             new() { Type = "EXPENSE", Amount = 10 },
@@ -547,49 +446,44 @@ public sealed class ExpenseCalculationTests
         Assert.Equal(30m, result.OtherTotal);
     }
 
-    private sealed class EmptyExpenseRepository : IExpenseReadRepository
+    private sealed class CalculationFactDataService : IAccountFactDataService
     {
-        public Task<List<AccountingRecord>> GetAccountingDataForAccountAsync(string accountingClass, string accountNumber, DateTime startDate, DateTime endDate) => Task.FromResult(new List<AccountingRecord>());
-        public Task<IReadOnlyDictionary<int, List<AccountingRecord>>> GetAccountingDataForAccountsAsync(IReadOnlyList<(int AccountId, string AccountingClass, string AccountNumber)> accounts, DateTime startDate, DateTime endDate) => Task.FromResult<IReadOnlyDictionary<int, List<AccountingRecord>>>(new Dictionary<int, List<AccountingRecord>>());
-    }
-
-    private sealed class EmptyDonationRepository : IDonationReadRepository
-    {
-            public Task<List<DonationRecord>> GetDonationsForAccountTotalAsync(int accountId, string fundName, DateTime startDate, DateTime endDate) => Task.FromResult(new List<DonationRecord>());
-        public Task<List<Cya2.Core.Entities.SubAccount>> GetSubAccountsByAccountIdAsync(int accountId) => Task.FromResult(new List<Cya2.Core.Entities.SubAccount>());
-        public Task<List<DonationRecord>> GetDonationsByFundsAsync(IEnumerable<string> fundNames) => Task.FromResult(new List<DonationRecord>());
-        public Task<List<DonationRecord>> GetDonationsByAccountAsync(int accountId, string fundName) => Task.FromResult(new List<DonationRecord>());
-        public Task<List<DonationRecord>> GetDonationsByFundsAndDateRangeAsync(IEnumerable<string> fundNames, DateTime startDate, DateTime endDate) => Task.FromResult(new List<DonationRecord>());
-        public Task<List<DonationRecord>> GetDonationsByFundNamesAndDateRangeAsync(IEnumerable<string> fundNames, DateTime startDate, DateTime endDate) => Task.FromResult(new List<DonationRecord>());
-        public Task<List<DonationRecord>> GetDonationsByAccountAndDateRangeAsync(int accountId, string fundName, DateTime startDate, DateTime endDate) => Task.FromResult(new List<DonationRecord>());
-        public Task<List<DonationRecord>> GetDonationsByFundsAndDonorAsync(IEnumerable<string> fundNames, string donorName) => Task.FromResult(new List<DonationRecord>());
-        public Task<List<DonationRecord>> GetDonationsByAccountAndDonorAsync(int accountId, string fundName, string donorName) => Task.FromResult(new List<DonationRecord>());
-        public Task<List<DonationRecord>> SearchDonationsByFundsAndDonorAsync(IEnumerable<string> fundNames, string searchTerm) => Task.FromResult(new List<DonationRecord>());
-        public Task<List<DonationRecord>> SearchDonationsByAccountAndDonorAsync(int accountId, string fundName, string searchTerm) => Task.FromResult(new List<DonationRecord>());
-        public Task<List<DonationRecord>> GetInternDonationsByDesignationAndDateRangeAsync(string internDesignationName, DateTime startDate, DateTime endDate) => Task.FromResult(new List<DonationRecord>());
-    }
-
-    private sealed class CalculationSnapshotLoader : IAccountSnapshotLoader
-    {
-        public int CallCount { get; private set; }
-
-        public Task<AccountDataSnapshot> LoadAsync(
+        public Task<DonationCalculationData> GetDonationDataAsync(
             UserAccountContextAccount account,
-            DateRange queryRange,
-            AccountSnapshotKey key,
+            string userId,
+            DateTime startDate,
+            DateTime endDate,
             CancellationToken cancellationToken = default)
         {
-            CallCount++;
-            return Task.FromResult(new AccountDataSnapshot(
-                key,
+            return Task.FromResult(new DonationCalculationData
+            {
+                Donations =
                 [
-                    new DonationSnapshot(1, 1, "Donor", DateTime.UtcNow.Date, null, "Donor", "Check", "Gift", 100, "PRIMARY", null, null, null, null, null, null, null, null, null, null, null, null, DateTime.UtcNow, false),
-                    new DonationSnapshot(2, 2, "Donor 2", DateTime.UtcNow.Date, null, "Donor 2", "Check", "Gift", 25, "MERGED", null, null, null, null, null, null, null, null, null, null, null, null, DateTime.UtcNow, false)
+                    new DonationRecord { Id = 1, Fund = "PRIMARY", Amount = 100, Date = DateTime.UtcNow.Date },
+                    new DonationRecord { Id = 2, Fund = "MERGED", Amount = 25, Date = DateTime.UtcNow.Date }
                 ],
-                [new AccountingSnapshot(1, account.AccountingClass, DateTime.UtcNow.Date, "1", 10, account.AccountNumber, "Income", "", DateTime.UtcNow)],
-                [new SubAccountSnapshot(1, account.AccountId, "MERGED", "Merged")],
-                DateTime.UtcNow,
-                0));
+                SubAccounts = [new SubAccount(1, "MERGED", "Merged")]
+            });
         }
+
+        public Task<List<AccountingRecord>> GetAccountingDataAsync(
+            UserAccountContextAccount account,
+            string userId,
+            DateTime startDate,
+            DateTime endDate,
+            CancellationToken cancellationToken = default)
+            => Task.FromResult(account.AccountId switch
+            {
+                1 => new List<AccountingRecord>
+                {
+                    new() { AccountingClass = account.AccountingClass, AccountNumber = account.AccountNumber, Account = "Payroll Clearing Insurance", Amount = 100 },
+                    new() { AccountingClass = account.AccountingClass, AccountNumber = account.AccountNumber, Account = "Income", Amount = 10 }
+                },
+                2 => new List<AccountingRecord>
+                {
+                    new() { AccountingClass = account.AccountingClass, AccountNumber = account.AccountNumber, Account = "Transfer: operating", Amount = 20 }
+                },
+                _ => []
+            });
     }
 }

@@ -6,7 +6,6 @@ using Cya2.Core.ReadModels;
 using Cya2.Core.ValueObjects;
 using Cya2.Core.Services;
 using Cya2.Application.Models;
-using System.Diagnostics;
 
 namespace Cya2.Application.Services;
 
@@ -15,34 +14,22 @@ namespace Cya2.Application.Services;
 /// </summary>
 public class ExpenseService : IExpenseService
 {
-    private readonly IExpenseReadRepository _expenseReadRepository;
     private readonly ILogger<ExpenseService> _logger;
     private readonly IUserAccountContextService _userAccountContextService;
-    private readonly ISessionExpenseDataCacheService _expenseCache;
-    private readonly IAccountSnapshotCache _accountSnapshotCache;
-    private readonly IAccountSnapshotLoader _accountSnapshotLoader;
-    private readonly ICacheInvalidationVersion _cacheInvalidationVersion;
+    private readonly IAccountFactDataService _accountFactDataService;
     private readonly IAccountingTransactionProcessor _accountingTransactionProcessor;
     private readonly IUserAuthorizationService _authorizationService;
 
     public ExpenseService(
-        IExpenseReadRepository expenseReadRepository,
         ILogger<ExpenseService> logger,
         IUserAccountContextService userAccountContextService,
-        ISessionExpenseDataCacheService expenseCache,
-        IAccountSnapshotCache accountSnapshotCache,
-        IAccountSnapshotLoader accountSnapshotLoader,
-        ICacheInvalidationVersion cacheInvalidationVersion,
+        IAccountFactDataService accountFactDataService,
         IAccountingTransactionProcessor accountingTransactionProcessor,
         IUserAuthorizationService authorizationService)
     {
-        _expenseReadRepository = expenseReadRepository;
         _logger = logger;
         _userAccountContextService = userAccountContextService;
-        _expenseCache = expenseCache;
-        _accountSnapshotCache = accountSnapshotCache;
-        _accountSnapshotLoader = accountSnapshotLoader;
-        _cacheInvalidationVersion = cacheInvalidationVersion;
+        _accountFactDataService = accountFactDataService;
         _accountingTransactionProcessor = accountingTransactionProcessor;
         _authorizationService = authorizationService;
     }
@@ -66,27 +53,10 @@ public class ExpenseService : IExpenseService
 
     public async Task<ExpenseDataDto> GetExpenseDataAsync(string accountName, DateRange dateRange, string userId, bool isAdminOrViewer = false)
     {
-        var sw = Stopwatch.StartNew();
         try
         {
             if (!(await _authorizationService.ValidateAccountAccessAsync(userId, accountName)).IsAuthorized)
                 return new ExpenseDataDto();
-
-            if (!string.IsNullOrWhiteSpace(accountName) &&
-                _expenseCache.TryGetExpenseData(userId, accountName, dateRange.StartDate, dateRange.EndDate, out var directCached))
-            {
-                directCached.SelectedAccount = accountName;
-                // _logger.LogInformation(
-                //     "Expense data source=cache-direct user={UserId} account={Account} range={Start:yyyy-MM-dd}..{End:yyyy-MM-dd} expenses={ExpenseCount} transfers={TransferCount} elapsedMs={ElapsedMs}",
-                //     userId,
-                //     directCached.SelectedAccount,
-                //     dateRange.StartDate,
-                //     dateRange.EndDate,
-                //     directCached.ExpenseTransactions?.Count ?? 0,
-                //     directCached.TransferTransactions?.Count ?? 0,
-                //     sw.ElapsedMilliseconds);
-                return directCached;
-            }
 
             var context = await _userAccountContextService.GetContextAsync(userId, isAdminOrViewer);
             var contextAccounts = context?.Accounts ?? new List<UserAccountContextAccount>();
@@ -106,29 +76,9 @@ public class ExpenseService : IExpenseService
                 return new ExpenseDataDto { UserAccounts = contextAccounts.Select(MapToAccountOptionDto).ToList() };
             }
 
-            if (_expenseCache.TryGetExpenseData(userId, selectedAccount.Fund ?? string.Empty, dateRange.StartDate, dateRange.EndDate, out var cached))
-            {
-                cached.UserAccounts = contextAccounts.Select(MapToAccountOptionDto).ToList();
-                cached.SelectedAccount = selectedAccount.Fund ?? string.Empty;
-                // _logger.LogInformation(
-                //     "Expense data source=cache user={UserId} account={Account} range={Start:yyyy-MM-dd}..{End:yyyy-MM-dd} expenses={ExpenseCount} transfers={TransferCount} elapsedMs={ElapsedMs}",
-                //     userId,
-                //     cached.SelectedAccount,
-                //     dateRange.StartDate,
-                //     dateRange.EndDate,
-                //     cached.ExpenseTransactions?.Count ?? 0,
-                //     cached.TransferTransactions?.Count ?? 0,
-                //     sw.ElapsedMilliseconds);
-                return cached;
-            }
-
-            var useSnapshot = CanUseAccountSnapshot(dateRange);
-            var accountingData = useSnapshot
-                ? await LoadAccountingDataFromSnapshotAsync(selectedAccount, dateRange, sw)
-                : await LoadAccountingDataAsync(selectedAccount, dateRange);
+            var accountingData = await LoadAccountingDataAsync(selectedAccount, dateRange, userId);
 
             var categorized = _accountingTransactionProcessor.Process(selectedAccount, accountingData);
-            _logger.LogInformation("[ExpenseService] Data for account {Account}: expenses={Expenses}, transfers={Transfers}", selectedAccount.Fund, categorized.ExpenseTransactions.Count, categorized.TransferTransactions.Count);
 
             var expenseTransactions = categorized.ExpenseTransactions.Select(MapToExpenseTransactionDto).ToList();
             var transferTransactions = categorized.TransferTransactions.Select(MapToExpenseTransactionDto).ToList();
@@ -145,18 +95,6 @@ public class ExpenseService : IExpenseService
                 DateRangeEnd = dateRange.EndDate
             };
 
-            _expenseCache.SetExpenseData(userId, selectedAccount.Fund ?? string.Empty, dateRange.StartDate, dateRange.EndDate, result);
-
-            // _logger.LogInformation(
-            //     "Expense data source={Source} user={UserId} account={Account} range={Start:yyyy-MM-dd}..{End:yyyy-MM-dd} expenses={ExpenseCount} transfers={TransferCount} elapsedMs={ElapsedMs}",
-            //     useSnapshot ? "snapshot" : "repository",
-            //     userId,
-            //     result.SelectedAccount,
-            //     dateRange.StartDate,
-            //     dateRange.EndDate,
-            //     result.ExpenseTransactions?.Count ?? 0,
-            //     result.TransferTransactions?.Count ?? 0,
-            //     sw.ElapsedMilliseconds);
             return result;
         }
         catch (Exception ex)
@@ -175,77 +113,15 @@ public class ExpenseService : IExpenseService
         }
     }
 
-    private async Task<List<AccountingRecord>> LoadAccountingDataFromSnapshotAsync(
+    private async Task<List<AccountingRecord>> LoadAccountingDataAsync(
         UserAccountContextAccount account,
         DateRange dateRange,
-        Stopwatch stopwatch)
-    {
-        var snapshotQueryRange = GetSnapshotQueryRange();
-        var generation = _cacheInvalidationVersion.GetGeneration(
-            CacheDataDomains.Donations | CacheDataDomains.Accounting | CacheDataDomains.AccountMetadata);
-        var key = new AccountSnapshotKey(account.AccountId, account.Fund, generation).Normalize();
-        var wasCached = _accountSnapshotCache.TryGet(key, out var snapshot);
-
-        if (!wasCached)
-        {
-            snapshot = await _accountSnapshotCache.GetOrCreateAsync(
-                key,
-                cancellationToken => _accountSnapshotLoader.LoadAsync(account, snapshotQueryRange, key, cancellationToken),
-                CancellationToken.None);
-        }
-
-        var accounting = snapshot.Accounting
-            .Where(record => record.Date.Date >= dateRange.StartDate.Date && record.Date.Date <= dateRange.EndDate.Date)
-            .Select(MapToAccountingRecord)
-            .ToList();
-
-        _logger.LogInformation(
-            "Expense data source={Source} account={Account} requestedRange={Start:yyyy-MM-dd}..{End:yyyy-MM-dd} queriedRange={QueriedStart:yyyy-MM-dd}..{QueriedEnd:yyyy-MM-dd} snapshotCreatedUtc={SnapshotCreatedUtc:o} accountingRows={AccountingCount}",
-            wasCached ? "snapshot-cache" : "snapshot-load",
-            account.Fund,
+        string userId)
+        => await _accountFactDataService.GetAccountingDataAsync(
+            account,
+            userId,
             dateRange.StartDate,
-            dateRange.EndDate,
-            snapshotQueryRange.StartDate,
-            snapshotQueryRange.EndDate,
-            snapshot.CreatedUtc,
-            accounting.Count);
-
-        return accounting;
-    }
-
-    private static AccountingRecord MapToAccountingRecord(AccountingSnapshot snapshot)
-    {
-        return new AccountingRecord
-        {
-            Id = snapshot.Id,
-            AccountingClass = snapshot.AccountingClass,
-            Date = snapshot.Date,
-            Num = snapshot.Num,
-            Amount = snapshot.Amount,
-            AccountNumber = snapshot.AccountNumber,
-            Account = snapshot.Account,
-            Type = snapshot.Type,
-            DateCreated = snapshot.DateCreated
-        };
-    }
-
-    private static bool CanUseAccountSnapshot(DateRange range)
-    {
-        var now = DateTime.UtcNow;
-        var snapshotStart = new DateTime(now.Year - 2, 1, 1);
-        var snapshotEnd = new DateTime(now.Year, 12, 31);
-
-        return range.StartDate.Date >= snapshotStart &&
-               range.EndDate.Date <= snapshotEnd;
-    }
-
-    private static DateRange GetSnapshotQueryRange()
-    {
-        var now = DateTime.UtcNow;
-        return new DateRange(
-            new DateTime(now.Year - 2, 1, 1),
-            new DateTime(now.Year, 12, 31));
-    }
+            dateRange.EndDate);
 
     public async Task<List<ExpenseTransactionDto>> GetExpenseTransactionsAsync(string accountName, DateRange dateRange, string userId, bool isAdminOrViewer = false)
     {
@@ -255,9 +131,7 @@ public class ExpenseService : IExpenseService
             var selectedAccount = context == null ? null : _userAccountContextService.ResolveSelectedAccount(context, accountName);
             if (selectedAccount == null) return new List<ExpenseTransactionDto>();
 
-            var accountingData = CanUseAccountSnapshot(dateRange)
-                ? await LoadAccountingDataFromSnapshotAsync(selectedAccount, dateRange, Stopwatch.StartNew())
-                : await LoadAccountingDataAsync(selectedAccount, dateRange);
+            var accountingData = await LoadAccountingDataAsync(selectedAccount, dateRange, userId);
             var categorized = _accountingTransactionProcessor.Process(selectedAccount, accountingData);
 
             return categorized.ExpenseTransactions.Select(MapToExpenseTransactionDto).ToList();
@@ -277,9 +151,7 @@ public class ExpenseService : IExpenseService
             var selectedAccount = context == null ? null : _userAccountContextService.ResolveSelectedAccount(context, accountName);
             if (selectedAccount == null) return new List<ExpenseTransactionDto>();
 
-            var accountingData = CanUseAccountSnapshot(dateRange)
-                ? await LoadAccountingDataFromSnapshotAsync(selectedAccount, dateRange, Stopwatch.StartNew())
-                : await LoadAccountingDataAsync(selectedAccount, dateRange);
+            var accountingData = await LoadAccountingDataAsync(selectedAccount, dateRange, userId);
             var categorized = _accountingTransactionProcessor.Process(selectedAccount, accountingData);
 
             return categorized.TransferTransactions.Select(MapToExpenseTransactionDto).ToList();
@@ -307,9 +179,7 @@ public class ExpenseService : IExpenseService
                 };
             }
 
-            var accountingData = CanUseAccountSnapshot(dateRange)
-                ? await LoadAccountingDataFromSnapshotAsync(selectedAccount, dateRange, Stopwatch.StartNew())
-                : await LoadAccountingDataAsync(selectedAccount, dateRange);
+            var accountingData = await LoadAccountingDataAsync(selectedAccount, dateRange, userId);
             var categorized = _accountingTransactionProcessor.Process(selectedAccount, accountingData);
 
             return new ExpenseSummaryDto
@@ -332,25 +202,6 @@ public class ExpenseService : IExpenseService
                 PeriodStart = dateRange.StartDate,
                 PeriodEnd = dateRange.EndDate
             };
-        }
-    }
-
-    private async Task<List<AccountingRecord>> LoadAccountingDataAsync(UserAccountContextAccount account, DateRange dateRange)
-    {
-        try
-        {
-            var result = await _expenseReadRepository.GetAccountingDataForAccountAsync(
-                account.AccountingClass,
-                account.AccountNumber,
-                dateRange.StartDate,
-                dateRange.EndDate);
-
-            return result;
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error loading accounting data for account: {AccountName}", account.Fund);
-            return new List<AccountingRecord>();
         }
     }
 

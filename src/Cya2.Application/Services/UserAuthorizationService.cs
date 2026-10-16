@@ -1,5 +1,6 @@
 using Cya2.Application.Interfaces;
 using Cya2.Core.Interfaces;
+using Cya2.Core.Utilities;
 using Microsoft.Extensions.Logging;
 
 namespace Cya2.Application.Services;
@@ -31,6 +32,15 @@ public sealed class UserAuthorizationService : IUserAuthorizationService
         if (user.CanAccessAllAccounts)
         {
             return user;
+        }
+
+        var resolvedUser = await ResolveUserAsync(userIdentifier);
+        if (resolvedUser?.IsIntern() == true)
+        {
+            var internName = InternAccountUtility.GetInternNameFromUserName(resolvedUser.Name);
+            return string.Equals(internName, accountFund, StringComparison.OrdinalIgnoreCase)
+                ? user
+                : user with { IsAuthorized = false, Reason = "User is not assigned to this account." };
         }
 
         var account = await _userAccountAccessRepository.GetUserAccountsAsync(user.UserId);

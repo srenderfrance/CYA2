@@ -21,50 +21,6 @@ public sealed class BlazorFlowIntegrationTests
     }
 
     [Fact]
-    public void CentralInvalidator_InvalidatesEverySharedCacheAndAdvancesGeneration()
-    {
-        var donation = new TrackingDonationCache();
-        var donor = new TrackingDonorCache();
-        var missingGift = new TrackingMissingGiftCache();
-        var expense = new TrackingExpenseCache();
-        var dashboard = new TrackingDashboardCache();
-        var snapshots = new TrackingSnapshotCache();
-        var adminShared = new AdminSharedCache();
-        var accountBalances = new AccountBalanceCache();
-        var warmup = new NoOpAdminCacheWarmupCoordinator();
-        var version = new CacheInvalidationVersion();
-        var invalidator = new ImportCacheInvalidator(
-            donation,
-            donor,
-            missingGift,
-            expense,
-            dashboard,
-            snapshots,
-            adminShared,
-            accountBalances,
-            warmup,
-            version,
-            Microsoft.Extensions.Logging.Abstractions.NullLogger<ImportCacheInvalidator>.Instance);
-
-        var initialVersion = version.Current;
-        invalidator.InvalidateAll();
-
-        Assert.Equal(1, donation.InvalidationCount);
-        Assert.Equal(1, donor.InvalidationCount);
-        Assert.Equal(1, missingGift.InvalidationCount);
-        Assert.Equal(1, expense.InvalidationCount);
-        Assert.Equal(1, dashboard.InvalidationCount);
-        Assert.Equal(1, snapshots.InvalidationCount);
-        Assert.False(adminShared.TryGetStaff(0, out _));
-        Assert.Equal(initialVersion + 1, version.Current);
-    }
-
-    private sealed class NoOpAdminCacheWarmupCoordinator : IAdminCacheWarmupCoordinator
-    {
-        public void QueueWarmup() { }
-    }
-
-    [Fact]
     public void AdminSharedCache_IsolatedByGenerationAndCopiesValues()
     {
         var cache = new AdminSharedCache();
@@ -104,11 +60,26 @@ public sealed class BlazorFlowIntegrationTests
         var cache = new AccountBalanceCache();
         var today = DateTime.UtcNow.Date;
 
-        cache.Set(42, "CLASS", "NUMBER", 10m, 3, today.AddDays(30), 123.45m);
+        cache.Set(42, "CLASS", "NUMBER", 10m, 3, today.AddDays(30), "test-user", 123.45m);
 
-        Assert.True(cache.TryGet(42, " CLASS ", "NUMBER", 10m, 3, today, out var balance));
+        Assert.True(cache.TryGet(42, " CLASS ", "NUMBER", 10m, 3, today, "test-user", out var balance));
         Assert.Equal(123.45m, balance);
-        Assert.False(cache.TryGet(42, "CLASS", "NUMBER", 10m, 4, today, out _));
+        Assert.False(cache.TryGet(42, "CLASS", "NUMBER", 10m, 4, today, "test-user", out _));
+    }
+
+    [Fact]
+    public void AccountBalanceCache_RemovesOnlyStaleGenerations()
+    {
+        var cache = new AccountBalanceCache();
+        var date = new DateTime(2026, 1, 1);
+
+        cache.Set(1, "CLASS", "1", 0m, 1, date, "test-user", 10m);
+        cache.Set(2, "CLASS", "2", 0m, 2, date, "test-user", 20m);
+        cache.RemoveStaleGeneration(2);
+
+        Assert.False(cache.TryGet(1, "CLASS", "1", 0m, 1, date, "test-user", out _));
+        Assert.True(cache.TryGet(2, "CLASS", "2", 0m, 2, date, "test-user", out var balance));
+        Assert.Equal(20m, balance);
     }
 
     [Fact]
@@ -119,19 +90,60 @@ public sealed class BlazorFlowIntegrationTests
 
         for (var accountId = 1; accountId <= 257; accountId++)
         {
-            cache.Set(accountId, "CLASS", accountId.ToString(), 0m, 1, date, accountId);
+            cache.Set(accountId, "CLASS", accountId.ToString(), 0m, 1, date, "test-user", accountId);
         }
 
         Assert.Equal(256, cache.Count);
-        Assert.False(cache.TryGet(1, "CLASS", "1", 0m, 1, date, out _));
-        Assert.True(cache.TryGet(257, "CLASS", "257", 0m, 1, date, out _));
+        Assert.False(cache.TryGet(1, "CLASS", "1", 0m, 1, date, "test-user", out _));
+        Assert.True(cache.TryGet(257, "CLASS", "257", 0m, 1, date, "test-user", out _));
     }
 
-    private sealed class TrackingMissingGiftCache : ISessionMissingGiftCacheService
+    [Fact]
+    public void AccountMetadataCache_IsolatedByGenerationAndClearsOnInvalidation()
+    {
+        var cache = new AccountMetadataCache();
+        var account = new Cya2.Core.Entities.Account
+        {
+            AccountId = 42,
+            Fund = "FUND-A",
+            AccountingClass = "CLASS",
+            AccountNumber = "1000"
+        };
+        var metadata = new Cya2.Application.Models.AccountMetadataSnapshot(
+            account,
+            Array.Empty<Cya2.Core.Entities.SubAccount>());
+
+        cache.Set(account.AccountId, 3, metadata);
+
+        Assert.True(cache.TryGet(account.AccountId, 3, out var cached));
+        Assert.Same(metadata, cached);
+        Assert.False(cache.TryGet(account.AccountId, 4, out _));
+
+        cache.InvalidateAll();
+
+        Assert.False(cache.TryGet(account.AccountId, 3, out _));
+    }
+
+    [Fact]
+    public void CacheInvalidationVersion_AdvancesOnlyRequestedDomain()
+    {
+        var version = new CacheInvalidationVersion();
+        var initialDonations = version.Donations;
+        var initialAccounting = version.Accounting;
+        var initialContacts = version.DonorContacts;
+
+        version.Invalidate(CacheDataDomains.Donations);
+
+        Assert.Equal(initialDonations + 1, version.Donations);
+        Assert.Equal(initialAccounting, version.Accounting);
+        Assert.Equal(initialContacts, version.DonorContacts);
+    }
+
+    private sealed class TrackingMissingGiftCache : IMissingGiftCache
     {
         public int InvalidationCount { get; private set; }
-        public bool TryGetMissingGiftDonors(int accountId, string fund, DateTime startDate, DateTime endDate, out List<DonorSummaryDto> data) { data = []; return false; }
-        public void SetMissingGiftDonors(int accountId, string fund, DateTime startDate, DateTime endDate, List<DonorSummaryDto> data) { }
+        public bool TryGet(int accountId, string fund, DateTime startDate, DateTime endDate, long donationsGeneration, long donorContactsGeneration, long authorizationGeneration, out List<DonorSummaryDto> data) { data = []; return false; }
+        public void Set(int accountId, string fund, DateTime startDate, DateTime endDate, long donationsGeneration, long donorContactsGeneration, long authorizationGeneration, List<DonorSummaryDto> data) { }
         public void InvalidateAll() => InvalidationCount++;
     }
 
@@ -143,47 +155,12 @@ public sealed class BlazorFlowIntegrationTests
         public bool TryGetSelectedAccount(string userId, out string account) => _selections.TryGetValue(userId, out account!);
     }
 
-    private sealed class TrackingDonationCache : ISessionDonationDataCacheService
+    private sealed class TrackingDonorCache : IDonorSummaryCache
     {
         public int InvalidationCount { get; private set; }
-        public bool TryGetDonationData(string userId, string fund, out DonationDataDto data) { data = null!; return false; }
-        public void SetDonationData(string userId, string fund, DonationDataDto data, bool prioritize = false) { }
-        public IReadOnlyCollection<string> GetFunds(string userId) => Array.Empty<string>();
+        public bool TryGet(string scope, DateTime startDate, DateTime endDate, long donationsGeneration, long donorContactsGeneration, long authorizationGeneration, out List<DonorSummaryDto> data) { data = []; return false; }
+        public void Set(string scope, DateTime startDate, DateTime endDate, long donationsGeneration, long donorContactsGeneration, long authorizationGeneration, List<DonorSummaryDto> data) { }
         public void InvalidateAll() => InvalidationCount++;
     }
 
-    private sealed class TrackingDonorCache : ISessionDonorSummaryCacheService
-    {
-        public int InvalidationCount { get; private set; }
-        public bool TryGetDonorSummaries(string fundsSignature, DateTime startDate, DateTime endDate, out List<DonorSummaryDto> data) { data = new(); return false; }
-        public void SetDonorSummaries(string fundsSignature, DateTime startDate, DateTime endDate, List<DonorSummaryDto> data) { }
-        public void InvalidateAll() => InvalidationCount++;
-    }
-
-    private sealed class TrackingExpenseCache : ISessionExpenseDataCacheService
-    {
-        public int InvalidationCount { get; private set; }
-        public bool TryGetExpenseData(string userId, string fund, DateTime startDate, DateTime endDate, out ExpenseDataDto data) { data = null!; return false; }
-        public void SetExpenseData(string userId, string fund, DateTime startDate, DateTime endDate, ExpenseDataDto data) { }
-        public void InvalidateAll() => InvalidationCount++;
-    }
-
-    private sealed class TrackingDashboardCache : ISessionDashboardDtoCacheService
-    {
-        public int InvalidationCount { get; private set; }
-        public bool TryGetDashboard(string userId, string fund, out FinancialDashboardDto dashboard) { dashboard = null!; return false; }
-        public IReadOnlyCollection<string> GetFunds(string userId) => Array.Empty<string>();
-        public void SetDashboard(string userId, string fund, FinancialDashboardDto dashboard, bool prioritize = false) { }
-        public void InvalidateAll() => InvalidationCount++;
-    }
-
-    private sealed class TrackingSnapshotCache : IAccountSnapshotCache
-    {
-        public int InvalidationCount { get; private set; }
-        public int Count => 0;
-        public Task<Cya2.Application.Models.AccountDataSnapshot> GetOrCreateAsync(Cya2.Application.Models.AccountSnapshotKey key, Func<CancellationToken, Task<Cya2.Application.Models.AccountDataSnapshot>> factory, CancellationToken cancellationToken = default) => factory(cancellationToken);
-        public bool TryGet(Cya2.Application.Models.AccountSnapshotKey key, out Cya2.Application.Models.AccountDataSnapshot snapshot) { snapshot = null!; return false; }
-        public bool Remove(Cya2.Application.Models.AccountSnapshotKey key) => false;
-        public void InvalidateAll() => InvalidationCount++;
-    }
 }

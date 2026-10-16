@@ -13,42 +13,45 @@ public sealed class AccountSnapshotWarmupService : IAccountSnapshotWarmupService
     private const int MaxAccountsWithoutDefault = 5;
     private const int MaxConcurrentWarmups = 2;
 
-    private readonly IAccountSnapshotCache _snapshotCache;
-    private readonly IAccountSnapshotLoader _snapshotLoader;
+    private readonly IDonationDataCache _donationDataCache;
+    private readonly IDonationDataCacheLoader _donationDataCacheLoader;
+    private readonly IAccountingDataCache _accountingDataCache;
+    private readonly IAccountingDataCacheLoader _accountingDataCacheLoader;
     private readonly ICacheInvalidationVersion _cacheInvalidationVersion;
     private readonly IFinancialDashboardService _dashboardService;
-    private readonly ISessionDashboardDtoCacheService _dashboardCache;
     private readonly IDonationService _donationService;
     private readonly IExpenseService _expenseService;
     private readonly IDonorService _donorService;
     private readonly ILogger<AccountSnapshotWarmupService> _logger;
     private readonly object _sync = new();
-    private readonly LinkedList<AccountSnapshotKey> _recentKeys = new();
-    private readonly Dictionary<AccountSnapshotKey, Task> _warmups = new();
+    private readonly LinkedList<string> _recentKeys = new();
+    private readonly Dictionary<string, Task> _warmups = new();
     private readonly SemaphoreSlim _warmupGate = new(MaxConcurrentWarmups, MaxConcurrentWarmups);
     private long _warmupSequence;
     private CancellationTokenSource _backgroundCts = new();
-    private AccountSnapshotKey? _defaultKey;
+    private string? _defaultKey;
     private List<UserAccountContextAccount> _initialAccounts = new();
     private string _userId = string.Empty;
     private bool _isAdminOrViewer;
 
     public AccountSnapshotWarmupService(
-        IAccountSnapshotCache snapshotCache,
-        IAccountSnapshotLoader snapshotLoader,
+        IDonationDataCache donationDataCache,
+        IDonationDataCacheLoader donationDataCacheLoader,
+        IAccountingDataCache accountingDataCache,
+        IAccountingDataCacheLoader accountingDataCacheLoader,
         ICacheInvalidationVersion cacheInvalidationVersion,
         IFinancialDashboardService dashboardService,
-        ISessionDashboardDtoCacheService dashboardCache,
         IDonationService donationService,
         IExpenseService expenseService,
         IDonorService donorService,
         ILogger<AccountSnapshotWarmupService> logger)
     {
-        _snapshotCache = snapshotCache;
-        _snapshotLoader = snapshotLoader;
+        _donationDataCache = donationDataCache;
+        _donationDataCacheLoader = donationDataCacheLoader;
+        _accountingDataCache = accountingDataCache;
+        _accountingDataCacheLoader = accountingDataCacheLoader;
         _cacheInvalidationVersion = cacheInvalidationVersion;
         _dashboardService = dashboardService;
-        _dashboardCache = dashboardCache;
         _donationService = donationService;
         _expenseService = expenseService;
         _donorService = donorService;
@@ -58,7 +61,7 @@ public sealed class AccountSnapshotWarmupService : IAccountSnapshotWarmupService
     public void WarmDefaultAccount(Account account)
         => WarmDefaultAccount(ToContextAccount(account));
 
-    public async Task WarmInitialAccountsAsync(IEnumerable<UserAccountContextAccount> accounts, int? defaultAccountId, string userId = "", bool isAdminOrViewer = false, DateRange? donorSummaryRange = null, bool isAdminUser = false)
+    public async Task WarmInitialAccountsAsync(IEnumerable<UserAccountContextAccount> accounts, int? defaultAccountId, string userId = "", bool isAdminOrViewer = false, DateRange? donorSummaryRange = null, bool isAdminUser = false, CancellationToken cancellationToken = default)
     {
         var orderedAccounts = (accounts ?? [])
             .Where(account => account.AccountId > 0 && !string.IsNullOrWhiteSpace(account.Fund))
@@ -91,11 +94,11 @@ public sealed class AccountSnapshotWarmupService : IAccountSnapshotWarmupService
         {
             try
             {
-                await StartWarmup(defaultAccount, CancellationToken.None, donorSummaryRange);
+                await StartWarmup(defaultAccount, cancellationToken, donorSummaryRange);
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(ex, "Default account snapshot warmup failed: accountId={AccountId}, fund={Fund}", defaultAccount.AccountId, defaultAccount.Fund);
+                _logger.LogWarning(ex, "Default account snapshot warmup failed: accountId={AccountId}", defaultAccount.AccountId);
             }
         }
 
@@ -112,6 +115,7 @@ public sealed class AccountSnapshotWarmupService : IAccountSnapshotWarmupService
             isAdminUser,
             accountsToWarm.Count);
 
+        cancellationToken.ThrowIfCancellationRequested();
         StartBackgroundWarmup(accountsToWarm, donorSummaryRange);
     }
 
@@ -124,7 +128,7 @@ public sealed class AccountSnapshotWarmupService : IAccountSnapshotWarmupService
     public void RecordSelection(UserAccountContextAccount account, string userId, bool isAdminOrViewer = false)
         => _ = WarmSelectedAccountAsync(account, userId, isAdminOrViewer);
 
-    public Task WarmSelectedAccountAsync(UserAccountContextAccount account, string userId, bool isAdminOrViewer = false, DateRange? donorSummaryRange = null)
+    public Task WarmSelectedAccountAsync(UserAccountContextAccount account, string userId, bool isAdminOrViewer = false, DateRange? donorSummaryRange = null, CancellationToken cancellationToken = default)
     {
         if (!IsValid(account))
         {
@@ -143,9 +147,9 @@ public sealed class AccountSnapshotWarmupService : IAccountSnapshotWarmupService
 
         }
 
-        // _logger.LogInformation("Prioritizing selected account snapshot: accountId={AccountId}, fund={Fund}; canceled background warmup", key.AccountId, key.Fund);
+        // _logger.LogInformation("Prioritizing selected account cache: key={Key}", key);
 
-        var selectedWarmup = StartWarmup(account, CancellationToken.None, donorSummaryRange);
+        var selectedWarmup = StartWarmup(account, cancellationToken, donorSummaryRange);
         _ = ResumeBackgroundWarmupAfterSelectionAsync(selectedWarmup, key, donorSummaryRange);
         return selectedWarmup;
     }
@@ -163,7 +167,8 @@ public sealed class AccountSnapshotWarmupService : IAccountSnapshotWarmupService
             _backgroundCts = new CancellationTokenSource();
         }
 
-        _snapshotCache.InvalidateAll();
+        _donationDataCache.InvalidateAll();
+        _accountingDataCache.InvalidateAll();
     }
 
     private void WarmDefaultAccount(UserAccountContextAccount account)
@@ -217,7 +222,7 @@ public sealed class AccountSnapshotWarmupService : IAccountSnapshotWarmupService
 
     private async Task ResumeBackgroundWarmupAfterSelectionAsync(
         Task selectedWarmup,
-        AccountSnapshotKey selectedKey,
+        string selectedKey,
         DateRange? donorSummaryRange)
     {
         try
@@ -230,7 +235,7 @@ public sealed class AccountSnapshotWarmupService : IAccountSnapshotWarmupService
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Selected account snapshot warmup failed: accountId={AccountId}, fund={Fund}", selectedKey.AccountId, selectedKey.Fund);
+            _logger.LogWarning(ex, "Selected account cache warmup failed: key={Key}", selectedKey);
         }
 
         List<UserAccountContextAccount> remaining;
@@ -240,11 +245,11 @@ public sealed class AccountSnapshotWarmupService : IAccountSnapshotWarmupService
             _backgroundCts.Dispose();
             _backgroundCts = new CancellationTokenSource();
             token = _backgroundCts.Token;
-            var maxRecentAccounts = _defaultKey.HasValue ? MaxNonDefaultAccounts : MaxAccountsWithoutDefault;
+            var maxRecentAccounts = _defaultKey is not null ? MaxNonDefaultAccounts : MaxAccountsWithoutDefault;
             var recentKeys = _recentKeys.ToHashSet();
             remaining = _initialAccounts
                 .Where(account => GetKey(account) != selectedKey)
-                .Where(account => _defaultKey is null || GetKey(account) != _defaultKey.Value)
+                .Where(account => _defaultKey is null || GetKey(account) != _defaultKey)
                 .Where(account => !recentKeys.Contains(GetKey(account)))
                 .Take(Math.Max(0, maxRecentAccounts - _recentKeys.Count))
                 .ToList();
@@ -266,10 +271,9 @@ public sealed class AccountSnapshotWarmupService : IAccountSnapshotWarmupService
                 if (!existing.IsCompleted)
                 {
                     _logger.LogInformation(
-                        "Account warmup join: request={RequestId}, accountId={AccountId}, fund={Fund}, warningRange={WarningStart:yyyy-MM-dd}..{WarningEnd:yyyy-MM-dd}",
+                        "Account warmup join: request={RequestId}, accountId={AccountId}, warningRange={WarningStart:yyyy-MM-dd}..{WarningEnd:yyyy-MM-dd}",
                         requestId,
-                        key.AccountId,
-                        key.Fund,
+                        account.AccountId,
                         donorSummaryRange?.StartDate,
                         donorSummaryRange?.EndDate);
                     return existing;
@@ -278,7 +282,7 @@ public sealed class AccountSnapshotWarmupService : IAccountSnapshotWarmupService
                 _warmups.Remove(key);
             }
 
-            if (_snapshotCache.TryGet(key, out _))
+            if (HasAuthoritativeCache(account))
             {
                 TouchRecent(key);
                 EvictRecentIfNeeded();
@@ -286,10 +290,9 @@ public sealed class AccountSnapshotWarmupService : IAccountSnapshotWarmupService
             }
 
             _logger.LogInformation(
-                "Account warmup inspect: request={RequestId}, accountId={AccountId}, fund={Fund}, snapshotCached={SnapshotCached}, warningRange={WarningStart:yyyy-MM-dd}..{WarningEnd:yyyy-MM-dd}",
+                "Account warmup inspect: request={RequestId}, accountId={AccountId}, snapshotCached={SnapshotCached}, warningRange={WarningStart:yyyy-MM-dd}..{WarningEnd:yyyy-MM-dd}",
                 requestId,
-                key.AccountId,
-                key.Fund,
+                account.AccountId,
                 snapshotWasCached,
                 donorSummaryRange?.StartDate,
                 donorSummaryRange?.EndDate);
@@ -299,7 +302,7 @@ public sealed class AccountSnapshotWarmupService : IAccountSnapshotWarmupService
                 var warmup = StartTrackedWarmup(
                     key,
                     () => WarmAsync(account, key, cancellationToken, donorSummaryRange));
-                _logger.LogInformation("Account warmup started: request={RequestId}, accountId={AccountId}, fund={Fund}, mode=snapshot-and-derived", requestId, key.AccountId, key.Fund);
+                _logger.LogInformation("Account warmup started: request={RequestId}, accountId={AccountId}, mode=authoritative-and-derived", requestId, account.AccountId);
                 return warmup;
             }
         }
@@ -319,12 +322,12 @@ public sealed class AccountSnapshotWarmupService : IAccountSnapshotWarmupService
             var derivedWarmup = StartTrackedWarmup(
                 key,
                 () => WarmDerivedCachesAsync(account, cancellationToken, donorSummaryRange));
-            _logger.LogInformation("Account warmup started: request={RequestId}, accountId={AccountId}, fund={Fund}, mode=derived-only", requestId, key.AccountId, key.Fund);
+            _logger.LogInformation("Account warmup started: request={RequestId}, accountId={AccountId}, mode=derived-only", requestId, account.AccountId);
             return derivedWarmup;
         }
     }
 
-    private Task StartTrackedWarmup(AccountSnapshotKey key, Func<Task> warmupFactory)
+    private Task StartTrackedWarmup(string key, Func<Task> warmupFactory)
     {
         var completion = new TaskCompletionSource<object?>(TaskCreationOptions.RunContinuationsAsynchronously);
         _warmups[key] = completion.Task;
@@ -333,7 +336,7 @@ public sealed class AccountSnapshotWarmupService : IAccountSnapshotWarmupService
     }
 
     private async Task ExecuteTrackedWarmupAsync(
-        AccountSnapshotKey key,
+        string key,
         TaskCompletionSource<object?> completion,
         Func<Task> warmupFactory)
     {
@@ -350,15 +353,12 @@ public sealed class AccountSnapshotWarmupService : IAccountSnapshotWarmupService
         await ObserveWarmupAsync(key, completion.Task);
     }
 
-    private async Task WarmAsync(UserAccountContextAccount account, AccountSnapshotKey key, CancellationToken cancellationToken, DateRange? donorSummaryRange = null)
+    private async Task WarmAsync(UserAccountContextAccount account, string key, CancellationToken cancellationToken, DateRange? donorSummaryRange = null)
     {
         await _warmupGate.WaitAsync(cancellationToken);
         try
         {
-            await _snapshotCache.GetOrCreateAsync(
-                key,
-                token => _snapshotLoader.LoadAsync(account, GetSnapshotQueryRange(), key, token),
-                cancellationToken);
+            await WarmAuthoritativeCachesAsync(account, cancellationToken);
 
             lock (_sync)
             {
@@ -366,7 +366,7 @@ public sealed class AccountSnapshotWarmupService : IAccountSnapshotWarmupService
                 EvictRecentIfNeeded();
             }
 
-            // _logger.LogInformation("Warmed account snapshot: accountId={AccountId}, fund={Fund}", key.AccountId, key.Fund);
+            // _logger.LogInformation("Warmed authoritative account caches: key={Key}", key);
 
             if (!string.IsNullOrWhiteSpace(_userId))
             {
@@ -376,6 +376,25 @@ public sealed class AccountSnapshotWarmupService : IAccountSnapshotWarmupService
         finally
         {
             _warmupGate.Release();
+        }
+    }
+
+    private async Task WarmAuthoritativeCachesAsync(UserAccountContextAccount account, CancellationToken cancellationToken)
+    {
+        var range = GetSnapshotQueryRange();
+        var donationKey = new DonationDataCacheKey(account.AccountId, _cacheInvalidationVersion.Donations, range.StartDate, range.EndDate).Normalize();
+        await _donationDataCache.GetOrCreateAsync(
+            donationKey,
+            token => _donationDataCacheLoader.LoadAsync(account, range, donationKey, token),
+            cancellationToken);
+
+        if (string.IsNullOrWhiteSpace(account.InternName))
+        {
+            var accountingKey = new AccountingDataCacheKey(account.AccountId, account.AccountingClass, account.AccountNumber, _cacheInvalidationVersion.Accounting, range.StartDate, range.EndDate).Normalize();
+            await _accountingDataCache.GetOrCreateAsync(
+                accountingKey,
+                token => _accountingDataCacheLoader.LoadAsync(account, range, accountingKey, token),
+                cancellationToken);
         }
     }
 
@@ -400,26 +419,22 @@ public sealed class AccountSnapshotWarmupService : IAccountSnapshotWarmupService
         };
 
         cancellationToken.ThrowIfCancellationRequested();
-        if (!_dashboardCache.TryGetDashboard(_userId, account.Fund, out _))
-        {
-            var dashboard = await _dashboardService.GetDashboardSummaryDataAsync(account.Fund, _userId);
-            _dashboardCache.SetDashboard(_userId, account.Fund, dashboard);
-        }
+        await _dashboardService.GetDashboardSummaryDataAsync(account.Fund, _userId);
 
         cancellationToken.ThrowIfCancellationRequested();
         await _donationService.GetDonationDataAsync(account.Fund, "All", range, _userId, _isAdminOrViewer);
         cancellationToken.ThrowIfCancellationRequested();
-        _logger.LogInformation("Account derived warmup expense load: accountId={AccountId}, fund={Fund}, range={Start:yyyy-MM-dd}..{End:yyyy-MM-dd}", account.AccountId, account.Fund, range.StartDate, range.EndDate);
+        _logger.LogInformation("Account derived warmup expense load: accountId={AccountId}, range={Start:yyyy-MM-dd}..{End:yyyy-MM-dd}", account.AccountId, range.StartDate, range.EndDate);
         await _expenseService.GetExpenseDataAsync(account.Fund, range, _userId, _isAdminOrViewer);
         cancellationToken.ThrowIfCancellationRequested();
         var effectiveDonorSummaryRange = donorSummaryRange ?? range;
         await _donorService.GetDonorSummariesForAccountAsync(accountOption, effectiveDonorSummaryRange);
         cancellationToken.ThrowIfCancellationRequested();
         await _donorService.GetMissingGiftDonorsAsync(accountOption, effectiveDonorSummaryRange);
-        _logger.LogInformation("Account derived warmup completed: accountId={AccountId}, fund={Fund}", account.AccountId, account.Fund);
+        _logger.LogInformation("Account derived warmup completed: accountId={AccountId}", account.AccountId);
     }
 
-    private async Task ObserveWarmupAsync(AccountSnapshotKey key, Task warmup)
+    private async Task ObserveWarmupAsync(string key, Task warmup)
     {
         try
         {
@@ -430,7 +445,7 @@ public sealed class AccountSnapshotWarmupService : IAccountSnapshotWarmupService
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Account snapshot warmup failed: accountId={AccountId}, fund={Fund}", key.AccountId, key.Fund);
+            _logger.LogWarning(ex, "Account authoritative cache warmup failed: key={Key}", key);
         }
         finally
         {
@@ -444,7 +459,7 @@ public sealed class AccountSnapshotWarmupService : IAccountSnapshotWarmupService
         }
     }
 
-    private void TouchRecent(AccountSnapshotKey key)
+    private void TouchRecent(string key)
     {
         if (_defaultKey == key)
         {
@@ -462,7 +477,7 @@ public sealed class AccountSnapshotWarmupService : IAccountSnapshotWarmupService
 
     private void EvictRecentIfNeeded()
     {
-        var maxRecentAccounts = _defaultKey.HasValue ? MaxNonDefaultAccounts : MaxAccountsWithoutDefault;
+        var maxRecentAccounts = _defaultKey is not null ? MaxNonDefaultAccounts : MaxAccountsWithoutDefault;
         while (_recentKeys.Count > maxRecentAccounts)
         {
             var node = _recentKeys.Last;
@@ -472,7 +487,7 @@ public sealed class AccountSnapshotWarmupService : IAccountSnapshotWarmupService
             }
 
             _recentKeys.Remove(node);
-            _snapshotCache.Remove(node.Value);
+            RemoveAuthoritativeCaches(node.Value);
                 // _logger.LogInformation("Evicted non-default account snapshot: accountId={AccountId}, fund={Fund}", node.Value.AccountId, node.Value.Fund);
         }
     }
@@ -494,12 +509,27 @@ public sealed class AccountSnapshotWarmupService : IAccountSnapshotWarmupService
     private static bool IsValid(UserAccountContextAccount account)
         => account.AccountId > 0 && !string.IsNullOrWhiteSpace(account.Fund);
 
-    private AccountSnapshotKey GetKey(UserAccountContextAccount account)
-        => new AccountSnapshotKey(
-            account.AccountId,
-            account.Fund,
-            _cacheInvalidationVersion.GetGeneration(
-                CacheDataDomains.Donations | CacheDataDomains.Accounting | CacheDataDomains.AccountMetadata)).Normalize();
+    private static string GetKey(UserAccountContextAccount account)
+        => $"{account.AccountId}:{account.Fund.Trim()}";
+
+    private bool HasAuthoritativeCache(UserAccountContextAccount account)
+    {
+        var range = GetSnapshotQueryRange();
+        var donationKey = new DonationDataCacheKey(account.AccountId, _cacheInvalidationVersion.Donations, range.StartDate, range.EndDate).Normalize();
+        if (!_donationDataCache.TryGet(donationKey, out _)) return false;
+        if (Cya2.Core.Utilities.InternAccountUtility.IsInternFund(account.Fund)) return true;
+        var accountingKey = new AccountingDataCacheKey(account.AccountId, account.AccountingClass, account.AccountNumber, _cacheInvalidationVersion.Accounting, range.StartDate, range.EndDate).Normalize();
+        return _accountingDataCache.TryGet(accountingKey, out _);
+    }
+
+    private void RemoveAuthoritativeCaches(string key)
+    {
+        var separator = key.IndexOf(':');
+        if (separator <= 0) return;
+        if (!int.TryParse(key[..separator], out var accountId)) return;
+        _donationDataCache.RemoveAccount(accountId);
+        _accountingDataCache.RemoveAccount(accountId);
+    }
 
     private static UserAccountContextAccount ToContextAccount(Account account)
         => new()
@@ -516,10 +546,5 @@ public sealed class AccountSnapshotWarmupService : IAccountSnapshotWarmupService
         };
 
     private static DateRange GetSnapshotQueryRange()
-    {
-        var now = DateTime.UtcNow;
-        return new DateRange(
-            new DateTime(now.Year - 2, 1, 1),
-            new DateTime(now.Year, 12, 31));
-    }
+        => AccountFactCacheWindow.GetStandardWindow(DateTime.UtcNow);
 }

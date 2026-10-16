@@ -13,27 +13,36 @@ A cache hit is only correct when the cached value still represents the current u
 
 ## Cache layers
 
-### 1. Account snapshot cache
+### Admin overview warmup and fallback
+
+`IAdminCacheWarmupCoordinator` queues the central rebuild after invalidation. Admin Overview waits for an active rebuild before attempting a fallback, so a temporary shared-cache miss does not immediately trigger account-by-account database work. If the rebuild is unavailable or fails, `AdminPreloadService` loads the overview donation and accounting facts in bulk, calculates the DTOs in memory through `RebuildOverviewFromDataAsync`, and writes the result to the shared overview cache. The Blazor overview remains in its loading state until those financial DTOs are available; it does not render zero-valued placeholder rows.
+
+The application-start rebuild uses the same bulk snapshot for shared facts, Admin Overview, and Home summary entries. Consequently, opening Account Summaries after startup reuses the four-period entries already created from that snapshot instead of rebuilding each account through the user-facing dashboard path. Donation, accounting, or account-metadata invalidation also regenerates these summary entries in bulk.
+
+### 1. Authoritative donation/donor and accounting caches
 
 **Primary types:**
 
-- `IAccountSnapshotCache`
-- `AccountSnapshotCache`
-- `IAccountSnapshotLoader`
-- `AccountSnapshotLoader`
-- `AccountDataSnapshot`
-- `AccountSnapshotKey`
+- `IDonationDataCache` / `DonationDataCache`
+- `IAccountingDataCache` / `AccountingDataCache`
+- `IDonationDataCacheLoader` / `DonationDataCacheLoader`
+- `IAccountingDataCacheLoader` / `AccountingDataCacheLoader`
+- `DonationDataCacheKey` / `AccountingDataCacheKey`
 
 **Registration:** singleton.
 
-The account snapshot is the shared, complete account-level data set used by the main Donations, Expenses, and Donors paths. A snapshot can contain:
+The two authoritative caches are shared, compact account-level fact stores used by Home, Donations, Expenses, Donors, and account calculations. They intentionally avoid complete page DTOs, page state, totals, authorization state, and duplicated current contact projections.
+
+The donation/donor cache contains one entry per account and standard date range, regardless of the selected fund:
 
 - Donations
-- Accounting records
 - Subaccounts
-- The normalized account snapshot key
 
-`AccountSnapshotCache` provides:
+The cached donation records retain their original `Fund`. Primary and merged-subfund rows are available for combined account totals; separate-subfund rows remain identifiable for separate views. Account-scoped repository loading includes the primary fund and every configured subfund without allowing identical fund names from another account to enter the cache.
+
+The accounting cache contains accounting transaction facts. Intern accounts use the donation/donor cache only; accounting data is not loaded for intern funds.
+
+Each bounded split cache provides:
 
 - Normalized account keys.
 - Single-flight loading so concurrent requests for the same key share one load.
@@ -42,49 +51,58 @@ The account snapshot is the shared, complete account-level data set used by the 
 - In-flight load cancellation when the cache is invalidated.
 - Protection against a stale in-flight load repopulating the cache after invalidation.
 
-The snapshot loader is the single place to create complete snapshots. Do not create partial snapshots in individual feature services. `DashboardSessionCacheService` consumes this shared snapshot path and only maps the raw snapshot into its scoped compatibility payload; it does not issue independent accounting, donation, or subaccount queries.
+Loaders project only reusable facts. Feature services project page-specific DTOs per request. Home post-render warmup checks both authoritative entries and loads only missing broad-window entries.
 
-All bounded account-scoped AccountingData reads use the shared account snapshot, whose canonical loader calls `IExpenseReadRepository.GetAccountingDataForAccountAsync`. The shared query matches the account's `AccountingClass` or `AccountNumber`, applies the broad snapshot date range, and excludes `Prepaids` case-insensitively before data is placed in snapshots or derived caches. `AccountCalculationService` and `ExpenseService` filter the snapshot to the requested inclusive date range before processing. Expense totals on Expenses and Home use the same `ExpenseClassificationService` result and preserve the stored amount sign. Requests outside snapshot coverage, including unrestricted historical balance calculations, retain the direct repository fallback.
+The shared standard window is January 1 of the previous calendar year through the current date. Requests outside that window use two bounded singleton user-scoped overflow caches:
 
-Home donation totals use `IAccountCalculationService.CalculateDonationTotalsAsync` or its preloaded-data equivalent. For normal accounts within the snapshot coverage window, the calculation consumes the shared account snapshot and derives the primary-fund plus merged-subaccount totals in memory; separate subaccount totals are retained separately until Home exposes them. Intern funds use the shared intern-designation matching query and include all matched donation rows. Intern and out-of-coverage requests retain the repository fallback because their query semantics or date range are not represented by the normal account snapshot.
+- `IUserDonationDataCache` / `UserDonationDataCache`
+- `IUserAccountingDataCache` / `UserAccountingDataCache`
 
-Donation and donor account paths use the same boundary. `DonationService` and the account-specific `DonorService.GetDonorSummariesForAccountAsync` path reuse the canonical account snapshot for authorized normal accounts within the coverage window and filter donations in memory for narrower ranges. Generic fund-set queries, all-history queries, intern-designation queries, donor detail/current contact projections, and selected separate-subaccount queries remain repository-backed because they have different scope or projection semantics.
+Overflow keys include user ID, account/domain identity, and generation; the date range is stored as mergeable coverage within the entry rather than as part of the key. Each domain cache allows up to 256 stable user/account keys globally, while each key retains at most three merged historical coverage segments. Overlapping or adjacent requests reuse and extend the same entry, so a user normally has one entry per account/domain rather than one entry per request. Overflow data is populated only for dates outside the shared window, remains reusable until LRU eviction or logout, and is never used as a substitute for authorization. Requests combine shared facts, that user's existing overflow facts, and only still-missing database ranges, then deduplicate by record ID. Concurrent callers share one load: cancellation of an individual waiter does not cancel the shared factory, while user/global invalidation cancels matching factories and fences their results so stale data cannot be inserted after invalidation. In-flight cleanup is identity-safe, so an older waiter cannot remove a newer load for the same request. User transitions call `IUserScopedCacheInvalidator.RemoveUser`; import invalidation prunes stale overflow generations.
+
+`DonationCacheRecord` stores donation facts and donor identity only. Current email, phone, and address values remain in the separate `IDonorContactCache` projection.
+
+All bounded account-scoped AccountingData reads use the accounting cache, whose loader calls `IExpenseReadRepository.GetAccountingDataForAccountAsync`. The query matches the account's `AccountingClass` or `AccountNumber` and applies the broad cache date range. `IAccountFactDataService` is the only asynchronous fact-loading boundary for `AccountCalculationService`; normal calculation calls require the authenticated user ID. It filters cached records to the requested inclusive range. If a request extends outside the broad window, `AccountFactDataService` loads only uncovered date segments into the user-scoped accounting overflow cache and deduplicates the combined facts by record ID. `ExpenseService` uses this single fact-data boundary for all expense, transfer, and summary projections.
+
+Home donation totals use `IAccountCalculationService.CalculateDonationTotalsAsync` or its preloaded-data equivalent. Normal asynchronous calculations require the authenticated user ID and consume facts supplied by `IAccountFactDataService`; derived-cache rebuilds use the pure preloaded-data methods. For normal accounts, the calculation consumes cached donation facts and derives the primary-fund plus merged-subaccount totals in memory; separate subaccount totals remain distinguishable. If the requested range extends outside the broad cache window, cached and repository donation rows are combined and deduplicated. Intern funds retain their intern-designation repository query semantics.
+
+Donation and donor account paths use the same boundary. `DonationService` and the account-specific `DonorService.GetDonorSummariesForAccountAsync` path reuse compact donation facts for authorized normal accounts and filter donations in memory for narrower ranges and selected primary, merged, or separate subaccounts. Intern accounts continue to use `InternName` identity through `AccountFactDataService`; donor detail/current contact projections remain separate.
+
+Current donor contact values are hydrated through `IDonorContactHydrationService` before both `DonationRowDto` and `DonorSummaryDto` projection. The hydrator uses the generation-aware `IDonorContactCache`, batch-loads cache misses through `IDonorContactReadRepository`, and caches empty contact results so donor selection and contact display do not require click-time queries. This applies equally to repository-loaded records and records filtered from authoritative donation facts. `DonationReadRepository` therefore selects donation facts and donor identity only; it does not duplicate the current contact projection with correlated `DonorContacts` subqueries.
+
+The donation page keeps donation rows focused on transaction data and identifies donors by authoritative `DonorId`. `DonationDataDto.DonorContacts` contains one current contact projection per donor ID. `Donations.razor` uses that map for local donor dialogs and never resolves a donor by display name when an ID is available. The duplicated contact fields have been removed from `DonationRowDto` and `DonationSnapshot`; raw `DonationRecord` contact fields remain as mutable hydration targets and for current-contact summary/export compatibility.
+
+`DonationDataDto` records the donations generation and donor-contact generation used to build its rows and contact projection. It is a request projection, not a persistent cache entry. Covered normal-account requests reuse authoritative donation facts, while unsupported scopes use repository fallbacks. Broad cache windows remain eligible for narrower requests.
 
 On a direct Home load, the dashboard requests one broad donation window covering all displayed periods. The account-total repository query returns the primary fund and merged subaccounts in one database query; Home derives the month, year, and visualization totals from that data in memory. This avoids one query per period or per fund without changing the separate-subaccount rule.
 
-The Home Custom Date Range card is lazy: it does not load custom summary data during initial page load or account selection. When the user selects Apply, the dashboard first reuses a session account-data cache entry whose window contains the requested range and derives the summary in memory. If no containing cached window exists, it loads only the requested range into the same cache path. This preserves broad shared-snapshot reuse for narrower custom ranges while avoiding unnecessary initial or duplicate queries.
+The Home Custom Date Range card is lazy: it does not load custom summary data during initial page load or account selection. When the user selects Apply, the dashboard reuses containing authoritative cache entries and derives the summary in memory, supplementing uncovered dates from the repository.
 
-`AccountSnapshotWarmupService` uses an existing snapshot as the data source for derived-cache warming; a snapshot hit must not short-circuit dashboard, donation, expense, or donor-summary cache population. This preserves the cache-first behavior for subsequent Home and feature-page requests.
+`AccountSnapshotWarmupService` warms the authoritative donation and accounting fact caches before derived-cache warming. A hit in one cache does not imply a hit in the other; intern accounts intentionally warm donations only.
 Warmup requests for the same account are single-flight across initial loading and account selection: an active warmup is joined before an existing snapshot is used to start derived-cache warming. This prevents concurrent Home requests from duplicating derived cache loads.
+
+`FinancialSummaryDto` values are stored in the bounded `HomeSummaryCache` as four standard summaries per account and calendar period. Normal accounts use account/fund identity with an empty intern key; intern summaries use `DonationData.InternName` exclusively, with donation-only calculations and no Fund or accounting association. Home complete-cache reads use the same identity split as central warmup, so opening the embedded Account Summaries dialog reuses warmed entries instead of creating a per-account fallback entry. `CacheRebuildService` is the single application-level rebuild owner invoked by startup and database invalidation through `AdminCacheWarmupCoordinator`; it coordinates Admin preload/Overview, normal summaries, and intern summaries. `AccountSnapshotWarmupService` does not load intern summaries. Donation-only invalidation advances the donations generation and removes stale donation facts, donor summaries, missing-gift results, balances, and summary entries. Accounting-only invalidation advances the accounting generation and removes stale accounting facts, balances, and affected normal summaries.
+
+`CacheRebuildService` loads metadata, normal-account donations, InternName-keyed donations, and accounting rows in bulk over the broad rebuild window. It stores those rows in one `CacheRebuildData` context and passes that context to the normal summary, intern summary, and Admin Overview builders. These builders calculate their DTOs in memory and populate the existing caches, avoiding repeated per-account and per-intern database queries. The Admin Overview writer and reader share the UTC trailing-year range, preventing a dialog-open cache-key miss. Intern bulk loading is keyed only by `DonationData.InternName`; Fund is not used for intern selection or association.
 On Home initialization, the warmup coordinator loads the default account plus up to four non-default accounts. Selecting an account while this preload is running prioritizes that account but does not cancel the remaining automatic preload.
 
 The cache data-version monitor runs in the host as a background coordinator, but it reads source-data markers through `ICacheDataVersionProvider`. The MySQL implementation, including table-marker SQL, is owned by Infrastructure so database mechanics do not leak into the Blazor host.
 
-Cache invalidation maintains domain generations for donations, accounting, account metadata, donor/contact projections, and authorization while retaining the aggregate generation for compatibility. Account snapshots use a composite donations/accounting/account-metadata generation because they contain all three raw data domains. A change in any of those domains therefore creates a new snapshot key without changing broad-to-narrow date-range reuse.
+Cache invalidation maintains independent generations for donations, accounting, account metadata, donor/contact projections, and authorization while retaining the aggregate generation for compatibility. Donation and accounting cache keys use their respective generations, allowing independent invalidation without rebuilding unrelated fact data.
 
-### 2. Session data caches
+### 2. Derived caches
 
-**Primary types:**
-
-- `ISessionDonationDataCacheService`
-- `ISessionExpenseDataCacheService`
-- `ISessionDonorSummaryCacheService`
-- `ISessionMissingGiftCacheService`
-- `ISessionDashboardDtoCacheService`
-
-The session caches store derived or presentation-oriented values. They are separate from the canonical account snapshot because not every request can use a snapshot.
+Donation and expense DTOs are not cached. They are projected per request from authoritative fact caches plus user-scoped overflow facts needed outside the broad cache window.
+`DonorSummaryCache` and `MissingGiftCache` are bounded, process-wide, generation-aware caches for reusable derived results.
 
 The current registrations are:
 
 | Cache | Lifetime | Typical key/data |
 |---|---|---|
-| Donation data | Singleton | User, fund, donation DTO |
-| Expense data | Singleton | User, fund, date range, expense DTO |
-| Donor summaries | Singleton | Funds signature, date range, summaries |
-| Missing-gift warnings | Singleton | Account ID, normalized fund, date range, warning donors |
-| Dashboard DTO | Singleton | User, fund, dashboard DTO |
+| Donor summaries | Singleton | Scope, date range, source generations, summaries |
+| Missing-gift warnings | Singleton | Account ID, fund, date range, source generations, warning donors |
 
-All of these caches expose `InvalidateAll()` and are cleared by `ImportCacheInvalidator`.
+Both derived caches expose `InvalidateAll()` and are cleared by `ImportCacheInvalidator`.
 
 ## Cache decision matrix
 
@@ -92,15 +110,18 @@ The following matrix records the current implementation contract. A cache's regi
 
 | Cache | Contents | Scope | Shareable? | Key dimensions | TTL / capacity | Eviction | Invalidation | Authorization check |
 |---|---|---|---|---|---|---|---|---|
-| Account snapshot | Complete donations, accounting rows, and subaccounts | Process-wide singleton | Yes, by normalized account key and data generation | Account ID, normalized fund, generation | No TTL; maximum 64 entries and approximately 64 MB | LRU | Import, accounting/donation changes, rollback, account metadata changes through the central invalidator; generation changes | Current user/account authorization occurs before service access; snapshot contents contain no user-specific authorization state |
-| Dashboard account data | Account donations, accounting rows, and subaccounts for a date window | Blazor circuit (`scoped`) | No cross-circuit sharing | Account fund, containing window, local invalidation version | No TTL; retains default plus most recent non-default account | Removes older non-default entries | Local generation check observes the singleton invalidation version | The dashboard service revalidates context/account access before loading or using the data |
-| Donation DTO | Presentation donation data | Process-wide singleton partitioned by user | User-partitioned only | User ID, normalized fund | No TTL; maximum 30 funds per user | Per-user LRU | Central invalidator | User ID is a partition, not authorization; current account authorization is still required before reads |
-| Dashboard DTO | Presentation dashboard data | Process-wide singleton partitioned by user | User-partitioned only | User ID, normalized fund | No TTL; maximum 15 funds per user | Per-user LRU | Central invalidator | User/account context is revalidated before cache use |
-| Expense DTO | Presentation expense/accounting data | Process-wide singleton | User/account/date-range partitioned | User ID, normalized fund, start date, end date | No TTL or explicit capacity limit currently implemented | None currently implemented | Central invalidator | Account authorization is performed by the expense service before reads |
-| Donor summaries | Derived donor summary rows | Process-wide singleton | Shareable by normalized fund signature and date range after authorization | Funds signature, start date, end date | No TTL or explicit capacity limit currently implemented | None currently implemented | Central invalidator | Donor service performs account authorization before cache access |
-| Missing-gift warnings | Filtered missing-gift donor summaries | Process-wide singleton | Shareable by account/date dimensions after authorization | Account ID, normalized fund, start date, end date | No TTL or explicit capacity limit currently implemented | None currently implemented | Central invalidator | Home/account service authorization precedes the snapshot-aware donor path |
-| Account balance | Cumulative balance through an as-of date | Process-wide singleton | Yes, after authorization | Account ID, accounting class, account number, balance adjustment, generation, as-of date | No TTL; maximum 256 entries | LRU | Central invalidator | Home/Admin authorization occurs before balance access |
-| User account context | Account metadata and accessible account list | Process-wide static cache partitioned by user | No direct cross-user sharing | User identity, cache invalidation generation, current role/viewer state | No TTL or capacity limit currently implemented | Explicit per-user removal only | Central invalidator generation; missing users are removed when resolved | User is re-resolved from the database and role/access state is compared before a cached context is returned |
+| Donation/donor facts | Compact donation identity, display, fund, and subaccount facts | Process-wide singleton | Yes, after authorization | Account ID, normalized fund, donations generation, broad window | No TTL; maximum 64 entries and approximately 64 MB | LRU | Donation/metadata generation pruning; rollback and unknown changes clear all entries | Services authorize before shared-cache access |
+| Accounting facts | Compact accounting transaction facts | Process-wide singleton | Yes, after authorization | Account ID, accounting identity, accounting generation, broad window | No TTL; maximum 64 entries and approximately 64 MB | LRU | Accounting/metadata generation pruning; rollback and unknown changes clear all entries | Services authorize before shared-cache access |
+| Home summary DTO | Four standard Home financial summary DTOs for one normal account or intern identity and calendar period | Process-wide singleton | Yes, after authorization | Normal: account ID and normalized fund; intern: InternName; applicable Donations/Accounting/AccountMetadata generation, year, month | No TTL; maximum 256 entries | LRU | Replaced/pruned on financial or account-metadata generation changes; startup and database-update summary rebuild | Dashboard service revalidates current user/account access before projection |
+| Dashboard calculation projection | Snapshot rows mapped for dashboard calculations | Request-local | No | Account fund, requested window | No retention | Request lifetime | None; source snapshot generation controls freshness | Dashboard service revalidates context/account access |
+| Donation DTO | Presentation donation data | Request-local | No | Request scope and date range | No retention | Request lifetime | None; source snapshot/repository data is reloaded as required | Donation service authorizes before reads |
+| Expense DTO | Presentation expense/accounting data | Request-local | No | Request scope and date range | No retention | Request lifetime | None; source snapshot/repository data is reloaded as required | Expense service authorizes before reads |
+| Donor summaries | Derived donor summary rows | Process-wide singleton | Shareable after authorization | Scope, start date, end date, donation/contact/authorization generations | No TTL; maximum 256 entries | LRU | Central invalidator and generation mismatch | Donor service authorizes before cache access |
+| Missing-gift warnings | Filtered missing-gift donor summaries | Process-wide singleton | Shareable after authorization | Account ID, fund, start date, end date, donation/contact/authorization generations | No TTL; maximum 256 entries | LRU | Central invalidator and generation mismatch | Donor service authorizes before cache access |
+| Account balance | Cumulative balance through an as-of date | Process-wide singleton | Yes, after authorization | Account ID, accounting class, account number, balance adjustment, generation, as-of date | No TTL; maximum 256 entries | LRU | Domain-specific changes prune stale generations; rollback and unknown changes clear all entries | Home/Admin authorization occurs before balance access |
+| Account metadata | Account and subaccount metadata used by admin preload | Process-wide singleton | Yes for administrative reads | Account ID, account-metadata generation | No TTL; currently populated for all accounts during admin preload | Explicit invalidation | Central invalidator and generation mismatch | Must not replace user account-membership authorization |
+| Fund references / selector access | Full account reference metadata plus assigned user IDs | Process-wide singleton | Selector filtering only | Account metadata and authorization generation | No TTL; one generation-wide snapshot | Generation replacement; central invalidator | Account metadata or authorization changes; full invalidation | Cached access filters the selector only; selection and financial data services revalidate current access |
+| User account context | Account metadata and accessible account list | Process-wide static cache partitioned by user | No direct cross-user sharing | User identity, account-metadata and authorization generations, current role/viewer state | No TTL; maximum 256 entries | LRU | Account metadata/authorization generation changes and explicit per-user removal | User is re-resolved from the database and role/access state is compared before a cached context is returned |
 | Selected account | UI selection only | Process-wide memory cache partitioned by user | No financial data sharing | User ID | 24-hour absolute expiration | Memory-cache expiration | Explicit user removal; process restart | Selection is only a preference; selected account is resolved against current accessible accounts |
 | Selected date range | UI date-range preference only | Process-wide memory cache partitioned by user | No financial data sharing | User ID | 24-hour absolute expiration | Memory-cache expiration | Explicit user removal; process restart | Not authorization-sensitive |
 | Import preview | Temporary uploaded preview and ownership metadata | Process-wide singleton | Never shareable across users | Preview ID, authenticated owner, import type | Maximum 15-minute retention with bounded preview capacity | Expiration/capacity cleanup | Removal after import, failure, abandonment, or expiration | Owner and current administrator authorization are required |
@@ -110,40 +131,32 @@ The following matrix records the current implementation contract. A cache's regi
 
 The matrix documents current behavior; it does not imply that every cache already meets the target architecture. The following remain implementation follow-up items:
 
-- Add explicit limits or a documented bounded policy for expense DTO, donor-summary, missing-gift, and user-account-context caches.
 - Add separate configurable freshness and capacity settings rather than relying only on hard-coded limits.
 - Add cache counters for hits, misses, evictions, expirations, invalidations, and authorization rejections without logging donor values.
 - Add expiration-focused tests for caches that currently have no TTL.
 - Add integration coverage for authorization changes across shared cache entries.
 
-After a successful import, rollback, or related mutation, central invalidation queues a best-effort Admin preload warmup in a fresh dependency-injection scope. The warmup does not block the mutation and does not make startup dependent on database availability. Admin overview balance totals are published to the shared account-balance cache as numeric cumulative values; Home can reuse exact as-of balances without caching the transaction result lists.
+`AccountMetadataCache` is intentionally an administrative preload cache. It does not replace the authorized account-membership query used to build `UserAccountContext`; cached metadata must never be treated as proof that a user may access an account.
+
+Admin overview balance totals are published to the shared account-balance cache as numeric cumulative values; Home can reuse exact as-of balances without caching the transaction result lists.
 
 These changes must preserve central invalidation and broad snapshot reuse for narrower contained date ranges.
 
-`SessionDonorSummaryCacheService` is also the cache-aware boundary for the Donors page. Donor summaries are keyed by the normalized funds signature and requested date range. `DonorService` performs a cache lookup before entering the per-request single-flight query lock, then checks again after acquiring the lock so concurrent requests do not duplicate repository work.
+`DonorSummaryCache` is the cache-aware boundary for the Donors page. Donor summaries are keyed by normalized scope, requested date range, and donation/contact/authorization generations. `DonorService` performs a cache lookup before entering the per-request single-flight query lock, then checks again after acquiring the lock so concurrent requests do not duplicate repository work.
 
-`SessionMissingGiftCacheService` stores the already-filtered Home warning result, keyed by account identity and requested date range. `AccountSnapshotWarmupService` populates it immediately after warming donor summaries, so account selection can reuse the result without repeating the donor-summary/database path. It is invalidated by `ImportCacheInvalidator` together with the other shared caches.
+`MissingGiftCache` stores the already-filtered Home warning result, keyed by account identity, fund, requested date range, and source generations. Central `CacheRebuildService` populates it for every normal account from the shared `CacheRebuildData` donation snapshot using the Home six-month warning range, bounded concurrency, donor-contact hydration, and the same donor-summary/missing-gift rules used by on-demand requests. `AccountSnapshotWarmupService` remains a fallback for account-specific warmup paths, while account selection can normally reuse the centrally prepared result without repeating the donor-summary/database path. It is invalidated by `ImportCacheInvalidator` together with the other shared caches.
 
-Dashboard cache diagnostics identify DTO-cache hits and misses separately from scoped account-data cache hits, misses, and loads. Dashboard service logs also identify whether a request used the complete cache-backed path or the summary-direct path, making cold loads distinguishable from duplicate cache work.
+Dashboard diagnostics identify authoritative fact-cache hits, misses, and loads. Dashboard service logs also identify whether a request used the complete cache-backed path or the summary-direct path.
 
-The Donations page may reuse an embedded `SelectedAccountDonations` payload from the dashboard DTO cache before calling `DonationService`. This is a delivery-layer integration optimization: `FinancialDashboardService` and `AccountSnapshotWarmupService` populate the dashboard DTO cache, while `DonationService` remains responsible for donation-specific session-cache, snapshot, and repository policy. Do not move dashboard DTO precedence into `DonationService` or create a second cache policy there.
+The Donations page obtains its request projection from `DonationService`. `DonationService` uses `IAccountFactDataService` as its single authoritative donation-fact boundary, combining shared broad-window facts with user-scoped overflow coverage and filtering the returned facts in memory for the selected subaccount. It does not maintain a presentation DTO cache or duplicate snapshot/repository orchestration.
 
-The Home missing-gift alert path uses `IDonorService.GetMissingGiftDonorsAsync`. This method routes account requests through the snapshot-aware donor-summary path, allowing a broad account snapshot to serve narrower reporting ranges. Missing-gift freshness is determined while summaries are built from the loaded dataset; Home does not independently inspect session donation data or apply a second freshness rule.
+The normal request method still performs the generation-aware cache lookup and routes misses through the donor-summary path, allowing the shared donation fact window and user-scoped overflow coverage to serve narrower reporting ranges. Missing-gift freshness is determined while summaries are built from the loaded dataset; Home does not independently inspect donation data or apply a second freshness rule.
 
 The Donors UI prepares the cached summary rows once after loading by populating `DisplayName`, `DisplayAddress`, and `FrequencyLabel`. The grid uses property-only columns for these values rather than repeating formatting logic in cell templates.
 
-### 3. Scoped dashboard account-data cache
+### 3. Dashboard projections
 
-**Primary types:**
-
-- `ISessionAccountDataCacheService`
-- `DashboardSessionCacheService`
-
-**Registration:** scoped.
-
-This cache is used by `FinancialDashboardService` for Home and embedded Account Summaries dashboard data. It is scoped to a Blazor circuit and retains only the default account and the most recently used non-default account. Its raw payload is loaded through `IAccountSnapshotCache` and `IAccountSnapshotLoader`, so separate dashboard circuits reuse one canonical account snapshot even though each circuit retains its own compatibility payload.
-
-Because it is scoped, a singleton invalidation method cannot directly clear every existing instance. `DashboardSessionCacheService` therefore compares its local generation with the singleton `ICacheInvalidationVersion` before serving cached data. When the generation changes, it clears its local values and reloads on demand.
+`FinancialDashboardService` uses `IAccountFactDataService` and the authoritative donation/accounting caches, then maps the resulting facts into `DashboardAccountCacheData` for the duration of the calculation. The projection is not retained as a separate scoped cache. The former combined account snapshot cache and loader have been removed; dashboard calculations no longer depend on that duplicate cache path.
 
 ### 4. Account-context cache
 
@@ -162,7 +175,15 @@ The cached context also stores the cache generation. When the global generation 
 
 This is important because a refreshed donation or expense snapshot alone does not refresh stale account metadata.
 
-The current process-wide context cache has no time-based expiration or global capacity limit. It is therefore an identified boundedness follow-up item. Do not add an independent context TTL or authorization rule without preserving the current database revalidation and invalidation-generation checks.
+The process-wide context cache is bounded to 256 entries with LRU eviction and has no time-based expiration. It uses only account-metadata and authorization generations because donation and accounting changes do not alter the accessible account list. The service still re-resolves the user and compares the current role/viewer state before returning a cached context; the cache is not an authorization boundary.
+
+### 4a. Fund reference and selector-access cache
+
+**Primary types:** `FundReferenceDto`, `IFundReferenceCache`, and `FundReferenceService`.
+
+The fund-reference cache stores the complete account selector metadata together with the user IDs assigned to each account. It is populated through bulk account, bulk access, and current `DonationData.InternName` reads, then reused by `UserAccountContextService` so normal account-selector construction does not issue per-user account-list queries. Admin preload also warms this cache.
+
+The assigned user IDs are only a selector-filtering hint. `AccountSelectionCoordinator` revalidates the selected account against current authorization before warming or loading account data, and the financial services continue to authorize before returning data. Account metadata and authorization mutations advance the relevant generations and invalidate the reference cache.
 
 ### 5. Admin preload caches
 
@@ -171,7 +192,7 @@ The current process-wide context cache has no time-based expiration or global ca
 - `IAdminPreloadService` / `AdminPreloadService`
 - `IAdminRecentAccountSnapshotService` / `AdminRecentAccountSnapshotService`
 
-These are scoped Admin-specific caches and are intentionally separate from the regular account snapshot path.
+These are scoped Admin-specific caches and are intentionally separate from the regular authoritative fact-cache path.
 
 `AdminPreloadService` supports bounded popup data such as:
 
@@ -183,10 +204,14 @@ These are scoped Admin-specific caches and are intentionally separate from the r
 
 Accounts Overview displays the account rows before financial aggregates complete. Its aggregate load uses one batched accounting query and one batched non-intern donation query, then applies the existing account and subaccount calculation rules in memory. Intern-designated accounts retain their specialized donation query path.
 
-For non-admin users, the initial account warmup can warm the configured default account plus a bounded set of recent non-default accounts. For Admin users, the initial warmup stops after the configured default account; it does not automatically warm any additional account snapshots. Explicit account selection may still warm the selected account on demand.
+For non-admin users, the initial account warmup can warm the configured default account plus a bounded set of recent non-default accounts. For Admin users, the initial warmup stops after the configured default account; it does not automatically warm additional accounts. Explicit account selection may still warm the selected account on demand.
 
 Admin preload data must not be used as a reason to warm every account at startup.
 The Admin page prioritizes account, staff, and subaccount data needed by its controls, renders those collections, and only then starts default-account and admin preload warmups. Database latency and the overview's per-account calculations must not block the first interactive response. Overview warmup is bounded to two accounts concurrently so it does not monopolize the shared database connection pool. Preload timing and item counts are logged to distinguish cold-load latency from later cache reuse.
+
+### Database availability recovery
+
+Central cache creation is queued after application startup when the initial database probe succeeds. If the probe fails, the application remains in limited mode and the availability monitor continues checking the database. When the monitor later reports a connected state, the application enables MySQL loading and queues the same central warmup. The warmup coordinator rejects overlapping requests, so a recovery transition cannot create concurrent rebuilds.
 
 ## Invalidation architecture
 
@@ -205,8 +230,10 @@ The Admin page prioritizes account, staff, and subaccount data needed by its con
 2. Clears donor summary data.
 3. Clears expense session data.
 4. Clears dashboard DTO data.
-5. Clears all account snapshots.
+5. Clears all authoritative fact-cache entries.
 6. Advances the global cache generation.
+
+The donor-contact cache is also cleared during central invalidation. The next donor or donation projection therefore reloads current contact values rather than retaining contact fields embedded in older derived DTOs.
 
 Advancing the generation causes:
 
@@ -225,6 +252,17 @@ Call the central invalidator after every successful operation that changes data 
 - Subaccount creation, update, or deletion when the change affects displayed account data.
 - Changes to account metadata such as `BalanceAdjustment`, `Overhead`, accounting class, account number, fund name, or access-related metadata.
 
+### Mutation-to-cache dependency map
+
+| Mutation | Invalidation domain | Central rebuild behavior |
+|---|---|---|
+| `DonationData` import or rollback | `Donations` | Prunes donation, donor, missing-gift, balance, and Home summary generations, then rebuilds Admin Overview and Home summaries from one bulk snapshot. |
+| Accounting import or rollback | `Accounting` | Prunes accounting, balance, and Home summary generations, then rebuilds Admin Overview and Home summaries from one bulk snapshot. |
+| Account or subaccount create/update/delete, including `BalanceAdjustment` | `AccountMetadata` | Invalidates account metadata and Admin shared caches, prunes donation/accounting facts plus balance and Home summaries, then rebuilds metadata, Admin Overview, and Home summaries. |
+| User profile, account-access, create, or delete | `Authorization` | Advances authorization/context generations and invalidates selector-reference data; it does not rebuild financial facts because user changes do not change donations or accounting. |
+
+The application write services issue these invalidations after successful database writes. UI components may refresh their local view state afterward, but cache correctness does not depend on a particular Blazor page calling the invalidator. Authorization changes must still be revalidated at financial-data access boundaries.
+
 Invalidate only after the database operation succeeds. Do not invalidate for a failed operation unless the operation may have partially changed the database and the failure-handling design requires it.
 
 ## Lifetime, restart, and limited-mode behavior
@@ -241,7 +279,7 @@ The shared snapshot represents a broad supported date range. A narrower request 
 
 The UI does not need to select a special canonical date-range label. The decision is based on date containment.
 
-Donation date ranges are normalized to start at midnight on the selected start date and end at the final tick of the selected end date before repository queries or snapshot loading. This preserves the UI's inclusive date semantics for `DATETIME` donation rows while retaining broad-snapshot reuse.
+Donation date ranges are normalized to start at midnight on the selected start date and end at the final tick of the selected end date before repository queries or authoritative fact loading. This preserves the UI's inclusive date semantics for `DATETIME` donation rows while retaining broad-window cache reuse.
 
 Correct behavior:
 
@@ -252,6 +290,10 @@ Correct behavior:
 
 Do not require the selected UI range to equal a special canonical range before using a snapshot.
 
+## Historical balance anchors
+
+Home summary balances use the existing inclusive, end-of-day balance convention. When a generation-matched Home summary is cached, the prior-year summary starting balance is used as the earliest end-of-day anchor (the day before the prior-year period begins). The anchor balance is then moved forward or backward using the existing accounting classification and signed-transaction rules; `BalanceAdjustment` is not applied a second time. If no cached anchor exists, the existing forward calculation path remains the fallback.
+
 ## Page usage guidance
 
 ### Donations
@@ -260,11 +302,11 @@ Use the account snapshot for the supported selected-account range after authoriz
 
 ### Expenses
 
-Use the account snapshot for aggregate, expense-only, transfer-only, and summary operations when the requested date range is contained in the snapshot range. Filter the broad accounting data in memory. Preserve the existing repository path for unsupported or out-of-coverage requests.
+Use `IAccountFactDataService.GetAccountingDataAsync` for aggregate, expense-only, transfer-only, and summary operations. It reuses the shared accounting cache for the standard window, filters broad facts in memory, and stores only uncovered custom-range segments in the user-scoped accounting overflow cache. `ExpenseService` then applies authorization and projects the categorized DTOs per request.
 
 ### Donors
 
-Use the shared complete account snapshot for the normal bounded account-range path. The snapshot supplies the primary and subaccount fund metadata and donation records; derive `All`, `Primary`, and valid explicit subaccount selections by filtering the immutable snapshot data in memory. Cache the resulting donor summaries by funds signature and requested date range. Preserve the database path for `All Dates` (which must include donors outside snapshot coverage), out-of-coverage ranges, donor detail, search, and other unsupported request shapes.
+Use `IAccountFactDataService.GetDonationDataAsync` for the normal account-range path. It combines shared broad-window donation facts with user-scoped overflow coverage, supplies subaccount metadata, and returns date-filtered, deduplicated facts. `DonorService` derives `All`, `Primary`, and valid explicit subaccount selections by filtering those facts in memory, hydrates current contacts, and caches the resulting donor summaries by funds signature and requested date range. Preserve repository-backed paths for `All Dates`, donor detail, search, and other unsupported request shapes.
 
 The Donors page is cache-aware at the presentation boundary as well as in the application services:
 
@@ -277,7 +319,7 @@ This distinction is important: cache hits reduce data access latency, while reta
 
 ### Home and Account Summaries
 
-Home uses dashboard DTO and session account-data caches. Account Summaries embeds the Home dashboard flow, so changes affecting account metadata or dashboard data must use the central invalidator. Clearing only Admin preload data or only the account snapshot is insufficient.
+Home and Account Summaries use direct dashboard projections backed by authoritative donation/accounting facts and derived summary caches. Changes affecting account metadata or dashboard data must use the central invalidator. Clearing only Admin preload data or only one fact cache is insufficient.
 
 Home starts account warmup after its first render, once the initial Home load has completed. The default account is prioritized first; when that warmup completes, background warmup for the remaining bounded set of recent non-default accounts starts immediately. Warmup must not block the initial Home render, and it must not be implemented with a fixed timer-based delay.
 
@@ -294,10 +336,10 @@ Admin popup data should use the bounded Admin preload services. Do not preload r
 Before adding a new data-loading feature, answer these questions:
 
 1. Is the data account-scoped, user-scoped, date-range-scoped, or global?
-2. Is it already present in `AccountDataSnapshot`?
+2. Is it already present in an authoritative donation or accounting fact cache?
 3. Can the feature derive its result by filtering or transforming an existing immutable snapshot?
-4. Does the request fit within the snapshot date range?
-5. Is the request shape supported by the snapshot, or does it require a repository fallback?
+4. Does the request fit within the authoritative cache date range?
+5. Is the request shape supported by the authoritative cache, or does it require a repository fallback?
 6. What cache lifetime is correct: singleton, scoped, or no cache?
 7. Which account metadata fields affect the result?
 8. Which successful mutations make the cached result stale?
@@ -308,9 +350,9 @@ Before adding a new data-loading feature, answer these questions:
 
 1. Perform authorization before accessing shared cached data.
 2. Normalize account and date-range inputs.
-3. Reuse `IAccountSnapshotCache` and `IAccountSnapshotLoader` when the data is represented by the snapshot.
-4. Use `AccountSnapshotKey` consistently; do not invent a parallel key format.
-5. Derive narrow results from immutable snapshot values when the requested range is contained.
+3. Reuse `IDonationDataCache` or `IAccountingDataCache` when facts are represented by the corresponding authoritative cache.
+4. Use the domain-specific normalized cache key consistently.
+5. Derive narrow results from immutable authoritative-cache values when the requested range is contained.
 6. Use the existing repository path when snapshot coverage does not apply.
 7. Add a cache only when repeated work is demonstrated and the lifetime is safe.
 8. Add the cache to centralized invalidation if it can become stale after a mutation.
@@ -319,7 +361,7 @@ Before adding a new data-loading feature, answer these questions:
 
 ## Common mistakes to avoid
 
-- Loading a partial snapshot in one service and allowing another service to overwrite the same key with different data.
+- Creating a page DTO cache that duplicates the authoritative fact caches.
 - Requiring a UI label such as `Canonical` instead of checking date containment.
 - Reading shared caches before authorization.
 - Adding a singleton cache containing user-specific data without including user identity in the key.
@@ -357,8 +399,8 @@ dotnet test ".\tests\Cya2.Application.Tests\Cya2.Application.Tests.csproj"
 
 When validating a new feature, inspect logs for:
 
-- Snapshot miss/load versus snapshot hit.
-- Repository fallback versus snapshot-derived result.
+- Authoritative fact-cache miss/load versus cache hit.
+- Repository fallback versus fact-cache-derived result.
 - Session-cache hit/miss.
 - Cache invalidation.
 - Cache generation changes.
@@ -377,15 +419,15 @@ The primary cache lifetimes are centralized in:
 
 Current important registrations include:
 
-- `IAccountSnapshotCache`: singleton.
-- `IAccountSnapshotLoader`: scoped.
+- `IDonationDataCache` / `IAccountingDataCache`: singleton bounded authoritative fact caches.
+- `IDonationDataCacheLoader` / `IAccountingDataCacheLoader`: scoped repository loaders.
 - `IUserAccountContextService`: scoped service with process-wide context storage.
 - `ICacheInvalidationVersion`: singleton.
-- `ISessionAccountDataCacheService`: scoped.
-- `ISessionDashboardDtoCacheService`: singleton.
-- `ISessionDonationDataCacheService`: singleton.
-- `ISessionExpenseDataCacheService`: singleton.
-- `ISessionDonorSummaryCacheService`: singleton.
+- `IDonorSummaryCache`: singleton, bounded and generation-aware.
+- `IMissingGiftCache`: singleton, bounded and generation-aware.
+- `IAccountMetadataCache`: singleton, generation-aware metadata populated by admin preload.
+- `IDonorContactCache`: singleton, generation-aware current-contact projection cache.
+- `IAccountBalanceCache`: singleton, bounded as-of balance cache.
 - `IImportCacheInvalidator`: singleton.
 
 Review this registration map whenever introducing a new cache or changing cache ownership.

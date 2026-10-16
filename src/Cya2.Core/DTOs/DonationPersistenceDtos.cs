@@ -28,10 +28,9 @@ public sealed class CanonicalDonationWriteModel
     public required string GiftType { get; init; }
     public required decimal Amount { get; init; }
     public required string Fund { get; init; }
-    public string? Intern { get; init; }
+    public string? InternName { get; init; }
     public string? PrimaryAddressee { get; init; }
     public string? SoftCreditName { get; init; }
-    public string? HonorMemorialName { get; init; }
     public bool IsAnonymous { get; init; }
     public DonorFrequency? Frequency { get; init; }
     public IReadOnlyList<DonorContactWriteModel> Contacts { get; init; } = Array.Empty<DonorContactWriteModel>();

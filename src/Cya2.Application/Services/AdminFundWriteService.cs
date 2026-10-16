@@ -8,11 +8,16 @@ public class AdminFundWriteService
 {
     private readonly IAccountRepository _accountRepository;
     private readonly ISubAccountRepository _subAccountRepository;
+    private readonly IImportCacheInvalidator _cacheInvalidator;
 
-    public AdminFundWriteService(IAccountRepository accountRepository, ISubAccountRepository subAccountRepository)
+    public AdminFundWriteService(
+        IAccountRepository accountRepository,
+        ISubAccountRepository subAccountRepository,
+        IImportCacheInvalidator cacheInvalidator)
     {
         _accountRepository = accountRepository;
         _subAccountRepository = subAccountRepository;
+        _cacheInvalidator = cacheInvalidator;
     }
 
     public async Task<AdminFundOperationDto> CreatePrimaryFundAsync(AdminFundUpsertDto request)
@@ -44,6 +49,7 @@ public class AdminFundWriteService
         };
 
         await _accountRepository.AddAsync(entity);
+        _cacheInvalidator.Invalidate(CacheDataDomains.AccountMetadata);
         return new AdminFundOperationDto { IsSuccess = true, Message = $"New fund '{fund}' added successfully" };
     }
 
@@ -78,6 +84,7 @@ public class AdminFundWriteService
         current.Overhead = request.Overhead;
 
         await _accountRepository.UpdateAsync(current);
+        _cacheInvalidator.Invalidate(CacheDataDomains.AccountMetadata);
         return new AdminFundOperationDto { IsSuccess = true, Message = "Fund updated successfully" };
     }
 
@@ -89,6 +96,7 @@ public class AdminFundWriteService
         if (current == null) return new AdminFundOperationDto { IsSuccess = false, Message = "Selected fund not found" };
 
         await _accountRepository.DeleteAsync(accountId);
+        _cacheInvalidator.Invalidate(CacheDataDomains.AccountMetadata);
         return new AdminFundOperationDto { IsSuccess = true, Message = "Fund deleted successfully" };
     }
 
@@ -106,6 +114,7 @@ public class AdminFundWriteService
             return new AdminFundOperationDto { IsSuccess = false, Message = $"A sub fund named '{trimmed}' already exists for the selected fund" };
 
         await _subAccountRepository.AddAsync(new SubAccount(accountId, trimmed, kind.Trim()));
+        _cacheInvalidator.Invalidate(CacheDataDomains.AccountMetadata);
         return new AdminFundOperationDto { IsSuccess = true, Message = $"Sub fund '{trimmed}' added to selected fund" };
     }
 
@@ -128,6 +137,7 @@ public class AdminFundWriteService
         current.SubFund = trimmed;
         current.Kind = kind.Trim();
         await _subAccountRepository.UpdateAsync(current);
+        _cacheInvalidator.Invalidate(CacheDataDomains.AccountMetadata);
 
         return new AdminFundOperationDto { IsSuccess = true, Message = "Subaccount updated successfully" };
     }
@@ -140,6 +150,11 @@ public class AdminFundWriteService
         if (current == null) return new AdminFundOperationDto { IsSuccess = false, Message = "Please select a subaccount to delete" };
 
         var deleted = await _subAccountRepository.DeleteAsync(subAccountId);
+        if (deleted)
+        {
+            _cacheInvalidator.Invalidate(CacheDataDomains.AccountMetadata);
+        }
+
         return deleted
             ? new AdminFundOperationDto { IsSuccess = true, Message = "Subaccount deleted" }
             : new AdminFundOperationDto { IsSuccess = false, Message = "Failed to delete subaccount" };

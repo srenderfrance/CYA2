@@ -11,8 +11,9 @@ public interface IAccountCalculationService
     /// <summary>
     /// Calculate account balance using repository queries with transaction categorization
     /// </summary>
-    Task<BalanceCalculationResult> CalculateBalanceAsync(UserAccountContextAccount account, DateTime? startDate = null, DateTime? endDate = null);
-    Task<IReadOnlyDictionary<int, BalanceCalculationResult>> CalculateBalancesAsync(IReadOnlyList<UserAccountContextAccount> accounts, DateTime? startDate = null, DateTime? endDate = null);
+    Task<BalanceCalculationResult> CalculateBalanceAsync(UserAccountContextAccount account, string userId, DateTime? startDate = null, DateTime? endDate = null);
+    Task<List<AccountingRecord>> LoadAccountingDataForBalanceAsync(UserAccountContextAccount account, string userId, DateTime startDate, DateTime endDate);
+    Task<IReadOnlyDictionary<int, BalanceCalculationResult>> CalculateBalancesAsync(IReadOnlyList<UserAccountContextAccount> accounts, string userId, DateTime? startDate = null, DateTime? endDate = null);
 
     /// <summary>
     /// Calculate balance using pre-loaded transaction data
@@ -23,10 +24,11 @@ public interface IAccountCalculationService
     /// <summary>
     /// Calculate donation totals and overhead for account over date range
     /// </summary>
-    Task<DonationTotalsResult> CalculateDonationTotalsAsync(UserAccountContextAccount account, DateTime? startDate = null, DateTime? endDate = null);
+    Task<DonationTotalsResult> CalculateDonationTotalsAsync(UserAccountContextAccount account, string userId, DateTime? startDate = null, DateTime? endDate = null);
 
     Task<DonationCalculationData> LoadDonationCalculationDataAsync(
         UserAccountContextAccount account,
+        string userId,
         DateTime startDate,
         DateTime endDate);
 

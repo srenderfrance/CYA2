@@ -172,7 +172,7 @@ namespace Cya2.Infrastructure.Services
             _progressService.AddErrors(progressId, result.Errors);
             _progressService.Complete(progressId);
 
-            _cacheInvalidator.InvalidateAll();
+            _cacheInvalidator.Invalidate(CacheDataDomains.Accounting);
 
             _logger.LogInformation("Accounting import complete. Total={Total} Inserted={Inserted} Failed={Failed}", result.TotalRows, result.InsertedRows, result.FailedRows);
 
