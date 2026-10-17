@@ -138,7 +138,7 @@ public class ExpenseService : IExpenseService
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error getting expense transactions for account: {AccountName}", accountName);
+            _logger.LogError(ex, "Error getting expense transactions for user: {UserId}", userId);
             return new List<ExpenseTransactionDto>();
         }
     }
@@ -158,7 +158,7 @@ public class ExpenseService : IExpenseService
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error getting transfer transactions for account: {AccountName}", accountName);
+            _logger.LogError(ex, "Error getting transfer transactions for user: {UserId}", userId);
             return new List<ExpenseTransactionDto>();
         }
     }
@@ -195,7 +195,7 @@ public class ExpenseService : IExpenseService
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error getting expense summary for account: {AccountName}", accountName);
+            _logger.LogError(ex, "Error getting expense summary for user: {UserId}", userId);
             return new ExpenseSummaryDto
             {
                 AccountName = accountName,

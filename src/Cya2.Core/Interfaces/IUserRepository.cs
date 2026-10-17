@@ -8,4 +8,5 @@ public interface IUserRepository : IRepository<User>
     Task<User?> GetByExternalIdAsync(string externalId);
     Task<List<User>> GetActiveUsersAsync();
     Task<bool> ExistsAsync(string email);
+    Task<User?> TryCreateInitialAdminAsync(User user) => Task.FromResult<User?>(null);
 }

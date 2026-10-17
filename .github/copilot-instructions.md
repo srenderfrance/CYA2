@@ -4,10 +4,9 @@
 This is a .net 10 app that uses blazor, dapper and mysql, radzen components and uses clean architecture. The app is for a small non-profit and allows staff to keep track of their fundraising accounts.
 
 - For shared account snapshots, use the snapshot's broad coverage to serve narrower user-selected date ranges (such as Last Month); do not require the UI range to equal a special canonical range before using the snapshot.
-- When modifying the caching system, preserve broad shared-snapshot reuse for narrower user-selected date ranges and update the cache architecture documentation (CACHE_ARCHITECTURE.md).
-- Preserve existing cache behavior and broad shared-snapshot reuse when making further changes; prioritize architecture improvements without changing functionality or breaking caching.
+- When changes are made to the caching system update the cache architecture documentation (CACHE_ARCHITECTURE.md).
 - When refactoring architecture, preserve the database startup probe and limited-mode behavior; the app must not crash when the database is unavailable.
-- When restoring previously working UI behavior, use the repository's Git baseline directly instead of inferring the original layout from screenshots or adding new CSS workarounds.
+- When restoring previously working UI behavior, use the repository's Git baseline directly and adding new CSS workarounds.
 - Prioritize the best long-term data architecture over the smallest short-term change, especially for donation imports and donor/contact modeling.
 - AccountId is authoritative for the account relationship. Intern accounts contain donation and donor data only, with no accounting data. Merged subaccounts are semantically part of the primary account and should be combined into the primary reporting data; separate subaccounts remain distinguishable for separate views. Donor All views must combine donations across primary/separate funds and deduplicate donors who give to both, using donor identity rather than listing them twice.
 - Intern accounts are not fund-based. Intern donation lookups must use DonationData.InternName (the intern identity), never the shared Fund value, because a fund can contain data for multiple interns. Intern selector display/value handling must preserve InternName as the lookup identity.
@@ -16,7 +15,6 @@ This is a .net 10 app that uses blazor, dapper and mysql, radzen components and 
 
 ## Data Management
 - The Donors and DonorContacts tables are application display projections, not the organization's official donor database. Contact data should be current-state only: each upload must remove contact values no longer present and retain DateCreated plus DateModified, without historical contact rows.
-- Do not log the DonationData `Fund` field because it contains donor names and personal data; account-loading diagnostics must omit Fund and retain only non-personal metadata.
 
 ## Caching Strategy
 - FinancialSummary DTOs are independently cached presentation DTOs and must be recreated automatically after database updates; broad Donation/Donor and Expense/Accounting DTO caches are not automatically rebuilt for every account after invalidation and may not exist when summaries rebuild.
@@ -26,4 +24,6 @@ This is a .net 10 app that uses blazor, dapper and mysql, radzen components and 
 ## Tooltip Styles
 - Use two semantic tooltip styles throughout the app: an attention/warning style for important instructions users must notice (currently Admin account-creation guidance, red emphasis), and a neutral informational style for optional contextual help.
 - Prefer reusable tooltip styling and preserve semantic distinction rather than styling all tooltips identically.
+
+- For CSS and styling, make use of CSS-STYLE-GUIDE.md and RADZEN_OVERIDES.md in Cya.Web/docs
 

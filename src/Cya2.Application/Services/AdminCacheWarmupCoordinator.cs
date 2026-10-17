@@ -10,6 +10,8 @@ public sealed class AdminCacheWarmupCoordinator : IAdminCacheWarmupCoordinator, 
     private readonly ILogger<AdminCacheWarmupCoordinator> _logger;
     private readonly object _sync = new();
     private Task? _warmupTask;
+    private bool _followUpRequested;
+    private bool _followUpWarmSummaries;
     private bool _disposed;
 
     public AdminCacheWarmupCoordinator(
@@ -32,12 +34,15 @@ public sealed class AdminCacheWarmupCoordinator : IAdminCacheWarmupCoordinator, 
 
             if (_warmupTask is { IsCompleted: false })
             {
-                _logger.LogInformation("Central cache warmup request ignored because a rebuild is already running");
+                _followUpRequested = true;
+                _followUpWarmSummaries |= warmSummaries;
+                _logger.LogInformation(
+                    "Central cache warmup follow-up requested because a rebuild is already running: summaryWarming={SummaryWarming}",
+                    _followUpWarmSummaries);
                 return;
             }
 
-            _logger.LogInformation("Central cache warmup queued: summaryWarming={SummaryWarming}", warmSummaries);
-            _warmupTask = Task.Run(() => WarmupAsync(warmSummaries));
+            StartWarmupLocked(warmSummaries);
         }
     }
 
@@ -54,7 +59,22 @@ public sealed class AdminCacheWarmupCoordinator : IAdminCacheWarmupCoordinator, 
             return;
         }
 
-        await warmupTask.WaitAsync(cancellationToken);
+        while (warmupTask is not null)
+        {
+            await warmupTask.WaitAsync(cancellationToken);
+            lock (_sync)
+            {
+                warmupTask = !ReferenceEquals(_warmupTask, warmupTask) && _warmupTask is { IsCompleted: false }
+                    ? _warmupTask
+                    : null;
+            }
+        }
+    }
+
+    private void StartWarmupLocked(bool warmSummaries)
+    {
+        _logger.LogInformation("Central cache warmup queued: summaryWarming={SummaryWarming}", warmSummaries);
+        _warmupTask = Task.Run(() => WarmupAsync(warmSummaries));
     }
 
     private async Task WarmupAsync(bool warmSummaries)
@@ -72,6 +92,19 @@ public sealed class AdminCacheWarmupCoordinator : IAdminCacheWarmupCoordinator, 
         {
             _logger.LogError(ex, "CACHE CREATION FAILED: central cache rebuild did not complete");
         }
+        finally
+        {
+            lock (_sync)
+            {
+                if (!_disposed && _followUpRequested)
+                {
+                    var followUpWarmSummaries = _followUpWarmSummaries;
+                    _followUpRequested = false;
+                    _followUpWarmSummaries = false;
+                    StartWarmupLocked(followUpWarmSummaries);
+                }
+            }
+        }
     }
 
     public void Dispose()
@@ -79,6 +112,8 @@ public sealed class AdminCacheWarmupCoordinator : IAdminCacheWarmupCoordinator, 
         lock (_sync)
         {
             _disposed = true;
+            _followUpRequested = false;
+            _followUpWarmSummaries = false;
         }
     }
 }

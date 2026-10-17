@@ -98,7 +98,7 @@ public class UserManagementService
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error validating user access for user {UserId} and account {AccountFund}", userId, accountFund);
+            _logger.LogError(ex, "Error validating user access for user {UserId}", userId);
             return false;
         }
     }

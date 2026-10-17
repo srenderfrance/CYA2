@@ -157,8 +157,8 @@ namespace cya2.Controllers
                     return BadRequest("No export data provided.");
                 }
 
-                _logger.LogInformation("DonorExportController: ExportData request for funds={Funds}; generatedRows={Count}",
-                    string.Join(",", requestedFunds), donorRows.Count);
+                _logger.LogInformation("Donor export generated: requestedFundCount={RequestedFundCount}; generatedRows={Count}",
+                    requestedFunds.Count, donorRows.Count);
 
                 // Use EPPlus license API for non-commercial organization
                 ExcelPackage.License.SetNonCommercialOrganization("Servant Partners");

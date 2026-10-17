@@ -147,7 +147,6 @@ public sealed class AccountSnapshotWarmupService : IAccountSnapshotWarmupService
 
         }
 
-        // _logger.LogInformation("Prioritizing selected account cache: key={Key}", key);
 
         var selectedWarmup = StartWarmup(account, cancellationToken, donorSummaryRange);
         _ = ResumeBackgroundWarmupAfterSelectionAsync(selectedWarmup, key, donorSummaryRange);
@@ -235,7 +234,7 @@ public sealed class AccountSnapshotWarmupService : IAccountSnapshotWarmupService
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Selected account cache warmup failed: key={Key}", selectedKey);
+            _logger.LogWarning(ex, "Selected account cache warmup failed");
         }
 
         List<UserAccountContextAccount> remaining;
@@ -366,7 +365,6 @@ public sealed class AccountSnapshotWarmupService : IAccountSnapshotWarmupService
                 EvictRecentIfNeeded();
             }
 
-            // _logger.LogInformation("Warmed authoritative account caches: key={Key}", key);
 
             if (!string.IsNullOrWhiteSpace(_userId))
             {
@@ -402,9 +400,8 @@ public sealed class AccountSnapshotWarmupService : IAccountSnapshotWarmupService
     {
         var range = GetSnapshotQueryRange();
         _logger.LogInformation(
-            "Account derived warmup started: accountId={AccountId}, fund={Fund}, snapshotRange={SnapshotStart:yyyy-MM-dd}..{SnapshotEnd:yyyy-MM-dd}, warningRange={WarningStart:yyyy-MM-dd}..{WarningEnd:yyyy-MM-dd}",
+            "Account derived warmup started: accountId={AccountId}, snapshotRange={SnapshotStart:yyyy-MM-dd}..{SnapshotEnd:yyyy-MM-dd}, warningRange={WarningStart:yyyy-MM-dd}..{WarningEnd:yyyy-MM-dd}",
             account.AccountId,
-            account.Fund,
             range.StartDate,
             range.EndDate,
             donorSummaryRange?.StartDate,
@@ -445,7 +442,7 @@ public sealed class AccountSnapshotWarmupService : IAccountSnapshotWarmupService
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Account authoritative cache warmup failed: key={Key}", key);
+            _logger.LogWarning(ex, "Account authoritative cache warmup failed");
         }
         finally
         {
@@ -488,7 +485,6 @@ public sealed class AccountSnapshotWarmupService : IAccountSnapshotWarmupService
 
             _recentKeys.Remove(node);
             RemoveAuthoritativeCaches(node.Value);
-                // _logger.LogInformation("Evicted non-default account snapshot: accountId={AccountId}, fund={Fund}", node.Value.AccountId, node.Value.Fund);
         }
     }
 

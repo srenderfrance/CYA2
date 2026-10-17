@@ -17,6 +17,102 @@ CYA2 is a .NET Blazor application using:
 
 The application database is a new database. It is populated from current exports from the authoritative donor system and QuickBooks, not by copying the legacy PHP application database.
 
+## Local Visual Studio and MySQL test walkthrough
+
+Use this walkthrough to run CYA2 from Visual Studio on this laptop, connect it to an empty local MySQL database, sign in as the first administrator, and upload synthetic test workbooks. You open the existing CYA2 solution; do not create a new Visual Studio project.
+
+### 1. Install and start the local prerequisites
+
+Install the .NET SDK version in `global.json`, Visual Studio with the ASP.NET and web development workload, MySQL Server 8.0 or later, and MySQL Workbench. Workbench manages the database, but the MySQL Server service is the component that must be running for CYA2 to connect.
+
+Start the MySQL Server service and confirm that Workbench can connect to `localhost` with an account that can create databases and tables.
+
+### 2. Open and configure the existing solution in Visual Studio
+
+1. Open `C:\Users\srend\dev\Cya2\Cya2.sln` in Visual Studio.
+2. Restore NuGet packages if Visual Studio does not restore them automatically.
+3. In Solution Explorer, right-click `src/Cya2.Web/cya2.csproj` (`cya2`) and select **Set as Startup Project**.
+4. Select the `https` launch profile. Its local address is `https://localhost:7243`.
+5. If prompted, trust the ASP.NET Core development HTTPS certificate. Google OAuth requires HTTPS.
+
+Do not run the application yet; create and initialize its empty database first.
+
+### 3. Create an empty local database in MySQL Workbench
+
+Open a SQL tab in Workbench using a local account that can create databases and execute:
+
+```sql
+CREATE DATABASE cya2_test
+  CHARACTER SET utf8mb4
+  COLLATE utf8mb4_0900_ai_ci;
+```
+
+Use a different database name if `cya2_test` already exists. Do not use an existing database that contains application tables or real data.
+
+For this local test setup, the same local MySQL account can initialize the schema and run the application. A production deployment must use separate restricted runtime and schema setup accounts.
+
+### 4. Initialize the schema from PowerShell
+
+Open PowerShell in the repository root:
+
+```powershell
+cd C:\Users\srend\dev\Cya2
+```
+
+Set a connection string for the empty database. Replace only the placeholder values in your PowerShell session; do not add credentials to a tracked file:
+
+```powershell
+$env:CYA2_SCHEMA_CONNECTION_STRING = "Server=localhost;Port=3306;Database=cya2_test;User ID=<your-mysql-user>;Password=<your-mysql-password>;SslMode=None;"
+```
+
+Run the database migrator:
+
+```powershell
+dotnet run --project tools/Cya2.DatabaseMigrator -- --connection-string "$env:CYA2_SCHEMA_CONNECTION_STRING" --initialize
+```
+
+The migrator runs `database/schema/001_InitialSchema.sql`, records the baseline, and applies later scripts from `database/migrations`. The Blazor application deliberately does not create or alter persistent tables during startup.
+
+Refresh `cya2_test` in Workbench after the command succeeds. Tables such as `Users`, `Accounts`, `DonationData`, and `AccountingData` should appear.
+
+### 5. Add local secrets for the application
+
+From the same PowerShell window, set the Web project's local-only secrets. Use your local MySQL credentials and the Google OAuth values from your Google Cloud project:
+
+```powershell
+dotnet user-secrets set "ConnectionStrings:default" "Server=localhost;Port=3306;Database=cya2_test;User ID=<your-mysql-user>;Password=<your-mysql-password>;SslMode=None;" --project src/Cya2.Web/cya2.csproj
+dotnet user-secrets set "Authentication:Google:ClientId" "<google-client-id>" --project src/Cya2.Web/cya2.csproj
+dotnet user-secrets set "Authentication:Google:ClientSecret" "<google-client-secret>" --project src/Cya2.Web/cya2.csproj
+dotnet user-secrets set "InitialAdminBootstrap:Email" "<your-google-email>" --project src/Cya2.Web/cya2.csproj
+dotnet user-secrets set "InitialAdminBootstrap:Name" "<your-display-name>" --project src/Cya2.Web/cya2.csproj
+```
+
+In Google Cloud, add this authorized redirect URI to the OAuth client:
+
+```text
+https://localhost:7243/signin-google
+```
+
+The Google account used to sign in must use the exact email configured in `InitialAdminBootstrap:Email`.
+
+### 6. Run, sign in, and upload test data
+
+1. In Visual Studio, start the `cya2` project with the `https` profile, or press **F5**.
+2. Browse to `https://localhost:7243` if Visual Studio does not open it automatically.
+3. Sign in with the configured Google account.
+4. On this empty database, the first successful sign-in creates the configured user as an application `Admin`.
+5. Use the application import workflows to upload only synthetic `.xlsx` donation and accounting test files.
+6. Use MySQL Workbench to inspect the imported rows and confirm the expected results.
+
+After the first administrator is created, remove the bootstrap secrets:
+
+```powershell
+dotnet user-secrets remove "InitialAdminBootstrap:Email" --project src/Cya2.Web/cya2.csproj
+dotnet user-secrets remove "InitialAdminBootstrap:Name" --project src/Cya2.Web/cya2.csproj
+```
+
+Create any later users through the application's Admin user-management flow. To completely reset this test environment, drop `cya2_test`, recreate it, rerun the initialization command, and repeat the bootstrap process.
+
 ## 2. Prerequisites
 
 ### .NET SDK
@@ -210,27 +306,27 @@ These settings are optional unless a local test requires different cache behavio
 
 The production retention policy for in-memory upload previews and import progress records is a maximum of 15 minutes. Cleanup runs every minute, and terminal progress records may also be removed when the progress dialog closes. The same 15-minute policy applies to local and other deployed environments unless a future documented policy change is approved.
 
-## 6. Add the initial local application user
+## 6. Bootstrap the initial administrator
 
-Google sign-in is matched to an application user in the `Users` table. A local user must be added by an administrator or setup process after the schema is applied.
+On a database with no `Users` records, the first administrator is provisioned automatically during Google sign-in only when the verified Google email exactly matches the configured bootstrap email. The provisioned user receives the `Admin` authorization level, the configured display name, English language, and no default account.
 
-The user record requires at least:
+Set these values outside committed JSON files. For local development, use the Web project's .NET user secrets:
 
-- The Google subject identifier in `GoogleId`.
-- The matching email address.
-- Display name.
-- Language, normally `en`.
-- An application authorization level such as `Admin`, `Viewer`, `Intern`, or `User`.
-- An optional default account.
+```powershell
+dotnet user-secrets set "InitialAdminBootstrap:Email" "admin@example.test" --project src/Cya2.Web/cya2.csproj
+dotnet user-secrets set "InitialAdminBootstrap:Name" "Initial Administrator" --project src/Cya2.Web/cya2.csproj
+```
 
-**Required from project owner:**
+For a deployed environment, configure the equivalent secret-store or environment values:
 
-- Which local Google account should be the first administrator.
-- The exact Google subject identifier and email address, supplied privately rather than committed here.
-- Whether the first user should be an `Admin`.
-- Which account, if any, should be assigned as the default account.
+```text
+InitialAdminBootstrap__Email=<initial-admin-email>
+InitialAdminBootstrap__Name=<initial-admin-display-name>
+```
 
-Do not place a real email address, Google subject identifier, or password in this document or in source control.
+The bootstrap path is unavailable when either value is empty, when the signed-in Google email does not match, or after any `Users` record exists. After the first administrator signs in, remove these settings from local secrets or the deployment secret store. All later users must be created through the Admin user-management flow, which preserves the normal email-first Google account linking process.
+
+Do not place a real email address, Google subject identifier, display name, or password in this document or in source control.
 
 ## 7. Run the application
 
@@ -308,7 +404,7 @@ The following information is not available or not confirmed in the repository:
 4. Required MySQL grants, including the temporary-table grant.
 5. Standard local connection-string format and TLS requirements.
 6. Google Cloud project, OAuth client, authorized redirect URIs, and local sign-in users.
-7. Procedure for adding the first local administrator to `Users`.
+7. Approved local test Google account and OAuth client values.
 8. Complete list of required environment settings for the chosen hosting and development environments.
 9. Whether `Import:UseLocalInfile` should remain disabled or be enabled in approved environments.
 10. Supported operating systems and required local tooling.
