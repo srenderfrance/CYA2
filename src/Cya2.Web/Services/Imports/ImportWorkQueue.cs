@@ -5,6 +5,7 @@ using Cya2.Core.Interfaces;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using MySql.Data.MySqlClient;
 
 namespace cya2.Services.Imports;
 
@@ -77,8 +78,21 @@ public sealed class ImportWorkQueue : BackgroundService, IImportWorkQueue
     private void ReportFailure(ImportWorkItem workItem, Exception exception)
     {
         var errorMessage = ImportDiagnosticMessages.ImportFailed();
-        _logger.LogError("Background {ImportType} import failed for preview {PreviewId}. ExceptionType={ExceptionType}",
-            workItem.ImportType, workItem.PreviewId, ImportDiagnosticMessages.ExceptionCategory(exception));
+        if (exception is MySqlException mySqlException)
+        {
+            _logger.LogError(
+                "Background {ImportType} import failed for preview {PreviewId}. ExceptionType={ExceptionType}, MySqlErrorCode={MySqlErrorCode}, SqlState={SqlState}",
+                workItem.ImportType,
+                workItem.PreviewId,
+                ImportDiagnosticMessages.ExceptionCategory(exception),
+                mySqlException.Number,
+                mySqlException.SqlState);
+        }
+        else
+        {
+            _logger.LogError("Background {ImportType} import failed for preview {PreviewId}. ExceptionType={ExceptionType}",
+                workItem.ImportType, workItem.PreviewId, ImportDiagnosticMessages.ExceptionCategory(exception));
+        }
         try
         {
             using var errorScope = _scopeFactory.CreateScope();
