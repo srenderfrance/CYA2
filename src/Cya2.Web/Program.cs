@@ -82,6 +82,8 @@ builder.Services.AddLogging(l =>
 builder.Services.AddCya2HostServices();
 builder.Services.Configure<ImportUploadOptions>(
     builder.Configuration.GetSection(ImportUploadOptions.SectionName));
+builder.Services.Configure<InitialAdminBootstrapOptions>(
+    builder.Configuration.GetSection(InitialAdminBootstrapOptions.SectionName));
 
 builder.Services.AddAuthenticationCore();
 builder.Services.AddCascadingAuthenticationState();

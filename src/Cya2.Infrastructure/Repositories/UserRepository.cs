@@ -121,4 +121,50 @@ WHERE Id = @Id";
         var count = await conn.ExecuteScalarAsync<int>("SELECT COUNT(*) FROM Users WHERE Email = @Email", new { Email = email });
         return count > 0;
     }
+
+    public async Task<User?> TryCreateInitialAdminAsync(User user)
+    {
+        _dbGuard.ThrowIfUnavailable();
+        await using var conn = new MySqlConnection(ConnStr);
+        await conn.OpenAsync();
+
+        const string lockName = "cya2.initial-admin-bootstrap";
+        const string insertSql = @"
+INSERT INTO Users (GoogleId, Email, Name, Language, AuthLevel, DefaultAccount)
+VALUES (@GoogleId, @Email, @Name, @Language, @AuthLevel, @DefaultAccount)";
+
+        var lockAcquired = await conn.ExecuteScalarAsync<long>(
+            "SELECT GET_LOCK(@LockName, 10)",
+            new { LockName = lockName }) == 1;
+
+        if (!lockAcquired)
+        {
+            return null;
+        }
+
+        try
+        {
+            var userCount = await conn.ExecuteScalarAsync<int>("SELECT COUNT(*) FROM Users");
+            if (userCount != 0)
+            {
+                return null;
+            }
+
+            await conn.ExecuteAsync(insertSql, new
+            {
+                user.GoogleId,
+                user.Email,
+                user.Name,
+                user.Language,
+                user.AuthLevel,
+                user.DefaultAccount
+            });
+
+            return await GetByEmailAsync(user.Email);
+        }
+        finally
+        {
+            await conn.ExecuteAsync("SELECT RELEASE_LOCK(@LockName)", new { LockName = lockName });
+        }
+    }
 }

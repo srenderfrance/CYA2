@@ -408,7 +408,6 @@ public class FinancialDashboardService : IFinancialDashboardService
 
             if (isInternAccount)
             {
-                // _logger.LogInformation("Dashboard load phase=summary-start elapsedMs={ElapsedMs} account={Account} summaryType=intern", stopwatch.ElapsedMilliseconds, dashboard.SelectedAccount);
                 await PopulateInternSummariesAsync(dashboard, selectedContextAccount, userId);
             }
             else if (useSessionAccountDataCache)
@@ -417,7 +416,6 @@ public class FinancialDashboardService : IFinancialDashboardService
             }
             else
             {
-                // _logger.LogInformation("Dashboard load phase=summary-start elapsedMs={ElapsedMs} account={Account} summaryType=direct", stopwatch.ElapsedMilliseconds, dashboard.SelectedAccount);
                 await PopulateSummariesDirectAsync(dashboard, selectedContextAccount, userId);
             }
 
@@ -430,7 +428,7 @@ public class FinancialDashboardService : IFinancialDashboardService
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error getting dashboard data for account '{AccountFund}'", accountFund);
+            _logger.LogError(ex, "Error getting dashboard data");
             return new FinancialDashboardDto();
         }
     }
@@ -575,7 +573,7 @@ public class FinancialDashboardService : IFinancialDashboardService
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error building monthly visualization for account '{AccountFund}'", accountFund);
+            _logger.LogError(ex, "Error building monthly visualization");
         }
 
         return points;
@@ -917,7 +915,6 @@ public class FinancialDashboardService : IFinancialDashboardService
     private async Task<HomeSummaryResult> BuildSummaryFromAggregatesAsync(UserAccountContextAccount account, string userId, DonationCalculationData donationData, DateTime startDate, DateTime endDate, string period)
     {
         var stopwatch = System.Diagnostics.Stopwatch.StartNew();
-        // _logger.LogInformation("Dashboard summary period-start period={Period} account={Account} range={StartDate}..{EndDate}", period, account.Fund, startDate.ToString("yyyy-MM-dd"), endDate.ToString("yyyy-MM-dd"));
 
         var donationTotals = _accountCalculationService.CalculateDonationTotalsFromData(
             account,
@@ -934,7 +931,6 @@ public class FinancialDashboardService : IFinancialDashboardService
         var expenseTotal = balanceCalculation.ExpenseTotal;
         var transferTotal = balanceCalculation.TransferTotal;
         var balance = balanceTask.Result;
-        // _logger.LogInformation("Dashboard summary period-complete period={Period} account={Account} elapsedMs={ElapsedMs}", period, account.Fund, stopwatch.ElapsedMilliseconds);
 
         return new HomeSummaryResult
         {

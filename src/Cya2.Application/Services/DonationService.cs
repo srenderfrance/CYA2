@@ -241,9 +241,8 @@ public class DonationService : IDonationService
         catch (Exception ex)
         {
             _logger.LogError(ex,
-                "Failed to load donation data for user '{UserId}' and account '{AccountName}' in range {StartDate:yyyy-MM-dd}..{EndDate:yyyy-MM-dd}",
+                "Failed to load donation data for user '{UserId}' in range {StartDate:yyyy-MM-dd}..{EndDate:yyyy-MM-dd}",
                 userId,
-                accountName,
                 dateRange.StartDate,
                 dateRange.EndDate);
         }

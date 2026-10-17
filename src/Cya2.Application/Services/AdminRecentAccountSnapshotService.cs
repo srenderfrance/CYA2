@@ -88,7 +88,6 @@ public sealed class AdminRecentAccountSnapshotService : IAdminRecentAccountSnaps
 
             if (HasAuthoritativeCaches(account))
             {
-                // _logger.LogDebug("Admin recent account snapshot already cached: accountId={AccountId}, fund={Fund}", key.AccountId, key.Fund);
                 return;
             }
 
@@ -175,7 +174,7 @@ public sealed class AdminRecentAccountSnapshotService : IAdminRecentAccountSnaps
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Admin account cache warmup failed: key={Key}", key);
+            _logger.LogWarning(ex, "Admin account cache warmup failed");
         }
         finally
         {

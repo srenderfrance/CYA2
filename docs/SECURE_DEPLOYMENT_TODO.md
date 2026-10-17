@@ -25,10 +25,11 @@ Use this checklist to prepare the application for safe local setup, deployment, 
 - [x] Document how to apply the database scripts or migrations.
 - [x] Document how to configure the application connection string.
 - [x] Document how to configure Google OAuth login.
-- [ ] Document how to add a matching local user to the `Users` table.
+- [x] Document one-time initial administrator bootstrap through secret-backed Google-email matching.
 - [x] List every required configuration setting.
 - [x] Include fake example values only.
 - [x] State clearly where developers must provide local secrets.
+- [x] Require removal of initial-administrator bootstrap secrets after first sign-in.
 - [ ] Confirm that secrets are excluded from source control.
 
 ### 3. Deal with the database password in Git history
