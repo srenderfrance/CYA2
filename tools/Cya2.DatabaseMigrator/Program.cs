@@ -286,8 +286,14 @@ sealed class MigrationFile
 
     private static void AddStatement(List<string> statements, StringBuilder builder)
     {
-        var value = builder.ToString().Trim();
-        if (value.Length > 0 && !value.StartsWith("--", StringComparison.Ordinal)) statements.Add(value);
+        var value = string.Join(
+            Environment.NewLine,
+            builder.ToString()
+                .Split(["\r\n", "\n"], StringSplitOptions.None)
+                .Where(line => !line.TrimStart().StartsWith("--", StringComparison.Ordinal)))
+            .Trim();
+
+        if (value.Length > 0) statements.Add(value);
     }
 }
 
