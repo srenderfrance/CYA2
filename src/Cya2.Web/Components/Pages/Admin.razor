@@ -972,7 +972,7 @@
                 var authorization = await UserAuthorizationService.ValidateUserAsync(resolvedUserIdForAuthorization);
                 if (!authorization.IsAuthorized || !authorization.IsAdmin)
                 {
-                    Navigation.NavigateTo("/", true);
+                    Navigation.NavigateTo("/logout?returnUrl=/not-authorized", true);
                     return;
                 }
 

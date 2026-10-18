@@ -86,7 +86,13 @@ public static class WebEndpointExtensions
         endpoints.MapGet("/logout", async (HttpContext ctx) =>
         {
             await ctx.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
-            ctx.Response.Redirect("/logged-out");
+            var returnUrl = ctx.Request.Query["returnUrl"].ToString();
+            if (string.IsNullOrWhiteSpace(returnUrl) || !returnUrl.StartsWith('/') || returnUrl.StartsWith("//"))
+            {
+                returnUrl = "/logged-out";
+            }
+
+            ctx.Response.Redirect(returnUrl);
         }).RequireAuthorization().RequireRateLimiting("AuthPolicy");
 
         endpoints.MapGet("/api/antiforgery-token", (HttpContext ctx, IAntiforgery antiforgery, ILogger<Program> logger) =>

@@ -563,7 +563,7 @@ TRUNCATE TABLE TempImportContacts;", cancellationToken);
             {
                 var parameterIndex = localIndex;
                 if (localIndex > 0) values.Append(',');
-                values.Append($"(@f{parameterIndex}, @i{parameterIndex}, @d{parameterIndex}, @g{parameterIndex}, @a{parameterIndex}, @p{parameterIndex}, @t{parameterIndex}, @m{parameterIndex}, @n{parameterIndex}, @r{parameterIndex}, @s{parameterIndex}, @h{parameterIndex}, @x{parameterIndex}, @q{parameterIndex})");
+                values.Append($"(@f{parameterIndex}, @i{parameterIndex}, @d{parameterIndex}, @g{parameterIndex}, @a{parameterIndex}, @p{parameterIndex}, @t{parameterIndex}, @m{parameterIndex}, @n{parameterIndex}, @r{parameterIndex}, @s{parameterIndex}, @x{parameterIndex}, @q{parameterIndex})");
                 var donation = donations[offset + localIndex];
                 command.Parameters.AddWithValue($"@f{parameterIndex}", donation.Fund);
                 command.Parameters.AddWithValue($"@i{parameterIndex}", donation.Donor.IdentityKey);
