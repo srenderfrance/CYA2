@@ -2,8 +2,7 @@
 
 > **Status: Draft**
 >
-> This document records the local setup information currently available in the repository. Values that depend on the local developer, database administrator, Google Cloud project, or deployment environment are marked **Required from project owner**. Do not commit real passwords, OAuth client secrets, donor exports, or accounting exports.
-
+> This document records the local setup information currently available in the repository. Values for environment variable, user secrets, etc are marked **Required from project owner**.
 ## 1. Application overview
 
 CYA2 is a .NET Blazor application using:
@@ -15,11 +14,11 @@ CYA2 is a .NET Blazor application using:
 - Google OAuth for sign-in.
 - EPPlus for Excel import and export.
 
-The application database is a new database. It is populated from current exports from the authoritative donor system and QuickBooks, not by copying the legacy PHP application database.
+The application database is a new database. It is populated from current exports from the authoritative donor system and QuickBooks, not by migrating a previous application database.
 
 ## Local Visual Studio and MySQL test walkthrough
 
-Use this walkthrough to run CYA2 from Visual Studio on this laptop, connect it to an empty local MySQL database, sign in as the first administrator, and upload synthetic test workbooks. You open the existing CYA2 solution; do not create a new Visual Studio project.
+Use this walkthrough to run CYA2 from Visual Studio, connect it to an empty local MySQL database, sign in as the first administrator, and upload synthetic test workbooks. You open the existing CYA2 solution; do not create a new Visual Studio project.
 
 ### 1. Install and start the local prerequisites
 
@@ -29,11 +28,12 @@ Start the MySQL Server service and confirm that Workbench can connect to `localh
 
 ### 2. Open and configure the existing solution in Visual Studio
 
-1. Open `C:\Users\srend\dev\Cya2\Cya2.sln` in Visual Studio.
-2. Restore NuGet packages if Visual Studio does not restore them automatically.
-3. In Solution Explorer, right-click `src/Cya2.Web/cya2.csproj` (`cya2`) and select **Set as Startup Project**.
-4. Select the `https` launch profile. Its local address is `https://localhost:7243`.
-5. If prompted, trust the ASP.NET Core development HTTPS certificate. Google OAuth requires HTTPS.
+1. Clone the repository to a directory of your choice. In these instructions, `<repository-root>` means the directory that contains `Cya2.sln`, `src`, `tools`, and `database`.
+2. Open `<repository-root>\Cya2.sln` in Visual Studio.
+3. Restore NuGet packages if Visual Studio does not restore them automatically.
+4. In Solution Explorer, right-click `src/Cya2.Web/cya2.csproj` (`cya2`) and select **Set as Startup Project**.
+5. Select the `https` launch profile. Its local address is `https://localhost:7243`.
+6. If prompted, trust the ASP.NET Core development HTTPS certificate. Google OAuth requires HTTPS.
 
 Do not run the application yet; create and initialize its empty database first.
 
@@ -53,10 +53,10 @@ For this local test setup, the same local MySQL account can initialize the schem
 
 ### 4. Initialize the schema from PowerShell
 
-Open PowerShell in the repository root:
+Open PowerShell in the repository root. Replace `<repository-root>` with the path where you cloned CYA2:
 
 ```powershell
-cd C:\Users\srend\dev\Cya2
+Set-Location "<repository-root>"
 ```
 
 Set a connection string for the empty database. Replace only the placeholder values in your PowerShell session; do not add credentials to a tracked file:
@@ -71,7 +71,7 @@ Run the database migrator:
 dotnet run --project tools/Cya2.DatabaseMigrator -- --connection-string "$env:CYA2_SCHEMA_CONNECTION_STRING" --initialize
 ```
 
-The migrator runs `database/schema/001_InitialSchema.sql`, records the baseline, and applies later scripts from `database/migrations`. The Blazor application deliberately does not create or alter persistent tables during startup.
+The migrator runs `database/schema/001_InitialSchema.sql`, records the baseline, and applies later scripts from `database/migrations`. The application does not create or alter persistent tables.
 
 Refresh `cya2_test` in Workbench after the command succeeds. Tables such as `Users`, `Accounts`, `DonationData`, and `AccountingData` should appear.
 
@@ -168,13 +168,15 @@ The HTTP URL is not an appropriate OAuth redirect URI for normal local sign-in.
 
 ## 3. Get the source and restore dependencies
 
-From the repository root:
+Clone the repository into any local parent directory, then run the remaining commands from `<repository-root>`:
 
 ```text
 git clone <repository-url>
 cd Cya2
 dotnet restore Cya2.sln
 ```
+
+For example, if the repository was cloned to `D:\source\Cya2`, then `<repository-root>` is `D:\source\Cya2`. All paths in this document that begin with `src`, `tools`, `database`, or `tests` are relative to that directory.
 
 The primary solution is `Cya2.sln`. It contains these projects:
 
@@ -197,8 +199,6 @@ Run the tests with:
 ```text
 dotnet test tests/Cya2.Application.Tests/Cya2.Application.Tests.csproj
 ```
-
-The relocated web project is `src/Cya2.Web/cya2.csproj`. The former `cya2.0` solution and project paths should not be used.
 
 ## 4. Create and initialize the local database
 

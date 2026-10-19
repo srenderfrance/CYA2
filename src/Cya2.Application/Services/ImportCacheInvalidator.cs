@@ -127,9 +127,13 @@ public sealed class ImportCacheInvalidator : IImportCacheInvalidator
                 CacheDataDomains.Donations | CacheDataDomains.Accounting | CacheDataDomains.AccountMetadata));
         }
 
-        if (hasAccountMetadata)
+        if (hasAccountMetadata || hasAuthorization)
         {
             _adminSharedCache.InvalidateAll();
+        }
+
+        if (hasAccountMetadata)
+        {
             _accountMetadataCache.InvalidateAll();
         }
 

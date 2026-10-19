@@ -8,7 +8,7 @@ public class Account : BaseEntity
     
     public string Fund { get; set; } = string.Empty; // Corresponds to "Fund Notes" from Donation DataTable
     
-    public string AccountingClass { get; set; } = string.Empty; // Corresponds to "Class" from the Accounting DataTable
+    public string? AccountingClass { get; set; } // Corresponds to "Class" from the Accounting DataTable
     
     public string AccountNumber { get; set; } = string.Empty; // Corresponds to Account Number from the Accounting DataTable
     
@@ -29,7 +29,7 @@ public class Account : BaseEntity
     public Account(string fund, string accountingClass, string accountNumber, decimal overhead)
     {
         Fund = fund?.Trim() ?? string.Empty;
-        AccountingClass = accountingClass?.Trim() ?? string.Empty;
+        AccountingClass = accountingClass?.Trim();
         AccountNumber = accountNumber?.Trim() ?? string.Empty;
         CreatedAt = DateTime.Now;
         Overhead = overhead;

@@ -412,9 +412,7 @@ else
                                      Value="@selectedAccount"
                                      Change="@OnAccountSelectionAsync"
                                      Placeholder="@Localizer["ChooseAccount"]"
-                                      TextSelector="@(account => string.IsNullOrWhiteSpace(account.InternName)
-                                          ? DisplayFormatter.FormatFundDisplay(account.Fund)
-                                          : account.InternName)"
+                                       TextSelector="@(account => InternAccountUtility.GetAccountSelectorDisplayName(account.Fund))"
                                      Class="account-selector-dropdown-inline" />
                 </div>
 

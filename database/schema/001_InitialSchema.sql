@@ -15,7 +15,7 @@ CREATE TABLE IF NOT EXISTS Accounts
 (
 	AccountId INT NOT NULL AUTO_INCREMENT,
 	Fund VARCHAR(255) NOT NULL,
-	AccountingClass VARCHAR(255) NOT NULL,
+	AccountingClass VARCHAR(255) NULL,
 	AccountNumber VARCHAR(255) NOT NULL,
 	CreatedAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
 	Overhead DECIMAL(10,2) NOT NULL DEFAULT 0.00,
@@ -25,7 +25,7 @@ CREATE TABLE IF NOT EXISTS Accounts
 	PRIMARY KEY (AccountId),
 	UNIQUE KEY uq_accounts_fund (Fund),
 	UNIQUE KEY uq_accounts_account_number (AccountNumber),
-	KEY ix_accounts_accounting_class (AccountingClass)
+	UNIQUE KEY uq_accounts_accounting_class (AccountingClass)
 ) ENGINE=InnoDB
   DEFAULT CHARSET=utf8mb4
   COLLATE=utf8mb4_0900_ai_ci;

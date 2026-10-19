@@ -55,4 +55,11 @@ public sealed class InternAccountUtilityTests
         Assert.False(criteria.HasAlternateLookupKey);
         Assert.Equal("intern", criteria.DesignationLookupKey);
     }
+
+    [Fact]
+    public void GetAccountSelectorDisplayName_AppendsInternSuffixWithoutChangingOrdinaryFundDisplay()
+    {
+        Assert.Equal("Jane Doe (Intern)", InternAccountUtility.GetAccountSelectorDisplayName("Intern: Jane Doe"));
+        Assert.Equal("General", InternAccountUtility.GetAccountSelectorDisplayName("General: Donations"));
+    }
 }

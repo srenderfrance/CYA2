@@ -111,6 +111,31 @@ public sealed class CacheInvalidationTests
     }
 
     [Fact]
+    public async Task UserAccountContextService_UsesInternFundDesignationForInternIdentity()
+    {
+        var version = new CacheInvalidationVersion();
+        var user = new User { Id = 904, Email = $"cache-test-{Guid.NewGuid():N}@example.test", AuthLevel = "User" };
+        var account = new Account
+        {
+            AccountId = 45,
+            Fund = "Intern: Jane Doe",
+            AccountNumber = "INT-904"
+        };
+        var service = new UserAccountContextService(
+            new FakeUserRepository(user),
+            new FakeUserAccountAccessRepository(account),
+            new FakeAccountRepository(account),
+            version,
+            NullLogger<UserAccountContextService>.Instance);
+
+        var context = await service.GetContextAsync(user.Id.ToString());
+
+        var selected = Assert.Single(context!.Accounts);
+        Assert.Equal("Jane Doe", selected.InternName);
+        Assert.Equal("Jane Doe", selected.DisplayName);
+    }
+
+    [Fact]
     public void CacheInvalidationVersion_IncrementsAtomically()
     {
         var version = new CacheInvalidationVersion();

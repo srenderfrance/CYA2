@@ -178,6 +178,16 @@ public sealed record InternDesignationCriteria(
         return (separatorIndex >= 0 ? fund[..separatorIndex] : fund).Trim();
     }
 
+    public static string GetAccountSelectorDisplayName(string? fund)
+    {
+        if (TryGetInternDesignationName(fund, out var internName))
+        {
+            return $"{internName} (Intern)";
+        }
+
+        return GetDisplayFundName(fund);
+    }
+
     private static string NormalizeWhitespace(string? value)
     {
         if (string.IsNullOrWhiteSpace(value))

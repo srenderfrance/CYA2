@@ -58,6 +58,89 @@ public sealed class UserManagementAuthorizationTests
     }
 
     [Fact]
+    public async Task CreatingIntern_InvalidatesAuthorizationCaches()
+    {
+        var repositories = new RecordingRepositories();
+        var cacheInvalidator = new RecordingCacheInvalidator();
+        var service = CreateService(repositories, new FakeAdminAuthorizationContext(isAdmin: true), cacheInvalidator);
+
+        var result = await service.CreateAdminUserAsync("Test Intern", "intern@example.test", "Intern", []);
+
+        Assert.True(result.IsSuccess);
+        Assert.Contains(CacheDataDomains.Authorization, cacheInvalidator.InvalidatedDomains);
+    }
+
+    [Fact]
+    public async Task CreatingIntern_CreatesAccountWithoutAccountingClass()
+    {
+        var repositories = new RecordingRepositories();
+        var service = CreateService(repositories, isAdmin: true);
+
+        var result = await service.CreateAdminUserAsync("Test Intern", "intern@example.test", "Intern", []);
+
+        Assert.True(result.IsSuccess);
+        Assert.NotNull(repositories.Accounts.AddedAccount);
+        Assert.Equal("Intern: Test Intern", repositories.Accounts.AddedAccount!.Fund);
+        Assert.Null(repositories.Accounts.AddedAccount.AccountingClass);
+    }
+
+    [Fact]
+    public async Task CreatingIntern_WithExistingDesignationRequiresReuseConfirmation()
+    {
+        var repositories = new RecordingRepositories();
+        repositories.Accounts.ExistingByFund = new Account { AccountId = 12, Fund = "Intern: Test Intern", AccountNumber = "INT-12" };
+        var service = CreateService(repositories, isAdmin: true);
+
+        var result = await service.CreateAdminUserAsync("Test Intern", "intern@example.test", "Intern", []);
+
+        Assert.False(result.IsSuccess);
+        Assert.True(result.RequiresInternAccountReuse);
+        Assert.Equal(0, repositories.UserAdds);
+    }
+
+    [Fact]
+    public async Task CreatingIntern_WithConfirmedExistingDesignationReusesAccount()
+    {
+        var repositories = new RecordingRepositories();
+        repositories.Accounts.ExistingByFund = new Account { AccountId = 12, Fund = "Intern: Test Intern", AccountNumber = "INT-12" };
+        var service = CreateService(repositories, isAdmin: true);
+
+        var result = await service.CreateAdminUserAsync("Test Intern", "intern@example.test", "Intern", [], reuseExistingInternAccount: true);
+
+        Assert.True(result.IsSuccess);
+        Assert.Null(repositories.Accounts.AddedAccount);
+        Assert.Equal(1, repositories.AccountAccess.AccessGrants);
+    }
+
+    [Fact]
+    public async Task RenamingIntern_RenamesLinkedInternAccount()
+    {
+        var repositories = new RecordingRepositories();
+        repositories.Users.UserById = new User { Id = 3, Name = "Original Intern", Email = "intern@example.test", AuthLevel = "Intern" };
+        repositories.AccountAccess.UserAccounts.Add(new Account { AccountId = 12, Fund = "Intern: Original Intern", AccountNumber = "INT-3" });
+        var service = CreateService(repositories, isAdmin: true);
+
+        var result = await service.UpdateAdminUserAsync(new AdminUserUpdateDto { UserId = 3, Name = "Renamed Intern" });
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal("Intern: Renamed Intern", repositories.Accounts.UpdatedAccount!.Fund);
+    }
+
+    [Fact]
+    public async Task ChangingInternToUser_RemovesInternAccountAccess()
+    {
+        var repositories = new RecordingRepositories();
+        repositories.Users.UserById = new User { Id = 3, Name = "Test Intern", Email = "intern@example.test", AuthLevel = "Intern" };
+        repositories.AccountAccess.UserAccounts.Add(new Account { AccountId = 12, Fund = "Intern: Test Intern", AccountNumber = "INT-3" });
+        var service = CreateService(repositories, isAdmin: true);
+
+        var result = await service.UpdateAdminUserAsync(new AdminUserUpdateDto { UserId = 3, AuthLevel = "User" });
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(1, repositories.AccountAccess.AccessRevokes);
+    }
+
+    [Fact]
     public async Task CurrentAdmin_CanUpdateUser()
     {
         var repositories = new RecordingRepositories();
@@ -109,18 +192,29 @@ public sealed class UserManagementAuthorizationTests
 
     private static UserManagementService CreateService(
         RecordingRepositories repositories,
-        IAdminAuthorizationContext authorizationContext)
+        IAdminAuthorizationContext authorizationContext,
+        IImportCacheInvalidator? cacheInvalidator = null)
         => new(
             repositories.Users,
             repositories.AccountAccess,
             repositories.Accounts,
             authorizationContext,
-            NullLogger<UserManagementService>.Instance);
+            NullLogger<UserManagementService>.Instance,
+            cacheInvalidator);
 
     private sealed class FakeAdminAuthorizationContext(bool isAdmin) : IAdminAuthorizationContext
     {
         public bool IsAdmin { get; set; } = isAdmin;
         public Task<bool> IsCurrentUserAdminAsync() => Task.FromResult(IsAdmin);
+    }
+
+    private sealed class RecordingCacheInvalidator : IImportCacheInvalidator
+    {
+        public List<CacheDataDomains> InvalidatedDomains { get; } = new();
+
+        public void InvalidateAll() => InvalidatedDomains.Add(CacheDataDomains.All);
+
+        public void Invalidate(CacheDataDomains domains) => InvalidatedDomains.Add(domains);
     }
 
     private sealed class RecordingRepositories
@@ -142,7 +236,9 @@ public sealed class UserManagementAuthorizationTests
         public int UserAdds { get; private set; }
         public int UserDeletes { get; private set; }
 
-        public Task<User?> GetByIdAsync(int id) => Task.FromResult<User?>(new User { Id = id, Name = "Existing", Email = "existing@example.test", AuthLevel = "User" });
+        public User? UserById { get; set; }
+
+        public Task<User?> GetByIdAsync(int id) => Task.FromResult(UserById ?? new User { Id = id, Name = "Existing", Email = "existing@example.test", AuthLevel = "User" });
         public Task<User?> GetByEmailAsync(string email) => Task.FromResult<User?>(null);
         public Task<User?> GetByExternalIdAsync(string externalId) => Task.FromResult<User?>(null);
         public Task<List<User>> GetActiveUsersAsync() => Task.FromResult(new List<User>());
@@ -159,8 +255,9 @@ public sealed class UserManagementAuthorizationTests
     {
         public int AccessGrants { get; private set; }
         public int AccessRevokes { get; private set; }
+        public List<Account> UserAccounts { get; } = new();
 
-        public Task<List<Account>> GetUserAccountsAsync(int userId) => Task.FromResult(new List<Account>());
+        public Task<List<Account>> GetUserAccountsAsync(int userId) => Task.FromResult(UserAccounts.ToList());
         public Task<List<User>> GetAccountUsersAsync(int accountId) => Task.FromResult(new List<User>());
         public Task<Dictionary<int, List<int>>> GetAccountUserIdsAsync() => Task.FromResult(new Dictionary<int, List<int>>());
         public Task<Account?> GetAccountByIdAsync(int accountId) => Task.FromResult<Account?>(new Account { AccountId = accountId, Fund = "Test" });
@@ -175,14 +272,28 @@ public sealed class UserManagementAuthorizationTests
 
     private sealed class RecordingAccountRepository : IAccountRepository
     {
+        public Account? AddedAccount { get; private set; }
+        public Account? ExistingByFund { get; set; }
+        public Account? UpdatedAccount { get; private set; }
+
         public Task<Account?> GetByIdAsync(int id) => Task.FromResult<Account?>(null);
         public Task<List<Account>> GetAllAsync() => Task.FromResult(new List<Account>());
-        public Task<Account> AddAsync(Account entity) => Task.FromResult(entity);
-        public Task<Account> UpdateAsync(Account entity) => Task.FromResult(entity);
+        public Task<Account> AddAsync(Account entity)
+        {
+            AddedAccount = entity;
+            entity.AccountId = 4;
+            return Task.FromResult(entity);
+        }
+        public Task<Account> UpdateAsync(Account entity)
+        {
+            UpdatedAccount = entity;
+            return Task.FromResult(entity);
+        }
         public Task DeleteAsync(int id) => Task.CompletedTask;
         public Task<bool> ExistsAsync(int id) => Task.FromResult(false);
         public Task<Account?> GetByFundCodeAsync(string fundCode) => Task.FromResult<Account?>(null);
-        public Task<Account?> GetByFundAsync(string fund) => Task.FromResult<Account?>(null);
+        public Task<Account?> GetByFundAsync(string fund) => Task.FromResult(
+            string.Equals(ExistingByFund?.Fund, fund, StringComparison.OrdinalIgnoreCase) ? ExistingByFund : null);
         public Task<Account?> GetByAccountNumberAsync(string accountNumber) => Task.FromResult<Account?>(null);
         public Task<List<Account>> GetByUserIdAsync(string userId) => Task.FromResult(new List<Account>());
         public Task<bool> ValidateUserAccessAsync(string userId, string fund) => Task.FromResult(false);

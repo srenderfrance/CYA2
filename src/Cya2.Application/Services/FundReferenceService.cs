@@ -1,6 +1,7 @@
 using Cya2.Application.DTOs;
 using Cya2.Application.Interfaces;
 using Cya2.Core.Interfaces;
+using Cya2.Core.Utilities;
 
 namespace Cya2.Application.Services;
 
@@ -60,7 +61,9 @@ public sealed class FundReferenceService : IFundReferenceService
         {
             AccountId = account.AccountId,
             Fund = account.Fund,
-            InternName = string.Empty,
+            InternName = InternAccountUtility.TryGetInternDesignationName(account.Fund, out var internName)
+                ? internName
+                : string.Empty,
             CreatedAt = account.CreatedAt,
             AccountingClass = account.AccountingClass,
             AccountNumber = account.AccountNumber,

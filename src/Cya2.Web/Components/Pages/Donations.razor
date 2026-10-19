@@ -1,6 +1,7 @@
 ﻿@page "/donations"
 @using Microsoft.AspNetCore.Authorization
 @using Cya2.Shared.Utilities
+@using Cya2.Core.Utilities
 @using Radzen
 @using Microsoft.AspNetCore.Components.Authorization
 @using System.Security.Claims
@@ -318,9 +319,7 @@
                                      Value="@selectedAccount"
                                      Change="@OnAccountDropdownChanged"
                                      Placeholder="@Localizer["ChooseAccount"]"
-                                       TextSelector="@(account => string.IsNullOrWhiteSpace(account.InternName)
-                                           ? DisplayFormatter.FormatFundDisplay(account.Fund)
-                                           : account.InternName)" />
+                                       TextSelector="@(account => InternAccountUtility.GetAccountSelectorDisplayName(account.Fund))" />
                 </div>
 
                 <!-- SubAccount dropdown - only shown for accounts with Separate sub accounts -->

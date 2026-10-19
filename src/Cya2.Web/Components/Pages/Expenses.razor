@@ -1,6 +1,7 @@
 @page "/expenses"
 @using Microsoft.AspNetCore.Authorization
 @using Cya2.Shared.Utilities
+@using Cya2.Core.Utilities
 @using Radzen
 @using Radzen.Blazor
 @using Microsoft.AspNetCore.Components.Authorization
@@ -102,7 +103,7 @@
                                      ValueChanged="@(value => selectedAccount = value)"
                                      Change="@(async args => await AccountSelection(args?.ToString()))"
                                      Placeholder="@Localizer["ChooseAccount"]"
-                                     TextSelector="@(account => DisplayFormatter.FormatFundDisplay(account.Fund))"
+                                      TextSelector="@(account => InternAccountUtility.GetAccountSelectorDisplayName(account.Fund))"
                                      Class="account-selector-dropdown-inline" />
                 </div>
             </div>
@@ -468,7 +469,8 @@
                 Fund = selectedAccountDto.Fund,
                 AccountingClass = selectedAccountDto.AccountingClass,
                 AccountNumber = selectedAccountDto.AccountNumber,
-                Overhead = selectedAccountDto.Overhead
+                Overhead = selectedAccountDto.Overhead,
+                InternName = selectedAccountDto.InternName
             };
             await AccountSelectionCoordinator.SelectAsync(account, userId, canAccessAllAccounts, persistSelection: true);
             selectedAccount = accountName;

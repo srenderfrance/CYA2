@@ -5,6 +5,7 @@ using Cya2.Core.Interfaces;
 using Cya2.Core.ReadModels;
 using Cya2.Core.ValueObjects;
 using Cya2.Core.Services;
+using Cya2.Core.Utilities;
 using Cya2.Application.Models;
 
 namespace Cya2.Application.Services;
@@ -55,7 +56,10 @@ public class ExpenseService : IExpenseService
     {
         try
         {
-            if (!(await _authorizationService.ValidateAccountAccessAsync(userId, accountName)).IsAuthorized)
+            var authorization = string.IsNullOrWhiteSpace(accountName)
+                ? await _authorizationService.ValidateUserAsync(userId)
+                : await _authorizationService.ValidateAccountAccessAsync(userId, accountName);
+            if (!authorization.IsAuthorized)
                 return new ExpenseDataDto();
 
             var context = await _userAccountContextService.GetContextAsync(userId, isAdminOrViewer);
@@ -226,6 +230,12 @@ public class ExpenseService : IExpenseService
         {
             AccountId = account.AccountId,
             Fund = account.Fund ?? string.Empty,
+            InternName = account.InternName ?? (InternAccountUtility.TryGetInternDesignationName(account.Fund, out var internName)
+                ? internName
+                : string.Empty),
+            DisplayName = string.IsNullOrWhiteSpace(account.InternName)
+                ? InternAccountUtility.GetAccountSelectorDisplayName(account.Fund)
+                : $"{account.InternName} (Intern)",
             AccountingClass = account.AccountingClass ?? string.Empty,
             AccountNumber = account.AccountNumber ?? string.Empty,
             Overhead = Convert.ToDecimal(account.Overhead)

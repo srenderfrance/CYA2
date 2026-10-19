@@ -6,6 +6,7 @@
 @using Cya2.Application.Interfaces
 @using Cya2.Application.DTOs
 @using Cya2.Shared.Utilities
+@using Cya2.Core.Utilities
 @inject AuthenticationStateProvider AuthStateProvider
 @inject Cya2.Application.Interfaces.IUserSettingsService UserSettingsService
 @inject NavigationManager NavigationManager
@@ -74,12 +75,12 @@
                              <AccountSelector TItem="AccountOptionDto" TValue="string"
                                               Data="@defaultAccountOptions"
                                               TextProperty="DisplayName"
-                                              ValueProperty="AccountingClass"
+                                               ValueProperty="SelectionKey"
                                               Value="@selectedAccountingClass"
                                               ValueChanged="@(value => selectedAccountingClass = value)"
                                               Placeholder="@Localizer["SelectDefaultAccount"]"
                                               Disabled="@(userAccounts == null || userAccounts.Count == 0)"
-                                              TextSelector="@(account => account.AccountId == 0 ? Localizer["None"].Value : DisplayFormatter.FormatFundDisplay(account.Fund))"
+                                               TextSelector="@(account => account.AccountId == 0 ? Localizer["None"].Value : InternAccountUtility.GetAccountSelectorDisplayName(account.Fund))"
                                               Class="account-selector-dropdown-inline" />
                          </div>
                         
@@ -218,7 +219,7 @@
                 var defaultAccount = userAccounts.FirstOrDefault(a => a.AccountId == currentDefaultAccountId.Value);
                 if (defaultAccount != null)
                 {
-                    selectedAccountingClass = defaultAccount.AccountingClass;
+                    selectedAccountingClass = defaultAccount.SelectionKey;
                     SessionUserStateService.DefaultAccountFund = defaultAccount.Fund;
                     if (string.IsNullOrWhiteSpace(SessionUserStateService.SelectedAccountFund))
                     {
@@ -251,7 +252,7 @@
     private bool HasAccountChanges()
     {
         var currentAccountingClass = userAccounts
-            .FirstOrDefault(a => a.AccountId == currentDefaultAccountId)?.AccountingClass ?? string.Empty;
+            .FirstOrDefault(a => a.AccountId == currentDefaultAccountId)?.SelectionKey ?? string.Empty;
 
         return selectedAccountingClass != currentAccountingClass;
     }
@@ -271,7 +272,7 @@
 
             if (!string.IsNullOrEmpty(selectedAccountingClass))
             {
-                var selectedAccountObj = userAccounts.FirstOrDefault(a => a.AccountingClass == selectedAccountingClass);
+                var selectedAccountObj = userAccounts.FirstOrDefault(a => a.SelectionKey == selectedAccountingClass);
                 if (selectedAccountObj != null)
                 {
                     newAccountId = selectedAccountObj.AccountId;
@@ -361,7 +362,7 @@
             return Localizer["None"];
 
         var account = userAccounts.FirstOrDefault(a => a.AccountId == accountId.Value);
-        return DisplayFormatter.FormatFundDisplay(account?.Fund);
+        return InternAccountUtility.GetAccountSelectorDisplayName(account?.Fund);
     }
 
     // Helper to centralize user id resolution for this component

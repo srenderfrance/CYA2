@@ -280,7 +280,13 @@ public class UserAccountContextService : IUserAccountContextService
         Overhead = account.Overhead,
         SoftCredit = account.SoftCredit,
         BalanceAdjustment = account.BalanceAdjustment,
-        OtherFunds = account.OtherFunds
+        OtherFunds = account.OtherFunds,
+        InternName = InternAccountUtility.TryGetInternDesignationName(account.Fund, out var internName)
+            ? internName
+            : string.Empty,
+        DisplayName = InternAccountUtility.TryGetInternDesignationName(account.Fund, out internName)
+            ? internName
+            : account.Fund
     };
 
     private static UserAccountContext CloneContext(UserAccountContext source)

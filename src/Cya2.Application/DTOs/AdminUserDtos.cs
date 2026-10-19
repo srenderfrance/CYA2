@@ -16,10 +16,12 @@ public class AdminUserUpdateDto
     public string? Name { get; set; }
     public string? Email { get; set; }
     public string? AuthLevel { get; set; }
+    public bool ReuseExistingInternAccount { get; set; }
 }
 
 public class AdminUserOperationDto
 {
     public bool IsSuccess { get; set; }
+    public bool RequiresInternAccountReuse { get; set; }
     public string Message { get; set; } = string.Empty;
 }
