@@ -1626,6 +1626,7 @@ private bool showMissingGiftDialog = false;
                 cachedUserId = selectionUserId;
             }
 
+            // Reauthorize against current context so revoked normal accounts and intern identity selections cannot reuse stale session values.
             var homeAuthorization = await HomeAuthorizationService.AuthorizeAsync(selectionUserId, accountName);
             if (!homeAuthorization.IsAuthorized || homeAuthorization.SelectedAccount is null)
             {

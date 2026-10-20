@@ -12,10 +12,10 @@ Use this checklist to prepare the application for safe local setup, deployment, 
 - [x] Define all required indexes.
 - [x] Define all required foreign keys and other constraints.
 - [x] Ensure the setup can be run repeatedly or safely from a clean database.
-- [ ] Add a small, clearly fake donor dataset for development and testing.
-- [ ] Add a small, clearly fake accounting dataset for development and testing.
-- [ ] Add fake import files or fixtures that can be used to test the import workflow.
-- [ ] Verify that the fake data contains no real donor or financial records.
+- [x] Add a small, clearly fake donor dataset for development and testing.
+- [x] Add a small, clearly fake accounting dataset for development and testing.
+- [x] Add fake import files or fixtures that can be used to test the import workflow.
+- [x] Verify that the fake data contains no real donor or financial records.
 
 ### 2. Write local setup instructions
 
@@ -56,8 +56,8 @@ Use this checklist to prepare the application for safe local setup, deployment, 
 - [ ] Document required host environment settings.
 - [ ] Document production connection-string configuration using a secret manager.
 - [ ] Document the production Google OAuth redirect URL.
-- [ ] Test a clean CI build and deployment from the repository.
-- [ ] Verify the deployed application can connect to the intended database.
+- [x] Test a clean CI build and deployment from the repository.
+- [x] Verify the deployed application can connect to the intended database.
 
 ## Next: Protect Imports and Access to Donor Data
 

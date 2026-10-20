@@ -61,6 +61,8 @@ Implementation:
 - Intern authorization and selected-account resolution preserve `InternName` as the lookup identity.
 - Normal accounts use Fund or AccountId for their normal authorization and selection paths.
 - Account context and fund-reference DTOs derive and carry `InternName` separately from the stored fund so presentation cannot accidentally change data lookup behavior.
+- Home authorizes every account selection against the current account context before loading dashboard data. Intern Home selection continues to resolve with `InternName`; it does not use a previously selected normal-account value.
+- When an account selection is no longer authorized, Home reports access denied. The no-account message is reserved for a current account context with no associated accounts.
 
 Implementation:
 
@@ -77,6 +79,7 @@ Implementation:
 - Dropdown sorting uses the display sort key, placing intern accounts by surname with other named accounts rather than under `Intern`.
 - Selection values preserve the account ID, Fund, or `InternName` required by the individual data flow; display labels must not be used as data lookup keys.
 - User Settings uses `SelectionKey`, not `AccountingClass`, because intern accounting classes are intentionally null.
+- Selector presentation uses the refreshed database-backed account context rather than sign-in-time role claims. Intern users see their single account as read-only text; Admin and Viewer users receive searchable selectors; regular users receive non-searchable selectors. This updates with refreshed account data after a role change.
 
 Implementation:
 
