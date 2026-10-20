@@ -312,6 +312,12 @@
             <div class="date-range-toolbar-box account-selector-box">
                 <div class="account-selector-row">
                     <RadzenLabel Text="@Localizer["Account"]" />
+                    @if (isInternUser)
+                    {
+                        <div class="account-selector-readonly">@InternAccountDisplayName</div>
+                    }
+                    else
+                    {
                     <AccountSelector TItem="AccountOptionDto" TValue="string"
                                      Data="@donationData.UserAccounts"
                                      TextProperty="DisplayName"
@@ -319,7 +325,9 @@
                                      Value="@selectedAccount"
                                      Change="@OnAccountDropdownChanged"
                                      Placeholder="@Localizer["ChooseAccount"]"
-                                       TextSelector="@(account => InternAccountUtility.GetAccountSelectorDisplayName(account.Fund))" />
+                                      AllowFiltering="@isAdminOrViewer"
+                                      TextSelector="@(account => InternAccountUtility.GetAccountSelectorDisplayName(account.Fund, account.InternName))" />
+                    }
                 </div>
 
                 <!-- SubAccount dropdown - only shown for accounts with Separate sub accounts -->
@@ -681,9 +689,14 @@
     private string selectedSubAccount = "All";
     private string userId = string.Empty;
     private bool isAdminOrViewer = false;
+    private bool isInternUser = false;
     private string errorMessage = string.Empty;
     private bool isLoading = true;
     private AccountOptionDto? currentAccount = null;
+
+    private string InternAccountDisplayName => donationData.UserAccounts
+        .Select(account => InternAccountUtility.GetAccountSelectorDisplayName(account.Fund, account.InternName))
+        .FirstOrDefault() ?? string.Empty;
     private List<string> lastRawDonationFunds = new();
 
     // SubAccount support
@@ -792,6 +805,7 @@
             isAdminOrViewer = user.IsInRole("Admin") ||
                               string.Equals(authLevel, "Admin", StringComparison.OrdinalIgnoreCase) ||
                               string.Equals(authLevel, "Viewer", StringComparison.OrdinalIgnoreCase);
+            isInternUser = string.Equals(authLevel, "Intern", StringComparison.OrdinalIgnoreCase);
 
             presetOptions = GetPresetOptions();
 
@@ -856,6 +870,8 @@
             dto.Donations = dtoDonations;
 
             donationData = dto;
+            isInternUser = dto.IsInternUser;
+            isAdminOrViewer = dto.CanSearchAccounts;
 
             // Use what the service returned for UI state, but don't overwrite the session unless the user explicitly selected an account.
             // Prefer a non-empty SelectedAccount from the service, otherwise keep any existing selectedAccount (e.g. hydrated from session/middleware).
@@ -1033,7 +1049,8 @@
                 Fund = currentAccount.Fund,
                 AccountingClass = currentAccount.AccountingClass,
                 AccountNumber = currentAccount.AccountNumber,
-                Overhead = currentAccount.Overhead
+                Overhead = currentAccount.Overhead,
+                InternName = currentAccount.InternName
             };
             await AccountSelectionCoordinator.SelectAsync(account, userId, isAdminOrViewer, persistSelection: false);
             selectedAccount = accountName;

@@ -435,6 +435,19 @@ a, .btn-link {
     width: auto !important;
 }
 
+.account-selector-readonly {
+    flex: 1 1 0;
+    min-width: 0;
+    min-height: 38px;
+    display: flex;
+    align-items: center;
+    padding: 0 0.75rem;
+    border: 1px solid var(--rz-input-border-color, #ced4da);
+    border-radius: var(--rz-input-border-radius, 4px);
+    background: var(--rz-input-background-color, #fff);
+    box-sizing: border-box;
+}
+
 .home-account-selector-row {
     display: flex;
     align-items: center;
@@ -454,6 +467,11 @@ a, .btn-link {
     flex: 1 1 0 !important;
     min-width: 0;
     width: auto !important;
+}
+
+.home-account-selector-row .account-selector-readonly {
+    flex: 1 1 0;
+    min-width: 0;
 }
 
 @media (max-width: 1100px) {

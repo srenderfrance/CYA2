@@ -37,7 +37,7 @@ public sealed class HomeAuthorizationServiceTests
     }
 
     [Fact]
-    public async Task AuthorizeAsync_FallsBackWhenPreferredAccountWasRevoked()
+    public async Task AuthorizeAsync_RejectsRevokedPreferredAccount()
     {
         var account = Account(12, "Current Fund");
         var service = CreateService(new UserAccountContext
@@ -49,8 +49,9 @@ public sealed class HomeAuthorizationServiceTests
 
         var result = await service.AuthorizeAsync("7", "Revoked Fund");
 
-        Assert.True(result.IsAuthorized);
-        Assert.Equal("Current Fund", result.SelectedAccount!.Fund);
+        Assert.False(result.IsAuthorized);
+        Assert.Null(result.SelectedAccount);
+        Assert.True(result.IsRequestedAccountAccessDenied);
     }
 
     [Fact]
@@ -62,6 +63,7 @@ public sealed class HomeAuthorizationServiceTests
 
         Assert.False(result.IsAuthorized);
         Assert.Equal("User has no accessible accounts.", result.Reason);
+        Assert.False(result.IsRequestedAccountAccessDenied);
     }
 
     private static HomeAuthorizationService CreateService(UserAccountContext? context) =>

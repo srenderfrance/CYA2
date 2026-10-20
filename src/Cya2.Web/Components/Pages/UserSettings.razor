@@ -72,6 +72,12 @@
                         </RadzenText>
                         
                          <div class="account-selector-box">
+                             @if (isInternUser)
+                             {
+                                 <div class="account-selector-readonly">@InternAccountDisplayName</div>
+                             }
+                             else
+                             {
                              <AccountSelector TItem="AccountOptionDto" TValue="string"
                                               Data="@defaultAccountOptions"
                                               TextProperty="DisplayName"
@@ -80,8 +86,10 @@
                                               ValueChanged="@(value => selectedAccountingClass = value)"
                                               Placeholder="@Localizer["SelectDefaultAccount"]"
                                               Disabled="@(userAccounts == null || userAccounts.Count == 0)"
-                                               TextSelector="@(account => account.AccountId == 0 ? Localizer["None"].Value : InternAccountUtility.GetAccountSelectorDisplayName(account.Fund))"
+                                              AllowFiltering="@isAdminOrViewer"
+                                              TextSelector="@(account => account.AccountId == 0 ? Localizer["None"].Value : InternAccountUtility.GetAccountSelectorDisplayName(account.Fund, account.InternName))"
                                               Class="account-selector-dropdown-inline" />
+                             }
                          </div>
                         
                         <RadzenButton Text="@Localizer["Save"]"
@@ -154,6 +162,12 @@
     private string selectedAccountingClass = string.Empty;
     private string selectedLanguage = "en-US";
     private bool isLoading = true;
+    private bool isAdminOrViewer;
+    private bool isInternUser;
+
+    private string InternAccountDisplayName => userAccounts
+        .Select(account => InternAccountUtility.GetAccountSelectorDisplayName(account.Fund, account.InternName))
+        .FirstOrDefault() ?? string.Empty;
 
     protected override async Task OnInitializedAsync()
     {
@@ -178,6 +192,10 @@
             }
 
             var authLevel = user.FindFirstValue("AuthLevel") ?? string.Empty;
+            isAdminOrViewer = user.IsInRole("Admin") ||
+                              string.Equals(authLevel, "Admin", StringComparison.OrdinalIgnoreCase) ||
+                              string.Equals(authLevel, "Viewer", StringComparison.OrdinalIgnoreCase);
+            isInternUser = string.Equals(authLevel, "Intern", StringComparison.OrdinalIgnoreCase);
             var isAdminOnlyHint = user.IsInRole("Admin") || string.Equals(authLevel, "Admin", StringComparison.OrdinalIgnoreCase);
 
             var userIdentifier = SessionHydrationService.HydrateForUser(
@@ -192,6 +210,8 @@
             }
 
             var userContext = await UserAccountContextService.GetContextAsync(userIdentifier, isAdminOnlyHint);
+            isAdminOrViewer = userContext?.IsAdminOrViewer == true;
+            isInternUser = userContext?.IsIntern == true;
             var settings = await UserSettingsService.GetUserSettingsAsync(userIdentifier, isAdminOnlyHint);
             if (settings == null)
             {

@@ -57,9 +57,18 @@ public sealed class InternAccountUtilityTests
     }
 
     [Fact]
-    public void GetAccountSelectorDisplayName_AppendsInternSuffixWithoutChangingOrdinaryFundDisplay()
+    public void GetAccountSelectorDisplayName_FormatsInternNameByLastNameAndPreservesOrdinaryFundDisplay()
     {
-        Assert.Equal("Jane Doe (Intern)", InternAccountUtility.GetAccountSelectorDisplayName("Intern: Jane Doe"));
+        Assert.Equal("Doe, Jane (Intern)", InternAccountUtility.GetAccountSelectorDisplayName("Intern: Jane Doe"));
+        Assert.Equal("Doe, Jane (Intern)", InternAccountUtility.GetAccountSelectorDisplayName("Intern: Doe, Jane"));
+        Assert.Equal("Marcus (Intern)", InternAccountUtility.GetAccountSelectorDisplayName("Intern: Marcus"));
         Assert.Equal("General", InternAccountUtility.GetAccountSelectorDisplayName("General: Donations"));
+    }
+
+    [Fact]
+    public void GetAccountSelectorSortKey_UsesFormattedInternName()
+    {
+        Assert.Equal("Doe, Jane (Intern)", InternAccountUtility.GetAccountSelectorSortKey("Intern: Jane Doe"));
+        Assert.Equal("General", InternAccountUtility.GetAccountSelectorSortKey("General: Donations"));
     }
 }

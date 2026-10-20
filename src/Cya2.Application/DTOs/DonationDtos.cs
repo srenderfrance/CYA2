@@ -3,6 +3,8 @@ namespace Cya2.Application.DTOs;
 public class DonationDataDto
 {
     public List<AccountOptionDto> UserAccounts { get; set; } = new();
+    public bool IsInternUser { get; set; }
+    public bool CanSearchAccounts { get; set; }
     public string SelectedAccount { get; set; } = string.Empty;
     public string SelectedSubAccount { get; set; } = "All";
     public bool ShowSubAccountDropdown { get; set; }

@@ -118,6 +118,7 @@ public class UserAccountContextService : IUserAccountContextService
 
         var selected = !string.IsNullOrWhiteSpace(preferredIdentity)
             ? context.Accounts.FirstOrDefault(a =>
+                // Intern selectors retain InternName as their value because a shared fund can contain multiple interns' donation data.
                 string.Equals(
                     string.IsNullOrWhiteSpace(a.InternName) ? a.Fund : a.InternName,
                     preferredIdentity,
@@ -232,6 +233,7 @@ public class UserAccountContextService : IUserAccountContextService
     {
         if (_fundReferenceService is null || isIntern)
         {
+            // Intern users must resolve their own account directly so the context preserves the intern lookup identity.
             var legacyAccounts = isAdminOrViewer
                 ? await _accountRepository.GetAllAsync()
                 : await _userAccountAccessRepository.GetUserAccountsAsync(userId);
@@ -281,6 +283,7 @@ public class UserAccountContextService : IUserAccountContextService
         SoftCredit = account.SoftCredit,
         BalanceAdjustment = account.BalanceAdjustment,
         OtherFunds = account.OtherFunds,
+        // Derive the lookup identity from the intern account convention; AccountingClass is intentionally irrelevant for intern accounts.
         InternName = InternAccountUtility.TryGetInternDesignationName(account.Fund, out var internName)
             ? internName
             : string.Empty,

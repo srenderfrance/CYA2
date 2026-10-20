@@ -10,6 +10,8 @@ public class FinancialDashboardDto
     public string SelectedAccount { get; set; } = string.Empty;
     public string UserName { get; set; } = string.Empty;
     public bool IsAdminUser { get; set; }
+    public bool IsInternUser { get; set; }
+    public bool CanSearchAccounts { get; set; }
     public bool HasAccountData { get; set; }
     public List<UserAccountDto> UserAccounts { get; set; } = new();
     

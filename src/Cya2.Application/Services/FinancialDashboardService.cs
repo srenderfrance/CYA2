@@ -309,12 +309,16 @@ public class FinancialDashboardService : IFinancialDashboardService
                 return dashboard;
             }
 
+            dashboard.IsInternUser = userContext.IsIntern;
+            dashboard.CanSearchAccounts = userContext.IsAdminOrViewer;
+
             var accounts = userContext.Accounts;
             dashboard.UserAccounts = accounts
                 .Select(a => new UserAccountDto
                 {
                     AccountId = a.AccountId,
                     Fund = a.Fund ?? string.Empty,
+                    // The dashboard preserves InternName as the value used to load intern-specific donation data.
                     InternName = userContext.IsIntern ? userContext.InternName : a.InternName ?? string.Empty,
                     DisplayName = userContext.IsIntern
                         ? userContext.InternName
@@ -347,6 +351,7 @@ public class FinancialDashboardService : IFinancialDashboardService
             }
 
             var isInternAccount = userContext.IsIntern || !string.IsNullOrWhiteSpace(selectedContextAccount.InternName);
+            // Home selection is InternName for intern data, but remains Fund for normal accounting-backed accounts.
             dashboard.SelectedAccount = isInternAccount
                 ? string.IsNullOrWhiteSpace(selectedContextAccount.InternName)
                     ? userContext.InternName
@@ -378,7 +383,7 @@ public class FinancialDashboardService : IFinancialDashboardService
                         }
                         catch (Exception ex)
                         {
-                            _logger.LogWarning(ex, "Failed to preload donations for selected account {Account}", dashboard.SelectedAccount);
+                            _logger.LogWarning(ex, "Failed to preload donations for the selected account");
                         }
         finally
         {
@@ -396,7 +401,7 @@ public class FinancialDashboardService : IFinancialDashboardService
                         }
                         catch (Exception ex)
                         {
-                            _logger.LogWarning(ex, "Failed to preload donations for default account {Account}", defaultAcc);
+                            _logger.LogWarning(ex, "Failed to preload donations for the default account");
                         }
                     }
                 }

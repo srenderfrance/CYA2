@@ -6,6 +6,8 @@ namespace Cya2.Application.DTOs;
 public class ExpenseDataDto
 {
     public List<AccountOptionDto> UserAccounts { get; set; } = new();
+    public bool IsInternUser { get; set; }
+    public bool CanSearchAccounts { get; set; }
     public string SelectedAccount { get; set; } = string.Empty;
     public List<ExpenseTransactionDto> ExpenseTransactions { get; set; } = new();
     public List<ExpenseTransactionDto> TransferTransactions { get; set; } = new();

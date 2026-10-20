@@ -2,6 +2,7 @@ namespace Cya2.Core.Utilities;
 
 public static class InternAccountUtility
 {
+    // Intern identity is encoded in the fund value because it is used for account lifecycle and access, while donation lookup uses InternName.
     public const string InternFundPrefix = "Intern: ";
 
     public static bool IsInternFund(string? fund)
@@ -182,10 +183,38 @@ public sealed record InternDesignationCriteria(
     {
         if (TryGetInternDesignationName(fund, out var internName))
         {
-            return $"{internName} (Intern)";
+            // Keep the stored identity unchanged, but display intern accounts with the same last-name-first convention used for named accounts.
+            return $"{GetInternAccountDisplayName(internName)} (Intern)";
         }
 
         return GetDisplayFundName(fund);
+    }
+
+    public static string GetAccountSelectorDisplayName(string? fund, string? internName)
+    {
+        return string.IsNullOrWhiteSpace(internName)
+            ? GetAccountSelectorDisplayName(fund)
+            : GetAccountSelectorDisplayName(BuildInternFund(internName));
+    }
+
+    public static string GetAccountSelectorSortKey(string? fund)
+    {
+        // Sort on the display value so intern accounts are grouped by surname instead of the internal "Intern:" prefix.
+        return GetAccountSelectorDisplayName(fund);
+    }
+
+    private static string GetInternAccountDisplayName(string internName)
+    {
+        var normalizedName = NormalizeWhitespace(internName);
+        if (normalizedName.Contains(','))
+        {
+            return normalizedName;
+        }
+
+        var reversedName = GetAlternateDesignationName(normalizedName);
+        return string.IsNullOrWhiteSpace(reversedName)
+            ? normalizedName
+            : reversedName;
     }
 
     private static string NormalizeWhitespace(string? value)

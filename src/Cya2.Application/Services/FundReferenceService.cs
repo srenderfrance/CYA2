@@ -61,6 +61,7 @@ public sealed class FundReferenceService : IFundReferenceService
         {
             AccountId = account.AccountId,
             Fund = account.Fund,
+            // References retain a separate intern identity so UI selection does not route intern data through Fund.
             InternName = InternAccountUtility.TryGetInternDesignationName(account.Fund, out var internName)
                 ? internName
                 : string.Empty,

@@ -25,9 +25,15 @@ public sealed class HomeAuthorizationService : IHomeAuthorizationService
             return HomeAuthorizationResult.Denied("User does not exist or could not be resolved.");
         }
 
-        var selectedAccount = _accountContextService.ResolveSelectedAccount(
-            context,
-            context.IsIntern ? context.InternName : preferredFund);
+        var hasRequestedAccount = !context.IsIntern && !string.IsNullOrWhiteSpace(preferredFund);
+        var selectedAccount = hasRequestedAccount
+            ? context.Accounts.FirstOrDefault(account =>
+                string.Equals(account.Fund, preferredFund, StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(account.InternName, preferredFund, StringComparison.OrdinalIgnoreCase))
+            : _accountContextService.ResolveSelectedAccount(
+                context,
+                // Intern home views select by intern identity because the fund is not a unique donation-data key.
+                context.IsIntern ? context.InternName : preferredFund);
         if (selectedAccount is null && context.IsIntern)
         {
             return new HomeAuthorizationResult(
@@ -47,7 +53,10 @@ public sealed class HomeAuthorizationService : IHomeAuthorizationService
                 context.UserId,
                 context,
                 null,
-                "User has no accessible accounts.");
+                context.Accounts.Count == 0
+                    ? "User has no accessible accounts."
+                    : "User does not have access to the requested account.",
+                IsRequestedAccountAccessDenied: context.Accounts.Count > 0 && hasRequestedAccount);
         }
 
         return new HomeAuthorizationResult(

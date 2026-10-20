@@ -37,9 +37,7 @@ public class DonationService : IDonationService
 
         try
         {
-            var authorization = string.IsNullOrWhiteSpace(accountName)
-                ? await _authorizationService.ValidateUserAsync(userId)
-                : await _authorizationService.ValidateAccountAccessAsync(userId, accountName);
+            var authorization = await _authorizationService.ValidateUserAsync(userId);
             if (!authorization.IsAuthorized)
                 return result;
 
@@ -49,6 +47,16 @@ public class DonationService : IDonationService
                 _logger.LogWarning("Donation context unavailable for user '{UserId}' (isAdminOrViewer={IsAdminOrViewer})", userId, isAdminOrViewer);
                 return result; // no accounts available
             }
+
+            if (!context.IsIntern && !string.IsNullOrWhiteSpace(accountName))
+            {
+                authorization = await _authorizationService.ValidateAccountAccessAsync(userId, accountName);
+                if (!authorization.IsAuthorized)
+                    return result;
+            }
+
+            result.IsInternUser = context.IsIntern;
+            result.CanSearchAccounts = context.IsAdminOrViewer;
 
             // Map available accounts
             result.UserAccounts = (context.Accounts ?? new List<UserAccountContextAccount>()).Select(a => new AccountOptionDto
@@ -67,6 +75,7 @@ public class DonationService : IDonationService
               .ToList();
 
             // Resolve selected account preference using context helper
+            // Use InternName as the selection identity for intern users instead of the shared fund identity.
             var selected = context.IsIntern
                 ? new UserAccountContextAccount { InternName = context.InternName }
                 : _userAccountContextService.ResolveSelectedAccount(context, string.IsNullOrWhiteSpace(accountName) ? null : accountName);

@@ -70,14 +70,21 @@ public class ExpenseService : IExpenseService
                 _logger.LogWarning("No accounts found for user: {UserId}", userId);
                 return new ExpenseDataDto
                 {
-                    UserAccounts = contextAccounts.Select(MapToAccountOptionDto).ToList()
+                    UserAccounts = contextAccounts.Select(MapToAccountOptionDto).ToList(),
+                    IsInternUser = context?.IsIntern == true,
+                    CanSearchAccounts = context?.IsAdminOrViewer == true
                 };
             }
 
             var selectedAccount = _userAccountContextService.ResolveSelectedAccount(context, accountName);
             if (selectedAccount == null)
             {
-                return new ExpenseDataDto { UserAccounts = contextAccounts.Select(MapToAccountOptionDto).ToList() };
+                return new ExpenseDataDto
+                {
+                    UserAccounts = contextAccounts.Select(MapToAccountOptionDto).ToList(),
+                    IsInternUser = context.IsIntern,
+                    CanSearchAccounts = context.IsAdminOrViewer
+                };
             }
 
             var accountingData = await LoadAccountingDataAsync(selectedAccount, dateRange, userId);
@@ -90,6 +97,8 @@ public class ExpenseService : IExpenseService
             var result = new ExpenseDataDto
             {
                 UserAccounts = contextAccounts.Select(MapToAccountOptionDto).ToList(),
+                IsInternUser = context.IsIntern,
+                CanSearchAccounts = context.IsAdminOrViewer,
                 SelectedAccount = selectedAccount.Fund ?? string.Empty,
                 ExpenseTransactions = expenseTransactions,
                 TransferTransactions = transferTransactions,
@@ -233,9 +242,7 @@ public class ExpenseService : IExpenseService
             InternName = account.InternName ?? (InternAccountUtility.TryGetInternDesignationName(account.Fund, out var internName)
                 ? internName
                 : string.Empty),
-            DisplayName = string.IsNullOrWhiteSpace(account.InternName)
-                ? InternAccountUtility.GetAccountSelectorDisplayName(account.Fund)
-                : $"{account.InternName} (Intern)",
+            DisplayName = InternAccountUtility.GetAccountSelectorDisplayName(account.Fund),
             AccountingClass = account.AccountingClass ?? string.Empty,
             AccountNumber = account.AccountNumber ?? string.Empty,
             Overhead = Convert.ToDecimal(account.Overhead)

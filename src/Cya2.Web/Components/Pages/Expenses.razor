@@ -95,6 +95,12 @@
             <div class="date-range-toolbar-box account-selector-box">
                 <div class="account-selector-row">
                     <RadzenLabel Text="@Localizer["Account"]" />
+                    @if (isInternUser)
+                    {
+                        <div class="account-selector-readonly">@InternAccountDisplayName</div>
+                    }
+                    else
+                    {
                     <AccountSelector TItem="AccountOptionDto" TValue="string"
                                      Data="@((expenseData.UserAccounts ?? new List<AccountOptionDto>()))"
                                      TextProperty="DisplayName"
@@ -103,8 +109,10 @@
                                      ValueChanged="@(value => selectedAccount = value)"
                                      Change="@(async args => await AccountSelection(args?.ToString()))"
                                      Placeholder="@Localizer["ChooseAccount"]"
-                                      TextSelector="@(account => InternAccountUtility.GetAccountSelectorDisplayName(account.Fund))"
+                                      AllowFiltering="@canAccessAllAccounts"
+                                      TextSelector="@(account => InternAccountUtility.GetAccountSelectorDisplayName(account.Fund, account.InternName))"
                                      Class="account-selector-dropdown-inline" />
+                    }
                 </div>
             </div>
         </RadzenStack>
@@ -270,6 +278,11 @@
     private bool refreshTransferGrid = false;
     private bool refreshExpenseGrid = false;
     private bool canAccessAllAccounts = false;
+    private bool isInternUser = false;
+
+    private string InternAccountDisplayName => expenseData.UserAccounts
+        .Select(account => InternAccountUtility.GetAccountSelectorDisplayName(account.Fund, account.InternName))
+        .FirstOrDefault() ?? string.Empty;
 
     protected override async Task OnInitializedAsync()
     {
@@ -286,6 +299,7 @@
                                   string.Equals(authLevel, "Admin", StringComparison.OrdinalIgnoreCase) ||
                                   string.Equals(authLevel, "Viewer", StringComparison.OrdinalIgnoreCase);
             canAccessAllAccounts = isAdminOrViewer;
+            isInternUser = string.Equals(authLevel, "Intern", StringComparison.OrdinalIgnoreCase);
 
             presetOptions = GetPresetOptions();
             dateRangeState = DateRangeStateService.InitializeDateRange(SessionUserStateService);
@@ -297,6 +311,8 @@
             // If selectedAccount is empty, we intend the service to use server/session defaults and not to set the client session automatically.
             var passedAccount = selectedAccount;
             expenseData = await ExpenseService.GetExpenseDataAsync(passedAccount ?? string.Empty, new DateRange(dateRangeState.StartDate, dateRangeState.EndDate), userId, isAdminOrViewer);
+            canAccessAllAccounts = expenseData.CanSearchAccounts;
+            isInternUser = expenseData.IsInternUser;
 
             // Update selected account and AppState
             if (!string.IsNullOrEmpty(expenseData.SelectedAccount))
@@ -417,6 +433,8 @@
 
             var dateRange = new DateRange(dateRangeState.StartDate, dateRangeState.EndDate);
             expenseData = await ExpenseService.GetExpenseDataAsync(selectedAccount ?? string.Empty, dateRange, userId, isAdminOrViewer);
+            canAccessAllAccounts = expenseData.CanSearchAccounts;
+            isInternUser = expenseData.IsInternUser;
 
             // Update selected account and AppState
             if (!string.IsNullOrEmpty(expenseData.SelectedAccount))
@@ -470,6 +488,7 @@
                 AccountingClass = selectedAccountDto.AccountingClass,
                 AccountNumber = selectedAccountDto.AccountNumber,
                 Overhead = selectedAccountDto.Overhead,
+                // Preserve InternName so downstream selection keeps donation lookup separate from the fund value.
                 InternName = selectedAccountDto.InternName
             };
             await AccountSelectionCoordinator.SelectAsync(account, userId, canAccessAllAccounts, persistSelection: true);

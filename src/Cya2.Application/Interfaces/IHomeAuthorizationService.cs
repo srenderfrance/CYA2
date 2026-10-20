@@ -14,7 +14,8 @@ public sealed record HomeAuthorizationResult(
     int UserId,
     UserAccountContext? Context,
     UserAccountContextAccount? SelectedAccount,
-    string Reason)
+    string Reason,
+    bool IsRequestedAccountAccessDenied = false)
 {
     public bool HasAccounts => Context?.Accounts.Count > 0;
 

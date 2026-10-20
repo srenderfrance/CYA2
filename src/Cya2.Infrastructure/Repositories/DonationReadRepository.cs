@@ -355,6 +355,7 @@ WHERE dn.DisplayName LIKE @SearchTerm
             return new List<DonationRecord>();
         }
 
+        // Imported intern designations can vary in name order and punctuation, so lookup accepts normalized equivalents.
         var criteria = InternAccountUtility.CreateDesignationCriteria(internName);
 
         await using var conn = new MySqlConnection(ConnStr);

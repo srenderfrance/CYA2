@@ -2,7 +2,7 @@
 @typeparam TValue
 
 <RadzenDropDown TValue="TValue"
-                Data="@Data"
+                Data="@OrderedData"
                 TextProperty="@TextProperty"
                 ValueProperty="@ValueProperty"
                 Value="@Value"
@@ -10,7 +10,7 @@
                 Change="@Change"
                 Placeholder="@Placeholder"
                 Disabled="@Disabled"
-                AllowFiltering="true"
+                AllowFiltering="@AllowFiltering"
                 FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive"
                 FilterOperator="StringFilterOperator.Contains"
                 AllowClear="@AllowClear"
@@ -35,9 +35,14 @@
     [Parameter] public Func<TItem, string>? TextSelector { get; set; }
     [Parameter] public string Placeholder { get; set; } = string.Empty;
     [Parameter] public bool Disabled { get; set; }
+    [Parameter] public bool AllowFiltering { get; set; } = true;
     [Parameter] public bool AllowClear { get; set; }
     [Parameter] public string? Class { get; set; }
     [Parameter] public string? Style { get; set; }
+
+    private IEnumerable<TItem> OrderedData => (Data ?? Enumerable.Empty<TItem>())
+        .OrderBy(item => IsPlaceholder(item) ? 0 : 1)
+        .ThenBy(GetText, StringComparer.OrdinalIgnoreCase);
 
     private string GetText(TItem item)
     {
@@ -48,5 +53,11 @@
 
         var property = typeof(TItem).GetProperty(TextProperty);
         return property?.GetValue(item)?.ToString() ?? string.Empty;
+    }
+
+    private static bool IsPlaceholder(TItem item)
+    {
+        var accountId = typeof(TItem).GetProperty("AccountId")?.GetValue(item);
+        return accountId is int id && id == 0;
     }
 }

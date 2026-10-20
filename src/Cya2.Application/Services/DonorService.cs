@@ -268,6 +268,7 @@ namespace Cya2.Application.Services
                 var donations = await _donationReadRepository.GetDonationsByFundsAndDateRangeAsync(funds, dateRange.StartDate, dateRange.EndDate);
                 if (TryGetSingleInternFund(funds, out var internFund))
                 {
+                    // Do not use the normal fund query: a shared fund may contain donations for several interns.
                     donations = await GetInternDonationsByRangeAsync(internFund, dateRange.StartDate, dateRange.EndDate);
                 }
                 donations = DeduplicateDonations(donations);

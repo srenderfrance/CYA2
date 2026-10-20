@@ -182,6 +182,7 @@ public class UserManagementService
 
             if (string.Equals(targetAuthLevel, "Intern", StringComparison.OrdinalIgnoreCase))
             {
+                // Intern account identity is name-derived, so a collision needs an explicit reuse decision instead of creating duplicate history paths.
                 var desiredFund = InternAccountUtility.BuildInternFund(targetName);
                 var existingAccount = await _accountRepository.GetByFundAsync(desiredFund);
                 var linkedInternAccount = (await _userAccountAccessRepository.GetUserAccountsAsync(user.Id))
@@ -208,6 +209,7 @@ public class UserManagementService
             }
             else if (wasIntern)
             {
+                // Keep the former intern account and its donation history, but remove access when the user is no longer an intern.
                 var linkedAccounts = await _userAccountAccessRepository.GetUserAccountsAsync(user.Id);
                 foreach (var internAccount in linkedAccounts.Where(account => InternAccountUtility.IsInternFund(account.Fund)))
                 {
@@ -358,6 +360,7 @@ public class UserManagementService
             var isInternUser = string.Equals(authLevel, "Intern", StringComparison.OrdinalIgnoreCase);
             if (isInternUser && !reuseExistingInternAccount)
             {
+                // Deletion retains intern accounts, so recreated users must explicitly choose whether to reconnect to an existing account.
                 var existingAccount = await _accountRepository.GetByFundAsync(InternAccountUtility.BuildInternFund(name));
                 if (existingAccount != null)
                 {
@@ -465,12 +468,14 @@ public class UserManagementService
 
         if (desiredAccount != null && linkedInternAccount != null && desiredAccount.AccountId != linkedInternAccount.AccountId && reuseExistingAccount)
         {
+            // A confirmed reuse switches access to the retained account without merging or deleting either account's data.
             await _userAccountAccessRepository.RevokeAccessAsync(user.Id, linkedInternAccount.AccountId);
             linkedInternAccount = null;
         }
 
         if (desiredAccount == null && linkedInternAccount != null)
         {
+            // A rename keeps the same intern account and its history; only its name-derived identity changes.
             linkedInternAccount.Fund = desiredInternFund;
             desiredAccount = await _accountRepository.UpdateAsync(linkedInternAccount);
         }
@@ -488,6 +493,7 @@ public class UserManagementService
 
         if (desiredAccount == null)
         {
+            // Intern accounts are donation-only, so they deliberately have no AccountingClass or accounting account number.
             desiredAccount = await _accountRepository.AddAsync(new Cya2.Core.Entities.Account
             {
                 Fund = desiredInternFund,

@@ -904,6 +904,7 @@
             } }
             .Concat(allFunds
                 .Where(f => f.AccountId != 0)  // Exclude any zero IDs from allFunds
+                .OrderBy(f => InternAccountUtility.GetAccountSelectorSortKey(f.Fund), StringComparer.OrdinalIgnoreCase)
                 .Select(f => new FundDisplayItem { 
                     Account = f,
                     // Use the Fund value (not AccountingClass) for display, normalized via helper
@@ -1063,7 +1064,8 @@
                             .Where(a => !string.IsNullOrWhiteSpace(a.Fund))
                             // Order by name only if not adding a new user (to keep default option at the top)
                             .OrderBy(a => !IsAddNewSelected && a.AccountId == 0 ? 1 : 0)
-                            .ThenBy(a => a.Fund)
+                            // Sort key strips internal intern prefixes so intern-owned accounts stay grouped by visible fund identity.
+                            .ThenBy(a => InternAccountUtility.GetAccountSelectorSortKey(a.Fund), StringComparer.OrdinalIgnoreCase)
                             .ToList();
 
             // If an existing user is selected, exclude accounts they already have access to
@@ -1284,6 +1286,7 @@
 
                 if (op.RequiresInternAccountReuse && await ConfirmInternAccountReuseAsync())
                 {
+                    // Retry only after confirmation so a recreated intern user does not silently receive a retained account's history.
                     op = await UserManagementService.CreateAdminUserAsync(
                         newName,
                         newEmail,
@@ -1308,6 +1311,11 @@
 
                 // Refresh staff list and reset selection
                 await LoadAllStaff();
+                // Intern creation also creates an account, so reload the account cache and selectors in the same UI operation.
+                AdminPreloadService.Invalidate();
+                await LoadAllAccounts();
+                allFunds = allAccounts;
+                RefreshAccountsOptions();
                 staffMember = AddNewLabel;
                 selectedStaffId = 0;
                 selectedStaff = string.Empty;
@@ -1351,6 +1359,7 @@
 
                 var successMessages = new List<string>();
                 var errorMessages = new List<string>();
+                var profileUpdated = false;
 
                 var hasProfileChanges = !string.IsNullOrWhiteSpace(newName)
                                         || !string.IsNullOrWhiteSpace(newEmail)
@@ -1377,12 +1386,14 @@
                     var profileOp = await UserManagementService.UpdateAdminUserAsync(request);
                     if (profileOp.RequiresInternAccountReuse && await ConfirmInternAccountReuseAsync())
                     {
+                        // A renamed intern may collide with retained history; retry only after the Admin selects reuse.
                         request.ReuseExistingInternAccount = true;
                         profileOp = await UserManagementService.UpdateAdminUserAsync(request);
                     }
                     if (profileOp.IsSuccess)
                     {
                         successMessages.Add(profileOp.Message);
+                        profileUpdated = true;
                     }
                     else
                     {
@@ -1434,6 +1445,15 @@
                 selectedLinkedAccountId = 0;
 
                 await LoadAllStaff();
+
+                if (profileUpdated)
+                {
+                    // A successful intern profile update can rename or relink its automatic account.
+                    AdminPreloadService.Invalidate();
+                    await LoadAllAccounts();
+                    allFunds = allAccounts;
+                    RefreshAccountsOptions();
+                }
 
                 // User name may have changed, so re-select by user id then re-hydrate UI
                 var refreshedUser = staff.FirstOrDefault(u => u.Id == selectedUser.Id);

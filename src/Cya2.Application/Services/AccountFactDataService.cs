@@ -39,6 +39,7 @@ public sealed class AccountFactDataService : IAccountFactDataService
     {
         if (!string.IsNullOrWhiteSpace(account.InternName))
         {
+            // A fund can include more than one intern, so intern facts are loaded by the donation's InternName rather than Fund.
             var internRows = await _donationRepository.GetInternDonationsByInternNameAndDateRangeAsync(account.InternName ?? string.Empty, startDate, endDate);
             return new DonationCalculationData { Donations = internRows ?? [], SubAccounts = [] };
         }
@@ -70,6 +71,7 @@ public sealed class AccountFactDataService : IAccountFactDataService
 
     public async Task<List<AccountingRecord>> GetAccountingDataAsync(UserAccountContextAccount account, string userId, DateTime startDate, DateTime endDate, CancellationToken cancellationToken = default)
     {
+        // Intern accounts have donation data only; they do not map to AccountingData.
         if (!string.IsNullOrWhiteSpace(account.InternName)) return [];
         var standard = AccountFactCacheWindow.GetStandardWindow(DateTime.UtcNow);
         var standardKey = new AccountingDataCacheKey(account.AccountId, account.AccountingClass, account.AccountNumber, _versions.Accounting, standard.StartDate, standard.EndDate).Normalize();
