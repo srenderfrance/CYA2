@@ -62,7 +62,7 @@ Set-Location "<repository-root>"
 Set a connection string for the empty database. Replace only the placeholder values in your PowerShell session; do not add credentials to a tracked file:
 
 ```powershell
-$env:CYA2_SCHEMA_CONNECTION_STRING = "Server=localhost;Port=3306;Database=cya2_test;User ID=<your-mysql-user>;Password=<your-mysql-password>;SslMode=None;"
+$env:CYA2_SCHEMA_CONNECTION_STRING = "Server=localhost;Port=3306;Database=cya2_test;User ID=<your-mysql-user>;Password=<your-mysql-password>;SslMode=Disabled;"
 ```
 
 Run the database migrator:
@@ -80,7 +80,7 @@ Refresh `cya2_test` in Workbench after the command succeeds. Tables such as `Use
 From the same PowerShell window, set the Web project's local-only secrets. Use your local MySQL credentials and the Google OAuth values from your Google Cloud project:
 
 ```powershell
-dotnet user-secrets set "ConnectionStrings:default" "Server=localhost;Port=3306;Database=cya2_test;User ID=<your-mysql-user>;Password=<your-mysql-password>;SslMode=None;" --project src/Cya2.Web/cya2.csproj
+dotnet user-secrets set "ConnectionStrings:default" "Server=localhost;Port=3306;Database=cya2_test;User ID=<your-mysql-user>;Password=<your-mysql-password>;SslMode=Disabled;" --project src/Cya2.Web/cya2.csproj
 dotnet user-secrets set "Authentication:Google:ClientId" "<google-client-id>" --project src/Cya2.Web/cya2.csproj
 dotnet user-secrets set "Authentication:Google:ClientSecret" "<google-client-secret>" --project src/Cya2.Web/cya2.csproj
 dotnet user-secrets set "InitialAdminBootstrap:Email" "<your-google-email>" --project src/Cya2.Web/cya2.csproj
@@ -94,6 +94,8 @@ https://localhost:7243/signin-google
 ```
 
 The Google account used to sign in must use the exact email configured in `InitialAdminBootstrap:Email`.
+
+`MySql.Data` uses `SslMode=Disabled` for a local server that does not use TLS; it does not accept `SslMode=None`. If you previously configured `SslMode=None`, rerun the `dotnet user-secrets set "ConnectionStrings:default" ...` command above before starting the web application. Production connections must use the TLS mode and certificate configuration required by the production database host.
 
 ### 6. Run, sign in, and upload test data
 

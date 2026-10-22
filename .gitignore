@@ -402,3 +402,10 @@ FodyWeavers.xsd
 
 # Local nested test workspace
 Cya2-Test/
+
+# Local credential and environment files
+.env
+.env.*
+!.env.example
+secrets.json
+appsettings.Local.json

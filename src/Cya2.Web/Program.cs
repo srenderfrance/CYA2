@@ -56,13 +56,16 @@ if (!string.IsNullOrEmpty(mysqlConnStr))
 }
 
 var configuredConnectionString = builder.Configuration.GetConnectionString("default");
-if (!string.IsNullOrWhiteSpace(configuredConnectionString))
+var hasInvalidConnectionStringConfiguration =
+    !MySqlConnectionStringConfiguration.TryNormalize(configuredConnectionString, 15u, out var normalizedConnectionString);
+
+if (hasInvalidConnectionStringConfiguration)
 {
-    var connectionStringBuilder = new MySqlConnectionStringBuilder(configuredConnectionString)
-    {
-        MaximumPoolSize = 15
-    };
-    builder.Configuration["ConnectionStrings:default"] = connectionStringBuilder.ConnectionString;
+    builder.Configuration["ConnectionStrings:default"] = string.Empty;
+}
+else if (!string.IsNullOrWhiteSpace(normalizedConnectionString))
+{
+    builder.Configuration["ConnectionStrings:default"] = normalizedConnectionString;
 }
 
 builder.Services.AddLogging(l =>
@@ -94,6 +97,12 @@ builder.Services.AddCya2WebHostServices();
 
 var app = builder.Build();
 var lifecycleLogger = app.Services.GetRequiredService<ILogger<Program>>();
+
+if (hasInvalidConnectionStringConfiguration)
+{
+    lifecycleLogger.LogWarning(
+        "The MySQL connection string configuration is invalid. The application will start in database-limited mode.");
+}
 
 var effectiveConnectionString = app.Configuration.GetConnectionString("default") ?? string.Empty;
 try

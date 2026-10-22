@@ -30,18 +30,18 @@ Use this checklist to prepare the application for safe local setup, deployment, 
 - [x] Include fake example values only.
 - [x] State clearly where developers must provide local secrets.
 - [x] Require removal of initial-administrator bootstrap secrets after first sign-in.
-- [ ] Confirm that secrets are excluded from source control.
+- [x] Confirm that secrets are excluded from source control. Current tracked content and rewritten reachable history were scanned with Gitleaks during this audit with no leaks found. Root ignore rules exclude common local credential files; application secrets use user secrets or environment variables.
 
 ### 3. Deal with the database password in Git history
 
-- [ ] Identify the connection string and password present in Git history.
-- [ ] Ask the database owner whether the historical password still works.
-- [ ] Determine which database and host the credential reaches.
-- [ ] If the credential still works, rotate it immediately.
-- [ ] Confirm that replacement credentials are not committed to the repository.
-- [ ] Remove active secrets from current tracked files.
-- [ ] Add or verify secret scanning and repository protection rules.
-- [ ] Record the rotation decision without recording the password.
+- [x] Identify the connection string and password present in Git history. A Gitleaks scan identified a historical Aiven connection-string credential in obsolete configuration files without recording the secret value in this document.
+- [x] Ask the database owner whether the historical password still works. The database owner confirmed the exposed password was rotated previously.
+- [x] Determine which database and host the credential reaches. The historical credential was an obsolete Aiven database connection string; no host or credential value is recorded here.
+- [x] If the credential still works, rotate it immediately. The database owner confirmed the historical password had already been rotated.
+- [x] Confirm that replacement credentials are not committed to the repository. Gitleaks scanned the rewritten reachable repository history during this audit and found no leaks.
+- [x] Remove active secrets from current tracked files. Current tracked content and rewritten reachable history passed the Gitleaks scan during this audit.
+- [x] Add or verify secret scanning and repository protection rules.
+- [x] Record the rotation decision without recording the password. The historical credential was rotated before this audit; leaked configuration paths were removed from reachable history and a fresh clone passed Gitleaks verification.
 
 ### 4. Make deployment reproducible
 
