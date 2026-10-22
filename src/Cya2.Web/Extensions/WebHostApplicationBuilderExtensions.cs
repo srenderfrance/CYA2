@@ -29,13 +29,12 @@ public static class WebHostApplicationBuilderExtensions
                 "object-src 'none'; " +
                 "frame-ancestors 'none'; " +
                 "form-action 'self'; " +
-                "script-src 'self' https://cdn.jsdelivr.net; " +
-                "script-src-elem 'self' https://cdn.jsdelivr.net; " +
+                "script-src 'self'; " +
                 "script-src-attr 'unsafe-inline'; " +
                 "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; " +
                 "font-src 'self' https://cdn.jsdelivr.net data:; " +
                 "img-src 'self' data: https:; " +
-                "connect-src 'self' https: wss:; " +
+                "connect-src 'self'; " +
                 "frame-src 'none';";
             await next();
         });
