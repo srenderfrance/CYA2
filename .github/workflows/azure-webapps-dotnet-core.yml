@@ -21,6 +21,13 @@ jobs:
     steps:
       - name: Checkout source
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Scan for secrets
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set up .NET
         uses: actions/setup-dotnet@v4
@@ -43,6 +50,17 @@ jobs:
 
       - name: Build
         run: dotnet build Cya2.sln --configuration Release --no-restore
+
+      - name: Test
+        run: dotnet test Cya2.sln --configuration Release --no-build --logger "trx;LogFileName=test-results.trx" --results-directory TestResults
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: TestResults/**/*.trx
+          if-no-files-found: error
 
       - name: Publish
         run: |
