@@ -30,9 +30,8 @@ public static class WebHostApplicationBuilderExtensions
                 "frame-ancestors 'none'; " +
                 "form-action 'self'; " +
                 "script-src 'self'; " +
-                "script-src-attr 'unsafe-inline'; " +
-                "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; " +
-                "font-src 'self' https://cdn.jsdelivr.net data:; " +
+                "style-src 'self' 'unsafe-inline'; " +
+                "font-src 'self' data:; " +
                 "img-src 'self' data: https:; " +
                 "connect-src 'self'; " +
                 "frame-src 'none';";

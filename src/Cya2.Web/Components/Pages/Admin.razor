@@ -943,7 +943,6 @@
         private bool showRollbackDialog = false;
         private bool showAdminToolbarButtons = false;
          private bool adminInitializationStarted;
-         private bool adminControlsLoaded;
          private string? resolvedAdminUserId;
         private string rollbackTarget = string.Empty; // "donations", "accounting", "both"
         private string rollbackStatus = string.Empty;
@@ -1032,7 +1031,6 @@
                 accountToAddId = 0;
                 selectedLinkedAccountId = 0;
 
-                adminControlsLoaded = true;
                 await InvokeAsync(StateHasChanged);
                 _logger.LogInformation("Admin control data loaded and rendered.");
             }
