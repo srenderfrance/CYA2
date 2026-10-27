@@ -17,6 +17,7 @@ This is a .net 10 app that uses blazor, dapper and mysql, radzen components and 
 
 ## Data Management
 - The Donors and DonorContacts tables are application display projections, not the organization's official donor database. Contact data should be current-state only: each upload must remove contact values no longer present and retain DateCreated plus DateModified, without historical contact rows.
+- For CYA2, restricted audit-stream records may include internal numeric user IDs and should have a 90-day retention period. General diagnostic logs must continue to exclude personal values and sensitive account/intern data.
 
 ## Caching Strategy
 - FinancialSummary DTOs are independently cached presentation DTOs and must be recreated automatically after database updates; broad Donation/Donor and Expense/Accounting DTO caches are not automatically rebuilt for every account after invalidation and may not exist when summaries rebuild.

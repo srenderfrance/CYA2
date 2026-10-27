@@ -49,9 +49,16 @@ public sealed class ImportWorkQueue : BackgroundService, IImportWorkQueue
                     using var scope = _scopeFactory.CreateScope();
                     var processor = scope.ServiceProvider.GetRequiredService<IEnumerable<IImportProcessor>>()
                         .Single(item => string.Equals(item.ImportType, workItem.ImportType, StringComparison.OrdinalIgnoreCase));
+                    var auditEvents = scope.ServiceProvider.GetRequiredService<IAuditEventService>();
                     await using var stream = new MemoryStream(workItem.Data, writable: false);
                     _logger.LogInformation("Background {ImportType} processor started. PreviewId={PreviewId}, ProgressId={ProgressId}", workItem.ImportType, workItem.PreviewId, workItem.ProgressId);
-                    await processor.ProcessAsync(stream, workItem.ProgressId, stoppingToken);
+                    var importResult = await processor.ProcessAsync(stream, workItem.ProgressId, stoppingToken);
+                    await auditEvents.RecordAsync(
+                        workItem.ActorUserId,
+                        GetAuditEventType(workItem.ImportType, importResult.FailedRows > 0 ? AuditOutcomes.Failed : AuditOutcomes.Succeeded),
+                        importResult.FailedRows > 0 ? AuditOutcomes.Failed : AuditOutcomes.Succeeded,
+                        itemCount: importResult.InsertedRows,
+                        cancellationToken: stoppingToken);
                     _logger.LogInformation("Background {ImportType} processor returned. PreviewId={PreviewId}, ProgressId={ProgressId}", workItem.ImportType, workItem.PreviewId, workItem.ProgressId);
                 }
                 catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
@@ -60,7 +67,7 @@ public sealed class ImportWorkQueue : BackgroundService, IImportWorkQueue
                 }
                 catch (Exception ex)
                 {
-                    ReportFailure(workItem, ex);
+                    await ReportFailureAsync(workItem, ex, stoppingToken);
                 }
             }
         }
@@ -75,7 +82,7 @@ public sealed class ImportWorkQueue : BackgroundService, IImportWorkQueue
         }
     }
 
-    private void ReportFailure(ImportWorkItem workItem, Exception exception)
+    private async Task ReportFailureAsync(ImportWorkItem workItem, Exception exception, CancellationToken cancellationToken)
     {
         var errorMessage = ImportDiagnosticMessages.ImportFailed();
         if (exception is MySqlException mySqlException)
@@ -96,6 +103,12 @@ public sealed class ImportWorkQueue : BackgroundService, IImportWorkQueue
         try
         {
             using var errorScope = _scopeFactory.CreateScope();
+            var auditEvents = errorScope.ServiceProvider.GetRequiredService<IAuditEventService>();
+            await auditEvents.RecordAsync(
+                workItem.ActorUserId,
+                GetAuditEventType(workItem.ImportType, AuditOutcomes.Failed),
+                AuditOutcomes.Failed,
+                cancellationToken: cancellationToken);
             var progress = errorScope.ServiceProvider.GetRequiredService<IImportProgressService>();
             progress.AddErrors(workItem.ProgressId, new[] { errorMessage });
             progress.SetStatus(workItem.ProgressId, errorMessage);
@@ -107,4 +120,9 @@ public sealed class ImportWorkQueue : BackgroundService, IImportWorkQueue
                 workItem.ProgressId, ImportDiagnosticMessages.ExceptionCategory(reportingException));
         }
     }
+
+    private static string GetAuditEventType(string importType, string outcome)
+        => string.Equals(importType, "donations", StringComparison.OrdinalIgnoreCase)
+            ? outcome == AuditOutcomes.Succeeded ? AuditEventTypes.DonationImportCompleted : AuditEventTypes.DonationImportFailed
+            : outcome == AuditOutcomes.Succeeded ? AuditEventTypes.AccountingImportCompleted : AuditEventTypes.AccountingImportFailed;
 }

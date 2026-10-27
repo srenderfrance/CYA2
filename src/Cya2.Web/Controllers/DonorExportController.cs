@@ -22,17 +22,20 @@ namespace cya2.Controllers
         private readonly IUserIdResolver _userIdResolver;
         private readonly ILogger<DonorExportController> _logger;
         private readonly IAntiforgery _antiforgery;
+        private readonly IAuditEventService _auditEvents;
 
         public DonorExportController(
             IDonorExportService donorExportService,
             IUserIdResolver userIdResolver,
             ILogger<DonorExportController> logger,
-            IAntiforgery antiforgery)
+            IAntiforgery antiforgery,
+            IAuditEventService auditEvents)
         {
             _donorExportService = donorExportService;
             _userIdResolver = userIdResolver;
             _logger = logger;
             _antiforgery = antiforgery;
+            _auditEvents = auditEvents;
         }
 
         public class ExportRequest
@@ -142,9 +145,14 @@ namespace cya2.Controllers
                 }
                 if (!exportData.FundsAuthorized)
                 {
-                    _logger.LogWarning("ExportData denied. TraceId={TraceId}, UserId={UserId}, RequestedFundCount={RequestedFundCount}",
+                    _logger.LogWarning("ExportData denied. TraceId={TraceId}, RequestedFundCount={RequestedFundCount}",
                         HttpContext.TraceIdentifier,
-                        userId,
+                        exportData.RequestedFunds.Count);
+                    await _auditEvents.RecordAsync(
+                        int.TryParse(userId, out var deniedActorId) ? deniedActorId : null,
+                        AuditEventTypes.DonorExportDenied,
+                        AuditOutcomes.Denied,
+                        HttpContext.TraceIdentifier,
                         exportData.RequestedFunds.Count);
                     return Forbid();
                 }
@@ -159,6 +167,12 @@ namespace cya2.Controllers
 
                 _logger.LogInformation("Donor export generated: requestedFundCount={RequestedFundCount}; generatedRows={Count}",
                     requestedFunds.Count, donorRows.Count);
+                await _auditEvents.RecordAsync(
+                    int.TryParse(userId, out var actorId) ? actorId : null,
+                    AuditEventTypes.DonorExportCompleted,
+                    AuditOutcomes.Succeeded,
+                    HttpContext.TraceIdentifier,
+                    donorRows.Count);
 
                 // Use EPPlus license API for non-commercial organization
                 ExcelPackage.License.SetNonCommercialOrganization("Servant Partners");

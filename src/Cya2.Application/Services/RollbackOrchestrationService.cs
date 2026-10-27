@@ -9,22 +9,34 @@ public sealed class RollbackOrchestrationService : IRollbackService
     private readonly IRollbackRepository _repository;
     private readonly IRollbackExecutor _executor;
     private readonly IImportCacheInvalidator _cacheInvalidator;
+    private readonly IAdminAuthorizationContext _adminAuthorizationContext;
+    private readonly IAuditEventService _auditEvents;
     private readonly ILogger<RollbackOrchestrationService> _logger;
 
     public RollbackOrchestrationService(
         IRollbackRepository repository,
         IRollbackExecutor executor,
         IImportCacheInvalidator cacheInvalidator,
+        IAdminAuthorizationContext adminAuthorizationContext,
+        IAuditEventService auditEvents,
         ILogger<RollbackOrchestrationService> logger)
     {
         _repository = repository;
         _executor = executor;
         _cacheInvalidator = cacheInvalidator;
+        _adminAuthorizationContext = adminAuthorizationContext;
+        _auditEvents = auditEvents;
         _logger = logger;
     }
 
     public async Task<RollbackResult> ExecuteRollbackAsync(string target, CancellationToken cancellationToken = default)
     {
+        var actorUserId = await _adminAuthorizationContext.GetCurrentAdminUserIdAsync();
+        if (actorUserId is null)
+        {
+            return new RollbackResult { ErrorMessage = "Administrator authorization is required." };
+        }
+
         RollbackResult result;
         try
         {
@@ -33,17 +45,33 @@ public sealed class RollbackOrchestrationService : IRollbackService
                 "donations" => await _executor.RollbackDonationsAsync(cancellationToken),
                 "accounting" => await _executor.RollbackAccountingAsync(cancellationToken),
                 "both" => await RollbackBothAsync(cancellationToken),
-                _ => new RollbackResult { ErrorMessage = $"Invalid rollback target: {target}" }
+                _ => new RollbackResult { ErrorMessage = "Invalid rollback target." }
             };
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error executing rollback for target {Target}", target);
-            result = new RollbackResult { ErrorMessage = $"Rollback failed: {ex.Message}" };
+            _logger.LogError(ex, "Error executing rollback.");
+            result = new RollbackResult { ErrorMessage = "Rollback failed." };
         }
 
         if (result.Success)
+        {
             _cacheInvalidator.InvalidateAll();
+            await _auditEvents.RecordAsync(
+                actorUserId,
+                AuditEventTypes.RollbackCompleted,
+                AuditOutcomes.Succeeded,
+                itemCount: result.DonationRowsRestored + result.AccountingRowsRestored,
+                cancellationToken: cancellationToken);
+        }
+        else
+        {
+            await _auditEvents.RecordAsync(
+                actorUserId,
+                AuditEventTypes.RollbackFailed,
+                AuditOutcomes.Failed,
+                cancellationToken: cancellationToken);
+        }
 
         return result;
     }

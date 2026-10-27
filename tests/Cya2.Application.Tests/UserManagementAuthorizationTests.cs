@@ -206,6 +206,7 @@ public sealed class UserManagementAuthorizationTests
     {
         public bool IsAdmin { get; set; } = isAdmin;
         public Task<bool> IsCurrentUserAdminAsync() => Task.FromResult(IsAdmin);
+        public Task<int?> GetCurrentAdminUserIdAsync() => Task.FromResult(IsAdmin ? 1 : (int?)null);
     }
 
     private sealed class RecordingCacheInvalidator : IImportCacheInvalidator

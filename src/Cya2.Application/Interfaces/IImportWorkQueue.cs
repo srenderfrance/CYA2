@@ -6,6 +6,7 @@ public sealed record ImportWorkItem(
     string ImportType,
     string PreviewId,
     string ProgressId,
+    int? ActorUserId,
     byte[] Data);
 
 public interface IImportWorkQueue

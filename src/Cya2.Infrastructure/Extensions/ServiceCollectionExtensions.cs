@@ -29,6 +29,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IAccountingImportRepository, AccountingImportRepository>();
         services.AddScoped<IAccountImportService, AccountImportService>();
         services.AddScoped<IRollbackRepository, RollbackRepository>();
+        services.AddScoped<IAuditEventRepository, AuditEventRepository>();
         services.AddScoped<IImportProcessor, DonationImportProcessor>();
         services.AddScoped<IImportProcessor, AccountingImportProcessor>();
         services.AddScoped<IDonationImportMaintenanceService, DonationImportProcessor>();

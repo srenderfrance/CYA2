@@ -16,6 +16,7 @@ public class UserManagementService
     private readonly IAccountRepository _accountRepository;
     private readonly IAdminAuthorizationContext _adminAuthorizationContext;
     private readonly IImportCacheInvalidator? _cacheInvalidator;
+    private readonly IAuditEventService? _auditEvents;
     private readonly ILogger<UserManagementService> _logger;
 
     public UserManagementService(
@@ -24,7 +25,8 @@ public class UserManagementService
         IAccountRepository accountRepository,
         IAdminAuthorizationContext adminAuthorizationContext,
         ILogger<UserManagementService> logger,
-        IImportCacheInvalidator? cacheInvalidator = null)
+        IImportCacheInvalidator? cacheInvalidator = null,
+        IAuditEventService? auditEvents = null)
     {
         _userRepository = userRepository;
         _userAccountAccessRepository = userAccountAccessRepository;
@@ -32,6 +34,7 @@ public class UserManagementService
         _adminAuthorizationContext = adminAuthorizationContext;
         _logger = logger;
         _cacheInvalidator = cacheInvalidator;
+        _auditEvents = auditEvents;
     }
 
     public async Task<UserDto?> GetUserByEmailAsync(string email)
@@ -52,7 +55,7 @@ public class UserManagementService
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error getting user by email: {Email}", email);
+            _logger.LogError(ex, "Error getting user by email.");
             return null;
         }
     }
@@ -119,7 +122,8 @@ public class UserManagementService
     {
         try
         {
-            if (!await _adminAuthorizationContext.IsCurrentUserAdminAsync())
+            var actorUserId = await _adminAuthorizationContext.GetCurrentAdminUserIdAsync();
+            if (actorUserId is null)
             {
                 return new List<AdminUserDto>();
             }
@@ -152,7 +156,8 @@ public class UserManagementService
     {
         try
         {
-            if (!await _adminAuthorizationContext.IsCurrentUserAdminAsync())
+            var actorUserId = await _adminAuthorizationContext.GetCurrentAdminUserIdAsync();
+            if (actorUserId is null)
             {
                 return NotAuthorized();
             }
@@ -218,6 +223,7 @@ public class UserManagementService
             }
 
             _cacheInvalidator?.Invalidate(CacheDataDomains.Authorization);
+            await RecordAuditAsync(actorUserId, AuditEventTypes.AdminUserUpdated);
 
             return new AdminUserOperationDto { IsSuccess = true, Message = "User updated successfully" };
         }
@@ -232,7 +238,8 @@ public class UserManagementService
     {
         try
         {
-            if (!await _adminAuthorizationContext.IsCurrentUserAdminAsync())
+            var actorUserId = await _adminAuthorizationContext.GetCurrentAdminUserIdAsync();
+            if (actorUserId is null)
             {
                 return new List<Cya2.Core.Entities.Account>();
             }
@@ -250,7 +257,8 @@ public class UserManagementService
     {
         try
         {
-            if (!await _adminAuthorizationContext.IsCurrentUserAdminAsync())
+            var actorUserId = await _adminAuthorizationContext.GetCurrentAdminUserIdAsync();
+            if (actorUserId is null)
             {
                 return NotAuthorized();
             }
@@ -282,12 +290,13 @@ public class UserManagementService
             }
 
             _cacheInvalidator?.Invalidate(CacheDataDomains.Authorization);
+            await RecordAuditAsync(actorUserId, AuditEventTypes.AccountAccessGranted);
 
             return new AdminUserOperationDto { IsSuccess = true, Message = $"Successfully linked account '{account.Fund}'" };
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error granting account access. UserId={UserId}, AccountId={AccountId}", userId, accountId);
+            _logger.LogError(ex, "Error granting account access.");
             return new AdminUserOperationDto { IsSuccess = false, Message = $"Error linking account: {ex.Message}" };
         }
     }
@@ -296,7 +305,8 @@ public class UserManagementService
     {
         try
         {
-            if (!await _adminAuthorizationContext.IsCurrentUserAdminAsync())
+            var actorUserId = await _adminAuthorizationContext.GetCurrentAdminUserIdAsync();
+            if (actorUserId is null)
             {
                 return NotAuthorized();
             }
@@ -314,12 +324,13 @@ public class UserManagementService
             }
 
             _cacheInvalidator?.Invalidate(CacheDataDomains.Authorization);
+            await RecordAuditAsync(actorUserId, AuditEventTypes.AccountAccessRevoked);
 
             return new AdminUserOperationDto { IsSuccess = true, Message = $"Successfully removed account '{accountName}'" };
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error revoking account access. UserId={UserId}, AccountId={AccountId}", userId, accountId);
+            _logger.LogError(ex, "Error revoking account access.");
             return new AdminUserOperationDto { IsSuccess = false, Message = $"Error removing account link: {ex.Message}" };
         }
     }
@@ -328,7 +339,8 @@ public class UserManagementService
     {
         try
         {
-            if (!await _adminAuthorizationContext.IsCurrentUserAdminAsync())
+            var actorUserId = await _adminAuthorizationContext.GetCurrentAdminUserIdAsync();
+            if (actorUserId is null)
             {
                 return NotAuthorized();
             }
@@ -407,16 +419,17 @@ public class UserManagementService
             }
 
             _cacheInvalidator?.Invalidate(CacheDataDomains.Authorization);
+            await RecordAuditAsync(actorUserId, AuditEventTypes.AdminUserCreated);
 
             return new AdminUserOperationDto
             {
                 IsSuccess = true,
-                Message = $"New user {user.Name} registered successfully with email {user.Email}"
+                Message = "New user registered successfully"
             };
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error creating admin user for email {Email}", email);
+            _logger.LogError(ex, "Error creating admin user.");
             return new AdminUserOperationDto { IsSuccess = false, Message = $"Error: {ex.Message}" };
         }
     }
@@ -425,7 +438,8 @@ public class UserManagementService
     {
         try
         {
-            if (!await _adminAuthorizationContext.IsCurrentUserAdminAsync())
+            var actorUserId = await _adminAuthorizationContext.GetCurrentAdminUserIdAsync();
+            if (actorUserId is null)
             {
                 return NotAuthorized();
             }
@@ -440,18 +454,23 @@ public class UserManagementService
             await _userAccountAccessRepository.RevokeAllAccessAsync(userId);
             await _userRepository.DeleteAsync(userId);
             _cacheInvalidator?.Invalidate(CacheDataDomains.Authorization);
+            await RecordAuditAsync(actorUserId, AuditEventTypes.AdminUserDeleted);
 
             return new AdminUserOperationDto { IsSuccess = true, Message = "User deleted successfully" };
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error deleting user {UserId}", userId);
+            _logger.LogError(ex, "Error deleting user.");
             return new AdminUserOperationDto { IsSuccess = false, Message = $"Error: {ex.Message}" };
         }
     }
 
     private static AdminUserOperationDto NotAuthorized()
         => new() { IsSuccess = false, Message = "Administrator authorization is required." };
+
+    private Task RecordAuditAsync(int? actorUserId, string eventType)
+        => _auditEvents?.RecordAsync(actorUserId, eventType, AuditOutcomes.Succeeded)
+           ?? Task.CompletedTask;
 
     private async Task<Cya2.Core.Entities.Account?> EnsureInternAccountAccessAsync(Cya2.Core.Entities.User user, string? originalName = null, bool reuseExistingAccount = false)
     {
@@ -518,7 +537,7 @@ public class UserManagementService
             return desiredAccount;
         }
 
-        _logger.LogWarning("Failed to resolve/create intern account for user {UserId} ({Email})", user.Id, user.Email);
+        _logger.LogWarning("Failed to resolve or create an intern account.");
         return null;
     }
 }

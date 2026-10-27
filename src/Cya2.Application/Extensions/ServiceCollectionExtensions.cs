@@ -27,6 +27,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IUserAccountContextService, UserAccountContextService>();
         services.AddScoped<IHomeAuthorizationService, HomeAuthorizationService>();
         services.AddScoped<IUserAuthorizationService, UserAuthorizationService>();
+        services.AddScoped<IAuditEventService, AuditEventService>();
         services.AddSingleton<ICacheInvalidationVersion, CacheInvalidationVersion>();
         services.AddSingleton<IDonationDataCache, DonationDataCache>();
         services.AddSingleton<IAccountingDataCache, AccountingDataCache>();

@@ -14,6 +14,7 @@ public sealed class ImportOrchestrationService : IImportOrchestrationService
     private readonly ImportPreviewStore _previews;
     private readonly ImportUploadValidator _uploadValidator;
     private readonly IImportAuthorizationContext _authorizationContext;
+    private readonly IAuditEventService _auditEvents;
 
     public ImportOrchestrationService(
         IEnumerable<IImportProcessor> processors,
@@ -22,6 +23,7 @@ public sealed class ImportOrchestrationService : IImportOrchestrationService
         ImportPreviewStore previews,
         ImportUploadValidator uploadValidator,
         IImportAuthorizationContext authorizationContext,
+        IAuditEventService auditEvents,
         ILogger<ImportOrchestrationService> logger)
     {
         _processors = processors.ToDictionary(p => p.ImportType, StringComparer.OrdinalIgnoreCase);
@@ -30,6 +32,7 @@ public sealed class ImportOrchestrationService : IImportOrchestrationService
         _previews = previews;
         _uploadValidator = uploadValidator;
         _authorizationContext = authorizationContext;
+        _auditEvents = auditEvents;
         _logger = logger;
     }
 
@@ -79,8 +82,14 @@ public sealed class ImportOrchestrationService : IImportOrchestrationService
 
         var progressId = Guid.NewGuid().ToString("N");
         _progressService.Start(progressId, importType, actor.UserId);
+        await RecordImportAuditAsync(actor.UserId, importType, AuditOutcomes.Started, cancellationToken: cancellationToken);
         await using var stream = new MemoryStream(preview.Data, writable: false);
-        return await GetProcessor(importType).ProcessAsync(stream, progressId, cancellationToken);
+        var importResult = await GetProcessor(importType).ProcessAsync(stream, progressId, cancellationToken);
+        await RecordImportAuditAsync(actor.UserId, importType,
+            importResult.FailedRows > 0 ? AuditOutcomes.Failed : AuditOutcomes.Succeeded,
+            importResult.InsertedRows,
+            cancellationToken);
+        return importResult;
     }
 
     public async Task<ImportResult> StartImportFromPreviewAsync(string previewId, string importType, string? progressId = null)
@@ -108,9 +117,15 @@ public sealed class ImportOrchestrationService : IImportOrchestrationService
         }
 
         _progressService.Start(result.ProgressId!, importType, actor.UserId);
+        await RecordImportAuditAsync(actor.UserId, importType, AuditOutcomes.Started);
         var id = result.ProgressId;
         _logger.LogInformation("Queueing background {ImportType} import. PreviewId={PreviewId}, ProgressId={ProgressId}", importType, previewId, id);
-        await _workQueue.EnqueueAsync(new ImportWorkItem(importType, previewId, id, preview.Data));
+        await _workQueue.EnqueueAsync(new ImportWorkItem(
+            importType,
+            previewId,
+            id,
+            int.TryParse(actor.UserId, out var actorUserId) ? actorUserId : null,
+            preview.Data));
 
         return result;
     }
@@ -119,4 +134,33 @@ public sealed class ImportOrchestrationService : IImportOrchestrationService
         => _processors.TryGetValue(importType, out var processor)
             ? processor
             : throw new ArgumentException($"Invalid import type: {importType}", nameof(importType));
+
+    private Task RecordImportAuditAsync(
+        string actorUserId,
+        string importType,
+        string outcome,
+        int? itemCount = null,
+        CancellationToken cancellationToken = default)
+    {
+        var eventType = string.Equals(importType, "donations", StringComparison.OrdinalIgnoreCase)
+            ? outcome switch
+            {
+                AuditOutcomes.Started => AuditEventTypes.DonationImportStarted,
+                AuditOutcomes.Succeeded => AuditEventTypes.DonationImportCompleted,
+                _ => AuditEventTypes.DonationImportFailed
+            }
+            : outcome switch
+            {
+                AuditOutcomes.Started => AuditEventTypes.AccountingImportStarted,
+                AuditOutcomes.Succeeded => AuditEventTypes.AccountingImportCompleted,
+                _ => AuditEventTypes.AccountingImportFailed
+            };
+
+        return _auditEvents.RecordAsync(
+            int.TryParse(actorUserId, out var actorId) ? actorId : null,
+            eventType,
+            outcome,
+            itemCount: itemCount,
+            cancellationToken: cancellationToken);
+    }
 }

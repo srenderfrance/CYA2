@@ -102,13 +102,14 @@ public sealed class AuthorizationBoundaryTests
         RecordingImportProcessor processor,
         ImportActor actor,
         RecordingProgressService? progress = null)
-        => new(
+        => new ImportOrchestrationService(
             [processor],
             progress ?? new RecordingProgressService(),
             new RecordingWorkQueue(),
             previews,
             new ImportUploadValidator(Options.Create(new ImportUploadOptions())),
             new FakeImportAuthorizationContext(actor),
+            new NoOpAuditEventService(),
             NullLogger<ImportOrchestrationService>.Instance);
 
     private static ImportPreviewStore CreatePreviewStore()
@@ -215,5 +216,11 @@ public sealed class AuthorizationBoundaryTests
         public Task<bool> RevokeAllAccessAsync(int userId) => Task.FromResult(true);
         public Task<int> GetUserAccountCountAsync(int userId) => Task.FromResult(0);
         public Task<bool> SetUserDefaultAccountAsync(int userId, int? accountId) => Task.FromResult(true);
+    }
+
+    private sealed class NoOpAuditEventService : IAuditEventService
+    {
+        public Task RecordAsync(int? actorUserId, string eventType, string outcome, string? traceId = null, int? itemCount = null, CancellationToken cancellationToken = default)
+            => Task.CompletedTask;
     }
 }
