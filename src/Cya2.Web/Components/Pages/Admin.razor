@@ -255,14 +255,6 @@
                                     </RadzenStack>
                                 </RadzenStack>
 
-                                @if (!string.IsNullOrEmpty(subAccountUpdateError))
-                                {
-                                    <RadzenAlert AlertStyle="AlertStyle.Danger" ShowIcon="true" Variant="Variant.Filled">@subAccountUpdateError</RadzenAlert>
-                                }
-                                @if (!string.IsNullOrEmpty(subAccountUpdateSuccess))
-                                {
-                                    <RadzenAlert AlertStyle="AlertStyle.Success" ShowIcon="true" Variant="Variant.Filled">@subAccountUpdateSuccess</RadzenAlert>
-                                }
                             </RadzenStack>
 
                              <!-- Sub Fund Name -->
@@ -304,21 +296,6 @@
                  </RadzenStack>
              </div>
             
-            <!-- Fund update/create error/success messages -->
-            @if (!string.IsNullOrEmpty(fundUpdateError))
-            {
-                <RadzenAlert AlertStyle="AlertStyle.Danger" ShowIcon="true" Variant="Variant.Filled" Class="rz-mt-3">
-                    @fundUpdateError
-                </RadzenAlert>
-            }
-            
-            @if (!string.IsNullOrEmpty(fundUpdateSuccess))
-            {
-                <RadzenAlert AlertStyle="AlertStyle.Success" ShowIcon="true" Variant="Variant.Filled" Class="rz-mt-3">
-                    @fundUpdateSuccess
-                </RadzenAlert>
-            }
-
             @if (!createSubFund)
             {
                  <div style="border:1px solid #e0e0e0; border-radius:6px; padding:0.75rem; background:#fff; margin-top:1rem; max-width:900px;">
@@ -512,36 +489,6 @@
                 </RadzenStack>
             </RadzenStack>
             
-            <!-- Staff update error/success messages -->
-            @if (!string.IsNullOrEmpty(staffUpdateError))
-            {
-                <RadzenAlert AlertStyle="AlertStyle.Danger" ShowIcon="true" Variant="Variant.Filled" Class="rz-mt-3">
-                    @Localizer[staffUpdateError]
-                </RadzenAlert>
-            }
-            
-            @if (!string.IsNullOrEmpty(staffUpdateSuccess))
-            {
-                <RadzenAlert AlertStyle="AlertStyle.Success" ShowIcon="true" Variant="Variant.Filled" Class="rz-mt-3">
-                    @staffUpdateSuccess
-                </RadzenAlert>
-            }
-            
-            <!-- Account link error/success messages -->
-            @if (!string.IsNullOrEmpty(accountLinkError))
-            {
-                <RadzenAlert AlertStyle="AlertStyle.Danger" ShowIcon="true" Variant="Variant.Filled" Class="rz-mt-3">
-                    @accountLinkError
-                </RadzenAlert>
-            }
-            
-            @if (!string.IsNullOrEmpty(accountLinkSuccess))
-            {
-                <RadzenAlert AlertStyle="AlertStyle.Success" ShowIcon="true" Variant="Variant.Filled" Class="rz-mt-3">
-                    @accountLinkSuccess
-                </RadzenAlert>
-            }
-            
             <!-- Update and Add buttons -->
             <div class="admin-action-row" style="margin-top: 1rem;">
                 <RadzenButton 
@@ -689,7 +636,7 @@
                 var confirmed = await DialogService.OpenAsync<UploadConfirmationDialog>(
                     title: Localizer["ConfirmUpload"],
                     parameters: new Dictionary<string, object?> { { "Preview", preview } },
-                    options: BuildAdminDialogOptions(width: "520px", height: "auto", resizable: false, showClose: true));
+                    options: BuildAdminDialogOptions(width: "520px", height: "auto", resizable: false, showClose: true, closeDialogOnOverlayClick: false));
 
                 if (confirmed is bool b && b)
                 {
@@ -722,7 +669,7 @@
                     title: Localizer["UploadInProgress"],
                     // Do not pass ProgressId here - the dialog will pick it up from SessionImportProgressService.ImportProgressIdChanged
                     parameters: new Dictionary<string, object?>(),
-                    options: BuildAdminDialogOptions(width: "800px", height: "auto", resizable: false, showClose: false));
+                    options: BuildAdminDialogOptions(width: "800px", height: "auto", resizable: false, showClose: true, closeDialogOnOverlayClick: false));
                 // Let the UI render the dialog and let the dialog component initialize and start polling
                 await InvokeAsync(StateHasChanged);
 
@@ -1195,6 +1142,7 @@
                 if (op.IsSuccess)
                 {
                     accountLinkSuccess = $"{op.Message} to {staffMember}";
+                    NotifyMutation(NotificationSeverity.Success, "Account access updated", op.Message);
 
                     // Reset selection
                     accountToAddId = 0;
@@ -1204,11 +1152,13 @@
                 else
                 {
                     accountLinkError = op.Message;
+                    NotifyMutation(NotificationSeverity.Error, "Account access update failed", op.Message);
                 }
             }
             catch (Exception ex)
             {
                 accountLinkError = $"Error linking account: {ex.Message}";
+                NotifyMutation(NotificationSeverity.Error, "Account access update failed", accountLinkError);
             }
         }
 
@@ -1243,6 +1193,7 @@
                 if (op.IsSuccess)
                 {
                     accountLinkSuccess = $"{op.Message} from {staffMember}";
+                    NotifyMutation(NotificationSeverity.Success, "Account access updated", op.Message);
 
                     // Reset the selected account
                     selectedLinkedAccountId = 0;
@@ -1253,11 +1204,13 @@
                 else
                 {
                     accountLinkError = op.Message;
+                    NotifyMutation(NotificationSeverity.Error, "Account access update failed", op.Message);
                 }
             }
             catch (Exception ex)
             {
                 accountLinkError = $"Error removing account link: {ex.Message}";
+                NotifyMutation(NotificationSeverity.Error, "Account access update failed", accountLinkError);
             }
         }
 
@@ -1296,10 +1249,12 @@
                 if (!op.IsSuccess)
                 {
                     staffUpdateError = op.Message;
+                    NotifyMutation(NotificationSeverity.Error, "User creation failed", op.Message);
                     return;
                 }
 
                 staffUpdateSuccess = op.Message;
+                NotifyMutation(NotificationSeverity.Success, "User created", op.Message);
 
                 // Clear inputs
                 newName = string.Empty;
@@ -1323,6 +1278,7 @@
             catch (Exception ex)
             {
                 staffUpdateError = $"Error: {ex.Message}";
+                NotifyMutation(NotificationSeverity.Error, "User creation failed", staffUpdateError);
             }
         }
 
@@ -1391,11 +1347,13 @@
                     if (profileOp.IsSuccess)
                     {
                         successMessages.Add(profileOp.Message);
+                        NotifyMutation(NotificationSeverity.Success, "User updated", profileOp.Message);
                         profileUpdated = true;
                     }
                     else
                     {
                         errorMessages.Add(profileOp.Message);
+                        NotifyMutation(NotificationSeverity.Error, "User update failed", profileOp.Message);
                     }
                 }
 
@@ -1405,10 +1363,12 @@
                     if (grantOp.IsSuccess)
                     {
                         successMessages.Add(grantOp.Message);
+                        NotifyMutation(NotificationSeverity.Success, "Account access updated", grantOp.Message);
                     }
                     else
                     {
                         errorMessages.Add(grantOp.Message);
+                        NotifyMutation(NotificationSeverity.Error, "Account access update failed", grantOp.Message);
                     }
                 }
 
@@ -1418,10 +1378,12 @@
                     if (revokeOp.IsSuccess)
                     {
                         successMessages.Add(revokeOp.Message);
+                        NotifyMutation(NotificationSeverity.Success, "Account access updated", revokeOp.Message);
                     }
                     else
                     {
                         errorMessages.Add(revokeOp.Message);
+                        NotifyMutation(NotificationSeverity.Error, "Account access update failed", revokeOp.Message);
                     }
                 }
 
@@ -1461,6 +1423,7 @@
             catch (Exception ex)
             {
                 staffUpdateError = $"Error updating user: {ex.Message}";
+                NotifyMutation(NotificationSeverity.Error, "User update failed", staffUpdateError);
             }
         }
 
@@ -1495,6 +1458,7 @@
                 {
                     _logger.LogInformation("Successfully deleted user {UserId}", selectedUser.Id);
                     staffUpdateSuccess = op.Message;
+                    NotifyMutation(NotificationSeverity.Success, "User deleted", op.Message);
 
                     staffMember = string.Empty;
                 selectedStaffId = 0;
@@ -1512,6 +1476,7 @@
                 {
                     _logger.LogWarning("Failed to delete user {UserId}: {Message}", selectedUser.Id, op.Message);
                     staffUpdateError = op.Message;
+                    NotifyMutation(NotificationSeverity.Error, "User deletion failed", op.Message);
                 }
 
                 StateHasChanged();
@@ -1520,6 +1485,7 @@
             {
                 _logger.LogError(ex, "Error in ConfirmDelete");
                 staffUpdateError = $"Error: {ex.Message}";
+                NotifyMutation(NotificationSeverity.Error, "User deletion failed", staffUpdateError);
                 StateHasChanged();
             }
         }
@@ -1558,10 +1524,12 @@
                 if (!op.IsSuccess)
                 {
                     fundUpdateError = op.Message;
+                    NotifyMutation(NotificationSeverity.Error, "Fund deletion failed", op.Message);
                     return;
                 }
 
                 fundUpdateSuccess = op.Message;
+                NotifyMutation(NotificationSeverity.Success, "Fund deleted", op.Message);
                 AdminPreloadService.Invalidate();
                 AccountSnapshotWarmupService.Invalidate();
 
@@ -1614,10 +1582,12 @@
                 if (!op.IsSuccess)
                 {
                     fundUpdateError = op.Message;
+                    NotifyMutation(NotificationSeverity.Error, "Fund update failed", op.Message);
                     return;
                 }
 
                 fundUpdateSuccess = op.Message;
+                NotifyMutation(NotificationSeverity.Success, "Fund updated", op.Message);
                 AdminPreloadService.Invalidate();
                 AccountSnapshotWarmupService.Invalidate();
 
@@ -1632,6 +1602,7 @@
             catch (Exception ex)
             {
                 fundUpdateError = $"Error updating fund: {ex.Message}";
+                NotifyMutation(NotificationSeverity.Error, "Fund update failed", fundUpdateError);
                 _logger.LogError(ex, "Error updating fund: {SelectedFund}", selectedFund);
             }
         }
@@ -1678,10 +1649,12 @@
                     if (!op.IsSuccess)
                     {
                         fundUpdateError = op.Message;
+                        NotifyMutation(NotificationSeverity.Error, "Sub-fund creation failed", op.Message);
                         return;
                     }
 
                     fundUpdateSuccess = op.Message;
+                    NotifyMutation(NotificationSeverity.Success, "Sub-fund created", op.Message);
                     AdminPreloadService.Invalidate();
                     AccountSnapshotWarmupService.Invalidate();
 
@@ -1700,6 +1673,7 @@
                 catch (Exception ex)
                 {
                     fundUpdateError = $"Error adding sub fund: {ex.Message}";
+                    NotifyMutation(NotificationSeverity.Error, "Sub-fund creation failed", fundUpdateError);
                     _logger.LogError(ex, "Error adding sub fund: {SubFundName}", subAccountNameEdit);
                 }
 
@@ -1749,10 +1723,12 @@
                 if (!op.IsSuccess)
                 {
                     fundUpdateError = op.Message;
+                    NotifyMutation(NotificationSeverity.Error, "Fund creation failed", op.Message);
                     return;
                 }
 
                 fundUpdateSuccess = op.Message;
+                NotifyMutation(NotificationSeverity.Success, "Fund created", op.Message);
 
                 AdminPreloadService.Invalidate();
                 AccountSnapshotWarmupService.Invalidate();
@@ -1768,6 +1744,7 @@
             catch (Exception ex)
             {
                 fundUpdateError = $"Error adding new fund: {ex.Message}";
+                NotifyMutation(NotificationSeverity.Error, "Fund creation failed", fundUpdateError);
                 _logger.LogError(ex, "Error adding new fund: {FundName}", newFundName);
             }
         }
@@ -1977,6 +1954,17 @@
                 CloseDialogOnOverlayClick = closeDialogOnOverlayClick,
                 Style = "max-width:96vw; max-height:90vh;"
             };
+
+        private void NotifyMutation(NotificationSeverity severity, string summary, string detail)
+        {
+            NotificationService.Notify(new NotificationMessage
+            {
+                Severity = severity,
+                Summary = summary,
+                Detail = detail,
+                Duration = 4000
+            });
+        }
 
         private async Task OpenAccountsOverviewDialog()
         {
@@ -2388,10 +2376,12 @@
                 if (!op.IsSuccess)
                 {
                     subAccountUpdateError = op.Message;
+                    NotifyMutation(NotificationSeverity.Error, "Sub-fund update failed", op.Message);
                     return;
                 }
 
                 subAccountUpdateSuccess = op.Message;
+                NotifyMutation(NotificationSeverity.Success, "Sub-fund updated", op.Message);
                 AdminPreloadService.Invalidate();
                 AccountSnapshotWarmupService.Invalidate();
                 await LoadSubAccounts(selectedSubAccount.AccountId);
@@ -2403,6 +2393,7 @@
             catch (Exception ex)
             {
                 subAccountUpdateError = $"Error updating subaccount: {ex.Message}";
+                NotifyMutation(NotificationSeverity.Error, "Sub-fund update failed", subAccountUpdateError);
                 _logger.LogError(ex, "Error updating subaccount {SubAccountId}", selectedSubAccount?.Id);
             }
         }
@@ -2425,10 +2416,12 @@
                 if (!op.IsSuccess)
                 {
                     subAccountUpdateError = op.Message;
+                    NotifyMutation(NotificationSeverity.Error, "Sub-fund deletion failed", op.Message);
                     return;
                 }
 
                 subAccountUpdateSuccess = op.Message;
+                NotifyMutation(NotificationSeverity.Success, "Sub-fund deleted", op.Message);
                 AdminPreloadService.Invalidate();
                 AccountSnapshotWarmupService.Invalidate();
                 var accountId = selectedSubAccount.AccountId;
@@ -2441,6 +2434,7 @@
             catch (Exception ex)
             {
                 subAccountUpdateError = $"Error deleting subaccount: {ex.Message}";
+                NotifyMutation(NotificationSeverity.Error, "Sub-fund deletion failed", subAccountUpdateError);
                 _logger.LogError(ex, "Error deleting subaccount {SubAccountId}", selectedSubAccount?.Id);
             }
         }

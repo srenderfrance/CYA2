@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authentication.Google;
 using Microsoft.AspNetCore.Authentication.OAuth;
+using Microsoft.AspNetCore.Localization;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using System.Security.Claims;
@@ -199,9 +200,18 @@ internal static class GoogleAuthenticationEvents
             identity.AddClaim(new Claim(ClaimTypes.Role, authLevel));
             identity.AddClaim(new Claim("AuthLevel", authLevel));
             identity.AddClaim(new Claim("DefaultAccount", user.DefaultAccount?.ToString() ?? string.Empty));
-            identity.AddClaim(new Claim("Language", user.Language ?? string.Empty));
+            var language = string.Equals(user.Language, "es", StringComparison.OrdinalIgnoreCase) ||
+                           string.Equals(user.Language, "es-US", StringComparison.OrdinalIgnoreCase)
+                ? "es-US"
+                : "en-US";
+            identity.AddClaim(new Claim("Language", language));
             identity.AddClaim(new Claim("UserId", user.Id.ToString()));
             identity.AddClaim(new Claim("UserName", user.Name ?? string.Empty));
+
+            context.Response.Cookies.Append(
+                CookieRequestCultureProvider.DefaultCookieName,
+                CookieRequestCultureProvider.MakeCookieValue(new RequestCulture(language)),
+                new CookieOptions { Path = "/", IsEssential = true, SameSite = SameSiteMode.Lax, Secure = context.Request.IsHttps });
 
             context.Properties ??= new AuthenticationProperties();
             context.Properties.RedirectUri = string.Equals(authLevel, "Admin", StringComparison.OrdinalIgnoreCase) ? "/admin" : "/";

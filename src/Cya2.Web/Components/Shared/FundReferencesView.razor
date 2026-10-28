@@ -67,7 +67,7 @@
         try
         {
             var sb = new System.Text.StringBuilder();
-            sb.AppendLine($"{Localizer["Fund"]}\t{Localizer["Overhead"]}\tFund Num\t{Localizer["Class"]}");
+            sb.AppendLine($"{Localizer["Fund"].Value.ToLowerInvariant()}\t{Localizer["Overhead"].Value.ToLowerInvariant()}\tfund#\t{Localizer["Class"].Value.ToLowerInvariant()}");
             foreach (var a in accounts)
             {
                 sb.AppendLine($"{a.Fund}\t{a.Overhead:N0}\t{a.AccountNumber}\t{a.AccountingClass}");

@@ -18,10 +18,18 @@
 
         <!-- Right: actions -->
         <RadzenStack Orientation="Orientation.Horizontal" Gap="0.5rem" AlignItems="AlignItems.Center" Class="accounts-overview-actions">
-            <RadzenButton Text="@(showDonations12m ? Localizer["CurrentBalance"] : Localizer["TotalDonationsLTM"])"
-                          ButtonStyle="ButtonStyle.Primary"
+            <RadzenButton ButtonStyle="ButtonStyle.Primary"
                           Class="accounts-overview-btn"
-                          Click="@(() => { showDonations12m = !showDonations12m; })" />
+                          Click="@(() => { showDonations12m = !showDonations12m; })">
+                @if (showDonations12m)
+                {
+                    @Localizer["CurrentBalance"]
+                }
+                else
+                {
+                    @Localizer["TotalDonations"]<span title="Last Twelve Months"> (LTM)</span>
+                }
+            </RadzenButton>
         </RadzenStack>
     </RadzenStack>
 

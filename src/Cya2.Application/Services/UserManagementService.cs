@@ -388,7 +388,7 @@ public class UserManagementService
                 googleId: string.Empty,
                 email: email.Trim(),
                 name: name.Trim(),
-                language: "en",
+                language: "en-US",
                 authLevel: string.IsNullOrWhiteSpace(authLevel) ? "User" : authLevel.Trim(),
                 defaultAccount: null));
 

@@ -5,7 +5,6 @@
 @using static Microsoft.AspNetCore.Components.Web.RenderMode
 @using Cya2.Application.Interfaces
 @using Cya2.Application.DTOs
-@using Cya2.Shared.Utilities
 @using Cya2.Core.Utilities
 @inject AuthenticationStateProvider AuthStateProvider
 @inject Cya2.Application.Interfaces.IUserSettingsService UserSettingsService
@@ -14,6 +13,7 @@
 @inject IUserAccountContextService UserAccountContextService
 @inject Cya2.Application.Interfaces.IUserIdResolver UserIdResolver
 @inject cya2.Services.UserSessionHydrationService SessionHydrationService
+@inject NotificationService NotificationService
 @rendermode InteractiveServer
 @inject IStringLocalizer<Resource> Localizer
 @inject IJSRuntime JS
@@ -44,20 +44,6 @@
         }
         else
         {
-
-        @if (!string.IsNullOrEmpty(errorMessage))
-        {
-            <RadzenAlert AlertStyle="AlertStyle.Danger" ShowIcon="true" Variant="Variant.Filled" Class="mt-3 mb-3">
-                @Localizer[errorMessage]
-            </RadzenAlert>
-        }
-
-        @if (!string.IsNullOrEmpty(successMessage))
-        {
-            <RadzenAlert AlertStyle="AlertStyle.Success" ShowIcon="true" Variant="Variant.Filled" Class="mt-3 mb-3">
-                @Localizer[successMessage]
-            </RadzenAlert>
-        }
 
         <!-- Use RadzenStack with Horizontal orientation instead of Bootstrap row/col -->
         <RadzenStack Orientation="Orientation.Horizontal" Gap="2rem" Class="mt-4 user-settings-sections">
@@ -303,6 +289,7 @@
             if (newAccountId == currentDefaultAccountId)
             {
                 successMessage = "DefaultAccountNoChange";
+                NotifySetting(NotificationSeverity.Info, Localizer["Save"], Localizer[successMessage]);
                 return;
             }
 
@@ -313,16 +300,19 @@
                 SessionUserStateService.DefaultAccountFund = newAccountName ?? string.Empty;
                 SessionUserStateService.SelectedAccountFund = newAccountName ?? string.Empty;
                 successMessage = "DefaultAccountUpdatedImmediate";
+                NotifySetting(NotificationSeverity.Success, Localizer["Save"], Localizer[successMessage]);
                 currentDefaultAccountId = newAccountId;
             }
             else
             {
                 errorMessage = "DefaultAccountUpdateFailed";
+                NotifySetting(NotificationSeverity.Error, Localizer["Error"], Localizer[errorMessage]);
             }
         }
         catch (Exception)
         {
             errorMessage = Localizer["ErrorSavingAccountSetting"];
+            NotifySetting(NotificationSeverity.Error, Localizer["Error"], errorMessage);
         }
         finally
         {
@@ -343,6 +333,7 @@
             if (langToSave == currentLanguage)
             {
                 successMessage = Localizer["NoLanguageChange"];
+                NotifySetting(NotificationSeverity.Info, Localizer["Save"], successMessage);
                 return;
             }
 
@@ -353,21 +344,35 @@
                 await JS.InvokeVoidAsync("blazorCulture.set", langToSave);
                 currentLanguage = langToSave;
                 successMessage = Localizer["LanguageUpdated"];
+                NotifySetting(NotificationSeverity.Success, Localizer["Save"], successMessage);
                 NavigationManager.NavigateTo(NavigationManager.Uri, forceLoad: true);
             }
             else
             {
                 errorMessage = Localizer["LanguageUpdateFailed"];
+                NotifySetting(NotificationSeverity.Error, Localizer["Error"], errorMessage);
             }
         }
         catch (Exception)
         {
             errorMessage = Localizer["ErrorSavingLanguage"];
+            NotifySetting(NotificationSeverity.Error, Localizer["Error"], errorMessage);
         }
         finally
         {
             isSavingLanguage = false;
         }
+    }
+
+    private void NotifySetting(NotificationSeverity severity, string summary, string detail)
+    {
+        NotificationService.Notify(new NotificationMessage
+        {
+            Severity = severity,
+            Summary = summary,
+            Detail = detail,
+            Duration = 4000
+        });
     }
 
     private string GetLanguageDisplayName(string code)

@@ -41,7 +41,7 @@ public class UserSettingsService : IUserSettingsService
             {
                 UserId = context.UserId,
                 DefaultAccountId = context.DefaultAccountId,
-                Language = string.IsNullOrWhiteSpace(language) ? "en-US" : language,
+                Language = NormalizeLanguage(language),
                 UserAccounts = context.Accounts.Select(a => new AccountOptionDto
                 {
                     AccountId = a.AccountId,
@@ -90,7 +90,7 @@ public class UserSettingsService : IUserSettingsService
                 return false;
             }
 
-            user.Language = string.Equals(language, "es-US", StringComparison.OrdinalIgnoreCase) ? "es-US" : "en-US";
+            user.Language = NormalizeLanguage(language);
             var updated = await _userRepository.UpdateAsync(user);
 
             var success = updated != null && updated.Id == userId;
@@ -102,5 +102,11 @@ public class UserSettingsService : IUserSettingsService
             return false;
         }
     }
+
+    private static string NormalizeLanguage(string? language)
+        => string.Equals(language, "es", StringComparison.OrdinalIgnoreCase) ||
+           string.Equals(language, "es-US", StringComparison.OrdinalIgnoreCase)
+            ? "es-US"
+            : "en-US";
 
 }

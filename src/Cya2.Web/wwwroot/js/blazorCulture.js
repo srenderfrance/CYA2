@@ -1,5 +1,11 @@
 window.blazorCulture = {
     set: function (value) {
-        document.cookie = ".AspNetCore.Culture=c=" + value + "|uic=" + value + "; path=/";
+        const cookieValue = "c=" + value + "|uic=" + value;
+        const currentCookie = document.cookie
+            .split("; ")
+            .find(cookie => cookie.startsWith(".AspNetCore.Culture="));
+        const changed = currentCookie !== ".AspNetCore.Culture=" + cookieValue;
+        document.cookie = ".AspNetCore.Culture=" + cookieValue + "; path=/";
+        return changed;
     }
 };
