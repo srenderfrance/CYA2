@@ -1,5 +1,6 @@
 using Cya2.Application.Interfaces;
 using Cya2.Infrastructure.Services;
+using cya2.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Components.Server;
 using Microsoft.AspNetCore.RateLimiting;
@@ -36,6 +37,7 @@ public static class WebHostServiceCollectionExtensions
                 Microsoft.Extensions.Diagnostics.HealthChecks.HealthCheckResult.Healthy("Deferred DB check"));
 
         services.AddLocalization();
+        services.AddScoped<AccountsOverviewAccessService>();
         services.AddRateLimiter(options =>
         {
             options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;

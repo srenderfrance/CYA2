@@ -1,0 +1,12 @@
+@page "/accounts-overview"
+@using Microsoft.AspNetCore.Authorization
+@attribute [Authorize(Roles = "Viewer")]
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@inject IStringLocalizer<Resource> Localizer
+
+<PageTitle>@Localizer["AccountsOverview"]</PageTitle>
+
+<RadzenStack Orientation="Orientation.Vertical" Gap="1rem" Class="rz-px-4 rz-pb-4">
+    <RadzenText TextStyle="TextStyle.H4">@Localizer["AccountsOverview"]</RadzenText>
+    <AccountsOverviewView />
+</RadzenStack>

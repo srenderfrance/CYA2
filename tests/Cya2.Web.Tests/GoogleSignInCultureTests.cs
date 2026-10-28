@@ -73,6 +73,25 @@ public sealed class GoogleSignInCultureTests
         }
     }
 
+    [Theory]
+    [InlineData("en-US", "Last Twelve Months")]
+    [InlineData("es-US", "Últimos doce meses")]
+    public void SupportedCultures_ResolveLastTwelveMonthsTooltip(string culture, string expected)
+    {
+        using var services = new ServiceCollection().AddLogging().AddLocalization().BuildServiceProvider();
+        var localizer = services.GetRequiredService<IStringLocalizer<Resource>>();
+        var originalCulture = CultureInfo.CurrentUICulture;
+        try
+        {
+            CultureInfo.CurrentUICulture = CultureInfo.GetCultureInfo(culture);
+            Assert.Equal(expected, localizer["LastTwelveMonths"].Value);
+        }
+        finally
+        {
+            CultureInfo.CurrentUICulture = originalCulture;
+        }
+    }
+
     private static ServiceProvider CreateServices(GoogleSignInResult result)
     {
         var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>

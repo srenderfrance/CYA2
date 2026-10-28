@@ -69,6 +69,16 @@ public sealed class WebAuthorizationTestHost : WebApplicationFactory<Program>
                 claims.Add(new Claim(ClaimTypes.Role, "User"));
                 claims.Add(new Claim("AuthLevel", "User"));
             }
+            else if (string.Equals(identity, "viewer", StringComparison.OrdinalIgnoreCase))
+            {
+                claims.Add(new Claim(ClaimTypes.Role, "Viewer"));
+                claims.Add(new Claim("AuthLevel", "Viewer"));
+            }
+            else if (string.Equals(identity, "intern", StringComparison.OrdinalIgnoreCase))
+            {
+                claims.Add(new Claim(ClaimTypes.Role, "Intern"));
+                claims.Add(new Claim("AuthLevel", "Intern"));
+            }
 
             var principal = new ClaimsPrincipal(new ClaimsIdentity(claims, AuthenticationScheme));
             return Task.FromResult(AuthenticateResult.Success(new AuthenticationTicket(principal, AuthenticationScheme)));

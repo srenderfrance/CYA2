@@ -44,6 +44,34 @@ public sealed class WebAuthorizationIntegrationTests : IClassFixture<WebAuthoriz
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
 
+    [Theory]
+    [InlineData("viewer", HttpStatusCode.OK)]
+    [InlineData("regular", HttpStatusCode.Forbidden)]
+    [InlineData("intern", HttpStatusCode.Forbidden)]
+    [InlineData("admin", HttpStatusCode.Forbidden)]
+    public async Task AccountsOverview_RequiresViewerRole(string identity, HttpStatusCode expectedStatus)
+    {
+        using var client = CreateClient(identity);
+        using var response = await client.GetAsync("/accounts-overview");
+        Assert.Equal(expectedStatus, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task AccountsOverview_RejectsAnonymousRequest()
+    {
+        using var client = _host.CreateClient();
+        using var response = await client.GetAsync("/accounts-overview");
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Viewer_CannotAccessAdminPage()
+    {
+        using var client = CreateClient("viewer");
+        using var response = await client.GetAsync("/admin");
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+    }
+
     private HttpClient CreateClient(string identity)
     {
         var client = _host.CreateClient();

@@ -507,6 +507,9 @@
   <data name="TotalDonationsLTM" xml:space="preserve">
     <value>Donaciones Totales (LTM)</value>
   </data>
+  <data name="LastTwelveMonths" xml:space="preserve">
+    <value>Últimos doce meses</value>
+  </data>
   <data name="AccountBalances" xml:space="preserve">
     <value>Saldos de Cuentas</value>
   </data>

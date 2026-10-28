@@ -42,6 +42,15 @@
 
         <!-- Centre: Main navigation links -->
         <div class="nav-section nav-center">
+            <AuthorizeView Roles="Viewer">
+                <Authorized>
+                    <div class="nav-item">
+                        <NavLink class="nav-link" href="/accounts-overview" @onclick="CloseMenu">
+                            <span class="bi bi-list-nested-nav-menu"></span> @Localizer["AccountsOverview"]
+                        </NavLink>
+                    </div>
+                </Authorized>
+            </AuthorizeView>
             <div class="nav-item">
                 <NavLink class="nav-link" href="/donations" @onclick="CloseMenu">
                     <span class="bi bi-list-nested-nav-menu"></span> @Localizer["Donations"]
