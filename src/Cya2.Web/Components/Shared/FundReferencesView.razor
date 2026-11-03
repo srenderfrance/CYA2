@@ -1,6 +1,6 @@
-@using Cya2.Core.Entities
+@using Cya2.Application.DTOs
 @using Cya2.Application.Interfaces
-@using Cya2.Shared.Utilities
+@using Cya2.Application.Services
 @inject IStringLocalizer<Resource> Localizer
 @inject IAdminPreloadService AdminPreloadService
 @inject IJSRuntime JS
@@ -14,19 +14,19 @@
     }
 
     <RadzenCard>
-        <RadzenDataGrid TItem="Account"
+        <RadzenDataGrid TItem="FundReferenceDto"
                         Data="@accounts"
                         AllowSorting="true"
                         AllowFiltering="true"
                         AllowPaging="false"
                         EmptyText="@Localizer["NoAccountFound"]">
             <Columns>
-                <RadzenDataGridColumn TItem="Account" Property="AccountNumber" Title="Fund Num" Width="170px" />
-                <RadzenDataGridColumn TItem="Account" Property="Fund" Title="@Localizer["Fund"]" Width="280px">
+                <RadzenDataGridColumn TItem="FundReferenceDto" Property="AccountNumber" Title="Fund Num" Width="170px" />
+                <RadzenDataGridColumn TItem="FundReferenceDto" Property="Fund" Title="@Localizer["Fund"]" Width="280px">
                     <Template Context="account">@account.Fund</Template>
                 </RadzenDataGridColumn>
-                <RadzenDataGridColumn TItem="Account" Property="AccountingClass" Title="@Localizer["Class"]" Width="170px" />
-                <RadzenDataGridColumn TItem="Account" Property="Overhead" Title="@Localizer["Overhead"]" Width="120px" TextAlign="TextAlign.Right">
+                <RadzenDataGridColumn TItem="FundReferenceDto" Property="AccountingClass" Title="@Localizer["Class"]" Width="170px" />
+                <RadzenDataGridColumn TItem="FundReferenceDto" Property="Overhead" Title="@Localizer["Overhead"]" Width="120px" TextAlign="TextAlign.Right">
                     <Template Context="a">
                         @a.Overhead.ToString("N0")
                     </Template>
@@ -46,15 +46,15 @@
 
 @code {
     private string errorMessage = string.Empty;
-    private List<Account> accounts = new();
+    private IReadOnlyList<FundReferenceDto> accounts = Array.Empty<FundReferenceDto>();
 
     protected override async Task OnInitializedAsync()
     {
         try
         {
-            accounts = (await AdminPreloadService.GetAccountsAsync())
-                .OrderBy(a => a.Fund)
-                .ToList();
+            var primaryAccounts = await AdminPreloadService.GetAccountsAsync();
+            var subAccounts = await AdminPreloadService.GetSubAccountsAsync();
+            accounts = FundReferenceTableService.BuildRows(primaryAccounts, subAccounts);
         }
         catch (Exception ex)
         {

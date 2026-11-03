@@ -233,7 +233,19 @@ public sealed class AdminPreloadService : IAdminPreloadService
 
     private async Task<IReadOnlyList<Account>> LoadAccountsAsync()
     {
-        var accounts = await _fundReadService.GetAllAccountsAsync() ?? new List<Account>();
+        var references = await _fundReferenceService.GetAllAsync();
+        var accounts = references.Select(reference => new Account
+        {
+            AccountId = reference.AccountId,
+            Fund = reference.Fund,
+            CreatedAt = reference.CreatedAt,
+            AccountingClass = reference.AccountingClass,
+            AccountNumber = reference.AccountNumber,
+            Overhead = reference.Overhead,
+            SoftCredit = reference.SoftCredit,
+            BalanceAdjustment = reference.BalanceAdjustment,
+            OtherFunds = reference.OtherFunds
+        }).ToArray();
         _sharedCache.SetAccounts(_cacheInvalidationVersion.Current, accounts);
         return accounts;
     }
