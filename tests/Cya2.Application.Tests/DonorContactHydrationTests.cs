@@ -1,6 +1,7 @@
 using Cya2.Application.Services;
 using Cya2.Core.Interfaces;
 using Cya2.Core.ReadModels;
+using Cya2.Core.Services;
 using Xunit;
 
 namespace Cya2.Application.Tests;
@@ -23,7 +24,7 @@ public sealed class DonorContactHydrationTests
             ]
         };
         var cache = new DonorContactCache();
-        var service = new DonorContactHydrationService(repository, cache, new CacheInvalidationVersion());
+        var service = CreateService(repository, cache);
         var donation = new DonationRecord { DonorId = 1 };
 
         await service.HydrateAsync([donation]);
@@ -42,16 +43,75 @@ public sealed class DonorContactHydrationTests
     public async Task HydrateAsync_CachesEmptyContactResults()
     {
         var repository = new FakeDonorContactRepository();
-        var service = new DonorContactHydrationService(
-            repository,
-            new DonorContactCache(),
-            new CacheInvalidationVersion());
+        var service = CreateService(repository, new DonorContactCache());
 
         await service.HydrateAsync([new DonationRecord { DonorId = 2 }]);
         await service.HydrateAsync([new DonationRecord { DonorId = 2 }]);
 
         Assert.Equal(1, repository.CallCount);
     }
+
+    [Fact]
+    public async Task HydrateAsync_LeavesThirdPartyAddressBlankForSoftCreditDonor()
+    {
+        var repository = new FakeDonorContactRepository
+        {
+            Contacts =
+            [
+                Contact(3, "AddressLine1", "Third-party address"),
+                Contact(3, "City", "Third-party city"),
+                Contact(3, "State", "TP"),
+                Contact(3, "PostalCode", "12345"),
+                Contact(3, "Country", "Third-party country"),
+                Contact(3, "Email", "donor@example.test")
+            ]
+        };
+        var service = CreateService(repository, new DonorContactCache());
+        var donation = new DonationRecord
+        {
+            DonorId = 3,
+            Fund = "GENERAL",
+            AccountName = "Employer Giving",
+            Addressee = "Employer Giving",
+            SoftCreditName = "Jane Donor"
+        };
+
+        await service.HydrateAsync([donation]);
+
+        Assert.Equal(string.Empty, donation.Address);
+        Assert.Equal(string.Empty, donation.City);
+        Assert.Equal(string.Empty, donation.State);
+        Assert.Equal(string.Empty, donation.PostalCode);
+        Assert.Equal(string.Empty, donation.Country);
+        Assert.Equal("donor@example.test", donation.Email);
+    }
+
+    [Fact]
+    public async Task HydrateAsync_KeepsAddressForDirectSoftCreditOrFamilyDonation()
+    {
+        var repository = new FakeDonorContactRepository
+        {
+            Contacts = [Contact(4, "AddressLine1", "Donor address")]
+        };
+        var service = CreateService(repository, new DonorContactCache());
+        var donation = new DonationRecord
+        {
+            DonorId = 4,
+            Fund = "GENERAL",
+            AccountName = "Smith Family",
+            Addressee = "John and Jane Smith",
+            SoftCreditName = "Jane Smith"
+        };
+
+        await service.HydrateAsync([donation]);
+
+        Assert.Equal("Donor address", donation.Address);
+    }
+
+    private static DonorContactHydrationService CreateService(
+        FakeDonorContactRepository repository,
+        DonorContactCache cache)
+        => new(repository, cache, new CacheInvalidationVersion(), new DonorIdentityResolver());
 
     private static DonorContactRecord Contact(long donorId, string type, string value)
         => new() { DonorId = donorId, ContactType = type, ContactValue = value };

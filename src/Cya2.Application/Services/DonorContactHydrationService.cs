@@ -1,6 +1,7 @@
 using Cya2.Application.Interfaces;
 using Cya2.Core.Interfaces;
 using Cya2.Core.ReadModels;
+using Cya2.Core.Services;
 
 namespace Cya2.Application.Services;
 
@@ -9,15 +10,18 @@ public sealed class DonorContactHydrationService : IDonorContactHydrationService
     private readonly IDonorContactReadRepository _donorContactReadRepository;
     private readonly IDonorContactCache _donorContactCache;
     private readonly ICacheInvalidationVersion _cacheInvalidationVersion;
+    private readonly DonorIdentityResolver _identityResolver;
 
     public DonorContactHydrationService(
         IDonorContactReadRepository donorContactReadRepository,
         IDonorContactCache donorContactCache,
-        ICacheInvalidationVersion cacheInvalidationVersion)
+        ICacheInvalidationVersion cacheInvalidationVersion,
+        DonorIdentityResolver identityResolver)
     {
         _donorContactReadRepository = donorContactReadRepository;
         _donorContactCache = donorContactCache;
         _cacheInvalidationVersion = cacheInvalidationVersion;
+        _identityResolver = identityResolver;
     }
 
     public async Task HydrateAsync(
@@ -72,6 +76,20 @@ public sealed class DonorContactHydrationService : IDonorContactHydrationService
             donation.Email = JoinContactValues(contacts.Where(contact => IsContactType(contact, "Email")).Select(contact => contact.ContactValue));
             donation.PhoneFixed = JoinContactValues(contacts.Where(contact => IsContactType(contact, "HomePhone")).Select(contact => contact.ContactValue));
             donation.PhoneMobile = JoinContactValues(contacts.Where(contact => IsContactType(contact, "MobilePhone")).Select(contact => contact.ContactValue));
+
+            if (_identityResolver.IsThirdPartySoftCredit(new DonorIdentityInput(
+                    donation.Fund ?? string.Empty,
+                    donation.AccountName,
+                    donation.SoftCreditName,
+                    donation.Addressee,
+                    donation.IsAnonymous)))
+            {
+                donation.Address = string.Empty;
+                donation.City = string.Empty;
+                donation.State = string.Empty;
+                donation.PostalCode = string.Empty;
+                donation.Country = string.Empty;
+            }
         }
     }
 

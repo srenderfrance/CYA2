@@ -52,7 +52,7 @@ namespace Cya2.Infrastructure.Services
         public async Task<DonationRecategorizationResult> RecategorizeAllDonationsAsync(CancellationToken ct)
         {
             var updated = await _donationRepository.RecategorizeAllDonationsAsync(ct);
-            _cacheInvalidator.Invalidate(CacheDataDomains.Donations);
+            _cacheInvalidator.Invalidate(CacheDataDomains.Donations | CacheDataDomains.DonorContacts);
             return new DonationRecategorizationResult { DonationDataRowsUpdated = updated };
         }
 
@@ -160,11 +160,11 @@ namespace Cya2.Infrastructure.Services
                     InternName = GetCellText(ws, rowNumber, honorMemorialColumnName),
                     PrimaryAddressee = isAnonymous ? null : addressee,
                     SoftCreditName = isAnonymous ? null : softCredit,
-                    Address = isAnonymous ? null : GetCellText(ws, rowNumber, map["Preferred Address Line 1"]),
-                    City = isAnonymous ? null : GetCellText(ws, rowNumber, map["Preferred City"]),
-                    State = isAnonymous ? null : GetCellText(ws, rowNumber, map["Preferred State"]),
-                    PostalCode = isAnonymous ? null : GetCellText(ws, rowNumber, map["Preferred ZIP"]),
-                    Country = isAnonymous ? null : GetCellText(ws, rowNumber, map["Preferred Country"]),
+                    Address = isAnonymous || _identityResolver.IsThirdPartySoftCredit(new DonorIdentityInput(fund ?? string.Empty, sourceName, softCredit, addressee, isAnonymous)) ? null : GetCellText(ws, rowNumber, map["Preferred Address Line 1"]),
+                    City = isAnonymous || _identityResolver.IsThirdPartySoftCredit(new DonorIdentityInput(fund ?? string.Empty, sourceName, softCredit, addressee, isAnonymous)) ? null : GetCellText(ws, rowNumber, map["Preferred City"]),
+                    State = isAnonymous || _identityResolver.IsThirdPartySoftCredit(new DonorIdentityInput(fund ?? string.Empty, sourceName, softCredit, addressee, isAnonymous)) ? null : GetCellText(ws, rowNumber, map["Preferred State"]),
+                    PostalCode = isAnonymous || _identityResolver.IsThirdPartySoftCredit(new DonorIdentityInput(fund ?? string.Empty, sourceName, softCredit, addressee, isAnonymous)) ? null : GetCellText(ws, rowNumber, map["Preferred ZIP"]),
+                    Country = isAnonymous || _identityResolver.IsThirdPartySoftCredit(new DonorIdentityInput(fund ?? string.Empty, sourceName, softCredit, addressee, isAnonymous)) ? null : GetCellText(ws, rowNumber, map["Preferred Country"]),
                     Email = isAnonymous ? null : GetCellText(ws, rowNumber, map["Personal Email Number"]),
                     PhoneFixed = isAnonymous ? null : GetCellText(ws, rowNumber, map["Home Phone Number"]),
                     PhoneMobile = isAnonymous ? null : GetCellText(ws, rowNumber, map["Personal Mobile Phone Number"]),

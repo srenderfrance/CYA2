@@ -491,17 +491,22 @@ namespace Cya2.Application.Services
 
             if (r == null) return null;
 
+            var mostRecentWithAddress = matchingDonations
+                .Where(d => !string.IsNullOrWhiteSpace(d.Address))
+                .OrderByDescending(d => d.Date)
+                .FirstOrDefault();
+
             return new DonorDetailDto
             {
                 Name = ResolveDonorDisplayName(r),
                 Email = JoinContactValues(matchingDonations.Select(d => d.Email)),
                 PhoneMobile = JoinContactValues(matchingDonations.Select(d => d.PhoneMobile)),
                 PhoneFixed = JoinContactValues(matchingDonations.Select(d => d.PhoneFixed)),
-                Address = r.Address ?? string.Empty,
-                City = r.City ?? string.Empty,
-                State = r.State ?? string.Empty,
-                PostalCode = r.PostalCode ?? string.Empty,
-                Country = r.Country ?? string.Empty
+                Address = mostRecentWithAddress?.Address ?? string.Empty,
+                City = mostRecentWithAddress?.City ?? string.Empty,
+                State = mostRecentWithAddress?.State ?? string.Empty,
+                PostalCode = mostRecentWithAddress?.PostalCode ?? string.Empty,
+                Country = mostRecentWithAddress?.Country ?? string.Empty
             };
         }
 

@@ -34,6 +34,32 @@ public sealed class DonorIdentityResolverTests
     }
 
     [Fact]
+    public void IsThirdPartySoftCredit_RecognizesDistinctSoftCreditRecipient()
+    {
+        var result = _resolver.IsThirdPartySoftCredit(new DonorIdentityInput(
+            "GENERAL",
+            "Employer Giving",
+            "Jane Smith",
+            "Employer Giving"));
+
+        Assert.True(result);
+    }
+
+    [Theory]
+    [InlineData("Jane Smith", "Jane Smith")]
+    [InlineData("Employer Giving", "John and Jane Smith")]
+    public void IsThirdPartySoftCredit_RejectsDirectAndFamilyGifts(string accountName, string addressee)
+    {
+        var result = _resolver.IsThirdPartySoftCredit(new DonorIdentityInput(
+            "GENERAL",
+            accountName,
+            "Jane Smith",
+            addressee));
+
+        Assert.False(result);
+    }
+
+    [Fact]
     public void Resolve_FallsBackToAccountName()
     {
         var result = _resolver.Resolve(new DonorIdentityInput("GENERAL", "Smith Family", null, null));

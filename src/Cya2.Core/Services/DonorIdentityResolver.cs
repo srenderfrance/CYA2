@@ -19,6 +19,18 @@ public sealed record DonorIdentityResult(
 
 public sealed class DonorIdentityResolver
 {
+    public bool IsThirdPartySoftCredit(DonorIdentityInput input)
+    {
+        var accountName = NormalizeDisplayName(input.AccountName);
+        var softCreditName = NormalizeDisplayName(input.SoftCreditName);
+        var primaryAddressee = NormalizeDisplayName(input.PrimaryAddressee);
+        return !input.IsAnonymous &&
+               !string.IsNullOrWhiteSpace(accountName) &&
+               !string.IsNullOrWhiteSpace(softCreditName) &&
+               !ContainsName(accountName, softCreditName) &&
+               !ContainsName(primaryAddressee, softCreditName);
+    }
+
     public DonorIdentityResult Resolve(DonorIdentityInput input)
     {
         ArgumentNullException.ThrowIfNull(input);
