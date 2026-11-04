@@ -29,7 +29,7 @@ jobs:
         run: ./scripts/Test-DependencyVulnerabilities.ps1
       - name: Upload vulnerability report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: dependency-vulnerabilities
           path: TestResults/dependency-vulnerabilities.json
