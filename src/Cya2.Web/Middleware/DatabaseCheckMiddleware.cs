@@ -27,6 +27,7 @@ public class DatabaseCheckMiddleware
     public async Task InvokeAsync(HttpContext context)
     {
         if (context.Request.Path.StartsWithSegments("/css") ||
+            context.Request.Path.StartsWithSegments("/health") ||
             context.Request.Path.StartsWithSegments("/js") ||
             context.Request.Path.StartsWithSegments("/lib") ||
             context.Request.Path.StartsWithSegments("/_framework") ||

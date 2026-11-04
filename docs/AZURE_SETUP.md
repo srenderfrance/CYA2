@@ -25,7 +25,7 @@ Use a dedicated production resource group. Keep App Service and MySQL in the sam
 - Restarting or publishing interrupts circuits and can abandon queued imports/previews. Schedule deployments outside imports and communicate reconnect/retry expectations.
 - The application does **not** create or alter persistent tables at startup. Schema setup is a separate administrative operation.
 - Startup probes database availability and enters limited mode if unavailable. A live website does not prove that the database is configured correctly.
-- `/health` is authenticated and its registered check does not perform an actual database probe. **Do not enable App Service Health Check using `/health`** without implementing an appropriate anonymous, non-sensitive readiness endpoint first.
+- `/health/live` is an anonymous process-response probe, not proof of database readiness. `/health/ready` and `/health` require the application authentication cookie and reflect the existing database TCP monitor. They are not anonymous platform probes. See [Health endpoints](HEALTH_ENDPOINTS.md) for limitations; platform health-check configuration remains a separate deployment decision.
 - Google OAuth is implemented by the application. Do not enable App Service Authentication (Easy Auth) as an additional sign-in layer unless separately designed and tested.
 - The app currently uses a MySQL password connection string, not an Entra token-based database connection. Managed identity below is used for **Key Vault access**, not a claim that database authentication is passwordless.
 

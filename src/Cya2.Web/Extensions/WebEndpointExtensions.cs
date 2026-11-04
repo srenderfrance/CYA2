@@ -9,6 +9,8 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Authentication.Google;
+using Microsoft.AspNetCore.Diagnostics.HealthChecks;
+using Microsoft.AspNetCore.Authorization;
 
 namespace cya2.Extensions;
 
@@ -17,7 +19,22 @@ public static class WebEndpointExtensions
     public static IEndpointRouteBuilder MapCya2Endpoints(this IEndpointRouteBuilder endpoints)
     {
         endpoints.MapStaticAssets();
-        endpoints.MapHealthChecks("/health").RequireAuthorization();
+        endpoints.MapHealthChecks("/health/live", new HealthCheckOptions
+        {
+            Predicate = _ => false
+        }).AllowAnonymous();
+        var readinessAuthorization = new AuthorizeAttribute
+        {
+            AuthenticationSchemes = CookieAuthenticationDefaults.AuthenticationScheme
+        };
+        endpoints.MapHealthChecks("/health/ready", new HealthCheckOptions
+        {
+            Predicate = check => check.Tags.Contains("ready")
+        }).RequireAuthorization(readinessAuthorization);
+        endpoints.MapHealthChecks("/health", new HealthCheckOptions
+        {
+            Predicate = check => check.Tags.Contains("ready")
+        }).RequireAuthorization(readinessAuthorization);
         endpoints.MapControllers().RequireRateLimiting("ApiPolicy");
         endpoints.MapRazorComponents<App>()
             .AddInteractiveServerRenderMode();

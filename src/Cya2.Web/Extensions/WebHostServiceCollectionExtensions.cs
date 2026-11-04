@@ -33,8 +33,7 @@ public static class WebHostServiceCollectionExtensions
         });
 
         services.AddHealthChecks()
-            .AddCheck("Database", () =>
-                Microsoft.Extensions.Diagnostics.HealthChecks.HealthCheckResult.Healthy("Deferred DB check"));
+            .AddCheck<DatabaseReadinessHealthCheck>("Database", tags: ["ready"]);
 
         services.AddLocalization();
         services.AddScoped<AccountsOverviewAccessService>();

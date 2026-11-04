@@ -57,8 +57,9 @@ Use this checklist with `SECURE_DEPLOYMENT_TODO.md` before enabling the applicat
 - [ ] Add dependency vulnerability scanning and an update cadence for NuGet, GitHub Actions, the .NET runtime, MySQL provider, EPPlus, and Radzen.
   - Acceptance: advisory findings have an owner, severity SLA, and documented remediation/exception.
   - Repository configuration added: NuGet direct/transitive audit workflow and weekly NuGet/GitHub Actions Dependabot PRs. See [Dependency security](DEPENDENCY_SECURITY.md) for ownership, proposed response targets, manual runtime maintenance, and GitHub settings to verify. Acceptance remains pending until enabled CI/alerts and response policy are confirmed; this independent workflow does not gate deployment.
-- [ ] Provide separate readiness and liveness probes. The current authenticated `/health` endpoint uses a deferred database check; define a non-sensitive platform probe and a protected dependency-aware readiness check.
+- [ ] Verify the separate readiness and liveness probes in the hosting environment and select an appropriate platform health-check policy.
   - Acceptance: Azure health checks can detect unhealthy instances without exposing database details publicly.
+  - Application implementation added: anonymous `/health/live`, cookie-protected `/health/ready` and `/health` alias, with status-only responses and web-pipeline tests. See [Health endpoints](HEALTH_ENDPOINTS.md). Readiness reflects monitored TCP connectivity, not SQL authentication/schema correctness; hosting probe selection/configuration still requires environment verification.
 - [ ] Verify scale-out behavior. The application currently holds selections, import previews/progress, queues, and caches in process memory.
   - Acceptance: deploy a single instance with a documented capacity limit, or move state/coordination to shared storage and validate multiple instances.
 - [ ] Configure graceful shutdown, restart, and maintenance procedures for active Blazor circuits and queued imports.
