@@ -1,0 +1,37 @@
+name: Dependency security
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+  schedule:
+    - cron: "23 8 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  nuget-audit:
+    name: NuGet vulnerability audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+      - name: Audit direct and transitive NuGet dependencies
+        shell: pwsh
+        run: ./scripts/Test-DependencyVulnerabilities.ps1
+      - name: Upload vulnerability report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dependency-vulnerabilities
+          path: TestResults/dependency-vulnerabilities.json
+          if-no-files-found: warn
+          retention-days: 30

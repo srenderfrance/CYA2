@@ -1,5 +1,7 @@
 # CYA2 Local Setup (Draft)
 
+For a fresh production installation on Azure App Service and Azure Database for MySQL, use [Azure production setup](AZURE_SETUP.md). This document focuses on local development and testing.
+
 > **Status: Draft**
 >
 > This document records the local setup information currently available in the repository. Values for environment variable, user secrets, etc are marked **Required from project owner**.

@@ -1,0 +1,36 @@
+name: MySQL integration tests
+
+on:
+  push:
+    branches: ["main"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  mysql-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      CYA2_RUN_MYSQL_TESTS: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+      - name: Verify Docker
+        run: docker info
+      - name: Run disposable MySQL integration tests
+        run: dotnet test tests/Cya2.Database.Tests/Cya2.Database.Tests.csproj --configuration Release --logger "trx;LogFileName=mysql-tests.trx" --results-directory TestResults
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mysql-test-results
+          path: TestResults/**/*.trx
+          if-no-files-found: warn
+      - name: Remove interrupted test containers
+        if: always()
+        shell: bash
+        run: docker ps -aq --filter "name=cya2-tests-" | xargs -r docker rm --force

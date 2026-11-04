@@ -56,6 +56,7 @@ Use this checklist with `SECURE_DEPLOYMENT_TODO.md` before enabling the applicat
   - Acceptance: CI reports test results for every pull request and main build.
 - [ ] Add dependency vulnerability scanning and an update cadence for NuGet, GitHub Actions, the .NET runtime, MySQL provider, EPPlus, and Radzen.
   - Acceptance: advisory findings have an owner, severity SLA, and documented remediation/exception.
+  - Repository configuration added: NuGet direct/transitive audit workflow and weekly NuGet/GitHub Actions Dependabot PRs. See [Dependency security](DEPENDENCY_SECURITY.md) for ownership, proposed response targets, manual runtime maintenance, and GitHub settings to verify. Acceptance remains pending until enabled CI/alerts and response policy are confirmed; this independent workflow does not gate deployment.
 - [ ] Provide separate readiness and liveness probes. The current authenticated `/health` endpoint uses a deferred database check; define a non-sensitive platform probe and a protected dependency-aware readiness check.
   - Acceptance: Azure health checks can detect unhealthy instances without exposing database details publicly.
 - [ ] Verify scale-out behavior. The application currently holds selections, import previews/progress, queues, and caches in process memory.

@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+	<TargetFramework>net10.0</TargetFramework>
+	<ImplicitUsings>enable</ImplicitUsings>
+	<Nullable>enable</Nullable>
+	<IsPackable>false</IsPackable>
+  </PropertyGroup>
+  <ItemGroup>
+	<PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.11.0" />
+	<PackageReference Include="xunit" Version="2.9.3" />
+	<PackageReference Include="xunit.runner.visualstudio" Version="4.0.1" />
+	<ProjectReference Include="../../src/Cya2.Infrastructure/Cya2.Infrastructure.csproj" />
+	<ProjectReference Include="../../tools/Cya2.DatabaseMigrator/Cya2.DatabaseMigrator.csproj" ReferenceOutputAssembly="false" />
+	<None Include="../../database/schema/*.sql" Link="database/schema/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+	<None Include="../../database/migrations/*.sql" Link="database/migrations/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+  <Target Name="CopyMigrator" AfterTargets="Build">
+	<ItemGroup>
+	  <MigratorFiles Include="../../tools/Cya2.DatabaseMigrator/bin/$(Configuration)/net10.0/**/*" />
+	</ItemGroup>
+	<Copy SourceFiles="@(MigratorFiles)" DestinationFiles="@(MigratorFiles->'$(OutDir)migrator/%(RecursiveDir)%(Filename)%(Extension)')" />
+  </Target>
+</Project>

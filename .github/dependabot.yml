@@ -1,0 +1,33 @@
+version: 2
+updates:
+  - package-ecosystem: nuget
+    directories:
+      - /src/Cya2.Web
+      - /src/Cya2.Application
+      - /src/Cya2.Core
+      - /src/Cya2.Infrastructure
+      - /src/Cya2.Shared
+      - /tools/Cya2.DatabaseMigrator
+      - /tests/Cya2.Application.Tests
+      - /tests/Cya2.Web.Tests
+      - /tests/Cya2.Database.Tests
+    schedule:
+      interval: weekly
+      day: monday
+      time: "09:00"
+      timezone: Etc/UTC
+    open-pull-requests-limit: 5
+    groups:
+      nuget-minor-and-patch:
+        applies-to: version-updates
+        update-types:
+          - minor
+          - patch
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "09:00"
+      timezone: Etc/UTC
+    open-pull-requests-limit: 5
