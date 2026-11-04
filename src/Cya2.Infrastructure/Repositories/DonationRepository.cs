@@ -654,7 +654,9 @@ INSERT INTO DonorContacts (DonorId, ContactType, ContactValue, NormalizedValue)
 SELECT d.Id, c.ContactType, c.ContactValue, c.NormalizedValue
 FROM TempImportContacts c
 JOIN Donors d ON d.Fund = c.Fund AND d.IdentityKey = c.IdentityKey
-ON DUPLICATE KEY UPDATE ContactValue = VALUES(ContactValue);", cancellationToken);
+ON DUPLICATE KEY UPDATE
+    DateModified = IF(BINARY DonorContacts.ContactValue <=> BINARY VALUES(ContactValue), DonorContacts.DateModified, CURRENT_TIMESTAMP),
+    ContactValue = VALUES(ContactValue);", cancellationToken);
     }
 
     private static async Task<int> ExecuteImportCommandAsync(

@@ -341,7 +341,12 @@ WHERE donation.Id IS NULL
                     using var reader = await getLatestBackupCmd.ExecuteReaderAsync(cancellationToken);
                     if (await reader.ReadAsync())
                     {
-                        latestBackupId = reader.GetString(0);
+                        latestBackupId = reader.GetValue(0) switch
+                        {
+                            Guid value => value.ToString(),
+                            string value => value,
+                            var value => Convert.ToString(value, System.Globalization.CultureInfo.InvariantCulture)
+                        };
                         backupDate = reader.GetDateTime(1);
                         sourceRangeStart = reader.GetDateTime(2);
                         backupRecordCount = reader.GetInt32(3);

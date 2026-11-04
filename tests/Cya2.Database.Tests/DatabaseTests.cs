@@ -6,11 +6,12 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
 using MySql.Data.MySqlClient;
 using Xunit;
+using Xunit.Abstractions;
 using static Cya2.Database.Tests.MySqlFixture;
 
 namespace Cya2.Database.Tests;
 
-public sealed class DatabaseTests(MySqlFixture mysql) : IClassFixture<MySqlFixture>
+public sealed class DatabaseTests(MySqlFixture mysql, ITestOutputHelper output) : IClassFixture<MySqlFixture>
 {
     private static readonly DateTime Date = new(2026, 1, 15);
     private static readonly AvailableDatabase Guard = new();
@@ -35,6 +36,56 @@ public sealed class DatabaseTests(MySqlFixture mysql) : IClassFixture<MySqlFixtu
             Assert.Contains("checksum", rejected.Output, StringComparison.OrdinalIgnoreCase);
         }
         finally { File.Delete(altered); }
+    }
+
+    [MySqlFact]
+    public async Task ContactFreshness_PreservesUnchangedTimestamps_TracksExactChanges_AndRestoresOnRollback()
+    {
+        var db = await mysql.CreateDatabaseAsync();
+        var repository = Donations(db);
+        await repository.ReplaceCanonicalDonationsAsync([Donation(contacts: [Email("keep@example.invalid"), Email("old@example.invalid")])], default);
+        await ExecuteAsync(db.SetupConnection, "UPDATE DonorContacts SET DateCreated='2020-01-01 00:00:00', DateModified='2021-01-01 00:00:00'");
+        var created = await ScalarAsync(db.RuntimeConnection, "SELECT DateCreated FROM DonorContacts WHERE ContactValue='keep@example.invalid'");
+        var modified = await ScalarAsync(db.RuntimeConnection, "SELECT DateModified FROM DonorContacts WHERE ContactValue='keep@example.invalid'");
+        var id = await ScalarAsync(db.RuntimeConnection, "SELECT Id FROM DonorContacts WHERE ContactValue='keep@example.invalid'");
+
+        await repository.ReplaceCanonicalDonationsAsync([Donation(contacts: [Email("keep@example.invalid"), Email("old@example.invalid")])], default);
+        Assert.Equal(created, await ScalarAsync(db.RuntimeConnection, "SELECT DateCreated FROM DonorContacts WHERE ContactValue='keep@example.invalid'"));
+        Assert.Equal(modified, await ScalarAsync(db.RuntimeConnection, "SELECT DateModified FROM DonorContacts WHERE ContactValue='keep@example.invalid'"));
+
+        var changed = new DonorContactWriteModel { ContactType = "Email", ContactValue = "KEEP@example.invalid", NormalizedValue = "keep@example.invalid" };
+        await repository.ReplaceCanonicalDonationsAsync([Donation(contacts: [changed, Email("new@example.invalid")])], default);
+        Assert.Equal("1", await ScalarAsync(db.RuntimeConnection, "SELECT COUNT(*) FROM DonorContacts WHERE BINARY ContactValue='KEEP@example.invalid' AND DateModified > '2021-01-01 00:00:00'"));
+        Assert.Equal(id, await ScalarAsync(db.RuntimeConnection, "SELECT Id FROM DonorContacts WHERE NormalizedValue='keep@example.invalid'"));
+        Assert.Equal(created, await ScalarAsync(db.RuntimeConnection, "SELECT DateCreated FROM DonorContacts WHERE NormalizedValue='keep@example.invalid'"));
+        Assert.Equal("1", await ScalarAsync(db.RuntimeConnection, "SELECT COUNT(*) FROM DonorContacts WHERE ContactValue='new@example.invalid' AND DateCreated IS NOT NULL AND DateModified IS NULL"));
+        Assert.Equal("0", await ScalarAsync(db.RuntimeConnection, "SELECT COUNT(*) FROM DonorContacts WHERE ContactValue='old@example.invalid'"));
+
+        var changedAt = await ScalarAsync(db.RuntimeConnection, "SELECT DateModified FROM DonorContacts WHERE NormalizedValue='keep@example.invalid'");
+        await repository.ReplaceCanonicalDonationsAsync([Donation(contacts: [changed, Email("new@example.invalid")])], default);
+        Assert.Equal(changedAt, await ScalarAsync(db.RuntimeConnection, "SELECT DateModified FROM DonorContacts WHERE NormalizedValue='keep@example.invalid'"));
+
+        await repository.ReplaceCanonicalDonationsAsync([Donation(contacts: [Email("keep@example.invalid"), Email("old@example.invalid")])], default);
+        var result = await Rollback(db).RollbackDonationsAsync();
+        Assert.True(result.Success, result.ErrorMessage);
+        Assert.Equal(changedAt, await ScalarAsync(db.RuntimeConnection, "SELECT DateModified FROM DonorContacts WHERE BINARY ContactValue='KEEP@example.invalid'"));
+        Assert.Equal(created, await ScalarAsync(db.RuntimeConnection, "SELECT DateCreated FROM DonorContacts WHERE NormalizedValue='keep@example.invalid'"));
+        Assert.Equal("1", await ScalarAsync(db.RuntimeConnection, "SELECT COUNT(*) FROM DonorContacts WHERE ContactValue='new@example.invalid' AND DateModified IS NULL"));
+        Assert.Equal("0", await ScalarAsync(db.RuntimeConnection, "SELECT COUNT(*) FROM DonorContacts WHERE ContactValue='old@example.invalid'"));
+    }
+
+    [MySqlFact]
+    public async Task ContactFreshness_EmptyContactSetClearsImportedDonorOnly()
+    {
+        var db = await mysql.CreateDatabaseAsync();
+        var repository = Donations(db);
+        await repository.ReplaceCanonicalDonationsAsync([
+            Donation(contacts: [Email("included@example.invalid")]),
+            Donation(identity: "unrelated", date: Date.AddMonths(-1), contacts: [Email("untouched@example.invalid")])
+        ], default);
+        await repository.ReplaceCanonicalDonationsAsync([Donation()], default);
+        Assert.Equal("0", await ScalarAsync(db.RuntimeConnection, "SELECT COUNT(*) FROM DonorContacts WHERE ContactValue='included@example.invalid'"));
+        Assert.Equal("1", await ScalarAsync(db.RuntimeConnection, "SELECT COUNT(*) FROM DonorContacts WHERE ContactValue='untouched@example.invalid' AND DateModified IS NULL"));
     }
 
     [MySqlFact]
@@ -71,6 +122,7 @@ public sealed class DatabaseTests(MySqlFixture mysql) : IClassFixture<MySqlFixtu
         Assert.Equal("0", await ScalarAsync(db.RuntimeConnection, "SELECT COUNT(*) FROM DonorContacts WHERE ContactValue='old@example.invalid'"));
         Assert.Equal(created, await ScalarAsync(db.RuntimeConnection, "SELECT DateCreated FROM DonorContacts WHERE ContactValue='keep@example.invalid'"));
         var reader = new DonationReadRepository(Config(db), Guard, NullLogger<DonationReadRepository>.Instance);
+        Assert.Equal("1", await ScalarAsync(db.RuntimeConnection, "SELECT COUNT(*) FROM DonorContacts WHERE ContactValue='keep@example.invalid' AND DateModified IS NULL"));
         var rows = await reader.GetDonationsByFundsAndDateRangeAsync(["Test Fund"], Date.AddDays(-1), Date.AddDays(1));
         Assert.Single(rows);
     }
@@ -186,7 +238,7 @@ public sealed class DatabaseTests(MySqlFixture mysql) : IClassFixture<MySqlFixtu
     private static IConfiguration Config(TestDatabase db) => new ConfigurationBuilder().AddInMemoryCollection(
         new Dictionary<string, string?> { ["ConnectionStrings:default"] = db.RuntimeConnection }).Build();
     private static DonationRepository Donations(TestDatabase db) => new(Config(db), Guard, NullLogger<DonationRepository>.Instance);
-    private static RollbackExecutor Rollback(TestDatabase db) => new(Config(db), NullLogger<RollbackExecutor>.Instance,
+    private RollbackExecutor Rollback(TestDatabase db) => new(Config(db), new TestOutputLogger<RollbackExecutor>(output),
         new RollbackRepository(Config(db), NullLogger<RollbackRepository>.Instance, Guard));
     private static CanonicalDonationWriteModel Donation(string identity = "testdonor", decimal amount = 10,
         IReadOnlyList<DonorContactWriteModel>? contacts = null, DateTime? date = null) => new()

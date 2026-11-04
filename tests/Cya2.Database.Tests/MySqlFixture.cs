@@ -37,7 +37,7 @@ public sealed class MySqlFixture : IAsyncLifetime
             {
                 Server = "127.0.0.1", Port = uint.Parse(port.Output.Trim().Split(':').Last()),
                 UserID = "root", Password = _password, SslMode = MySqlSslMode.Disabled,
-                Pooling = false, ConnectionTimeout = 2
+                AllowPublicKeyRetrieval = true, Pooling = false, ConnectionTimeout = 2
             }.ConnectionString;
             var timeout = Stopwatch.StartNew();
             while (true)

@@ -23,6 +23,7 @@ The fixture generates credentials, starts a loopback-only random host port, wait
 - Fresh schema initialization through the built DatabaseMigrator executable, application of repository SQL migrations, repeat-run idempotency, and baseline checksum rejection.
 - Runtime identity limited to SELECT, INSERT, UPDATE, DELETE and CREATE TEMPORARY TABLES; persistent CREATE/ALTER/DROP and GRANT denied.
 - Canonical donation writes, donor deduplication, stale-contact removal, retained DateCreated, and donation repository readback.
+- Contact freshness: unchanged timestamps, exact/casing-only retained-value changes, new values with null DateModified, removed values, rollback-restored timestamps and untouched donors outside the upload. These are opt-in SQL regressions, not passing local SQL evidence until an enabled run succeeds.
 - Injected contact-insert failure after donor/donation writes verifies the transaction leaves no partial persistent data.
 - Donation backup/replacement/rollback restores donations and contacts and removes new orphan donors.
 - Atomic accounting staging/publication, full backup/replacement/rollback including rows before the replacement window.
@@ -31,7 +32,7 @@ The fixture generates credentials, starts a loopback-only random host port, wait
 
 `ImportValidationTests` also runs without Docker: 11 cases exercise the actual processors with synthetic in-memory Excel workbooks and fake persistence. These cover invalid/empty rejection, valid publication and domain invalidation, pre-cancellation, uncertain-outcome invalidation and shared write serialization. The 11 MySQL cases remain opt-in. Accounting no longer uses local-infile loading or partial live-write fallbacks. See [the import safety contract](IMPORT_SAFETY.md), including migration 003.
 
-These tests do not exercise OAuth or Blazor UI uploads, or prove hosting configuration, production workload performance, contact DateModified behavior, every migration error path, lost commit acknowledgements, or account/subaccount reporting semantics.
+These tests do not exercise OAuth or Blazor UI uploads, or prove hosting configuration, production workload performance, every migration error path, lost commit acknowledgements, or account/subaccount reporting semantics. Contact DateModified behavior now has dedicated SQL coverage but still requires an enabled MySQL run.
 
 ## CI
 
