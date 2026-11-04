@@ -1,6 +1,10 @@
 # CYA2 Cache Architecture
 
+> Architecture contract and implementation reference. Donation publication now invalidates Donations and DonorContacts after commit, and conservatively on uncertain commit outcomes; rejected/pre-commit failed uploads do not invalidate. See [import safety](IMPORT_SAFETY.md) for staging, atomic publication and validation limits. The [production review](PRODUCTION_REVIEW.md) remains authoritative for unresolved donor scope/grouping (A06), intern warmup (A07) and warm-cache UI acceptance. The [Web supplement](../src/Cya2.Web/docs/CACHE_ARCHITECTURE.md) covers Admin/Fund References details.
+
 ## Purpose
+
+Rollback invalidates all domains after success, partial committed changes or uncertain commit outcomes, including when a combined donation/accounting rollback fails in only one domain. Cache notification failures are reported separately from database outcomes; a committed write is not relabeled as an uncommitted failure. These notifications are not a durable retry mechanism: reload and verify after a refresh warning. See the import safety contract for reconciliation requirements.
 
 The application uses several coordinated cache layers to reduce duplicate database work in Blazor Server circuits while preserving correct account, date-range, and authorization behavior.
 

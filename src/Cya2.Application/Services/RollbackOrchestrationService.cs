@@ -54,23 +54,28 @@ public sealed class RollbackOrchestrationService : IRollbackService
             result = new RollbackResult { ErrorMessage = "Rollback failed." };
         }
 
-        if (result.Success)
+        if (result.Success || result.ChangesCommitted || result.OutcomeUnknown)
         {
-            _cacheInvalidator.InvalidateAll();
-            await _auditEvents.RecordAsync(
-                actorUserId,
-                AuditEventTypes.RollbackCompleted,
-                AuditOutcomes.Succeeded,
-                itemCount: result.DonationRowsRestored + result.AccountingRowsRestored,
-                cancellationToken: cancellationToken);
+            try { _cacheInvalidator.InvalidateAll(); }
+            catch
+            {
+                result.Warnings.Add("Data may have changed, but cache refresh failed. Reload and verify the data before continuing.");
+                _logger.LogWarning("Rollback cache refresh failed.");
+            }
         }
-        else
+        try
         {
             await _auditEvents.RecordAsync(
                 actorUserId,
-                AuditEventTypes.RollbackFailed,
-                AuditOutcomes.Failed,
-                cancellationToken: cancellationToken);
+                result.Success ? AuditEventTypes.RollbackCompleted : AuditEventTypes.RollbackFailed,
+                result.Success ? AuditOutcomes.Succeeded : AuditOutcomes.Failed,
+                itemCount: result.DonationRowsRestored + result.AccountingRowsRestored,
+                cancellationToken: CancellationToken.None);
+        }
+        catch
+        {
+            result.Warnings.Add("The rollback result could not be recorded in the audit log.");
+            _logger.LogWarning("Rollback terminal audit delivery failed.");
         }
 
         return result;
@@ -92,7 +97,7 @@ public sealed class RollbackOrchestrationService : IRollbackService
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error checking rollback availability");
-            info.ErrorMessage = $"Error checking backup availability: {ex.Message}";
+            info.ErrorMessage = "Backup availability could not be checked. Try again after connectivity is restored.";
         }
 
         return info;
@@ -101,10 +106,19 @@ public sealed class RollbackOrchestrationService : IRollbackService
     private async Task<RollbackResult> RollbackBothAsync(CancellationToken cancellationToken)
     {
         var donation = await _executor.RollbackDonationsAsync(cancellationToken);
-        var accounting = await _executor.RollbackAccountingAsync(cancellationToken);
+        if (donation.OutcomeUnknown) return donation;
+        RollbackResult accounting;
+        try { accounting = await _executor.RollbackAccountingAsync(cancellationToken); }
+        catch
+        {
+            accounting = new RollbackResult { ErrorMessage = "Accounting rollback did not complete." };
+        }
         var result = new RollbackResult
         {
             Success = donation.Success && accounting.Success,
+            ChangesCommitted = donation.Success || donation.ChangesCommitted || accounting.Success || accounting.ChangesCommitted,
+            OutcomeUnknown = donation.OutcomeUnknown || accounting.OutcomeUnknown,
+            Warnings = [.. donation.Warnings, .. accounting.Warnings],
             Message = $"Donations: {donation.Message}, Accounting: {accounting.Message}",
             DonationRowsRestored = donation.DonationRowsRestored,
             AccountingRowsRestored = accounting.AccountingRowsRestored

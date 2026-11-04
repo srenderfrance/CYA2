@@ -13,12 +13,14 @@ This is not intended as a database migration.
 
 `schema/001_InitialSchema.sql` creates the clean application schema, including:
 
-- Accounts, Subccounts, Users, and AccountsUser
+- Accounts, SubAccounts, Users, and AccountsUsers
 - Donors, DonorContacts, as well as their rollback tables.
 - DonationData, AccountingData as well as their backup and snapshot tables.
 - Donation and accounting rollback payload and snapshot tables used by the import rollback workflow.
 
 It does not contain production data, fake seed data, database users, passwords, or other secrets.
+
+This describes the schema script, not the entire directory: opt-in synthetic SQL data is separately available under [fixtures](fixtures/SYNTHETIC_DATA_README.md). See the [production review](../docs/PRODUCTION_REVIEW.md) for unverified import/staging/rollback behavior and pre-live database acceptance.
 
 Create the target database using the deployment environment or a database administrator. For a new database, the standalone initialization/migration runner applies the baseline and future migrations:
 

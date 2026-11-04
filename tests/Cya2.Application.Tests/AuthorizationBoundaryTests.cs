@@ -46,6 +46,22 @@ public sealed class AuthorizationBoundaryTests
     }
 
     [Fact]
+    public async Task TerminalAuditFailureDoesNotRelabelCommittedImport()
+    {
+        var previews = CreatePreviewStore();
+        Assert.True(previews.TrySet("preview-1", new ImportPreview([1], "test.xlsx", "", DateTime.UtcNow, "1", "donations")));
+        var processor = new RecordingImportProcessor("donations") { Committed = true };
+        var audit = new TerminalFailureAudit();
+        var service = CreateImportService(previews, processor, new ImportActor("1", true), audit: audit);
+        var result = await service.ImportFromPreviewAsync("preview-1", "donations");
+        Assert.True(result.PublicationCommitted);
+        Assert.Equal(1, result.InsertedRows);
+        Assert.Empty(result.Errors);
+        Assert.Single(result.Warnings);
+        Assert.DoesNotContain(AuditOutcomes.Failed, audit.Outcomes);
+    }
+
+    [Fact]
     public async Task DonorExport_RejectsUnauthorizedFundWithoutReadingDonors()
     {
         var donorService = new RecordingDonorService();
@@ -101,7 +117,8 @@ public sealed class AuthorizationBoundaryTests
         ImportPreviewStore previews,
         RecordingImportProcessor processor,
         ImportActor actor,
-        RecordingProgressService? progress = null)
+        RecordingProgressService? progress = null,
+        IAuditEventService? audit = null)
         => new ImportOrchestrationService(
             [processor],
             progress ?? new RecordingProgressService(),
@@ -109,7 +126,7 @@ public sealed class AuthorizationBoundaryTests
             previews,
             new ImportUploadValidator(Options.Create(new ImportUploadOptions())),
             new FakeImportAuthorizationContext(actor),
-            new NoOpAuditEventService(),
+            audit ?? new NoOpAuditEventService(),
             NullLogger<ImportOrchestrationService>.Instance);
 
     private static ImportPreviewStore CreatePreviewStore()
@@ -134,11 +151,23 @@ public sealed class AuthorizationBoundaryTests
     {
         public string ImportType => importType;
         public int CallCount { get; private set; }
+        public bool Committed;
 
         public Task<ImportResult> ProcessAsync(Stream file, string progressId, CancellationToken cancellationToken)
         {
             CallCount++;
-            return Task.FromResult(new ImportResult { ProgressId = progressId });
+            return Task.FromResult(new ImportResult { ProgressId = progressId, PublicationCommitted = Committed, InsertedRows = Committed ? 1 : 0 });
+        }
+    }
+
+    private sealed class TerminalFailureAudit : IAuditEventService
+    {
+        public List<string> Outcomes { get; } = [];
+        public Task RecordAsync(int? actorUserId, string eventType, string outcome, string? traceId = null, int? itemCount = null, CancellationToken cancellationToken = default)
+        {
+            Outcomes.Add(outcome);
+            if (outcome != AuditOutcomes.Started) throw new InvalidOperationException("Injected terminal audit failure");
+            return Task.CompletedTask;
         }
     }
 

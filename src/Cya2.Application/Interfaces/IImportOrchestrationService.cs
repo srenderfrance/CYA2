@@ -25,6 +25,8 @@ public sealed class ImportResult
     public int TotalRows { get; set; }
     public int InsertedRows { get; set; }
     public int FailedRows { get; set; }
+    public bool PublicationCommitted { get; set; }
+    public List<string> Warnings { get; } = new();
     public List<string> Errors { get; } = new();
     public int DuplicateRowsMerged { get; set; }
     public List<DonationImportReportEntry> DuplicateReport { get; } = new();

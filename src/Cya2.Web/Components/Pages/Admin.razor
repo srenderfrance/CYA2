@@ -2221,7 +2221,7 @@
                 
                 if (result.Success)
                 {
-                    rollbackStatus = result.Message;
+                    rollbackStatus = string.Join(" ", new[] { result.Message }.Concat(result.Warnings));
                     AdminPreloadService.Invalidate();
                     AccountSnapshotWarmupService.Invalidate();
                     
@@ -2232,15 +2232,17 @@
                     // Show success notification
                     NotificationService.Notify(new NotificationMessage
                     {
-                        Severity = NotificationSeverity.Success,
+                        Severity = result.Warnings.Count == 0 ? NotificationSeverity.Success : NotificationSeverity.Warning,
                         Summary = "Rollback Complete",
-                        Detail = result.Message,
+                        Detail = rollbackStatus,
                         Duration = 8000
                     });
                 }
                 else
                 {
-                    rollbackError = result.ErrorMessage;
+                    rollbackError = string.Join(" ", new[] { result.ErrorMessage }.Concat(result.Warnings));
+                    if (result.ChangesCommitted)
+                        rollbackError = "Some rollback changes were committed. " + rollbackError;
                     rollbackStatus = string.Empty;
                 }
                 

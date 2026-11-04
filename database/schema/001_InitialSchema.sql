@@ -8,6 +8,8 @@
 -- Target: MySQL 8.0+ (the application uses utf8mb4_0900_ai_ci explicitly).
 -- Run this script after selecting the target database. Do not add credentials
 -- or CREATE USER statements to this file.
+-- During pre-production development, this is the sole schema definition.
+-- Do not create incremental migration scripts or schema history records.
 
 SET NAMES utf8mb4;
 
@@ -250,7 +252,8 @@ CREATE TABLE IF NOT EXISTS DonorContactsBackup
 CREATE TABLE IF NOT EXISTS DonationBackupSnapshots
 (
 	BackupId CHAR(36) NOT NULL PRIMARY KEY,
-	BackupAt DATETIME NOT NULL,
+	-- Microsecond precision preserves ordering of rapid import snapshots.
+	BackupAt DATETIME(6) NOT NULL,
 	SourceRangeStart DATETIME NOT NULL,
 	RecordCount INT NOT NULL DEFAULT 0,
 	Pinned BOOLEAN NOT NULL DEFAULT FALSE,
@@ -287,12 +290,33 @@ CREATE TABLE IF NOT EXISTS AccountingDataBackup
 CREATE TABLE IF NOT EXISTS AccountingBackupSnapshots
 (
 	BackupId CHAR(36) NOT NULL PRIMARY KEY,
-	BackupAt DATETIME NOT NULL,
+	BackupAt DATETIME(6) NOT NULL,
 	SourceRangeStart DATETIME NOT NULL,
 	RecordCount INT NOT NULL DEFAULT 0,
 	Pinned BOOLEAN NOT NULL DEFAULT FALSE,
 	KEY ix_accounting_backup_snapshots_backup_at (BackupAt),
 	KEY ix_accounting_backup_snapshots_pinned (Pinned)
+) ENGINE=InnoDB
+  DEFAULT CHARSET=utf8mb4
+  COLLATE=utf8mb4_0900_ai_ci;
+
+-- Restricted audit stream: internal numeric actor IDs and non-sensitive metadata only.
+CREATE TABLE IF NOT EXISTS AuditEvents
+(
+	Id BIGINT NOT NULL AUTO_INCREMENT,
+	ActorUserId INT NULL,
+	EventType VARCHAR(64) NOT NULL,
+	Outcome VARCHAR(32) NOT NULL,
+	OccurredAtUtc DATETIME NOT NULL,
+	TraceId VARCHAR(64) NULL,
+	ItemCount INT NULL,
+	PRIMARY KEY (Id),
+	KEY ix_audit_events_occurred_at_utc (OccurredAtUtc),
+	KEY ix_audit_events_actor_occurred_at_utc (ActorUserId, OccurredAtUtc),
+	CONSTRAINT fk_audit_events_actor
+		FOREIGN KEY (ActorUserId) REFERENCES Users (Id)
+		ON DELETE SET NULL
+		ON UPDATE CASCADE
 ) ENGINE=InnoDB
   DEFAULT CHARSET=utf8mb4
   COLLATE=utf8mb4_0900_ai_ci;

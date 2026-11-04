@@ -1,11 +1,13 @@
 # Localization Gaps
 
+Current staged priorities: [Production review](../../../docs/PRODUCTION_REVIEW.md) A09/A14, B07 and C05. Resource parity is not translation-quality or complete UI coverage.
+
 ## Resource key coverage
 
 The English and Spanish resource files currently have matching key sets:
 
-- English keys: 240
-- Spanish keys: 240
+- English keys: 288 (verified 2026-11-04)
+- Spanish keys: 288 (verified 2026-11-04)
 - Missing Spanish keys: none
 - Spanish-only keys: none
 
@@ -29,7 +31,8 @@ The following areas still expose error text that is not consistently represented
 
 ### Other components
 
-- `Components/App.razor` still contains a hard-coded `Not found` page title. The router's not-found content is localized, but this fallback title should be reviewed separately.
+- `Components/App.razor` is the active router and contains both a hard-coded `Not found` title and English fallback body. The localized `Routes.razor` component is not used by App; it does not localize the active fallback.
+- Review DatabaseStatus, Donations, Expenses, AccountsOverviewView, FundReferencesView and UserSettings error paths; raw exception text and English literals remain. Home chart labels/help, Admin forms, NavMenu accessibility labels and service/entity validation messages also need inventory.
 - Components that render service-generated errors should distinguish between a localized user-safe message and the underlying exception details. Exception details should generally remain in logs rather than being shown directly to users.
 
 ## Recommended follow-up

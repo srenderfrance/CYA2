@@ -1,5 +1,7 @@
 # Secure Data Protection Implementation
 
+> Historical implementation record. [Production review](PRODUCTION_REVIEW.md) is authoritative for current gaps and validation. Service authorization remains implemented, but static-layout active-session polling/resume guarantees were not established and are reopened in A08.
+
 This document records the implementation of Secure Deployment TODO items 5 through 8:
 
 - Upload limits and workbook validation.
@@ -177,9 +179,9 @@ Revoking one account link does not terminate the user's entire authentication se
 The current implementation uses two levels of enforcement:
 
 1. **Immediate checks:** Sensitive account selection and account-specific reads revalidate against the database before use.
-2. **Active-session polling:** An active Blazor circuit checks the current user and role every minute.
+2. **Intended active-session polling:** A one-minute loop exists in MainLayout, but is started from OnAfterRenderAsync in a static layout; reliable execution and transient-failure recovery are not established (A08).
 
-When a user is deleted or an Admin role is removed:
+The intended session UX after deletion/Admin downgrade is listed below, but must be implemented/verified in A08/B02 rather than assumed from service-level authorization tests:
 
 - The session is treated as revoked.
 - Browser-session resume state is cleared.
@@ -197,7 +199,7 @@ Focused authorization tests cover:
 - Prevention of stale elevated claims.
 - Existing cache invalidation behavior.
 
-Final validation for this implementation completed with:
+Historical validation at the time of this implementation (not the current suite or production evidence):
 
 - Full solution build successful.
 - **83/83 application tests passing.**

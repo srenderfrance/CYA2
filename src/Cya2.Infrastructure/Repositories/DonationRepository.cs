@@ -8,6 +8,7 @@ using System.Text;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using MySql.Data.MySqlClient;
+using Cya2.Infrastructure.Services;
 
 namespace Cya2.Infrastructure.Repositories;
 
@@ -35,18 +36,8 @@ public sealed class DonationRepository : IDonationRepository
 
     private string ConnectionString => _configuration.GetConnectionString("default") ?? string.Empty;
 
-    public async Task BackupAndDeleteFromDateAsync(DateTime fromDate, string progressId, CancellationToken cancellationToken)
+    private static async Task BackupAndDeleteFromDateAsync(MySqlConnection connection, MySqlTransaction transaction, DateTime fromDate, string backupId, CancellationToken cancellationToken)
     {
-        _dbGuard.ThrowIfUnavailable();
-        await using var connection = new MySqlConnection(ConnectionString);
-        await connection.OpenAsync(cancellationToken);
-        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
-        var backupId = Guid.NewGuid().ToString();
-
-        try
-        {
-            _logger.LogInformation("Donation backup transaction opened. ProgressId={ProgressId}, BackupId={BackupId}, SourceRangeStart={SourceRangeStart:O}", progressId, backupId, fromDate);
-
             var donationBackupRows = 0;
             await using (var backup = connection.CreateCommand())
             {
@@ -64,7 +55,6 @@ WHERE Date >= @SourceRangeStart";
                 backup.Parameters.AddWithValue("@BackupId", backupId);
                 backup.Parameters.AddWithValue("@SourceRangeStart", fromDate);
                 donationBackupRows = await backup.ExecuteNonQueryAsync(cancellationToken);
-                _logger.LogInformation("DonationDataBackup populated. ProgressId={ProgressId}, BackupId={BackupId}, Rows={Rows}", progressId, backupId, donationBackupRows);
             }
 
             await using (var snapshot = connection.CreateCommand())
@@ -73,7 +63,10 @@ WHERE Date >= @SourceRangeStart";
                 snapshot.CommandText = @"
 INSERT INTO DonationBackupSnapshots
     (BackupId, BackupAt, SourceRangeStart, RecordCount, Pinned)
-VALUES (@BackupId, UTC_TIMESTAMP(), @SourceRangeStart, @RecordCount, 0)";
+SELECT @BackupId,
+       GREATEST(UTC_TIMESTAMP(6), COALESCE(DATE_ADD(MAX(BackupAt), INTERVAL 1 MICROSECOND), UTC_TIMESTAMP(6))),
+       @SourceRangeStart, @RecordCount, 0
+FROM DonationBackupSnapshots";
                 snapshot.Parameters.AddWithValue("@BackupId", backupId);
                 snapshot.Parameters.AddWithValue("@SourceRangeStart", fromDate);
                 snapshot.Parameters.AddWithValue("@RecordCount", donationBackupRows);
@@ -91,12 +84,11 @@ SELECT DISTINCT @BackupId, donor.Id, donor.Fund, donor.DisplayName, donor.Identi
        donor.ResolutionSource, donor.ResolutionVersion, donor.DateCreated,
        donor.DateModified, UTC_TIMESTAMP()
 FROM Donors donor
-INNER JOIN DonationData donation ON donation.DonorId = donor.Id
-WHERE donation.Date >= @SourceRangeStart";
+WHERE EXISTS (SELECT 1 FROM DonationData donation WHERE donation.DonorId = donor.Id AND donation.Date >= @SourceRangeStart)
+   OR EXISTS (SELECT 1 FROM TempImportDonors staged WHERE staged.Fund = donor.Fund AND staged.IdentityKey = donor.IdentityKey)";
                 donorBackup.Parameters.AddWithValue("@BackupId", backupId);
                 donorBackup.Parameters.AddWithValue("@SourceRangeStart", fromDate);
-                var donorBackupRows = await donorBackup.ExecuteNonQueryAsync(cancellationToken);
-                _logger.LogInformation("DonorsBackup populated. ProgressId={ProgressId}, BackupId={BackupId}, Rows={Rows}", progressId, backupId, donorBackupRows);
+                await donorBackup.ExecuteNonQueryAsync(cancellationToken);
             }
 
             await using (var contactBackup = connection.CreateCommand())
@@ -113,8 +105,7 @@ FROM DonorContacts contact
 INNER JOIN DonorsBackup donor ON donor.BackupId = @BackupId
                                     AND donor.Id = contact.DonorId";
                 contactBackup.Parameters.AddWithValue("@BackupId", backupId);
-                var contactBackupRows = await contactBackup.ExecuteNonQueryAsync(cancellationToken);
-                _logger.LogInformation("DonorContactsBackup populated. ProgressId={ProgressId}, BackupId={BackupId}, Rows={Rows}", progressId, backupId, contactBackupRows);
+                await contactBackup.ExecuteNonQueryAsync(cancellationToken);
             }
 
             await CleanupDonationBackupsAsync(connection, (MySqlTransaction)transaction, backupId, cancellationToken);
@@ -124,18 +115,8 @@ INNER JOIN DonorsBackup donor ON donor.BackupId = @BackupId
                 delete.Transaction = transaction;
                 delete.CommandText = "DELETE FROM DonationData WHERE Date >= @SourceRangeStart";
                 delete.Parameters.AddWithValue("@SourceRangeStart", fromDate);
-                var deletedRows = await delete.ExecuteNonQueryAsync(cancellationToken);
-                _logger.LogInformation("Overlapping DonationData deleted. ProgressId={ProgressId}, BackupId={BackupId}, Rows={Rows}", progressId, backupId, deletedRows);
+                await delete.ExecuteNonQueryAsync(cancellationToken);
             }
-
-            await transaction.CommitAsync(cancellationToken);
-        }
-
-        catch
-        {
-            await transaction.RollbackAsync(cancellationToken);
-            throw;
-        }
     }
 
     private static async Task CleanupDonationBackupsAsync(
@@ -155,7 +136,9 @@ INNER JOIN DonorsBackup donor ON donor.BackupId = @BackupId
             await using var command = connection.CreateCommand();
             command.Transaction = transaction;
             command.CommandTimeout = ImportCommandTimeoutSeconds;
-            command.CommandText = $"DELETE FROM {table} WHERE BackupId <> @BackupId";
+            command.CommandText = table == "DonationBackupSnapshots"
+                ? "DELETE FROM DonationBackupSnapshots WHERE BackupId <> @BackupId AND Pinned = 0"
+                : $"DELETE FROM {table} WHERE BackupId <> @BackupId AND BackupId NOT IN (SELECT BackupId FROM DonationBackupSnapshots WHERE Pinned = 1)";
             command.Parameters.AddWithValue("@BackupId", currentBackupId);
             await command.ExecuteNonQueryAsync(cancellationToken);
         }
@@ -252,6 +235,7 @@ ORDER BY r.AccountName, r.Fund, r.Date DESC";
             {
                 Id = reader.GetInt32(reader.GetOrdinal("Id")),
                 DonorId = reader.GetInt64(reader.GetOrdinal("DonorId")),
+                DonorIdentityKey = reader.GetString(reader.GetOrdinal("IdentityKey")),
                 AccountName = reader.IsDBNull(reader.GetOrdinal("AccountName")) ? string.Empty : reader.GetString(reader.GetOrdinal("AccountName")),
                 Fund = reader.GetString(reader.GetOrdinal("Fund")),
                 Date = reader.GetDateTime(reader.GetOrdinal("Date")),
@@ -269,6 +253,7 @@ ORDER BY r.AccountName, r.Fund, r.Date DESC";
         _dbGuard.ThrowIfUnavailable();
         await using var connection = new MySqlConnection(ConnectionString);
         await connection.OpenAsync(cancellationToken);
+        await using var writeLock = await FinancialWriteCoordinator.LockDatabaseAsync(connection, cancellationToken);
         await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
 
         try
@@ -411,11 +396,12 @@ WHERE Fund = @Fund AND IdentityKey = @IdentityKey";
         }
     }
 
-    public async Task<DonationImportPersistenceResult> InsertCanonicalDonationsAsync(
+    public async Task<DonationImportPersistenceResult> ReplaceCanonicalDonationsAsync(
         IReadOnlyList<CanonicalDonationWriteModel> donations,
         CancellationToken cancellationToken)
     {
         _dbGuard.ThrowIfUnavailable();
+        cancellationToken.ThrowIfCancellationRequested();
         if (donations.Count == 0)
         {
             return new DonationImportPersistenceResult();
@@ -424,19 +410,22 @@ WHERE Fund = @Fund AND IdentityKey = @IdentityKey";
         _logger.LogInformation("Canonical donation set-based batch persistence starting. BatchCount={BatchCount}", donations.Count);
         await using var connection = new MySqlConnection(ConnectionString);
         await connection.OpenAsync(cancellationToken);
-        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
-        _logger.LogInformation("Canonical donation set-based transaction opened. BatchCount={BatchCount}", donations.Count);
-
+        await FinancialWriteCoordinator.AcquireDatabaseLockAsync(connection, cancellationToken);
         try
         {
-            await CreateCanonicalImportStageAsync(connection, transaction, cancellationToken);
+            await CreateCanonicalImportStageAsync(connection, null, cancellationToken);
             _logger.LogInformation("Canonical donation staging tables created. BatchCount={BatchCount}", donations.Count);
-            await InsertDonorStageAsync(connection, transaction, donations, cancellationToken);
+            await InsertDonorStageAsync(connection, null, donations, cancellationToken);
             _logger.LogInformation("Canonical donor stage populated. BatchCount={BatchCount}", donations.Count);
-            await InsertDonationStageAsync(connection, transaction, donations, cancellationToken);
+            await InsertDonationStageAsync(connection, null, donations, cancellationToken);
             _logger.LogInformation("Canonical donation stage populated. BatchCount={BatchCount}", donations.Count);
-            await InsertContactStageAsync(connection, transaction, donations, cancellationToken);
+            await InsertContactStageAsync(connection, null, donations, cancellationToken);
             _logger.LogInformation("Canonical contact stage populated. BatchCount={BatchCount}", donations.Count);
+            await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+            var backupId = Guid.NewGuid().ToString();
+            try
+            {
+            await BackupAndDeleteFromDateAsync(connection, transaction, donations.Min(row => row.Date), backupId, cancellationToken);
             await UpsertStagedDonorsAsync(connection, transaction, cancellationToken);
             _logger.LogInformation("Canonical staged donors upserted. BatchCount={BatchCount}", donations.Count);
 
@@ -445,24 +434,30 @@ WHERE Fund = @Fund AND IdentityKey = @IdentityKey";
             var contactsAdded = await ReconcileStagedContactsAsync(connection, transaction, cancellationToken);
 
             _logger.LogInformation("Canonical donation set-based rows and contacts prepared. BatchCount={BatchCount}, Inserted={Inserted}, ContactsAdded={ContactsAdded}", donations.Count, inserted, contactsAdded);
-            await transaction.CommitAsync(cancellationToken);
+            if (inserted != donations.Count) throw new InvalidOperationException("Staged donation count did not match publication count.");
+            await ImportTransaction.CommitAsync(transaction, ConnectionString, "DonationBackupSnapshots", backupId, cancellationToken);
             _logger.LogInformation("Canonical donation set-based transaction committed. BatchCount={BatchCount}, Inserted={Inserted}, ContactsAdded={ContactsAdded}", donations.Count, inserted, contactsAdded);
             return new DonationImportPersistenceResult
             {
                 Inserted = inserted,
                 ContactsAdded = contactsAdded
             };
+            }
+            catch
+            {
+                await ImportTransaction.RollbackAsync(transaction);
+                throw;
+            }
         }
-        catch
+        finally
         {
-            await transaction.RollbackAsync(cancellationToken);
-            throw;
+            await FinancialWriteCoordinator.ReleaseDatabaseLockAsync(connection);
         }
     }
 
     private static async Task CreateCanonicalImportStageAsync(
         MySqlConnection connection,
-        MySqlTransaction transaction,
+        MySqlTransaction? transaction,
         CancellationToken cancellationToken)
     {
         await ExecuteImportCommandAsync(connection, transaction, @"
@@ -510,15 +505,12 @@ CREATE TEMPORARY TABLE TempImportContacts
     PRIMARY KEY (StageId),
     KEY ix_TempImportContacts_Lookup (Fund(100), IdentityKey(200)),
     KEY ix_TempImportContacts_Value (ContactType, NormalizedValue(200))
-) ENGINE=InnoDB;
-TRUNCATE TABLE TempImportDonors;
-TRUNCATE TABLE TempImportDonations;
-TRUNCATE TABLE TempImportContacts;", cancellationToken);
+) ENGINE=InnoDB;", cancellationToken);
     }
 
     private static async Task InsertDonorStageAsync(
         MySqlConnection connection,
-        MySqlTransaction transaction,
+        MySqlTransaction? transaction,
         IReadOnlyList<CanonicalDonationWriteModel> donations,
         CancellationToken cancellationToken)
     {
@@ -547,7 +539,7 @@ TRUNCATE TABLE TempImportContacts;", cancellationToken);
 
     private static async Task InsertDonationStageAsync(
         MySqlConnection connection,
-        MySqlTransaction transaction,
+        MySqlTransaction? transaction,
         IReadOnlyList<CanonicalDonationWriteModel> donations,
         CancellationToken cancellationToken)
     {
@@ -586,7 +578,7 @@ TRUNCATE TABLE TempImportContacts;", cancellationToken);
 
     private static async Task InsertContactStageAsync(
         MySqlConnection connection,
-        MySqlTransaction transaction,
+        MySqlTransaction? transaction,
         IReadOnlyList<CanonicalDonationWriteModel> donations,
         CancellationToken cancellationToken)
     {
@@ -667,7 +659,7 @@ ON DUPLICATE KEY UPDATE ContactValue = VALUES(ContactValue);", cancellationToken
 
     private static async Task<int> ExecuteImportCommandAsync(
         MySqlConnection connection,
-        MySqlTransaction transaction,
+        MySqlTransaction? transaction,
         string commandText,
         CancellationToken cancellationToken)
     {

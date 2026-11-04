@@ -1,11 +1,9 @@
-using System.Globalization;
-using System.Text;
 using Cya2.Core.DTOs;
 using Cya2.Core.Interfaces;
-using Cya2.Application.Diagnostics;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using MySql.Data.MySqlClient;
+using Cya2.Infrastructure.Services;
 
 namespace Cya2.Infrastructure.Repositories;
 
@@ -30,22 +28,11 @@ public sealed class AccountingImportRepository : IAccountingImportRepository
 
     private string ConnStr => _config.GetConnectionString("default") ?? string.Empty;
 
-    public async Task BackupAllAndDeleteFromDateAsync(DateTime fromDate, string progressId, CancellationToken ct)
+    private async Task BackupAllAndDeleteFromDateAsync(MySqlConnection conn, MySqlTransaction tx, DateTime fromDate, string backupId, CancellationToken ct)
     {
         _dbGuard.ThrowIfUnavailable();
         try
         {
-            _progress.UpdateStep(progressId, "Database Backup", "Connecting to database...");
-            var csb = new MySqlConnectionStringBuilder(ConnStr);
-            csb["Connection Timeout"] = 60;
-
-            await using var conn = new MySqlConnection(csb.ConnectionString);
-            await conn.OpenAsync(ct);
-            await using var tx = await conn.BeginTransactionAsync(ct);
-
-            string backupId = Guid.NewGuid().ToString();
-
-            _progress.UpdateStep(progressId, "Database Backup", "Counting existing records...");
             var countCmd = conn.CreateCommand();
             countCmd.Transaction = (MySqlTransaction)tx;
             countCmd.CommandTimeout = 30;
@@ -57,7 +44,10 @@ public sealed class AccountingImportRepository : IAccountingImportRepository
             snapshot.CommandText = @"
                 INSERT INTO AccountingBackupSnapshots
                     (BackupId, BackupAt, SourceRangeStart, RecordCount, Pinned)
-                VALUES (@bid, UTC_TIMESTAMP(), @from, @count, 0)";
+                SELECT @bid,
+                       GREATEST(UTC_TIMESTAMP(6), COALESCE(DATE_ADD(MAX(BackupAt), INTERVAL 1 MICROSECOND), UTC_TIMESTAMP(6))),
+                       @from, @count, 0
+                FROM AccountingBackupSnapshots";
             snapshot.Parameters.Add(new MySqlParameter("@bid", backupId));
             snapshot.Parameters.Add(new MySqlParameter("@from", fromDate));
             snapshot.Parameters.Add(new MySqlParameter("@count", rowCount));
@@ -65,7 +55,6 @@ public sealed class AccountingImportRepository : IAccountingImportRepository
 
             if (rowCount > 0)
             {
-                _progress.UpdateStep(progressId, "Database Backup", $"Backing up all {rowCount:N0} existing records...");
 
                 var insert = conn.CreateCommand();
                 insert.Transaction = (MySqlTransaction)tx;
@@ -78,7 +67,6 @@ public sealed class AccountingImportRepository : IAccountingImportRepository
                 insert.Parameters.Add(new MySqlParameter("@from", fromDate));
                 await insert.ExecuteNonQueryAsync(ct);
 
-                _progress.UpdateStep(progressId, "Database Backup", $"Removing records from {fromDate:yyyy-MM-dd} forward...");
                 var del = conn.CreateCommand();
                 del.Transaction = (MySqlTransaction)tx;
                 del.CommandTimeout = 300;
@@ -86,181 +74,80 @@ public sealed class AccountingImportRepository : IAccountingImportRepository
                 del.Parameters.Add(new MySqlParameter("@from", fromDate));
                 await del.ExecuteNonQueryAsync(ct);
 
-                _progress.UpdateStep(progressId, "Database Backup", "Cleaning up old backups...");
-                await CleanupBackupsAsync(conn, (MySqlTransaction)tx, ct);
             }
-            else
-            {
-                _progress.UpdateStep(progressId, "Database Backup", "No existing records found");
-            }
-
-            await tx.CommitAsync(ct);
+            await CleanupBackupsAsync(conn, tx, backupId, ct);
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Accounting backup/delete failed");
-            _progress.UpdateStep(progressId, "Database Backup", "Failed");
             throw;
         }
     }
 
-    public async Task<ImportBatchResult> BulkInsertAsync(IReadOnlyList<AccountingImportRowDto> batch, CancellationToken ct)
+    public async Task<ImportBatchResult> ReplaceAsync(IReadOnlyList<AccountingImportRowDto> rows, CancellationToken ct)
     {
         _dbGuard.ThrowIfUnavailable();
-        var result = new ImportBatchResult();
-        if (batch == null || batch.Count == 0) return result;
-
-        string tempFile = Path.Combine(Path.GetTempPath(), $"acct_import_{Guid.NewGuid():N}.csv");
+        ct.ThrowIfCancellationRequested();
+        if (rows.Count == 0) return new ImportBatchResult();
+        await using var connection = new MySqlConnection(ConnStr);
+        await connection.OpenAsync(ct);
+        await FinancialWriteCoordinator.AcquireDatabaseLockAsync(connection, ct);
         try
         {
-            var sb = new StringBuilder();
-            foreach (var r in batch)
+            await using (var stage = new MySqlCommand("DROP TEMPORARY TABLE IF EXISTS TempImportAccounting; CREATE TEMPORARY TABLE TempImportAccounting LIKE AccountingData", connection))
+                await stage.ExecuteNonQueryAsync(ct);
+            foreach (var batch in rows.Chunk(500))
             {
-                static string Q(string? s) => s is null ? "" : '"' + s.Replace("\"", "\"\"") + '"';
-                sb.Append(Q(r.AccountingClass)); sb.Append(',');
-                sb.Append(Q(r.Date.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture))); sb.Append(',');
-                sb.Append(Q(r.Num)); sb.Append(',');
-                sb.Append(Q(r.Amount.ToString(CultureInfo.InvariantCulture))); sb.Append(',');
-                sb.Append(Q(r.AccountNumber)); sb.Append(',');
-                sb.Append(Q(r.Account)); sb.Append(',');
-                sb.Append(Q(r.Type)); sb.Append(',');
-                sb.Append(Q(r.DateCreated.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture)));
-                sb.Append('\n');
+                await using var command = connection.CreateCommand();
+                command.CommandTimeout = 60;
+                var values = new List<string>();
+                for (var i = 0; i < batch.Length; i++)
+                {
+                    values.Add($"(@c{i},@d{i},@n{i},@a{i},@an{i},@ac{i},@t{i},@dc{i})");
+                    command.Parameters.AddWithValue($"@c{i}", batch[i].AccountingClass);
+                    command.Parameters.AddWithValue($"@d{i}", batch[i].Date);
+                    command.Parameters.AddWithValue($"@n{i}", batch[i].Num);
+                    command.Parameters.AddWithValue($"@a{i}", batch[i].Amount);
+                    command.Parameters.AddWithValue($"@an{i}", batch[i].AccountNumber);
+                    command.Parameters.AddWithValue($"@ac{i}", batch[i].Account);
+                    command.Parameters.AddWithValue($"@t{i}", batch[i].Type);
+                    command.Parameters.AddWithValue($"@dc{i}", batch[i].DateCreated);
+                }
+                command.CommandText = $"INSERT INTO TempImportAccounting (AccountingClass,Date,Num,Amount,AccountNumber,Account,Type,DateCreated) VALUES {string.Join(',', values)}";
+                await command.ExecuteNonQueryAsync(ct);
             }
-            await File.WriteAllTextAsync(tempFile, sb.ToString(), Encoding.UTF8, ct);
-
-            var csb = new MySqlConnectionStringBuilder(ConnStr);
-            bool allowLocalInfile = _config.GetValue<bool>("Import:UseLocalInfile", false) && csb.AllowLoadLocalInfile;
-            int maxAttempts = _config.GetValue<int>("Import:MaxAttempts", 3);
-
-            csb.ConnectionTimeout = 60;
-            using var conn = new MySqlConnection(csb.ConnectionString);
-            await conn.OpenAsync(ct);
-
-            // Attempt 1: MySqlBulkLoader
-            if (allowLocalInfile)
+            await using var transaction = await connection.BeginTransactionAsync(ct);
+            var backupId = Guid.NewGuid().ToString();
+            try
             {
-                var loader = new MySqlBulkLoader(conn)
-                {
-                    TableName = "AccountingData",
-                    FileName = tempFile,
-                    FieldTerminator = ",",
-                    FieldQuotationCharacter = '"',
-                    LineTerminator = "\n",
-                    NumberOfLinesToSkip = 0,
-                    Local = true
-                };
-                loader.Columns.AddRange(new[] { "AccountingClass","Date","Num","Amount","AccountNumber","Account","Type","DateCreated" });
-
-                for (int attempt = 1; attempt <= maxAttempts; attempt++)
-                {
-                    try
-                    {
-                        result.Inserted = await Task.Run(() => (int)loader.Load(), ct);
-                        return result;
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger.LogWarning(ex, "BulkLoader accounting attempt {A} failed", attempt);
-                        if (attempt < maxAttempts) await Task.Delay(250 * attempt, ct);
-                    }
-                }
+                await BackupAllAndDeleteFromDateAsync(connection, transaction, rows.Min(row => row.Date), backupId, ct);
+                await using var publish = new MySqlCommand(@"INSERT INTO AccountingData (AccountingClass,Date,Num,Amount,AccountNumber,Account,Type,DateCreated)
+SELECT AccountingClass,Date,Num,Amount,AccountNumber,Account,Type,DateCreated FROM TempImportAccounting", connection, transaction) { CommandTimeout = 300 };
+                var inserted = await publish.ExecuteNonQueryAsync(ct);
+                if (inserted != rows.Count) throw new InvalidOperationException("Staged accounting count did not match publication count.");
+                await ImportTransaction.CommitAsync(transaction, ConnStr, "AccountingBackupSnapshots", backupId, ct);
+                return new ImportBatchResult { Inserted = inserted };
             }
-
-            // Attempt 2: multi-row parameterised INSERT
-            var cols = new[] { "AccountingClass","Date","Num","Amount","AccountNumber","Account","Type","DateCreated" };
-
-            for (int attempt = 1; attempt <= maxAttempts; attempt++)
+            catch
             {
-                try
-                {
-                    using var tx = await conn.BeginTransactionAsync(ct);
-                    var cmd = conn.CreateCommand();
-                    cmd.Transaction = tx;
-                    var valueFragments = new List<string>(batch.Count);
-                    int pi = 0;
-                    foreach (var row in batch)
-                    {
-                        var pn = Enumerable.Range(pi, cols.Length).Select(i => "@p" + i).ToArray();
-                        pi += cols.Length;
-                        valueFragments.Add("(" + string.Join(',', pn) + ")");
-                        cmd.Parameters.Add(new MySqlParameter(pn[0], row.AccountingClass));
-                        cmd.Parameters.Add(new MySqlParameter(pn[1], row.Date));
-                        cmd.Parameters.Add(new MySqlParameter(pn[2], row.Num));
-                        cmd.Parameters.Add(new MySqlParameter(pn[3], row.Amount));
-                        cmd.Parameters.Add(new MySqlParameter(pn[4], row.AccountNumber));
-                        cmd.Parameters.Add(new MySqlParameter(pn[5], row.Account));
-                        cmd.Parameters.Add(new MySqlParameter(pn[6], row.Type));
-                        cmd.Parameters.Add(new MySqlParameter(pn[7], row.DateCreated));
-                    }
-                    cmd.CommandText = $"INSERT INTO AccountingData ({string.Join(',', cols)}) VALUES {string.Join(',', valueFragments)}";
-                    result.Inserted = await cmd.ExecuteNonQueryAsync(ct);
-                    await tx.CommitAsync(ct);
-                    return result;
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogWarning(ex, "Multi-row accounting insert attempt {A} failed", attempt);
-                    if (attempt < maxAttempts) await Task.Delay(250 * attempt, ct);
-                }
+                await ImportTransaction.RollbackAsync(transaction);
+                throw;
             }
-
-            // Attempt 3: row-by-row fallback
-            const string sql = @"INSERT INTO AccountingData
-                (AccountingClass,Date,Num,Amount,AccountNumber,Account,Type,DateCreated)
-                VALUES(@AccountingClass,@Date,@Num,@Amount,@AccountNumber,@Account,@Type,@DateCreated)";
-            foreach (var row in batch)
-            {
-                try
-                {
-                    using var cmd = conn.CreateCommand();
-                    cmd.CommandText = sql;
-                    cmd.Parameters.Add(new MySqlParameter("@AccountingClass", row.AccountingClass));
-                    cmd.Parameters.Add(new MySqlParameter("@Date", row.Date));
-                    cmd.Parameters.Add(new MySqlParameter("@Num", row.Num));
-                    cmd.Parameters.Add(new MySqlParameter("@Amount", row.Amount));
-                    cmd.Parameters.Add(new MySqlParameter("@AccountNumber", row.AccountNumber));
-                    cmd.Parameters.Add(new MySqlParameter("@Account", row.Account));
-                    cmd.Parameters.Add(new MySqlParameter("@Type", row.Type));
-                    cmd.Parameters.Add(new MySqlParameter("@DateCreated", row.DateCreated));
-                    if (await cmd.ExecuteNonQueryAsync(ct) > 0) result.Inserted++;
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogError(ex, "Row-by-row accounting insert failed");
-                    result.Errors.Add(ImportDiagnosticMessages.ImportFailed());
-                }
-            }
-            return result;
         }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "AccountingImportRepository.BulkInsertAsync failed");
-            result.Errors.Add(ImportDiagnosticMessages.ImportFailed());
-            return result;
-        }
-        finally
-        {
-            try { if (File.Exists(tempFile)) File.Delete(tempFile); } catch { }
-        }
+        finally { await FinancialWriteCoordinator.ReleaseDatabaseLockAsync(connection); }
     }
 
-    private async Task CleanupBackupsAsync(MySqlConnection conn, MySqlTransaction tx, CancellationToken ct)
+    private static async Task CleanupBackupsAsync(MySqlConnection conn, MySqlTransaction tx, string backupId, CancellationToken ct)
     {
-        foreach (var (dateFilter, alias) in new[] { ("= CURDATE()", "x"), ("< CURDATE()", "y") })
+        foreach (var table in new[] { "AccountingDataBackup", "AccountingBackupSnapshots" })
         {
-            var cmd = conn.CreateCommand();
+            await using var cmd = conn.CreateCommand();
             cmd.Transaction = tx;
             cmd.CommandTimeout = 60;
-            cmd.CommandText = $@"
-                DELETE FROM AccountingDataBackup
-                WHERE Pinned=0 AND DATE(BackupAt) {dateFilter}
-                  AND BackupId <> (
-                      SELECT keepId FROM (
-                          SELECT BackupId AS keepId FROM AccountingDataBackup
-                          WHERE Pinned=0 AND DATE(BackupAt) {dateFilter}
-                          GROUP BY BackupId ORDER BY MAX(BackupAt) DESC LIMIT 1
-                      ) AS {alias})";
+            cmd.CommandText = table == "AccountingBackupSnapshots"
+                ? "DELETE FROM AccountingBackupSnapshots WHERE BackupId <> @BackupId AND Pinned = 0"
+                : "DELETE FROM AccountingDataBackup WHERE BackupId <> @BackupId AND BackupId NOT IN (SELECT BackupId FROM AccountingBackupSnapshots WHERE Pinned = 1)";
+            cmd.Parameters.AddWithValue("@BackupId", backupId);
             await cmd.ExecuteNonQueryAsync(ct);
         }
     }

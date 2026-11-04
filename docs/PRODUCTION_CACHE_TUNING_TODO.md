@@ -1,5 +1,7 @@
 # Production Cache Tuning TODO
 
+Current priorities are in [Production review](PRODUCTION_REVIEW.md): establish the safe pre-live baseline in B11, then use C01 for ongoing workload-driven tuning. This detailed measurement checklist is retained as supporting acceptance criteria, not a separate competing backlog. Correctness defects A01–A07 must not be deferred as performance tuning.
+
 These tasks must be completed after the production database and production workload are available. Do not guess the final warmup concurrency or query strategy from development measurements alone.
 
 - [ ] Measure startup and database-update rebuild duration.

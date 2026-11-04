@@ -20,7 +20,7 @@ The Radzen override file must remain after both Radzen stylesheets and Bootstrap
 ```razor
 <link rel="stylesheet" href="/_content/Radzen.Blazor/css/default-base.css" />
 <link rel="stylesheet" href="/_content/Radzen.Blazor/css/default.css" />
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" />
+<link rel="stylesheet" href="/bootstrap/bootstrap.min.css" />
 <link rel="stylesheet" href="/css/radzen-overrides.css" />
 <link rel="stylesheet" href="/app.css" />
 ```

@@ -1,5 +1,7 @@
 # Production Readiness TODO
 
+> **Reconciled 2026-11-04:** [Production review and consolidated backlog](PRODUCTION_REVIEW.md) is the authoritative current issue list, organized into work now (A), private pre-live deployment verification (B), and ongoing work (C). This document retains the previous checklist for traceability; its checkboxes alone are not launch approval. See the report's reconciliation map for every issue theme.
+
 Use this checklist with `SECURE_DEPLOYMENT_TODO.md` before enabling the application for real donor and financial data. It records remaining production work identified from the repository as of the current `main` branch.
 
 ## How to use this checklist
@@ -50,10 +52,10 @@ Use this checklist with `SECURE_DEPLOYMENT_TODO.md` before enabling the applicat
 
 - [ ] **Verify in environment:** Confirm the supported .NET 10 runtime, Azure App Service plan/SKU, region, operating-system image, and MySQL hosting/version.
   - Acceptance: these values are recorded in a production architecture/runbook document with support dates and owners.
-- [ ] Split CI validation from production deployment. The current workflow deploys pushes to `main` using an environment named `Development`; add a production environment with required reviewers and explicit promotion.
-  - Acceptance: pull requests build and test without deployment; production deployment requires approval and targets only the production environment.
-- [ ] Add `dotnet test` for the application and web test projects to CI, publish TRX results, and fail the workflow when tests fail.
-  - Acceptance: CI reports test results for every pull request and main build.
+- [ ] Implement the solo-maintainer release model: direct main pushes automatically validate/deploy to testing, followed by manual promotion of the same tested artifact to production; no second-person approval required (A11/B01).
+  - Acceptance: production promotion requires successful build, unit/web, MySQL, secret and dependency checks and explicit owner initiation; test and production targets are isolated.
+- [x] Add solution tests and TRX publishing to the main build workflow. Present in `.github/workflows/azure-webapps-dotnet-core.yml`.
+  - Remaining: PR build/test validation and gating of independent security/MySQL jobs are A11; deployed evidence is B01/B10.
 - [ ] Add dependency vulnerability scanning and an update cadence for NuGet, GitHub Actions, the .NET runtime, MySQL provider, EPPlus, and Radzen.
   - Acceptance: advisory findings have an owner, severity SLA, and documented remediation/exception.
   - Repository configuration added: NuGet direct/transitive audit workflow and weekly NuGet/GitHub Actions Dependabot PRs. See [Dependency security](DEPENDENCY_SECURITY.md) for ownership, proposed response targets, manual runtime maintenance, and GitHub settings to verify. Acceptance remains pending until enabled CI/alerts and response policy are confirmed; this independent workflow does not gate deployment.
@@ -75,7 +77,7 @@ Use this checklist with `SECURE_DEPLOYMENT_TODO.md` before enabling the applicat
   - Acceptance: alerts reach named responders and a test alert is acknowledged.
 - [ ] Create an incident runbook for database unavailability, OAuth failure, suspected credential exposure, unauthorized access, failed import, and data-restoration requests.
   - Acceptance: owner, escalation contact, containment steps, and recovery validation are recorded and exercised.
-- [ ] Record an audit trail for privileged administrative actions and import confirmations without logging donor values.
+- [ ] Complete and verify the existing audit trail for privileged actions and imports (A10/B09); terminal outcomes and audit-persistence failure behavior remain incomplete.
   - Acceptance: the organization can determine who performed each privileged action, when, and its non-sensitive outcome.
 
 ## P1 — Quality assurance and functional validation
@@ -84,7 +86,8 @@ Use this checklist with `SECURE_DEPLOYMENT_TODO.md` before enabling the applicat
   - Acceptance: expected results, counts, and authorization failures are recorded before real data is loaded.
 - [ ] Add a real Google OAuth callback integration test in a controlled non-production configuration, or document the manual regression test and release gate.
   - Acceptance: callback success, unknown-user rejection, invalid state/failure handling, and redirect behavior are verified.
-- [ ] Add database integration tests against an ephemeral or isolated MySQL instance for migrations, repository queries, import transaction rollback, and restricted-runtime permissions.
+- [x] Add seven disposable-MySQL persistence integration tests and a dedicated workflow. See [Database tests](DATABASE_TESTS.md).
+  - Remaining: execute the enabled suite, extend import-lifecycle/workbook edge coverage and gate production promotion (A01–A07/A10/A13, B03/B10). Local tests were skipped without Docker.
   - Acceptance: CI or a scheduled pipeline runs them without production credentials.
 - [ ] Establish test coverage goals for authorization, imports, cache invalidation, and financial calculations; publish results in CI.
   - Acceptance: critical paths have named tests and regression failures block release.
@@ -108,7 +111,7 @@ Use this checklist with `SECURE_DEPLOYMENT_TODO.md` before enabling the applicat
   - Acceptance: no pool exhaustion, unbounded queueing, or unacceptable contention occurs at target load.
 - [ ] Establish cache operational limits and invalidation verification. The app uses in-memory caches and background warmups.
   - Acceptance: cache memory budget, warmup time, stale-data behavior, invalidation checks, and restart behavior are documented and monitored.
-- [ ] Resolve documentation drift before launch. `docs/LOCAL_SETUP.md` still states that synthetic fixtures do not exist, while fixture files and `database/fixtures/SYNTHETIC_DATA_README.md` are present.
+- [ ] Complete documentation acceptance against [the review](PRODUCTION_REVIEW.md) (A16/B12). SQL fixture/setup drift is corrected; unsupported session/contact guarantees are explicitly reopened rather than treated as fixed code.
   - Acceptance: setup, fixture, deployment, and security documents describe one consistent, current workflow.
 - [ ] Replace draft-only setup/deployment guidance with an owner-approved operations runbook and keep it version controlled.
   - Acceptance: the runbook covers provisioning, configuration, migration, rollback, smoke tests, monitoring, backups, access review, and incident response.

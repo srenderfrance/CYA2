@@ -1,5 +1,7 @@
 # Secure Setup, Deployment, and Data Protection TODO
 
+> **Historical implementation checklist, reconciled 2026-11-04.** Use [Production review](PRODUCTION_REVIEW.md) as the current staged backlog. Checked historical implementation work does not prove current production configuration; unsupported session/diagnostic guarantees below have been reopened. Current local evidence: build passed, 191 tests passed, seven Docker cases skipped; environment acceptance remains pending.
+
 Use this checklist to prepare the application for safe local setup, deployment, and handling of donor data.
 
 ## First: Make It Possible to Set Up and Deploy Safely
@@ -14,7 +16,7 @@ Use this checklist to prepare the application for safe local setup, deployment, 
 - [x] Ensure the setup can be run repeatedly or safely from a clean database.
 - [x] Add a small, clearly fake donor dataset for development and testing.
 - [x] Add a small, clearly fake accounting dataset for development and testing.
-- [x] Add fake import files or fixtures that can be used to test the import workflow.
+- [ ] Add approved synthetic donor/QuickBooks Excel upload fixtures and end-to-end import coverage (A13/B07). SQL fixtures and repository DTO tests exist but do not validate workbook parsing.
 - [x] Verify that the fake data contains no real donor or financial records.
 
 ### 2. Write local setup instructions
@@ -40,7 +42,7 @@ Use this checklist to prepare the application for safe local setup, deployment, 
 - [x] If the credential still works, rotate it immediately. The database owner confirmed the historical password had already been rotated.
 - [x] Confirm that replacement credentials are not committed to the repository. Gitleaks scanned the rewritten reachable repository history during this audit and found no leaks.
 - [x] Remove active secrets from current tracked files. Current tracked content and rewritten reachable history passed the Gitleaks scan during this audit.
-- [x] Add or verify secret scanning and repository protection rules.
+- [ ] Verify current secret scanning/push protection and repository policy settings (B10). Historical Gitleaks evidence does not establish GitHub settings.
 - [x] Record the rotation decision without recording the password. The historical credential was rotated before this audit; leaked configuration paths were removed from reachable history and a fresh clone passed Gitleaks verification.
 
 ### 4. Make deployment reproducible
@@ -53,9 +55,9 @@ Use this checklist to prepare the application for safe local setup, deployment, 
 - [ ] Confirm the hosting runtime version.
 - [ ] Confirm where the web application will be hosted.
 - [ ] Confirm where the MySQL database will be hosted.
-- [ ] Document required host environment settings.
-- [ ] Document production connection-string configuration using a secret manager.
-- [ ] Document the production Google OAuth redirect URL.
+- [x] Document required host environment settings in [Azure setup](AZURE_SETUP.md); verify actual settings in B02/B03.
+- [x] Document production connection-string configuration using a secret manager in Azure setup; deployment proof remains B02/B03.
+- [x] Document production Google OAuth redirect format in Azure setup; verify the exact deployed URI in B02.
 - [x] Test a clean CI build and deployment from the repository.
 - [x] Verify the deployed application can connect to the intended database.
 
@@ -100,16 +102,16 @@ Production policy: upload previews and in-memory import progress records are ret
 
 - [x] Shorten the authentication cookie lifetime from the current 24-hour period. The cookie now has a four-hour absolute lifetime.
 - [x] Decide on an appropriate cookie lifetime for the application. The policy is four hours, non-sliding, and non-persistent.
-- [x] Preserve the current local route, selected account, and date range through reauthentication while the browser remains open, using sessionStorage only. Browser close clears this resume state.
+- [ ] Verify and repair route/account/date resume through reauthentication (A08). Code exists but starts in static layout OnAfterRenderAsync; end-to-end behavior is not established.
 - [x] Revalidate the current database user and role before account selection and account-specific dashboard, donation, expense, and export reads; stale authentication claims cannot grant all-account access.
 - [x] Revalidate regular-user account membership before account selection and account-specific reads; removed `AccountsUsers` links are denied even when prior data was cached.
 - [x] Ensure a removed user cannot use protected account data or imports after access is removed. Missing database users are treated as revoked; existing import ownership/current-admin checks remain enforced.
-- [x] Ensure a revoked Admin cannot enter the Admin page or perform administrative changes. Admin status is rechecked against the database.
-- [x] Ensure authorization changes do not depend on cookie expiration. Active circuits revalidate the database user every minute and force the login challenge after deletion or Admin downgrade.
-- [x] Invalidate or refresh affected authentication sessions where appropriate. Deleted users and downgraded Admins have resume state cleared and are sent through login; revoking one account link does not terminate the entire user session.
-- [x] Add tests for removed users, current roles, and revoked/current account memberships. 83 application tests pass.
+- [ ] Ensure a revoked Admin cannot retain a stale Admin shell/session (A08). Administrative service mutations revalidate live, but cookie-based route claims and static-layout polling are not proactive session revocation.
+- [ ] Establish and test active-circuit revalidation independent of cookie expiry (A08); the current one-minute loop is placed in a static layout lifecycle method.
+- [ ] Verify session refresh/resume clearing on deletion/demotion and transient database failures (A08/B02).
+- [x] Add service-level removed-user/current-role/account-membership tests. Historical 83-test count is superseded by the review's current validation; this does not prove browser-circuit revocation.
 
-Active-session revocation detection is polling-based with a maximum normal interval of one minute. Sensitive account reads and selections revalidate immediately before use.
+Sensitive account reads and selections revalidate immediately before use. A reliable maximum interval for proactive active-session termination is **not established**; see A08.
 
 ### 9. Separate database setup permissions from everyday permissions
 
@@ -119,7 +121,7 @@ Active-session revocation detection is polling-based with a maximum normal inter
 - [x] Move all other runtime schema changes into version-controlled migrations; future changes use the standalone runner and `database/migrations`.
 - [x] Remove runtime schema modification code from normal application paths; only session-scoped temporary import tables remain.
 - [ ] Create a restricted application database user in the MySQL deployment environment.
-- [ ] Grant only the read, insert, update, and delete permissions required by features.
+- [ ] Grant only required DML and CREATE TEMPORARY TABLES permissions; prove staging transaction/permission behavior without persistent DDL grants (A02/B03).
 - [x] Keep schema-management permissions in a separate setup or migration account.
 - [ ] Verify the application starts and operates with restricted permissions.
 - [x] Document both database users and their intended responsibilities.
@@ -127,9 +129,9 @@ Active-session revocation detection is polling-based with a maximum normal inter
 ### 10. Remove personal values from diagnostics
 
 - [x] Stop logging sample values from the `Honor/Memorial Name` spreadsheet column.
-- [x] Review logs for user email addresses.
+- [ ] Recheck general logs for all personal identifiers (A09/B08), including the current user-name diagnostic and email-based user-ID fallback. Historical email cleanup is not blanket log safety.
 - [x] Review logs for uploaded filenames.
-- [x] Review exception messages before they are written to logs.
+- [ ] Complete exception/logging review (A09/B08). Raw exceptions and a user-name diagnostic remain; historical cleanup was not comprehensive.
 - [x] Review spreadsheet validation errors before they are returned in progress responses.
 - [x] Remove personal values from progress responses where possible.
 - [x] Prefer row numbers, field names, error categories, and counts for diagnostics.
@@ -140,17 +142,17 @@ Active-session revocation detection is polling-based with a maximum normal inter
 
 ### 11. Add focused authorization tests
 
-- [x] Verify a regular user cannot import. Application-layer import authorization and preview ownership tests pass; the upload controller's `[Authorize(Roles = "Admin")]` filter still requires web-pipeline integration testing.
+- [x] Verify a regular user cannot import through tested service/API authorization paths; Application and Web role-filter tests exist. Actual browser workbook processing remains B07.
 - [x] Verify a regular user cannot manage users. `UserManagementService` now revalidates the current database user and Admin role before administrative reads and mutations; tests verify denied users cannot update, create, delete, or change account links.
 - [x] Verify a regular user cannot view another user’s import progress. Ownership filtering is enforced by the server-side progress service/controller path.
 - [x] Verify a user cannot export donors from an unauthorized account. Unauthorized export tests also verify that donor reads are not invoked.
 - [ ] Verify an unknown Google user is rejected. Application authorization covers unknown database users; full Google callback rejection requires web integration configuration.
 - [x] Verify a removed user cannot access protected operations. Deleted-user authorization and export-denial regressions pass.
-- [x] Verify a revoked administrator cannot import. Current database role revalidation and owner-bound import tests pass; web-pipeline role-filter testing remains.
+- [x] Verify current database role revalidation and owner-bound import authorization in tests. Web role-filter tests also exist; in-flight queued work and active-circuit revocation require A08/A13/B07 acceptance.
 - [x] Verify a revoked administrator cannot perform administrative changes. Regression coverage confirms that database-role revocation blocks user updates, creation, deletion, and account-access grants/revocations without invoking repository mutations.
 - [x] Verify authorization checks are enforced server-side, not only in the UI. Application services revalidate database user, role, and account membership before protected reads/import operations.
 
-Focused authorization tests currently run in `tests/Cya2.Application.Tests/AuthorizationBoundaryTests.cs` and `UserAuthorizationServiceTests.cs`. Direct ASP.NET authorization-filter and Google OAuth callback tests require a web integration test host, which is not currently part of the application test project.
+Focused service tests run in `tests/Cya2.Application.Tests`; `tests/Cya2.Web.Tests` now includes a real WebApplicationFactory pipeline host, role-filter, upload/antiforgery, cookie-culture and health tests. A real Google callback/browser circuit session still requires B02/B07 validation.
 
 ### 12. Apply antiforgery protection consistently
 
@@ -163,7 +165,7 @@ Focused authorization tests currently run in `tests/Cya2.Application.Tests/Autho
 - [x] Test requests with an invalid antiforgery token. The shared controller guard rejects invalid tokens before import processing; missing-token tests cover the same rejection path.
 - [x] Confirm rejected requests do not change data or create import records. Recording import-service tests verify no preview or import call occurs when antiforgery validation fails.
 
-Endpoint inventory note: controller/API antiforgery tests cover clients of `UploadController` and `DonorExportController`. They do not exercise the current `Admin.razor` upload path, because that path runs application services inside the Blazor Server circuit. The two paths are verified separately; controller antiforgery validation protects the exposed upload API, while circuit-side import and administrative operations retain their server-side authorization checks. The focused controller suite has eight passing tests. Full `WebApplicationFactory` pipeline execution is not currently used because the production host starts database-monitor services and production authentication configuration that require environment-specific replacement; this does not affect the controller guard or application-service tests.
+Endpoint inventory note: API antiforgery tests do not exercise Admin.razor's direct interactive-service upload path. The current Web test project does use WebApplicationFactory with monitor/auth replacements; processor/workbook and browser-circuit acceptance remain A13/B07. Historical focused counts are not the current suite total.
 
 ## Completion Review
 

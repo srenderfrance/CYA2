@@ -53,21 +53,29 @@ public sealed class ImportWorkQueue : BackgroundService, IImportWorkQueue
                     await using var stream = new MemoryStream(workItem.Data, writable: false);
                     _logger.LogInformation("Background {ImportType} processor started. PreviewId={PreviewId}, ProgressId={ProgressId}", workItem.ImportType, workItem.PreviewId, workItem.ProgressId);
                     var importResult = await processor.ProcessAsync(stream, workItem.ProgressId, stoppingToken);
-                    await auditEvents.RecordAsync(
+                    try
+                    {
+                        await auditEvents.RecordAsync(
                         workItem.ActorUserId,
-                        GetAuditEventType(workItem.ImportType, importResult.FailedRows > 0 ? AuditOutcomes.Failed : AuditOutcomes.Succeeded),
-                        importResult.FailedRows > 0 ? AuditOutcomes.Failed : AuditOutcomes.Succeeded,
+                        GetAuditEventType(workItem.ImportType, importResult.FailedRows > 0 || importResult.Errors.Count > 0 || importResult.InsertedRows == 0 ? AuditOutcomes.Failed : AuditOutcomes.Succeeded),
+                        importResult.FailedRows > 0 || importResult.Errors.Count > 0 || importResult.InsertedRows == 0 ? AuditOutcomes.Failed : AuditOutcomes.Succeeded,
                         itemCount: importResult.InsertedRows,
-                        cancellationToken: stoppingToken);
+                        cancellationToken: CancellationToken.None);
+                    }
+                    catch
+                    {
+                        _logger.LogWarning("Background import terminal audit delivery failed. ProgressId={ProgressId}", workItem.ProgressId);
+                    }
                     _logger.LogInformation("Background {ImportType} processor returned. PreviewId={PreviewId}, ProgressId={ProgressId}", workItem.ImportType, workItem.PreviewId, workItem.ProgressId);
                 }
                 catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
                 {
+                    await ReportFailureAsync(workItem, new OperationCanceledException(), CancellationToken.None);
                     break;
                 }
                 catch (Exception ex)
                 {
-                    await ReportFailureAsync(workItem, ex, stoppingToken);
+                    await ReportFailureAsync(workItem, ex, CancellationToken.None);
                 }
             }
         }
@@ -84,7 +92,9 @@ public sealed class ImportWorkQueue : BackgroundService, IImportWorkQueue
 
     private async Task ReportFailureAsync(ImportWorkItem workItem, Exception exception, CancellationToken cancellationToken)
     {
-        var errorMessage = ImportDiagnosticMessages.ImportFailed();
+        var errorMessage = exception is ImportOutcomeUnknownException ? exception.Message
+            : exception is OperationCanceledException ? "Import cancelled before publication completed."
+            : ImportDiagnosticMessages.ImportFailed();
         if (exception is MySqlException mySqlException)
         {
             _logger.LogError(

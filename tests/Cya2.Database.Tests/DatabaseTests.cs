@@ -21,6 +21,7 @@ public sealed class DatabaseTests(MySqlFixture mysql) : IClassFixture<MySqlFixtu
         var db = await mysql.CreateDatabaseAsync();
         var expected = 1 + Directory.GetFiles(Path.Combine(AppContext.BaseDirectory, "database", "migrations"), "*.sql").Length;
         Assert.Equal(expected.ToString(), await ScalarAsync(db.SetupConnection, "SELECT COUNT(*) FROM Cya2SchemaMigrations"));
+        Assert.Equal("2", await ScalarAsync(db.SetupConnection, "SELECT COUNT(*) FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name IN ('DonationBackupSnapshots', 'AccountingBackupSnapshots') AND column_name='BackupAt' AND datetime_precision=6"));
         var rerun = await MigrateAsync(db.SetupConnection);
         Assert.True(rerun.ExitCode == 0, rerun.Output);
         Assert.Equal(expected.ToString(), await ScalarAsync(db.SetupConnection, "SELECT COUNT(*) FROM Cya2SchemaMigrations"));
@@ -52,7 +53,7 @@ public sealed class DatabaseTests(MySqlFixture mysql) : IClassFixture<MySqlFixtu
             var error = await Assert.ThrowsAsync<MySqlException>(() => ExecuteAsync(db.RuntimeConnection, sql));
             Assert.Contains(error.Number, new[] { 1044, 1045, 1142, 1227 });
         }
-        var result = await Donations(db).InsertCanonicalDonationsAsync([Donation()], default);
+        var result = await Donations(db).ReplaceCanonicalDonationsAsync([Donation()], default);
         Assert.Equal(1, result.Inserted);
     }
 
@@ -61,10 +62,9 @@ public sealed class DatabaseTests(MySqlFixture mysql) : IClassFixture<MySqlFixtu
     {
         var db = await mysql.CreateDatabaseAsync();
         var repository = Donations(db);
-        await repository.InsertCanonicalDonationsAsync([Donation(contacts: [Email("keep@example.invalid"), Email("old@example.invalid")])], default);
+        await repository.ReplaceCanonicalDonationsAsync([Donation(contacts: [Email("keep@example.invalid"), Email("old@example.invalid")])], default);
         var created = await ScalarAsync(db.RuntimeConnection, "SELECT DateCreated FROM DonorContacts WHERE ContactValue='keep@example.invalid'");
-        await repository.BackupAndDeleteFromDateAsync(Date, "test", default);
-        await repository.InsertCanonicalDonationsAsync([Donation(contacts: [Email("keep@example.invalid"), Email("new@example.invalid")])], default);
+        await repository.ReplaceCanonicalDonationsAsync([Donation(contacts: [Email("keep@example.invalid"), Email("new@example.invalid")])], default);
         Assert.Equal("1", await ScalarAsync(db.RuntimeConnection, "SELECT COUNT(*) FROM Donors"));
         Assert.Equal("1", await ScalarAsync(db.RuntimeConnection, "SELECT COUNT(*) FROM DonationData"));
         Assert.Equal("2", await ScalarAsync(db.RuntimeConnection, "SELECT COUNT(*) FROM DonorContacts"));
@@ -80,7 +80,7 @@ public sealed class DatabaseTests(MySqlFixture mysql) : IClassFixture<MySqlFixtu
     {
         var db = await mysql.CreateDatabaseAsync();
         await ExecuteAsync(db.SetupConnection, "CREATE TRIGGER FailContact BEFORE INSERT ON DonorContacts FOR EACH ROW SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Injected integration test failure'");
-        var error = await Assert.ThrowsAsync<MySqlException>(() => Donations(db).InsertCanonicalDonationsAsync([Donation(contacts: [Email("test@example.invalid")])], default));
+        var error = await Assert.ThrowsAsync<MySqlException>(() => Donations(db).ReplaceCanonicalDonationsAsync([Donation(contacts: [Email("test@example.invalid")])], default));
         Assert.Equal(1644, error.Number);
         foreach (var table in new[] { "Donors", "DonationData", "DonorContacts" })
             Assert.Equal("0", await ScalarAsync(db.RuntimeConnection, $"SELECT COUNT(*) FROM {table}"));
@@ -91,9 +91,8 @@ public sealed class DatabaseTests(MySqlFixture mysql) : IClassFixture<MySqlFixtu
     {
         var db = await mysql.CreateDatabaseAsync();
         var repository = Donations(db);
-        await repository.InsertCanonicalDonationsAsync([Donation(contacts: [Email("original@example.invalid")])], default);
-        await repository.BackupAndDeleteFromDateAsync(Date, "test", default);
-        await repository.InsertCanonicalDonationsAsync([
+        await repository.ReplaceCanonicalDonationsAsync([Donation(contacts: [Email("original@example.invalid")])], default);
+        await repository.ReplaceCanonicalDonationsAsync([
             Donation(amount: 99, contacts: [Email("replacement@example.invalid")]),
             Donation(identity: "newdonor", amount: 25)
         ], default);
@@ -111,11 +110,10 @@ public sealed class DatabaseTests(MySqlFixture mysql) : IClassFixture<MySqlFixtu
     {
         var db = await mysql.CreateDatabaseAsync();
         var repository = new AccountingImportRepository(Config(db), NullLogger<AccountingImportRepository>.Instance, new NoProgress(), Guard);
-        var initial = await repository.BulkInsertAsync([Accounting(Date.AddMonths(-1), 5), Accounting(Date, 10)], default);
+        var initial = await repository.ReplaceAsync([Accounting(Date.AddMonths(-1), 5), Accounting(Date, 10)], default);
         Assert.Equal(2, initial.Inserted);
         Assert.Empty(initial.Errors);
-        await repository.BackupAllAndDeleteFromDateAsync(Date, "test", default);
-        var replacement = await repository.BulkInsertAsync([Accounting(Date, 99)], default);
+        var replacement = await repository.ReplaceAsync([Accounting(Date, 99)], default);
         Assert.Equal(1, replacement.Inserted);
         Assert.Empty(replacement.Errors);
         var result = await Rollback(db).RollbackAccountingAsync();
@@ -128,11 +126,61 @@ public sealed class DatabaseTests(MySqlFixture mysql) : IClassFixture<MySqlFixtu
     public async Task RollbackWithoutSnapshot_FailsWithoutChangingData()
     {
         var db = await mysql.CreateDatabaseAsync();
-        await Donations(db).InsertCanonicalDonationsAsync([Donation()], default);
+        await Donations(db).ReplaceCanonicalDonationsAsync([Donation()], default);
+        await ExecuteAsync(db.SetupConnection, "DELETE FROM DonationBackupSnapshots; DELETE FROM DonationDataBackup; DELETE FROM DonorContactsBackup; DELETE FROM DonorsBackup");
         var result = await Rollback(db).RollbackDonationsAsync();
         Assert.False(result.Success);
         Assert.False(string.IsNullOrWhiteSpace(result.ErrorMessage));
         Assert.Equal("1", await ScalarAsync(db.RuntimeConnection, "SELECT COUNT(*) FROM DonationData"));
+    }
+
+    [MySqlFact]
+    public async Task FailedReplacementPreservesExistingDonationAndSnapshot()
+    {
+        var db = await mysql.CreateDatabaseAsync();
+        await Donations(db).ReplaceCanonicalDonationsAsync([Donation(contacts: [Email("original@example.invalid")])], default);
+        var backup = await ScalarAsync(db.RuntimeConnection, "SELECT BackupId FROM DonationBackupSnapshots LIMIT 1");
+        await ExecuteAsync(db.SetupConnection, "CREATE TRIGGER FailContact BEFORE INSERT ON DonorContacts FOR EACH ROW SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Injected failure'");
+        await Assert.ThrowsAsync<MySqlException>(() => Donations(db).ReplaceCanonicalDonationsAsync([Donation(amount: 99, contacts: [Email("changed@example.invalid")])], default));
+        Assert.Equal("10.00", await ScalarAsync(db.RuntimeConnection, "SELECT CAST(Amount AS CHAR) FROM DonationData"));
+        Assert.Equal("original@example.invalid", await ScalarAsync(db.RuntimeConnection, "SELECT ContactValue FROM DonorContacts"));
+        Assert.Equal(backup, await ScalarAsync(db.RuntimeConnection, "SELECT BackupId FROM DonationBackupSnapshots LIMIT 1"));
+    }
+
+    [MySqlFact]
+    public async Task RollbackRestoresTouchedDonorWithOnlyOlderHistory()
+    {
+        var db = await mysql.CreateDatabaseAsync();
+        await Donations(db).ReplaceCanonicalDonationsAsync([Donation(date: Date.AddMonths(-2), contacts: [Email("original@example.invalid")])], default);
+        await Donations(db).ReplaceCanonicalDonationsAsync([Donation(contacts: [Email("changed@example.invalid")])], default);
+        var result = await Rollback(db).RollbackDonationsAsync();
+        Assert.True(result.Success, result.ErrorMessage);
+        Assert.Equal("1", await ScalarAsync(db.RuntimeConnection, "SELECT COUNT(*) FROM DonationData"));
+        Assert.Equal("original@example.invalid", await ScalarAsync(db.RuntimeConnection, "SELECT ContactValue FROM DonorContacts"));
+    }
+
+    [MySqlFact]
+    public async Task AccountingPublicationFailureRollsBackDeletionAndSnapshot()
+    {
+        var db = await mysql.CreateDatabaseAsync();
+        var repository = new AccountingImportRepository(Config(db), NullLogger<AccountingImportRepository>.Instance, new NoProgress(), Guard);
+        await repository.ReplaceAsync([Accounting(Date, 10)], default);
+        var backup = await ScalarAsync(db.RuntimeConnection, "SELECT BackupId FROM AccountingBackupSnapshots LIMIT 1");
+        await ExecuteAsync(db.SetupConnection, "CREATE TRIGGER FailAccounting BEFORE INSERT ON AccountingData FOR EACH ROW SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Injected failure'");
+        await Assert.ThrowsAsync<MySqlException>(() => repository.ReplaceAsync([Accounting(Date, 99)], default));
+        Assert.Equal("10.00", await ScalarAsync(db.RuntimeConnection, "SELECT CAST(Amount AS CHAR) FROM AccountingData"));
+        Assert.Equal(backup, await ScalarAsync(db.RuntimeConnection, "SELECT BackupId FROM AccountingBackupSnapshots LIMIT 1"));
+    }
+
+    [MySqlFact]
+    public async Task PreCancelledReplacementPreservesData()
+    {
+        var db = await mysql.CreateDatabaseAsync();
+        await Donations(db).ReplaceCanonicalDonationsAsync([Donation()], default);
+        using var cancellation = new CancellationTokenSource();
+        cancellation.Cancel();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => Donations(db).ReplaceCanonicalDonationsAsync([Donation(amount: 99)], cancellation.Token));
+        Assert.Equal("10.00", await ScalarAsync(db.RuntimeConnection, "SELECT CAST(Amount AS CHAR) FROM DonationData"));
     }
 
     private static IConfiguration Config(TestDatabase db) => new ConfigurationBuilder().AddInMemoryCollection(
@@ -141,10 +189,10 @@ public sealed class DatabaseTests(MySqlFixture mysql) : IClassFixture<MySqlFixtu
     private static RollbackExecutor Rollback(TestDatabase db) => new(Config(db), NullLogger<RollbackExecutor>.Instance,
         new RollbackRepository(Config(db), NullLogger<RollbackRepository>.Instance, Guard));
     private static CanonicalDonationWriteModel Donation(string identity = "testdonor", decimal amount = 10,
-        IReadOnlyList<DonorContactWriteModel>? contacts = null) => new()
+        IReadOnlyList<DonorContactWriteModel>? contacts = null, DateTime? date = null) => new()
     {
         Donor = new DonorWriteModel { Fund = "Test Fund", DisplayName = identity, IdentityKey = identity, ResolutionSource = "AccountName", ResolutionVersion = 1 },
-        Date = Date, AccountName = identity, PaymentMethod = "Check", GiftType = "Donation", Amount = amount, Fund = "Test Fund", Contacts = contacts ?? []
+        Date = date ?? Date, AccountName = identity, PaymentMethod = "Check", GiftType = "Donation", Amount = amount, Fund = "Test Fund", Contacts = contacts ?? []
     };
     private static DonorContactWriteModel Email(string value) => new() { ContactType = "Email", ContactValue = value, NormalizedValue = value };
     private static AccountingImportRowDto Accounting(DateTime date, double amount) => new()

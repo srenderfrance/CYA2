@@ -2,9 +2,11 @@
 
 Intern accounts intentionally differ from normal fundraising accounts. This document records those differences and the code that implements them.
 
+The rules below are the intended contract. The [production review](../../../docs/PRODUCTION_REVIEW.md) A07 identifies central warmup/cache paths requiring correction/verification; this document is not evidence that every intern path already complies.
+
 ## Identity and Storage
 
-- An intern account is recognized by the `Intern: ` fund prefix. The stored fund remains the account and lifecycle identity.
+- An intern account is recognized by the `Intern: ` stored label prefix. `AccountId` is authoritative for account relationships; the label is not a donation lookup key. Donation/donor lookup identity is `InternName`.
 - The designation after that prefix is the intern identity used to retrieve donation and donor data.
 - Intern accounts have `AccountingClass = NULL` and an `INT-<user id>` account number because they are not accounting-backed accounts.
 

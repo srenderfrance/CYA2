@@ -25,10 +25,13 @@ The fixture generates credentials, starts a loopback-only random host port, wait
 - Canonical donation writes, donor deduplication, stale-contact removal, retained DateCreated, and donation repository readback.
 - Injected contact-insert failure after donor/donation writes verifies the transaction leaves no partial persistent data.
 - Donation backup/replacement/rollback restores donations and contacts and removes new orphan donors.
-- Accounting import repository parameterized fallback, full backup/replacement/rollback including rows before the replacement window.
+- Atomic accounting staging/publication, full backup/replacement/rollback including rows before the replacement window.
+- Publication failures preserve existing rows, contacts and snapshots; rollback restores touched donors whose only prior gifts predate the replacement window; pre-cancelled replacement preserves data.
 - Missing donation snapshot produces a safe failed rollback without deleting data.
 
-These tests exercise import **persistence**, not Excel parsing, OAuth, Blazor UI uploads, or the optional LOAD DATA LOCAL INFILE path. They do not prove Azure configuration, production workload performance, contact DateModified behavior, every migration error path, or account/subaccount reporting semantics. No production code is changed by this suite.
+`ImportValidationTests` also runs without Docker: 11 cases exercise the actual processors with synthetic in-memory Excel workbooks and fake persistence. These cover invalid/empty rejection, valid publication and domain invalidation, pre-cancellation, uncertain-outcome invalidation and shared write serialization. The 11 MySQL cases remain opt-in. Accounting no longer uses local-infile loading or partial live-write fallbacks. See [the import safety contract](IMPORT_SAFETY.md), including migration 003.
+
+These tests do not exercise OAuth or Blazor UI uploads, or prove hosting configuration, production workload performance, contact DateModified behavior, every migration error path, lost commit acknowledgements, or account/subaccount reporting semantics.
 
 ## CI
 

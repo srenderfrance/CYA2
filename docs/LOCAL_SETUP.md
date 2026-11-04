@@ -1,5 +1,7 @@
 # CYA2 Local Setup (Draft)
 
+Current production findings and acceptance work are tracked in [Production review](PRODUCTION_REVIEW.md). This guide documents procedures, not proof that a deployment has passed them.
+
 For a fresh production installation on Azure App Service and Azure Database for MySQL, use [Azure production setup](AZURE_SETUP.md). This document focuses on local development and testing.
 
 > **Status: Draft**
@@ -278,16 +280,13 @@ The code recognizes the following optional settings:
 
 ```json
 {
-  "Import": {
-	"BatchSize": 1000,
-	"UseLocalInfile": false,
-	"MaxAttempts": 3,
+	  "Import": {
 	"MaximumUploadBytes": 5120000
   }
 }
 ```
 
-The values shown are the current code defaults or safe local-development values. `UseLocalInfile` also depends on the MySQL connection configuration allowing local infile operations. Enable it only after the security implications and server settings have been confirmed.
+Financial replacements now use validated temporary staging and one atomic publication transaction. Legacy `BatchSize`, `UseLocalInfile` and `MaxAttempts` settings do not control these imports; local-infile loading and live-write retry/fallback have been removed. Apply schema migration 003 before using the updated application. See [import safety](IMPORT_SAFETY.md).
 
 Uploaded donation and accounting workbooks must use the `.xlsx` extension and are limited to 5,000 KB (5,120,000 bytes). The application validates the OOXML package signature before retaining a preview. This limit was selected because current workbooks are below 3,000 KB while allowing room for growth.
 
@@ -367,7 +366,7 @@ The deployment requires the Azure OIDC secrets configured in GitHub Actions: `AZ
 
 ## 8. Load development data
 
-The current repository does not yet contain approved fake donor data, fake accounting data, or fake Excel import fixtures.
+Opt-in synthetic donor and accounting **SQL** fixtures are available in [database/fixtures](../database/fixtures/SYNTHETIC_DATA_README.md). Load them only into an isolated development/test database after schema initialization. They are not Excel import workbooks and do not prove the upload/parsing pipeline. Approved donor/QuickBooks workbook fixtures and end-to-end coverage remain A13/B07 in the production review.
 
 For local testing, use only:
 
@@ -398,21 +397,14 @@ The following values must be supplied locally and must not be committed:
 
 Recommended local storage options are .NET user secrets, environment variables, or a local secret manager. Do not put these values in `appsettings.json`, `appsettings.Development.json`, documentation, SQL scripts, or test fixtures.
 
-## 10. Information still needed to finalize this guide
+## 10. Remaining owner and environment decisions
 
-The following information is not available or not confirmed in the repository:
+The guide above already documents MySQL 8.0+, database creation, setup/runtime account responsibilities, temporary-table grants, example TLS/connection settings, tooling, and disabled-by-default local infile. These procedures still need environment verification; they are not missing instructions.
 
-1. Supported and tested MySQL version.
-2. Local database creation procedure and database name convention.
-3. Local schema setup account and restricted runtime account responsibilities.
-4. Required MySQL grants, including the temporary-table grant.
-5. Standard local connection-string format and TLS requirements.
-6. Google Cloud project, OAuth client, authorized redirect URIs, and local sign-in users.
-7. Approved local test Google account and OAuth client values.
-8. Complete list of required environment settings for the chosen hosting and development environments.
-9. Whether `Import:UseLocalInfile` should remain disabled or be enabled in approved environments.
-10. Supported operating systems and required local tooling.
-11. Approved synthetic data and Excel fixtures.
-12. Final Azure Web App settings, production connection string, Google OAuth redirect URI, and database hosting details.
+- Supply approved Google project/client/test-user secrets outside source control and verify exact redirects.
+- Execute the Docker tests against the selected MySQL version and prove restricted-user staging/rollback behavior.
+- Approve synthetic Excel fixtures; existing SQL fixtures are distinct from workbook tests.
+- Confirm actual Azure resource names, private network, runtime/TLS settings and production configuration through the private pre-live deployment checklist (review stage B).
+- Approve operational retention, access, recovery and release policies with the organization.
 
 EPPlus licensing decision: Servant Partners is a legal US nonprofit using CYA2 only for internal operations. The application is not sold, licensed, or provided to other organizations. Retain the existing Polyform Noncommercial notices and review licensing before any change to this use.

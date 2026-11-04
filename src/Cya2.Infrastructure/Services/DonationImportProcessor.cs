@@ -46,11 +46,21 @@ namespace Cya2.Infrastructure.Services
             _identityResolver = identityResolver;
         }
 
-        public Task<ImportResult> ProcessAsync(Stream file, string progressId, CancellationToken cancellationToken)
-            => ProcessAsync(file, cancellationToken, progressId);
+        public async Task<ImportResult> ProcessAsync(Stream file, string progressId, CancellationToken cancellationToken)
+        {
+            using var lease = await FinancialWriteCoordinator.EnterAsync(cancellationToken);
+            try { return await ProcessAsync(file, cancellationToken, progressId); }
+            catch (ImportOutcomeUnknownException)
+            {
+                try { _cacheInvalidator.Invalidate(CacheDataDomains.Donations | CacheDataDomains.DonorContacts); }
+                catch { _logger.LogWarning("Uncertain donation import cache refresh failed."); }
+                throw;
+            }
+        }
 
         public async Task<DonationRecategorizationResult> RecategorizeAllDonationsAsync(CancellationToken ct)
         {
+            using var lease = await FinancialWriteCoordinator.EnterAsync(ct);
             var updated = await _donationRepository.RecategorizeAllDonationsAsync(ct);
             _cacheInvalidator.Invalidate(CacheDataDomains.Donations | CacheDataDomains.DonorContacts);
             return new DonationRecategorizationResult { DonationDataRowsUpdated = updated };
@@ -118,11 +128,12 @@ namespace Cya2.Infrastructure.Services
 
             for (var rowNumber = firstDataRow; rowNumber <= lastRow; rowNumber++)
             {
+                ct.ThrowIfCancellationRequested();
                 var dateText = GetCellText(ws, rowNumber, map["Gift Date"]);
                 var accountName = GetCellText(ws, rowNumber, map["Name"]);
                 var amountText = GetCellText(ws, rowNumber, map["Fund Split Amount"]);
                 var fund = GetCellText(ws, rowNumber, map["Fund Notes"]);
-                if (string.IsNullOrWhiteSpace(accountName) && string.IsNullOrWhiteSpace(fund) && string.IsNullOrWhiteSpace(amountText))
+                if (Enumerable.Range(1, ws.Dimension?.End.Column ?? 0).All(column => string.IsNullOrWhiteSpace(ws.Cells[rowNumber, column].Text)))
                 {
                     continue;
                 }
@@ -138,6 +149,13 @@ namespace Cya2.Infrastructure.Services
                 {
                     result.FailedRows++;
                     result.Errors.Add(ImportDiagnosticMessages.InvalidCell(rowNumber, "Amount"));
+                    continue;
+                }
+
+                if (!double.IsFinite(amount) || Math.Abs(amount) >= 10000000000000000d || string.IsNullOrWhiteSpace(fund))
+                {
+                    result.FailedRows++;
+                    result.Errors.Add(ImportDiagnosticMessages.InvalidCell(rowNumber, "Amount or Fund"));
                     continue;
                 }
 
@@ -182,6 +200,14 @@ namespace Cya2.Infrastructure.Services
             }
 
             var canonicalRows = ConsolidateDuplicates(allRows, result);
+            if (result.Errors.Count > 0 || canonicalRows.Count == 0)
+            {
+                if (result.Errors.Count == 0) result.Errors.Add("No donation rows found. Existing data was not changed.");
+                _progressService.AddErrors(progressId, result.Errors);
+                _progressService.SetStatus(progressId, "Rejected - existing data was not changed");
+                _progressService.Complete(progressId);
+                return result;
+            }
             _progressService.CompleteStep(progressId, "Data Analysis", "Completed", $"{canonicalRows.Count:N0} canonical rows; {result.DuplicateRowsMerged:N0} duplicates merged");
 
             _progressService.AddStep(progressId, "Frequency Pre-load", "Fetching prior donor history for frequency classification...");
@@ -195,15 +221,6 @@ namespace Cya2.Infrastructure.Services
                 : new List<Cya2.Core.ReadModels.DonationRecord>();
             _progressService.CompleteStep(progressId, "Frequency Pre-load", "Completed", $"Loaded prior history for {priorHistory.Select(h => h.AccountName).Distinct().Count():N0} donor records");
 
-            if (earliest.HasValue)
-            {
-                _progressService.AddStep(progressId, "Database Backup", "Backing up and clearing the overlapping donation range...");
-                _logger.LogInformation("Donation import backup starting. ProgressId={ProgressId}, SourceRangeStart={SourceRangeStart:O}", progressId, earliest.Value);
-                await _donationRepository.BackupAndDeleteFromDateAsync(earliest.Value, progressId, ct);
-                _progressService.CompleteStep(progressId, "Database Backup", "Completed", "Canonical donation range cleared");
-                _logger.LogInformation("Donation import backup completed. ProgressId={ProgressId}, SourceRangeStart={SourceRangeStart:O}", progressId, earliest.Value);
-            }
-
             _logger.LogInformation("Donation import frequency classification starting. ProgressId={ProgressId}, CanonicalRows={CanonicalRows}, PriorHistory={PriorHistory}", progressId, canonicalRows.Count, priorHistory.Count);
             ClassifyFrequencies(canonicalRows, priorHistory);
             _logger.LogInformation("Donation import frequency classification completed. ProgressId={ProgressId}, CanonicalRows={CanonicalRows}", progressId, canonicalRows.Count);
@@ -214,19 +231,12 @@ namespace Cya2.Infrastructure.Services
 
             var persistenceRows = canonicalRows.Select(ToPersistenceModel).ToList();
             _logger.LogInformation("Donation import persistence preparation completed. ProgressId={ProgressId}, PersistenceRows={PersistenceRows}", progressId, persistenceRows.Count);
-            if (!ct.IsCancellationRequested)
-            {
+            ct.ThrowIfCancellationRequested();
                 _logger.LogInformation("Donation import set-based persistence starting. ProgressId={ProgressId}, RowCount={RowCount}", progressId, persistenceRows.Count);
-                var persistenceResult = await _donationRepository.InsertCanonicalDonationsAsync(persistenceRows, ct);
+                var persistenceResult = await _donationRepository.ReplaceCanonicalDonationsAsync(persistenceRows, ct);
                 result.InsertedRows = persistenceResult.Inserted;
-                _progressService.Report(progressId, persistenceRows.Count, result.InsertedRows, result.FailedRows, "Importing data...");
+                ImportCompletion.Notify(result, progressId, CacheDataDomains.Donations | CacheDataDomains.DonorContacts, _cacheInvalidator, _progressService, _logger);
                 _logger.LogInformation("Donation import set-based persistence completed. ProgressId={ProgressId}, RowCount={RowCount}, Inserted={Inserted}, ContactsAdded={ContactsAdded}", progressId, persistenceRows.Count, persistenceResult.Inserted, persistenceResult.ContactsAdded);
-            }
-
-            _progressService.CompleteStep(progressId, "Data Import", "Completed", $"{result.InsertedRows:N0} records imported, {result.FailedRows:N0} failed");
-            _progressService.AddErrors(progressId, result.Errors);
-            _progressService.Complete(progressId);
-            _cacheInvalidator.Invalidate(CacheDataDomains.Donations);
             _logger.LogInformation("Donation import complete. Total={Total}, Canonical={Canonical}, Inserted={Inserted}, DuplicatesMerged={DuplicatesMerged}, Failed={Failed}", result.TotalRows, canonicalRows.Count, result.InsertedRows, result.DuplicateRowsMerged, result.FailedRows);
             return result;
         }
@@ -333,10 +343,10 @@ namespace Cya2.Infrastructure.Services
         private void ClassifyFrequencies(List<DonationImportRowDto> rows, List<Cya2.Core.ReadModels.DonationRecord> priorHistory)
         {
             var priorByDonor = priorHistory
-                .GroupBy(history => (history.AccountName.ToLowerInvariant(), history.Fund.ToLowerInvariant()))
+                .GroupBy(history => (history.DonorIdentityKey.ToLowerInvariant(), history.Fund.ToLowerInvariant()))
                 .ToDictionary(group => group.Key, group => group.OrderBy(item => item.Date).Select(item => new DonorGiftRecord { Date = item.Date, Amount = Convert.ToDecimal(item.Amount) }).ToList());
 
-            foreach (var group in rows.GroupBy(row => (row.ResolvedDonorName?.ToLowerInvariant() ?? string.Empty, row.Fund.ToLowerInvariant())))
+            foreach (var group in rows.GroupBy(row => (row.DonorIdentityKey.ToLowerInvariant(), row.Fund.ToLowerInvariant())))
             {
                 priorByDonor.TryGetValue(group.Key, out var prior);
                 prior ??= new List<DonorGiftRecord>();

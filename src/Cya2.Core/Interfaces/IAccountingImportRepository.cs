@@ -8,9 +8,6 @@ namespace Cya2.Core.Interfaces;
 /// </summary>
 public interface IAccountingImportRepository
 {
-    /// <summary>Backs up ALL existing rows and deletes rows with Date >= fromDate.</summary>
-    Task BackupAllAndDeleteFromDateAsync(DateTime fromDate, string progressId, CancellationToken ct);
-
-    /// <summary>Bulk-inserts a batch of parsed accounting rows, returns number inserted.</summary>
-    Task<ImportBatchResult> BulkInsertAsync(IReadOnlyList<AccountingImportRowDto> batch, CancellationToken ct);
+    /// <summary>Stages validated rows, then atomically snapshots and replaces the overlapping range.</summary>
+    Task<ImportBatchResult> ReplaceAsync(IReadOnlyList<AccountingImportRowDto> rows, CancellationToken ct);
 }

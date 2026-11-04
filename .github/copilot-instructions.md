@@ -19,6 +19,9 @@ This is a .net 10 app that uses blazor, dapper and mysql, radzen components and 
 - The Donors and DonorContacts tables are application display projections, not the organization's official donor database. Contact data should be current-state only: each upload must remove contact values no longer present and retain DateCreated plus DateModified, without historical contact rows.
 - For CYA2, restricted audit-stream records may include internal numeric user IDs and should have a 90-day retention period. General diagnostic logs must continue to exclude personal values and sensitive account/intern data.
 
+## Database Schema Management
+- CYA2 is developing its initial database version. Until production, all schema changes must be incorporated into database/schema/001_InitialSchema.sql, not new incremental migrations; no schema migration history should be recorded during this pre-production development phase.
+
 ## Caching Strategy
 - FinancialSummary DTOs are independently cached presentation DTOs and must be recreated automatically after database updates; broad Donation/Donor and Expense/Accounting DTO caches are not automatically rebuilt for every account after invalidation and may not exist when summaries rebuild.
 - Accounts Overview is automatically regenerated after DB updates using its existing special date range, not the broad preset-range DTO window. Prefer intelligent partial invalidation/rebuild when DonationData and AccountingData update separately, while allowing full DTO rebuild when simpler and safe.

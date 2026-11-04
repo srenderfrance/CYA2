@@ -83,13 +83,35 @@ public sealed class ImportOrchestrationService : IImportOrchestrationService
         var progressId = Guid.NewGuid().ToString("N");
         _progressService.Start(progressId, importType, actor.UserId);
         await RecordImportAuditAsync(actor.UserId, importType, AuditOutcomes.Started, cancellationToken: cancellationToken);
-        await using var stream = new MemoryStream(preview.Data, writable: false);
-        var importResult = await GetProcessor(importType).ProcessAsync(stream, progressId, cancellationToken);
-        await RecordImportAuditAsync(actor.UserId, importType,
-            importResult.FailedRows > 0 ? AuditOutcomes.Failed : AuditOutcomes.Succeeded,
-            importResult.InsertedRows,
-            cancellationToken);
-        return importResult;
+        try
+        {
+            await using var stream = new MemoryStream(preview.Data, writable: false);
+            var importResult = await GetProcessor(importType).ProcessAsync(stream, progressId, cancellationToken);
+            try
+            {
+                await RecordImportAuditAsync(actor.UserId, importType,
+                importResult.FailedRows > 0 || importResult.Errors.Count > 0 || importResult.InsertedRows == 0 ? AuditOutcomes.Failed : AuditOutcomes.Succeeded,
+                importResult.InsertedRows,
+                CancellationToken.None);
+            }
+            catch
+            {
+                importResult.Warnings.Add("The upload result could not be recorded in the audit log.");
+                _logger.LogWarning("Import terminal audit delivery failed.");
+            }
+            return importResult;
+        }
+        catch (Exception ex)
+        {
+            var message = ex is ImportOutcomeUnknownException ? ex.Message
+                : ex is OperationCanceledException ? "Import cancelled before publication completed."
+                : "Import failed. Existing data was not replaced unless the commit outcome requires reconciliation.";
+            _progressService.AddErrors(progressId, [message]);
+            _progressService.SetStatus(progressId, message);
+            _progressService.Complete(progressId);
+            await RecordImportAuditAsync(actor.UserId, importType, AuditOutcomes.Failed, cancellationToken: CancellationToken.None);
+            throw;
+        }
     }
 
     public async Task<ImportResult> StartImportFromPreviewAsync(string previewId, string importType, string? progressId = null)
