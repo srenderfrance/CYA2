@@ -47,7 +47,7 @@ public sealed class AuditRetentionCleanupService : BackgroundService
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Audit retention cleanup failed.");
+            _logger.LogWarning("Audit retention cleanup failed. ExceptionType={ExceptionType}", ex.GetType().Name);
         }
     }
 }

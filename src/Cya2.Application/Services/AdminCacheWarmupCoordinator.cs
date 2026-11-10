@@ -90,7 +90,7 @@ public sealed class AdminCacheWarmupCoordinator : IAdminCacheWarmupCoordinator, 
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "CACHE CREATION FAILED: central cache rebuild did not complete");
+            _logger.LogError("CACHE CREATION FAILED: central cache rebuild did not complete. ExceptionType={ExceptionType}", ex.GetType().Name);
         }
         finally
         {

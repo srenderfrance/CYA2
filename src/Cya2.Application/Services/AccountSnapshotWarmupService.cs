@@ -71,8 +71,7 @@ public sealed class AccountSnapshotWarmupService : IAccountSnapshotWarmupService
             : null;
 
         _logger.LogInformation(
-            "Account warmup schedule: user={UserId}, accounts={AccountCount}, defaultAccountId={DefaultAccountId}, isAdminUser={IsAdminUser}, warningRange={WarningStart:yyyy-MM-dd}..{WarningEnd:yyyy-MM-dd}",
-            userId,
+            "Account warmup schedule: accounts={AccountCount}, defaultAccountId={DefaultAccountId}, isAdminUser={IsAdminUser}, warningRange={WarningStart:yyyy-MM-dd}..{WarningEnd:yyyy-MM-dd}",
             orderedAccounts.Count,
             defaultAccountId,
             isAdminUser,
@@ -98,7 +97,7 @@ public sealed class AccountSnapshotWarmupService : IAccountSnapshotWarmupService
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(ex, "Default account snapshot warmup failed: accountId={AccountId}", defaultAccount.AccountId);
+                _logger.LogWarning("Default account snapshot warmup failed. ExceptionType={ExceptionType}", ex.GetType().Name);
             }
         }
 
@@ -110,8 +109,7 @@ public sealed class AccountSnapshotWarmupService : IAccountSnapshotWarmupService
                 .ToList();
 
         _logger.LogInformation(
-            "Account warmup non-default schedule: user={UserId}, isAdminUser={IsAdminUser}, queuedAccounts={QueuedAccountCount}",
-            userId,
+            "Account warmup non-default schedule: isAdminUser={IsAdminUser}, queuedAccounts={QueuedAccountCount}",
             isAdminUser,
             accountsToWarm.Count);
 
@@ -215,7 +213,7 @@ public sealed class AccountSnapshotWarmupService : IAccountSnapshotWarmupService
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Account snapshot background warmup failed");
+            _logger.LogWarning("Account snapshot background warmup failed. ExceptionType={ExceptionType}", ex.GetType().Name);
         }
     }
 
@@ -234,7 +232,7 @@ public sealed class AccountSnapshotWarmupService : IAccountSnapshotWarmupService
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Selected account cache warmup failed");
+            _logger.LogWarning("Selected account cache warmup failed. ExceptionType={ExceptionType}", ex.GetType().Name);
         }
 
         List<UserAccountContextAccount> remaining;
@@ -410,6 +408,7 @@ public sealed class AccountSnapshotWarmupService : IAccountSnapshotWarmupService
         {
             AccountId = account.AccountId,
             Fund = account.Fund,
+            InternName = account.InternName,
             AccountingClass = account.AccountingClass,
             AccountNumber = account.AccountNumber,
             Overhead = account.Overhead
@@ -421,11 +420,14 @@ public sealed class AccountSnapshotWarmupService : IAccountSnapshotWarmupService
         cancellationToken.ThrowIfCancellationRequested();
         await _donationService.GetDonationDataAsync(account.Fund, "All", range, _userId, _isAdminOrViewer);
         cancellationToken.ThrowIfCancellationRequested();
-        _logger.LogInformation("Account derived warmup expense load: accountId={AccountId}, range={Start:yyyy-MM-dd}..{End:yyyy-MM-dd}", account.AccountId, range.StartDate, range.EndDate);
-        await _expenseService.GetExpenseDataAsync(account.Fund, range, _userId, _isAdminOrViewer);
+        if (string.IsNullOrWhiteSpace(account.InternName) && !Cya2.Core.Utilities.InternAccountUtility.IsInternFund(account.Fund))
+        {
+            _logger.LogInformation("Account derived warmup expense load: accountId={AccountId}, range={Start:yyyy-MM-dd}..{End:yyyy-MM-dd}", account.AccountId, range.StartDate, range.EndDate);
+            await _expenseService.GetExpenseDataAsync(account.Fund, range, _userId, _isAdminOrViewer);
+        }
         cancellationToken.ThrowIfCancellationRequested();
         var effectiveDonorSummaryRange = donorSummaryRange ?? range;
-        await _donorService.GetDonorSummariesForAccountAsync(accountOption, effectiveDonorSummaryRange);
+        await _donorService.GetDonorSummariesForAccountAsync(accountOption, effectiveDonorSummaryRange, _userId);
         cancellationToken.ThrowIfCancellationRequested();
         await _donorService.GetMissingGiftDonorsAsync(accountOption, effectiveDonorSummaryRange);
         _logger.LogInformation("Account derived warmup completed: accountId={AccountId}", account.AccountId);
@@ -442,7 +444,7 @@ public sealed class AccountSnapshotWarmupService : IAccountSnapshotWarmupService
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Account authoritative cache warmup failed");
+            _logger.LogWarning("Account authoritative cache warmup failed. ExceptionType={ExceptionType}", ex.GetType().Name);
         }
         finally
         {
@@ -532,6 +534,7 @@ public sealed class AccountSnapshotWarmupService : IAccountSnapshotWarmupService
         {
             AccountId = account.AccountId,
             Fund = account.Fund ?? string.Empty,
+            InternName = Cya2.Core.Utilities.InternAccountUtility.TryGetInternDesignationName(account.Fund, out var internName) ? internName : string.Empty,
             AccountingClass = account.AccountingClass ?? string.Empty,
             AccountNumber = account.AccountNumber ?? string.Empty,
             CreatedAt = account.CreatedAt,

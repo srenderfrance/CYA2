@@ -129,8 +129,8 @@ public sealed class AccountFactDataService : IAccountFactDataService
         if (cursor <= endDate.Date) yield return new DateRange(cursor, endDate.Date);
     }
 
-    private static DonationCacheRecord ToDonationCacheRecord(DonationRecord d) => new(d.Id, d.DonorId, d.DonorDisplayName ?? string.Empty, d.Date, d.Amount, d.Frequency, d.Fund, d.AccountName, d.SoftCreditName, d.Addressee, d.IsAnonymous);
-    private static DonationRecord ToDonationRecord(DonationCacheRecord d) => new() { Id = d.Id, DonorId = d.DonorId, DonorDisplayName = d.DonorDisplayName, Date = d.Date, Amount = d.Amount, Frequency = d.Frequency, Fund = d.Fund, AccountName = d.AccountName, SoftCreditName = d.SoftCreditName, Addressee = d.Addressee, IsAnonymous = d.IsAnonymous };
+    private static DonationCacheRecord ToDonationCacheRecord(DonationRecord d) => new(d.Id, d.DonorId, d.DonorDisplayName ?? string.Empty, d.Date, d.Amount, d.Frequency, d.Fund, d.AccountName, d.SoftCreditName, d.Addressee, d.IsAnonymous, d.IsSoftCredit);
+    private static DonationRecord ToDonationRecord(DonationCacheRecord d) => new() { Id = d.Id, DonorId = d.DonorId, DonorDisplayName = d.DonorDisplayName, Date = d.Date, Amount = d.Amount, Frequency = d.Frequency, Fund = d.Fund, AccountName = d.AccountName, SoftCreditName = d.SoftCreditName, Addressee = d.Addressee, IsAnonymous = d.IsAnonymous, IsSoftCredit = d.IsSoftCredit };
     private static SubAccount ToSubAccount(SubAccountCacheRecord s) => new() { Id = s.Id, AccountId = s.AccountId, SubFund = s.SubFund, Kind = s.Kind };
     private static AccountingCacheRecord ToAccountingCacheRecord(AccountingRecord a) => new(a.Id, a.Date, a.Num, a.Amount, a.Account, a.Type, a.AccountingClass, a.AccountNumber);
     private static AccountingRecord ToAccountingRecord(AccountingCacheRecord a) => new() { Id = a.Id, Date = a.Date, Num = a.Number, Amount = a.Amount, Account = a.Account, Type = a.Type, AccountingClass = a.AccountingClass, AccountNumber = a.AccountNumber, DateCreated = DateTime.MinValue };

@@ -830,9 +830,9 @@
 
             isLoading = false;
         }
-        catch (Exception ex)
+        catch (Exception)
         {
-            errorMessage = $"Error loading data: {ex.Message}";
+            errorMessage = Localizer["SafeOperationError"];
             isLoading = false;
         }
     }
@@ -950,9 +950,9 @@
             // Mark that we need to reload the giving grid once the component has rendered and the grid ref is available
             _needReloadGivingGrid = true;
         }
-        catch (Exception ex)
+        catch (Exception)
         {
-            errorMessage = $"Error loading donation data: {ex.Message}";
+            errorMessage = Localizer["SafeOperationError"];
         }
         finally
         {
@@ -1092,9 +1092,9 @@
                 await InvokeAsync(StateHasChanged);
             }
         }
-        catch (Exception ex)
+        catch (Exception)
         {
-            errorMessage = $"Error applying date filter: {ex.Message}";
+            errorMessage = Localizer["SafeOperationError"];
         }
     }
 

@@ -77,7 +77,7 @@ public sealed class DonorContactHydrationService : IDonorContactHydrationService
             donation.PhoneFixed = JoinContactValues(contacts.Where(contact => IsContactType(contact, "HomePhone")).Select(contact => contact.ContactValue));
             donation.PhoneMobile = JoinContactValues(contacts.Where(contact => IsContactType(contact, "MobilePhone")).Select(contact => contact.ContactValue));
 
-            if (_identityResolver.IsThirdPartySoftCredit(new DonorIdentityInput(
+            if (!donation.IsSoftCredit && _identityResolver.IsThirdPartySoftCredit(new DonorIdentityInput(
                     donation.Fund ?? string.Empty,
                     donation.AccountName,
                     donation.SoftCreditName,

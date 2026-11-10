@@ -89,11 +89,12 @@ public sealed class HomeSummaryCache : IHomeSummaryCache
         return false;
     }
 
-    public void RemoveStaleGenerations(long generation)
+    public void RemoveStaleGenerations(long normalGeneration, long internGeneration)
     {
         lock (_sync)
         {
-            foreach (var key in _entries.Keys.Where(key => key.Generation != generation).ToArray())
+            foreach (var key in _entries.Keys.Where(key => key.Generation !=
+                (string.IsNullOrEmpty(key.InternName) ? normalGeneration : internGeneration)).ToArray())
             {
                 RemoveEntry(key);
             }

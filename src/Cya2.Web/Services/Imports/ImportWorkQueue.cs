@@ -36,9 +36,9 @@ public sealed class ImportWorkQueue : BackgroundService, IImportWorkQueue
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        _logger.LogInformation("Import work queue worker started.");
         try
         {
+            _logger.LogInformation("Import work queue worker started.");
             await foreach (var workItem in _queue.Reader.ReadAllAsync(stoppingToken))
             {
                 _logger.LogInformation(
@@ -85,8 +85,8 @@ public sealed class ImportWorkQueue : BackgroundService, IImportWorkQueue
         }
         catch (Exception ex)
         {
-            _logger.LogCritical(ex, "Import work queue worker stopped unexpectedly.");
-            throw;
+            _logger.LogCritical("Import work queue worker stopped unexpectedly. ExceptionType={ExceptionType}", ex.GetType().Name);
+            throw new InvalidOperationException("The import work queue worker stopped unexpectedly.");
         }
     }
 

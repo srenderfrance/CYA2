@@ -53,7 +53,7 @@ namespace Cya2.Infrastructure.Services
         {
             if (string.IsNullOrWhiteSpace(userId)) return;
             _cache.Remove(UserKey(userId));
-            _logger.LogDebug("MemoryUserSelectionService: Removed selection for {UserId}", userId);
+            _logger.LogDebug("MemoryUserSelectionService: Removed selection");
         }
 
         private string UserKey(string userId) => $"UserSelection:{userId}";

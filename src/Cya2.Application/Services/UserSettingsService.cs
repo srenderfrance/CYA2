@@ -56,7 +56,7 @@ public class UserSettingsService : IUserSettingsService
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to load user settings for {UserIdentifier}", userIdentifier);
+            _logger.LogError("Failed to load user settings. ExceptionType={ExceptionType}", ex.GetType().Name);
             return null;
         }
     }
@@ -75,7 +75,7 @@ public class UserSettingsService : IUserSettingsService
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to update default account for user {UserId}", userId);
+            _logger.LogError("Failed to update default account. ExceptionType={ExceptionType}", ex.GetType().Name);
             return false;
         }
     }
@@ -98,7 +98,7 @@ public class UserSettingsService : IUserSettingsService
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to update language for user {UserId}", userId);
+            _logger.LogError("Failed to update language. ExceptionType={ExceptionType}", ex.GetType().Name);
             return false;
         }
     }

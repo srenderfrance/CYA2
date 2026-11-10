@@ -419,7 +419,10 @@
                             <div class="rz-border-radius-1 rz-border-1" style="height: 38px; display: grid; align-items: center; justify-items: start; background-color: #f0f0f0; padding: 0 0.5rem;">
                                 <RadzenText TextStyle="TextStyle.Body1" Style="margin:0;">@(string.IsNullOrEmpty(selectedStaffEmail) ? @Localizer["NoUserSelected"] : selectedStaffEmail)</RadzenText>
                             </div>
-                            <RadzenTextBox @bind-value="@newEmail" Placeholder="@Localizer["EnterUpdateEmail"]" />
+                            <div style="display:flex; align-items:center; gap:0.35rem; min-width:0;">
+                                <RadzenTextBox @bind-value="@newEmail" Placeholder="@Localizer["EnterUpdateEmail"]" aria-label="@Localizer["EnterUpdateEmail"]" Style="min-width:0; width:100%;" />
+                                <span style="white-space:nowrap;">@Cya2.Application.Services.UserManagementService.OrganizationEmailDomain</span>
+                            </div>
                         </RadzenStack>
                     </div>
                 </RadzenStack>
@@ -433,7 +436,7 @@
                                 <RadzenText TextStyle="TextStyle.Body1" Style="margin:0;">@(string.IsNullOrEmpty(selectedStaffAuthLevel) ? @Localizer["NoUserSelected"] : selectedStaffAuthLevel)</RadzenText>
                             </div>
                             <div style="width:100%;">
-                                <CustomDropdown TItem="string" TValue="string" Data="@authLevels" TextSelector="@(s => s)" ValueSelector="@(s => s)" Value="@newAuthLevel" ValueChanged="@(async (string v) => newAuthLevel = v)" Placeholder="@Localizer["SelectAuthLevel"]" />
+                                <CustomDropdown @key="selectedStaffId" TItem="string" TValue="string" Data="@authLevels" TextSelector="@(s => s)" ValueSelector="@(s => s)" Value="@newAuthLevel" ValueChanged="@(async (string v) => newAuthLevel = v)" Placeholder="@Localizer["SelectAuthLevel"]" Disabled="@string.Equals(selectedStaffAuthLevel, "Intern", StringComparison.OrdinalIgnoreCase)" />
                             </div>
                         </RadzenStack>
                     </div>
@@ -649,12 +652,12 @@
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "HandlePreviewComplete failed for {Type}", importType);
+                _logger.LogError("HandlePreviewComplete failed for {Type}. ExceptionType={ExceptionType}", importType, ex.GetType().Name);
                 NotificationService.Notify(new NotificationMessage
                 {
                     Severity = NotificationSeverity.Error,
                     Summary = Localizer["UploadError"],
-                    Detail = ex.Message,
+                    Detail = Localizer["SafeOperationError"],
                     Duration = 4000
                 });
             }
@@ -715,12 +718,12 @@
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "StartImportFromPreview failed for {Type}", importType);
+                _logger.LogError("StartImportFromPreview failed for {Type}. ExceptionType={ExceptionType}", importType, ex.GetType().Name);
                 NotificationService.Notify(new NotificationMessage
                 {
                     Severity = NotificationSeverity.Error,
                         Summary = Localizer["ImportError"],
-                    Detail = ex.Message,
+                    Detail = Localizer["SafeOperationError"],
                     Duration = 4000
                 });
             }
@@ -747,7 +750,7 @@
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Donation file upload failed");
+                _logger.LogError("Donation file upload failed. ExceptionType={ExceptionType}", ex.GetType().Name);
                 NotificationService.Notify(new NotificationMessage
                 {
                     Severity = NotificationSeverity.Error,
@@ -777,7 +780,7 @@
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Accounting file upload failed");
+                _logger.LogError("Accounting file upload failed. ExceptionType={ExceptionType}", ex.GetType().Name);
                 NotificationService.Notify(new NotificationMessage
                 {
                     Severity = NotificationSeverity.Error,
@@ -933,8 +936,8 @@
             }
             catch (Exception ex)
             {
-                errorMessage = $"Error initializing admin page: {ex.Message}";
-                _logger.LogError(ex, "Error initializing admin page");
+                errorMessage = Localizer["SafeOperationError"];
+                _logger.LogError("Error initializing admin page. ExceptionType={ExceptionType}", ex.GetType().Name);
             }
         }
 
@@ -983,8 +986,8 @@
             }
             catch (Exception ex)
             {
-                errorMessage = $"Error initializing admin page: {ex.Message}";
-                _logger.LogError(ex, "Error initializing Admin data after first render");
+                errorMessage = Localizer["SafeOperationError"];
+                _logger.LogError("Error initializing admin data. ExceptionType={ExceptionType}", ex.GetType().Name);
                 await InvokeAsync(StateHasChanged);
             }
         }
@@ -1067,6 +1070,8 @@
 
         private async Task staffSelectionById(int userId)
         {
+            newAuthLevel = string.Empty;
+            newEmail = string.Empty;
             selectedStaffId = userId;
             var selectedUser = staff.FirstOrDefault(user => user.Id == userId);
             if (selectedUser is null)
@@ -1105,9 +1110,9 @@
 
                 RefreshAccountsOptions();
             }
-            catch (Exception ex)
+            catch (Exception)
             {
-                accountLinkError = $"Error loading user accounts: {ex.Message}";
+                accountLinkError = Localizer["SafeOperationError"];
             }
         }
 
@@ -1155,9 +1160,9 @@
                     NotifyMutation(NotificationSeverity.Error, "Account access update failed", op.Message);
                 }
             }
-            catch (Exception ex)
+            catch (Exception)
             {
-                accountLinkError = $"Error linking account: {ex.Message}";
+                accountLinkError = Localizer["SafeOperationError"];
                 NotifyMutation(NotificationSeverity.Error, "Account access update failed", accountLinkError);
             }
         }
@@ -1207,9 +1212,9 @@
                     NotifyMutation(NotificationSeverity.Error, "Account access update failed", op.Message);
                 }
             }
-            catch (Exception ex)
+            catch (Exception)
             {
-                accountLinkError = $"Error removing account link: {ex.Message}";
+                accountLinkError = Localizer["SafeOperationError"];
                 NotifyMutation(NotificationSeverity.Error, "Account access update failed", accountLinkError);
             }
         }
@@ -1228,10 +1233,16 @@
 
             try
             {
+                if (!Cya2.Application.Services.UserManagementService.TryBuildOrganizationEmail(newEmail, out var email))
+                {
+                    staffUpdateError = Localizer["OrganizationEmailUsernameRequired"];
+                    return;
+                }
+
                 var levelToSet = string.IsNullOrWhiteSpace(newAuthLevel) ? "User" : newAuthLevel;
                 var op = await UserManagementService.CreateAdminUserAsync(
                     newName,
-                    newEmail,
+                    email,
                     levelToSet,
                     accountsToAssign);
 
@@ -1240,7 +1251,7 @@
                     // Retry only after confirmation so a recreated intern user does not silently receive a retained account's history.
                     op = await UserManagementService.CreateAdminUserAsync(
                         newName,
-                        newEmail,
+                        email,
                         levelToSet,
                         accountsToAssign,
                         reuseExistingInternAccount: true);
@@ -1275,9 +1286,9 @@
                 selectedStaffEmail = string.Empty;
                 selectedStaffAuthLevel = string.Empty;
             }
-            catch (Exception ex)
+            catch (Exception)
             {
-                staffUpdateError = $"Error: {ex.Message}";
+                staffUpdateError = Localizer["SafeOperationError"];
                 NotifyMutation(NotificationSeverity.Error, "User creation failed", staffUpdateError);
             }
         }
@@ -1311,6 +1322,22 @@
                     return;
                 }
 
+                string? updatedEmail = null;
+                if (!string.IsNullOrWhiteSpace(newEmail))
+                {
+                    if (!Cya2.Application.Services.UserManagementService.TryBuildOrganizationEmail(newEmail, out var email))
+                    {
+                        staffUpdateError = Localizer["OrganizationEmailUsernameRequired"];
+                        return;
+                    }
+                    updatedEmail = email;
+                }
+                else if (!Cya2.Application.Services.UserManagementService.IsOrganizationEmail(selectedUser.Email))
+                {
+                    staffUpdateError = Localizer["OrganizationEmailUsernameRequired"];
+                    return;
+                }
+
                 var successMessages = new List<string>();
                 var errorMessages = new List<string>();
                 var profileUpdated = false;
@@ -1333,7 +1360,7 @@
                     {
                         UserId = selectedUser.Id,
                         Name = string.IsNullOrWhiteSpace(newName) ? null : newName,
-                        Email = string.IsNullOrWhiteSpace(newEmail) ? null : newEmail,
+                        Email = updatedEmail,
                         AuthLevel = string.IsNullOrWhiteSpace(newAuthLevel) ? null : newAuthLevel
                     };
 
@@ -1352,8 +1379,9 @@
                     }
                     else
                     {
-                        errorMessages.Add(profileOp.Message);
+                        staffUpdateError = profileOp.Message;
                         NotifyMutation(NotificationSeverity.Error, "User update failed", profileOp.Message);
+                        return;
                     }
                 }
 
@@ -1420,9 +1448,9 @@
                 staffMember = refreshedUser?.Name ?? staffMember;
                 await staffSelection(staffMember);
             }
-            catch (Exception ex)
+            catch (Exception)
             {
-                staffUpdateError = $"Error updating user: {ex.Message}";
+                staffUpdateError = Localizer["SafeOperationError"];
                 NotifyMutation(NotificationSeverity.Error, "User update failed", staffUpdateError);
             }
         }
@@ -1443,7 +1471,7 @@
                 if (confirmed != true)
                     return;
 
-                _logger.LogInformation("Confirming deletion of user: {User}", userName);
+                _logger.LogInformation("Confirming user deletion.");
 
                 var selectedUser = staff.FirstOrDefault(u => u.Name == userName);
                 if (selectedUser == null)
@@ -1456,7 +1484,7 @@
                 var op = await UserManagementService.DeleteAdminUserAsync(selectedUser.Id);
                 if (op.IsSuccess)
                 {
-                    _logger.LogInformation("Successfully deleted user {UserId}", selectedUser.Id);
+                    _logger.LogInformation("Successfully deleted user.");
                     staffUpdateSuccess = op.Message;
                     NotifyMutation(NotificationSeverity.Success, "User deleted", op.Message);
 
@@ -1474,7 +1502,7 @@
                 }
                 else
                 {
-                    _logger.LogWarning("Failed to delete user {UserId}: {Message}", selectedUser.Id, op.Message);
+                    _logger.LogWarning("User deletion failed.");
                     staffUpdateError = op.Message;
                     NotifyMutation(NotificationSeverity.Error, "User deletion failed", op.Message);
                 }
@@ -1483,8 +1511,8 @@
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error in ConfirmDelete");
-                staffUpdateError = $"Error: {ex.Message}";
+                _logger.LogError("Error in user deletion. ExceptionType={ExceptionType}", ex.GetType().Name);
+                staffUpdateError = Localizer["SafeOperationError"];
                 NotifyMutation(NotificationSeverity.Error, "User deletion failed", staffUpdateError);
                 StateHasChanged();
             }
@@ -1541,9 +1569,9 @@
                 selectedFund = AddNewAccountLabel;
                 await fundSelection(selectedFund);
             }
-            catch (Exception ex)
+            catch (Exception)
             {
-                fundUpdateError = $"Error deleting fund: {ex.Message}";
+                fundUpdateError = Localizer["SafeOperationError"];
             }
         }
 
@@ -1552,7 +1580,7 @@
             fundUpdateError = string.Empty;
             fundUpdateSuccess = string.Empty;
 
-            _logger.LogInformation("UpdateFund called. SelectedFund: {SelectedFund}, IsAddNewAccountSelected: {IsAddNewAccountSelected}", selectedFund, IsAddNewAccountSelected);
+            _logger.LogInformation("UpdateFund called. IsAddNewAccountSelected={IsAddNewAccountSelected}", IsAddNewAccountSelected);
 
             if (IsAddNewAccountSelected)
             {
@@ -1601,9 +1629,9 @@
             }
             catch (Exception ex)
             {
-                fundUpdateError = $"Error updating fund: {ex.Message}";
+                fundUpdateError = Localizer["SafeOperationError"];
                 NotifyMutation(NotificationSeverity.Error, "Fund update failed", fundUpdateError);
-                _logger.LogError(ex, "Error updating fund: {SelectedFund}", selectedFund);
+                _logger.LogError("Error updating fund. ExceptionType={ExceptionType}", ex.GetType().Name);
             }
         }
 
@@ -1672,9 +1700,9 @@
                 }
                 catch (Exception ex)
                 {
-                    fundUpdateError = $"Error adding sub fund: {ex.Message}";
+                    fundUpdateError = Localizer["SafeOperationError"];
                     NotifyMutation(NotificationSeverity.Error, "Sub-fund creation failed", fundUpdateError);
-                    _logger.LogError(ex, "Error adding sub fund: {SubFundName}", subAccountNameEdit);
+                    _logger.LogError("Error adding sub fund. ExceptionType={ExceptionType}", ex.GetType().Name);
                 }
 
                 return;
@@ -1743,9 +1771,9 @@
             }
             catch (Exception ex)
             {
-                fundUpdateError = $"Error adding new fund: {ex.Message}";
+                fundUpdateError = Localizer["SafeOperationError"];
                 NotifyMutation(NotificationSeverity.Error, "Fund creation failed", fundUpdateError);
-                _logger.LogError(ex, "Error adding new fund: {FundName}", newFundName);
+                _logger.LogError("Error adding new fund. ExceptionType={ExceptionType}", ex.GetType().Name);
             }
         }
         
@@ -1844,9 +1872,9 @@
             }
             catch (Exception ex)
             {
-                errorMessage = $"Error loading accounts: {ex.Message}";
+                errorMessage = Localizer["SafeOperationError"];
                 allAccounts = new List<Account>();
-                _logger.LogError(ex, "Error loading accounts from database");
+                _logger.LogError("Error loading accounts from database. ExceptionType={ExceptionType}", ex.GetType().Name);
             }
         }
 
@@ -1864,8 +1892,8 @@
             }
             catch (Exception ex)
             {
-                accountImportMessage = $"Account import preview failed: {ex.Message}";
-                _logger.LogError(ex, "Account import preview failed");
+                accountImportMessage = Localizer["SafeOperationError"];
+                _logger.LogError("Account import preview failed. ExceptionType={ExceptionType}", ex.GetType().Name);
             }
             finally
             {
@@ -1892,8 +1920,8 @@
             }
             catch (Exception ex)
             {
-                accountImportMessage = $"Account import failed: {ex.Message}";
-                _logger.LogError(ex, "Account import failed");
+                accountImportMessage = Localizer["SafeOperationError"];
+                _logger.LogError("Account import failed. ExceptionType={ExceptionType}", ex.GetType().Name);
             }
             finally
             {
@@ -1931,9 +1959,9 @@
             }
             catch (Exception ex)
             {
-                errorMessage = $"Error loading users: {ex.Message}";
-                staffUpdateError = $"Debug: LoadAllStaff exception: {ex.Message}";
-                _logger.LogError(ex, "Admin.LoadAllStaff failed.");
+                errorMessage = Localizer["SafeOperationError"];
+                staffUpdateError = errorMessage;
+                _logger.LogError("Admin.LoadAllStaff failed. ExceptionType={ExceptionType}", ex.GetType().Name);
                 staff = new List<Cya2.Application.DTOs.AdminUserDto>();
             }
         }
@@ -2073,9 +2101,9 @@
                 showRollbackDialog = true;
                 StateHasChanged();
             }
-            catch (Exception ex)
+            catch (Exception)
             {
-                rollbackError = $"Error checking rollback availability: {ex.Message}";
+                rollbackError = Localizer["SafeOperationError"];
                 showRollbackDialog = true;
             }
         }
@@ -2134,13 +2162,13 @@
                     Duration = 7000
                 });
             }
-            catch (Exception ex)
+            catch (Exception)
             {
                 NotificationService.Notify(new NotificationMessage
                 {
                     Severity = NotificationSeverity.Error,
                     Summary = GetLocalizedString("RecategorizeDonations", "Recategorize Donations"),
-                    Detail = ex.Message,
+                    Detail = Localizer["SafeOperationError"],
                     Duration = 7000
                 });
             }
@@ -2194,9 +2222,9 @@
                     await ExecuteRollback();
                 }
             }
-            catch (Exception ex)
+            catch (Exception)
             {
-                rollbackError = $"Rollback failed: {ex.Message}";
+                rollbackError = Localizer["SafeOperationError"];
                 rollbackStatus = string.Empty;
                 StateHasChanged();
             }
@@ -2247,9 +2275,9 @@
                 }
                 
             }
-            catch (Exception ex)
+            catch (Exception)
             {
-                rollbackError = $"Rollback failed: {ex.Message}";
+                rollbackError = Localizer["SafeOperationError"];
                 rollbackStatus = string.Empty;
             }
         }
@@ -2298,8 +2326,8 @@
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error loading subaccounts");
-                subAccountUpdateError = $"Error loading subaccounts: {ex.Message}";
+                _logger.LogError("Error loading subaccounts. ExceptionType={ExceptionType}", ex.GetType().Name);
+                subAccountUpdateError = Localizer["SafeOperationError"];
             }
         }
 
@@ -2394,9 +2422,9 @@
             }
             catch (Exception ex)
             {
-                subAccountUpdateError = $"Error updating subaccount: {ex.Message}";
+                subAccountUpdateError = Localizer["SafeOperationError"];
                 NotifyMutation(NotificationSeverity.Error, "Sub-fund update failed", subAccountUpdateError);
-                _logger.LogError(ex, "Error updating subaccount {SubAccountId}", selectedSubAccount?.Id);
+                _logger.LogError("Error updating subaccount. ExceptionType={ExceptionType}", ex.GetType().Name);
             }
         }
 
@@ -2435,9 +2463,9 @@
             }
             catch (Exception ex)
             {
-                subAccountUpdateError = $"Error deleting subaccount: {ex.Message}";
+                subAccountUpdateError = Localizer["SafeOperationError"];
                 NotifyMutation(NotificationSeverity.Error, "Sub-fund deletion failed", subAccountUpdateError);
-                _logger.LogError(ex, "Error deleting subaccount {SubAccountId}", selectedSubAccount?.Id);
+                _logger.LogError("Error deleting subaccount. ExceptionType={ExceptionType}", ex.GetType().Name);
             }
         }
     }

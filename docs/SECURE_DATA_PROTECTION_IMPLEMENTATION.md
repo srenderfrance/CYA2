@@ -179,7 +179,7 @@ Revoking one account link does not terminate the user's entire authentication se
 The current implementation uses two levels of enforcement:
 
 1. **Immediate checks:** Sensitive account selection and account-specific reads revalidate against the database before use.
-2. **Intended active-session polling:** A one-minute loop exists in MainLayout, but is started from OnAfterRenderAsync in a static layout; reliable execution and transient-failure recovery are not established (A08).
+2. **Active-session polling:** An interactive session monitor checks initially and at one-minute intervals; transient user-store failures are retried. Browser execution and reconnect behavior remain acceptance items (A08).
 
 The intended session UX after deletion/Admin downgrade is listed below, but must be implemented/verified in A08/B02 rather than assumed from service-level authorization tests:
 

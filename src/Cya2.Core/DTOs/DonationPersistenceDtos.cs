@@ -6,7 +6,8 @@ public sealed class DonorWriteModel
 {
     public required string Fund { get; init; }
     public required string DisplayName { get; init; }
-    public required string IdentityKey { get; init; }
+    public required string IdentityKey { get; set; }
+    public string? ConstituentId { get; set; }
     public required string ResolutionSource { get; init; }
     public required int ResolutionVersion { get; init; }
 }
@@ -23,6 +24,8 @@ public sealed class CanonicalDonationWriteModel
     public required DonorWriteModel Donor { get; init; }
     public required DateTime Date { get; init; }
     public string? GiftImportId { get; init; }
+    public string? ConstituentId { get; init; }
+    public bool IsSoftCredit { get; init; }
     public required string AccountName { get; init; }
     public required string PaymentMethod { get; init; }
     public required string GiftType { get; init; }

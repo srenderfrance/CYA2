@@ -67,4 +67,38 @@ public sealed class DonorExportService : IDonorExportService
 
         return new DonorExportResult(true, true, requestedFunds, donorRows ?? new List<DonorSummaryDto>());
     }
+
+    public async Task<DonorExportResult> GetSelectionExportDataAsync(
+        string userId,
+        bool isAdminOrViewerHint,
+        int accountId,
+        string selectedSubAccount,
+        bool allDates,
+        DateTime? startDate,
+        DateTime? endDate)
+    {
+        if (!(await _authorizationService.ValidateAccountAccessAsync(userId, accountId)).IsAuthorized)
+            return DonorExportResult.Forbidden(Array.Empty<string>());
+
+        var context = await _userAccountContextService.GetContextAsync(userId, isAdminOrViewerHint);
+        if (context == null)
+            return DonorExportResult.MissingUserContext(Array.Empty<string>());
+
+        var account = context.Accounts.FirstOrDefault(a => a.AccountId == accountId);
+        if (account == null)
+            return DonorExportResult.Forbidden(Array.Empty<string>());
+
+        var option = new AccountOptionDto
+        {
+            AccountId = account.AccountId,
+            Fund = account.Fund,
+            InternName = account.InternName,
+            AccountingClass = account.AccountingClass,
+            AccountNumber = account.AccountNumber,
+            Overhead = account.Overhead
+        };
+        var range = allDates ? null : new DateRange(startDate ?? DateTime.MinValue, endDate ?? DateTime.MaxValue);
+        var donors = await _donorService.GetDonorSummariesForSelectionAsync(option, selectedSubAccount, range, userId);
+        return new DonorExportResult(true, true, Array.Empty<string>(), donors);
+    }
 }

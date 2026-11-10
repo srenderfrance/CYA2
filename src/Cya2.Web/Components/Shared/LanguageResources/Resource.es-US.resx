@@ -250,7 +250,10 @@
     <value>Saldo de Fin de Año</value>
   </data>
   <data name="EnterUpdateEmail" xml:space="preserve">
-    <value>Ingrese actualice el correo</value>
+    <value>Ingrese el usuario del correo</value>
+  </data>
+  <data name="OrganizationEmailUsernameRequired" xml:space="preserve">
+    <value>Ingrese solo un usuario de correo válido, sin @scene8.net. Los usuarios existentes deben tener un correo de scene8.net.</value>
   </data>
   <data name="EnterUpdateName" xml:space="preserve">
     <value>Ingrese o actualice el nombre</value>
@@ -407,6 +410,12 @@
   </data>
   <data name="LoginAttemptNotCompleted" xml:space="preserve">
     <value>No se pudo completar su intento de inicio de sesión.</value>
+  </data>
+  <data name="SafeOperationError" xml:space="preserve">
+    <value>No se pudo completar la operación. Inténtelo de nuevo.</value>
+  </data>
+  <data name="SafeDatabaseError" xml:space="preserve">
+    <value>La base de datos no está disponible en este momento. Inténtelo de nuevo.</value>
   </data>
   <data name="TrySigningInAgain" xml:space="preserve">
     <value>Intente iniciar sesión nuevamente.</value>

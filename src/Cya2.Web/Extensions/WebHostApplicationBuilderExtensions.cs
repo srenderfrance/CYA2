@@ -11,6 +11,23 @@ public static class WebHostApplicationBuilderExtensions
         if (!app.Environment.IsDevelopment())
         {
             app.UseExceptionHandler("/Error", createScopeForErrors: true);
+            app.Use(async (context, next) =>
+            {
+                try
+                {
+                    await next();
+                }
+                catch (OperationCanceledException) when (context.RequestAborted.IsCancellationRequested)
+                {
+                    throw new OperationCanceledException("The request was canceled.", context.RequestAborted);
+                }
+                catch (Exception ex)
+                {
+                    app.Logger.LogError("Request failed. TraceId={TraceId}, ExceptionType={ExceptionType}",
+                        context.TraceIdentifier, ex.GetType().Name);
+                    throw new InvalidOperationException("The request failed.");
+                }
+            });
             app.UseHsts();
         }
 

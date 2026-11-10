@@ -1,40 +1,21 @@
-# Database migrations
+# Pre-production schema changes
 
-This directory contains structural changes applied after the clean-install baseline at `database/schema/001_InitialSchema.sql`.
+During pre-production, incorporate structural changes into [`database/schema/001_InitialSchema.sql`](../schema/001_InitialSchema.sql). The current initializer does not apply incremental migrations or record schema migration history.
 
-## Naming
+## Initial setup
 
-Use an ordered filename:
+Create a separate empty database with database-level defaults `utf8mb4` and `utf8mb4_0900_ai_ci`. Verify those defaults before initializing: the initializer's session settings and the schema's table defaults do not change the database default. See [database setup](../README.md#initial-setup) for a read-only check and [Azure setup](../../docs/AZURE_SETUP.md#4-create-the-fresh-database-and-initialize-the-schema) for controlled correction guidance.
 
-```text
-002_AddImportExpiration.sql
-003_AddNewIndex.sql
-```
-
-The numeric prefix must be unique and contiguous among migration files. Use one migration per structural change. Do not edit a migration after it has been applied; create a new migration instead.
-
-## Execution
-
-Run the standalone migrator with a schema/setup connection string. For a new empty database, include `--initialize`:
+From the repository root, set `CYA2_SCHEMA_CONNECTION_STRING` securely for the setup account and run:
 
 ```powershell
-dotnet run --project tools/Cya2.DatabaseMigrator -- --connection-string "$env:CYA2_SCHEMA_CONNECTION_STRING" --initialize
+dotnet run --project tools/Cya2.DatabaseMigrator -- --initialize
 ```
 
-Initialization applies `database/schema/001_InitialSchema.sql` only when the selected database contains no application tables. It records the baseline as migration ID `000001`, then applies pending scripts in numeric order. The runner rejects checksum changes to previously applied scripts and uses a MySQL named lock so concurrent deployment processes do not apply migrations simultaneously.
+The initializer takes a MySQL named lock and applies the initial schema only when the selected database is empty. It does not create the database, and it rejects calls without `--initialize` or with `--migrations-directory`. MySQL DDL is not reliably rolled back as a whole; investigate partial initialization before retrying.
 
-For an already initialized database, omit `--initialize`:
+## Existing databases and runtime access
 
-```powershell
-dotnet run --project tools/Cya2.DatabaseMigrator -- --connection-string "$env:CYA2_SCHEMA_CONNECTION_STRING"
-```
+An existing database may contain data or an older schema. Do not rerun initialization or drop it as a shortcut; prepare a separately reviewed, non-destructive reconciliation and recovery plan. Changing a database default does not convert existing tables or columns.
 
-The runner refuses `--initialize` when application tables already exist. It does not create the target database itself; create the database first and provide it in the connection string.
-
-The web application does not run migrations during startup. Its runtime connection should use a separate restricted account that can perform normal data operations and create session-scoped temporary tables, but cannot create, alter, or drop persistent schema objects.
-
-The setup/migration account and runtime account are MySQL database users managed by the database administrator or deployment infrastructure. They are not application records and are not created by the Blazor application or the initialization runner. Store their credentials in deployment secrets, never in SQL scripts or source control.
-
-## Existing databases
-
-For an existing database created from `database/schema/001_InitialSchema.sql`, omit `--initialize` and use the runner for later migrations. The runner does not automatically create a baseline history row for an existing schema because it cannot safely prove that the database exactly matches the baseline.
+The web application does not modify persistent schema at startup. Its separate restricted runtime MySQL account needs normal data permissions and `CREATE TEMPORARY TABLES`, not persistent `CREATE`, `ALTER`, or `DROP`. Setup and runtime users are managed by the DBA or deployment infrastructure, not by the application. Keep credentials out of scripts and source control.

@@ -47,7 +47,7 @@ public class ExpenseService : IExpenseService
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error getting user accounts for userId: {UserId}", userId);
+            _logger.LogError("Error getting user accounts. ExceptionType={ExceptionType}", ex.GetType().Name);
             return new List<AccountOptionDto>();
         }
     }
@@ -67,7 +67,7 @@ public class ExpenseService : IExpenseService
 
             if (context == null || !contextAccounts.Any())
             {
-                _logger.LogWarning("No accounts found for user: {UserId}", userId);
+                _logger.LogWarning("No accounts found for user.");
                 return new ExpenseDataDto
                 {
                     UserAccounts = contextAccounts.Select(MapToAccountOptionDto).ToList(),
@@ -112,10 +112,9 @@ public class ExpenseService : IExpenseService
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex,
-                "Error getting expense data for account={AccountName} user={UserId} range={Start:yyyy-MM-dd}..{End:yyyy-MM-dd}",
-                accountName,
-                userId,
+            _logger.LogError(
+                "Error getting expense data. ExceptionType={ExceptionType}, range={Start:yyyy-MM-dd}..{End:yyyy-MM-dd}",
+                ex.GetType().Name,
                 dateRange.StartDate,
                 dateRange.EndDate);
             var fallbackAccounts = await GetUserAccountsAsync(userId, isAdminOrViewer);
@@ -151,7 +150,7 @@ public class ExpenseService : IExpenseService
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error getting expense transactions for user: {UserId}", userId);
+            _logger.LogError("Error getting expense transactions. ExceptionType={ExceptionType}", ex.GetType().Name);
             return new List<ExpenseTransactionDto>();
         }
     }
@@ -171,7 +170,7 @@ public class ExpenseService : IExpenseService
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error getting transfer transactions for user: {UserId}", userId);
+            _logger.LogError("Error getting transfer transactions. ExceptionType={ExceptionType}", ex.GetType().Name);
             return new List<ExpenseTransactionDto>();
         }
     }
@@ -208,7 +207,7 @@ public class ExpenseService : IExpenseService
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error getting expense summary for user: {UserId}", userId);
+            _logger.LogError("Error getting expense summary. ExceptionType={ExceptionType}", ex.GetType().Name);
             return new ExpenseSummaryDto
             {
                 AccountName = accountName,

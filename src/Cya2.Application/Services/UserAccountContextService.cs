@@ -61,7 +61,7 @@ public class UserAccountContextService : IUserAccountContextService
             }
 
             var stopwatch = System.Diagnostics.Stopwatch.StartNew();
-            _logger.LogInformation("User account context phase=user-start user={UserId}", normalizedUserId);
+            _logger.LogInformation("User account context phase=user-start");
             var user = currentUser;
             // _logger.LogInformation("User account context phase=user-complete elapsedMs={ElapsedMs} found={Found}", stopwatch.ElapsedMilliseconds, user is not null);
             if (user == null)
@@ -74,6 +74,11 @@ public class UserAccountContextService : IUserAccountContextService
             var isViewer = string.Equals(authLevel, "Viewer", StringComparison.OrdinalIgnoreCase);
 
             var canAccessAllAccounts = isAdmin || isViewer;
+            var accounts = await GetAccountsAsync(user.Id, canAccessAllAccounts, user.IsIntern());
+            var internAccount = user.IsIntern()
+                ? accounts.FirstOrDefault(account => account.AccountId == user.DefaultAccount && !string.IsNullOrWhiteSpace(account.InternName))
+                    ?? accounts.FirstOrDefault(account => !string.IsNullOrWhiteSpace(account.InternName))
+                : null;
 
             var context = new UserAccountContext
             {
@@ -81,12 +86,10 @@ public class UserAccountContextService : IUserAccountContextService
                 IsAdminOrViewer = canAccessAllAccounts,
                 IsViewer = isViewer,
                 IsIntern = user.IsIntern(),
-                InternName = user.IsIntern()
-                    ? InternAccountUtility.GetInternNameFromUserName(user.Name)
-                    : string.Empty,
+                InternName = internAccount?.InternName ?? string.Empty,
                 DefaultAccountId = user.DefaultAccount,
                 CacheVersion = contextGeneration,
-                Accounts = await GetAccountsAsync(user.Id, canAccessAllAccounts, user.IsIntern())
+                Accounts = accounts
             };
 
 
@@ -104,7 +107,7 @@ public class UserAccountContextService : IUserAccountContextService
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to build user account context for identifier {UserId}", normalizedUserId);
+            _logger.LogError("Failed to build user account context. ExceptionType={ExceptionType}", ex.GetType().Name);
             return null;
         }
     }

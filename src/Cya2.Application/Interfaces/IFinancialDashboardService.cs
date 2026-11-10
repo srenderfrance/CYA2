@@ -22,7 +22,7 @@ public interface IFinancialDashboardService
     Task<FinancialDashboardDto> GetDashboardSummaryDataAsync(string accountFund, string userId);
 
     Task WarmHomeSummaryFromDataAsync(Account account, CacheRebuildData data, CancellationToken cancellationToken = default) => Task.CompletedTask;
-    Task WarmInternSummaryFromDataAsync(string internName, CacheRebuildData data, CancellationToken cancellationToken = default) => Task.CompletedTask;
+    Task WarmInternSummaryFromDataAsync(Account account, CacheRebuildData data, CancellationToken cancellationToken = default) => Task.CompletedTask;
 
     /// <summary>
     /// Get one financial summary for a caller-selected date range.

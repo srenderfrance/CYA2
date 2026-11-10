@@ -89,7 +89,7 @@ namespace Cya2.Infrastructure.Services
                 "Soft Credit Recipient Name", "Preferred Address Line 1", "Preferred City", "Preferred State",
                 "Preferred ZIP", "Preferred Country", "Personal Email Number", "Home Phone Number",
                 "Personal Mobile Phone Number", "Gift Is Anonymous", "Gift Import ID",
-                "Primary Addressee"
+                "Primary Addressee", "Constituent ID"
             };
             foreach (var column in required)
             {
@@ -164,6 +164,14 @@ namespace Cya2.Infrastructure.Services
                 var softCredit = GetCellText(ws, rowNumber, map["Soft Credit Recipient Name"]);
                 var sourceName = GetCellText(ws, rowNumber, map["Name"]);
                 var identity = _identityResolver.Resolve(new DonorIdentityInput(fund ?? string.Empty, sourceName, softCredit, addressee, isAnonymous));
+                var isSoftCredit = string.Equals(identity.ResolutionSource, "SoftCredit", StringComparison.Ordinal);
+                var constituentId = GetCellText(ws, rowNumber, map["Constituent ID"]);
+                if (constituentId?.Length > 255)
+                {
+                    result.FailedRows++;
+                    result.Errors.Add(ImportDiagnosticMessages.InvalidCell(rowNumber, "Constituent ID"));
+                    continue;
+                }
 
                 var parsedRow = new DonationImportRowDto
                 {
@@ -175,6 +183,8 @@ namespace Cya2.Infrastructure.Services
                     Amount = amount,
                     Fund = fund ?? string.Empty,
                     GiftImportId = GetCellText(ws, rowNumber, map["Gift Import ID"]),
+                    ConstituentId = constituentId,
+                    IsSoftCredit = isSoftCredit,
                     InternName = GetCellText(ws, rowNumber, honorMemorialColumnName),
                     PrimaryAddressee = isAnonymous ? null : addressee,
                     SoftCreditName = isAnonymous ? null : softCredit,
@@ -183,15 +193,19 @@ namespace Cya2.Infrastructure.Services
                     State = isAnonymous || _identityResolver.IsThirdPartySoftCredit(new DonorIdentityInput(fund ?? string.Empty, sourceName, softCredit, addressee, isAnonymous)) ? null : GetCellText(ws, rowNumber, map["Preferred State"]),
                     PostalCode = isAnonymous || _identityResolver.IsThirdPartySoftCredit(new DonorIdentityInput(fund ?? string.Empty, sourceName, softCredit, addressee, isAnonymous)) ? null : GetCellText(ws, rowNumber, map["Preferred ZIP"]),
                     Country = isAnonymous || _identityResolver.IsThirdPartySoftCredit(new DonorIdentityInput(fund ?? string.Empty, sourceName, softCredit, addressee, isAnonymous)) ? null : GetCellText(ws, rowNumber, map["Preferred Country"]),
-                    Email = isAnonymous ? null : GetCellText(ws, rowNumber, map["Personal Email Number"]),
-                    PhoneFixed = isAnonymous ? null : GetCellText(ws, rowNumber, map["Home Phone Number"]),
-                    PhoneMobile = isAnonymous ? null : GetCellText(ws, rowNumber, map["Personal Mobile Phone Number"]),
+                    Email = isAnonymous || isSoftCredit ? null : GetCellText(ws, rowNumber, map["Personal Email Number"]),
+                    PhoneFixed = isAnonymous || isSoftCredit ? null : GetCellText(ws, rowNumber, map["Home Phone Number"]),
+                    PhoneMobile = isAnonymous || isSoftCredit ? null : GetCellText(ws, rowNumber, map["Personal Mobile Phone Number"]),
                     IsAnonymous = isAnonymous,
                     ResolvedDonorName = identity.DisplayName,
                     DonorIdentityKey = identity.IdentityKey,
                     DonorResolutionSource = identity.ResolutionSource,
                     DonorResolutionVersion = identity.ResolutionVersion
                 };
+                if (isSoftCredit)
+                {
+                    parsedRow.Address = parsedRow.City = parsedRow.State = parsedRow.PostalCode = parsedRow.Country = null;
+                }
                 AddObservedContacts(parsedRow);
                 allRows.Add(parsedRow);
 
@@ -199,6 +213,13 @@ namespace Cya2.Infrastructure.Services
                 result.TotalRows++;
             }
 
+            var identityResolver = new ConstituentIdentityResolver(allRows.Select(row => new ConstituentIdentityEvidence(
+                row.ResolvedDonorName ?? row.AccountName, row.ConstituentId, row.IsSoftCredit, row.IsAnonymous)));
+            foreach (var row in allRows)
+            {
+                row.DonorIdentityKey = identityResolver.Resolve(new ConstituentIdentityEvidence(
+                    row.ResolvedDonorName ?? row.AccountName, row.ConstituentId, row.IsSoftCredit, row.IsAnonymous)).Key;
+            }
             var canonicalRows = ConsolidateDuplicates(allRows, result);
             if (result.Errors.Count > 0 || canonicalRows.Count == 0)
             {
@@ -259,6 +280,13 @@ namespace Cya2.Infrastructure.Services
                 if (!grouped.TryGetValue(key, out var existing))
                 {
                     grouped[key] = row;
+                    canonical.Add(row);
+                    continue;
+                }
+
+                if (existing.IsSoftCredit != row.IsSoftCredit ||
+                    !string.Equals(existing.ConstituentId, row.ConstituentId, StringComparison.Ordinal))
+                {
                     canonical.Add(row);
                     continue;
                 }
@@ -343,10 +371,10 @@ namespace Cya2.Infrastructure.Services
         private void ClassifyFrequencies(List<DonationImportRowDto> rows, List<Cya2.Core.ReadModels.DonationRecord> priorHistory)
         {
             var priorByDonor = priorHistory
-                .GroupBy(history => (history.DonorIdentityKey.ToLowerInvariant(), history.Fund.ToLowerInvariant()))
+                .GroupBy(history => (history.DonorIdentityKey, history.Fund.ToLowerInvariant()))
                 .ToDictionary(group => group.Key, group => group.OrderBy(item => item.Date).Select(item => new DonorGiftRecord { Date = item.Date, Amount = Convert.ToDecimal(item.Amount) }).ToList());
 
-            foreach (var group in rows.GroupBy(row => (row.DonorIdentityKey.ToLowerInvariant(), row.Fund.ToLowerInvariant())))
+            foreach (var group in rows.GroupBy(row => (row.DonorIdentityKey ?? string.Empty, row.Fund.ToLowerInvariant())))
             {
                 priorByDonor.TryGetValue(group.Key, out var prior);
                 prior ??= new List<DonorGiftRecord>();
@@ -375,6 +403,8 @@ namespace Cya2.Infrastructure.Services
                 Donor = donor,
                 Date = row.Date,
                 GiftImportId = row.GiftImportId,
+                ConstituentId = row.ConstituentId,
+                IsSoftCredit = row.IsSoftCredit,
                 AccountName = row.AccountName,
                 PaymentMethod = row.PaymentMethod,
                 GiftType = row.GiftType,

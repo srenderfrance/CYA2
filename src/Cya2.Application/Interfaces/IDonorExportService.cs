@@ -12,6 +12,15 @@ public interface IDonorExportService
         bool allDates,
         DateTime? startDate,
         DateTime? endDate);
+
+    Task<DonorExportResult> GetSelectionExportDataAsync(
+        string userId,
+        bool isAdminOrViewerHint,
+        int accountId,
+        string selectedSubAccount,
+        bool allDates,
+        DateTime? startDate,
+        DateTime? endDate);
 }
 
 public sealed record DonorExportResult(

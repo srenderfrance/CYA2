@@ -12,7 +12,7 @@ using Cya2.Infrastructure.Services;
 
 namespace Cya2.Infrastructure.Repositories;
 
-public sealed class DonationRepository : IDonationRepository
+public sealed partial class DonationRepository : IDonationRepository
 {
     private static readonly string[] ContactTypes =
     [
@@ -46,12 +46,11 @@ public sealed class DonationRepository : IDonationRepository
 INSERT INTO DonationDataBackup
     (BackupId, Id, DonorId, Date, GiftImportId, AccountName, PaymentMethod, GiftType,
      Amount, Fund, InternName, PrimaryAddressee, SoftCreditName,
-     IsAnonymous, Frequency, DateCreated, BackupAt, Pinned, SourceRangeStart)
+     IsAnonymous, Frequency, DateCreated, ConstituentId, IsSoftCredit, BackupAt, Pinned, SourceRangeStart)
 SELECT @BackupId, Id, DonorId, Date, GiftImportId, AccountName, PaymentMethod, GiftType,
        Amount, Fund, InternName, PrimaryAddressee, SoftCreditName,
-       IsAnonymous, Frequency, DateCreated, UTC_TIMESTAMP(), 0, @SourceRangeStart
-FROM DonationData
-WHERE Date >= @SourceRangeStart";
+       IsAnonymous, Frequency, DateCreated, ConstituentId, IsSoftCredit, UTC_TIMESTAMP(), 0, @SourceRangeStart
+FROM DonationData";
                 backup.Parameters.AddWithValue("@BackupId", backupId);
                 backup.Parameters.AddWithValue("@SourceRangeStart", fromDate);
                 donationBackupRows = await backup.ExecuteNonQueryAsync(cancellationToken);
@@ -78,14 +77,12 @@ FROM DonationBackupSnapshots";
                 donorBackup.Transaction = transaction;
                 donorBackup.CommandText = @"
 INSERT INTO DonorsBackup
-    (BackupId, Id, Fund, DisplayName, IdentityKey, ResolutionSource, ResolutionVersion,
+    (BackupId, Id, ConstituentId, DisplayName, IdentityKey, ResolutionSource, ResolutionVersion,
      DateCreated, DateModified, BackupAt)
-SELECT DISTINCT @BackupId, donor.Id, donor.Fund, donor.DisplayName, donor.IdentityKey,
+SELECT DISTINCT @BackupId, donor.Id, donor.ConstituentId, donor.DisplayName, donor.IdentityKey,
        donor.ResolutionSource, donor.ResolutionVersion, donor.DateCreated,
        donor.DateModified, UTC_TIMESTAMP()
-FROM Donors donor
-WHERE EXISTS (SELECT 1 FROM DonationData donation WHERE donation.DonorId = donor.Id AND donation.Date >= @SourceRangeStart)
-   OR EXISTS (SELECT 1 FROM TempImportDonors staged WHERE staged.Fund = donor.Fund AND staged.IdentityKey = donor.IdentityKey)";
+FROM Donors donor";
                 donorBackup.Parameters.AddWithValue("@BackupId", backupId);
                 donorBackup.Parameters.AddWithValue("@SourceRangeStart", fromDate);
                 await donorBackup.ExecuteNonQueryAsync(cancellationToken);
@@ -217,8 +214,8 @@ FROM (
     FROM DonationData d
     INNER JOIN Donors donor ON donor.Id = d.DonorId
     INNER JOIN TempFrequencyDonorKeys requested
-        ON requested.Fund COLLATE utf8mb4_0900_ai_ci = donor.Fund COLLATE utf8mb4_0900_ai_ci
-       AND requested.IdentityKey COLLATE utf8mb4_0900_ai_ci = donor.IdentityKey COLLATE utf8mb4_0900_ai_ci
+        ON requested.Fund COLLATE utf8mb4_0900_ai_ci = d.Fund COLLATE utf8mb4_0900_ai_ci
+       AND requested.IdentityKey COLLATE utf8mb4_bin = donor.IdentityKey COLLATE utf8mb4_bin
     WHERE d.Date < @BeforeDate
 ) r
 WHERE r.RowNumber <= @MaxPerDonor
@@ -328,9 +325,9 @@ ORDER BY DonorId, Fund, Date, Id";
 
         await using var command = connection.CreateCommand();
         command.CommandText = @"
- SELECT Id, Fund, DisplayName, IdentityKey, ResolutionSource, ResolutionVersion
+ SELECT Id, ConstituentId, DisplayName, IdentityKey, ResolutionSource, ResolutionVersion
 FROM Donors
-WHERE Fund = @Fund AND IdentityKey = @IdentityKey";
+WHERE IdentityKey = @IdentityKey";
         command.Parameters.AddWithValue("@Fund", fund);
         command.Parameters.AddWithValue("@IdentityKey", identityKey);
 
@@ -357,9 +354,9 @@ WHERE Fund = @Fund AND IdentityKey = @IdentityKey";
                 insert.Transaction = transaction;
                 insert.CommandText = @"
 INSERT INTO Donors
-    (Fund, DisplayName, IdentityKey, ResolutionSource, ResolutionVersion)
+    (ConstituentId, DisplayName, IdentityKey, ResolutionSource, ResolutionVersion)
 VALUES
-    (@Fund, @DisplayName, @IdentityKey, @ResolutionSource, @ResolutionVersion)
+    (@ConstituentId, @DisplayName, @IdentityKey, @ResolutionSource, @ResolutionVersion)
 AS incoming
 ON DUPLICATE KEY UPDATE
     DisplayName = incoming.DisplayName,
@@ -373,9 +370,9 @@ ON DUPLICATE KEY UPDATE
             await using var select = connection.CreateCommand();
             select.Transaction = transaction;
             select.CommandText = @"
- SELECT Id, Fund, DisplayName, IdentityKey, ResolutionSource, ResolutionVersion
+ SELECT Id, ConstituentId, DisplayName, IdentityKey, ResolutionSource, ResolutionVersion
 FROM Donors
-WHERE Fund = @Fund AND IdentityKey = @IdentityKey";
+WHERE IdentityKey = @IdentityKey";
             select.Parameters.AddWithValue("@Fund", donor.Fund);
             select.Parameters.AddWithValue("@IdentityKey", donor.IdentityKey);
 
@@ -413,6 +410,7 @@ WHERE Fund = @Fund AND IdentityKey = @IdentityKey";
         await FinancialWriteCoordinator.AcquireDatabaseLockAsync(connection, cancellationToken);
         try
         {
+            var retained = await ResolveSharedIdentitiesAsync(connection, donations, cancellationToken);
             await CreateCanonicalImportStageAsync(connection, null, cancellationToken);
             _logger.LogInformation("Canonical donation staging tables created. BatchCount={BatchCount}", donations.Count);
             await InsertDonorStageAsync(connection, null, donations, cancellationToken);
@@ -427,11 +425,13 @@ WHERE Fund = @Fund AND IdentityKey = @IdentityKey";
             {
             await BackupAndDeleteFromDateAsync(connection, transaction, donations.Min(row => row.Date), backupId, cancellationToken);
             await UpsertStagedDonorsAsync(connection, transaction, cancellationToken);
+            await RelinkRetainedDonationsAsync(connection, transaction, retained, cancellationToken);
             _logger.LogInformation("Canonical staged donors upserted. BatchCount={BatchCount}", donations.Count);
 
             var inserted = await InsertStagedDonationsAsync(connection, transaction, cancellationToken);
             _logger.LogInformation("Canonical staged donations inserted. BatchCount={BatchCount}, Inserted={Inserted}", donations.Count, inserted);
             var contactsAdded = await ReconcileStagedContactsAsync(connection, transaction, cancellationToken);
+            await FinalizeSharedIdentitiesAsync(connection, transaction, cancellationToken);
 
             _logger.LogInformation("Canonical donation set-based rows and contacts prepared. BatchCount={BatchCount}, Inserted={Inserted}, ContactsAdded={ContactsAdded}", donations.Count, inserted, contactsAdded);
             if (inserted != donations.Count) throw new InvalidOperationException("Staged donation count did not match publication count.");
@@ -468,10 +468,12 @@ CREATE TEMPORARY TABLE TempImportDonors
 (
     StageId BIGINT NOT NULL AUTO_INCREMENT,
     Fund VARCHAR(255) NOT NULL,
-    IdentityKey VARCHAR(512) NOT NULL,
+    IdentityKey VARCHAR(512) COLLATE utf8mb4_bin NOT NULL,
     DisplayName VARCHAR(255) NOT NULL,
     ResolutionSource VARCHAR(32) NOT NULL,
     ResolutionVersion INT NOT NULL,
+    ConstituentId VARCHAR(255) COLLATE utf8mb4_bin NULL,
+    HasDirect BOOLEAN NOT NULL DEFAULT FALSE,
     PRIMARY KEY (StageId),
     KEY ix_TempImportDonors_Lookup (Fund(100), IdentityKey(200))
 ) ENGINE=InnoDB;
@@ -479,7 +481,7 @@ CREATE TEMPORARY TABLE TempImportDonations
 (
     StageId BIGINT NOT NULL AUTO_INCREMENT,
     Fund VARCHAR(255) NOT NULL,
-    IdentityKey VARCHAR(512) NOT NULL,
+    IdentityKey VARCHAR(512) COLLATE utf8mb4_bin NOT NULL,
     Date DATETIME NOT NULL,
     GiftImportId VARCHAR(255) NULL,
     AccountName VARCHAR(255) NOT NULL,
@@ -491,6 +493,8 @@ CREATE TEMPORARY TABLE TempImportDonations
     SoftCreditName VARCHAR(255) NULL,
     IsAnonymous BOOLEAN NOT NULL,
     Frequency TINYINT NULL,
+    ConstituentId VARCHAR(255) COLLATE utf8mb4_bin NULL,
+    IsSoftCredit BOOLEAN NOT NULL DEFAULT FALSE,
     PRIMARY KEY (StageId),
     KEY ix_TempImportDonations_Lookup (Fund(100), IdentityKey(200))
 ) ENGINE=InnoDB;
@@ -498,7 +502,7 @@ CREATE TEMPORARY TABLE TempImportContacts
 (
     StageId BIGINT NOT NULL AUTO_INCREMENT,
     Fund VARCHAR(255) NOT NULL,
-    IdentityKey VARCHAR(512) NOT NULL,
+    IdentityKey VARCHAR(512) COLLATE utf8mb4_bin NOT NULL,
     ContactType VARCHAR(32) NOT NULL,
     ContactValue VARCHAR(500) NOT NULL,
     NormalizedValue VARCHAR(500) NOT NULL,
@@ -515,9 +519,8 @@ CREATE TEMPORARY TABLE TempImportContacts
         CancellationToken cancellationToken)
     {
         var donors = donations
-            .Select(donation => donation.Donor)
-            .GroupBy(donor => (donor.Fund, donor.IdentityKey), StringTupleComparer.Instance)
-            .Select(group => group.Last())
+            .GroupBy(donation => donation.Donor.IdentityKey, StringComparer.Ordinal)
+            .Select(group => (Donor: (group.LastOrDefault(row => !row.IsSoftCredit && !row.IsAnonymous) ?? group.Last()).Donor, HasDirect: group.Any(row => !row.IsSoftCredit && !row.IsAnonymous)))
             .ToList();
         var command = connection.CreateCommand();
         command.Transaction = transaction;
@@ -526,14 +529,15 @@ CREATE TEMPORARY TABLE TempImportContacts
         for (var index = 0; index < donors.Count; index++)
         {
             if (index > 0) values.Append(',');
-            values.Append($"(@df{index}, @di{index}, @dn{index}, @ds{index}, @dv{index})");
-            command.Parameters.AddWithValue($"@df{index}", donors[index].Fund);
-            command.Parameters.AddWithValue($"@di{index}", donors[index].IdentityKey);
-            command.Parameters.AddWithValue($"@dn{index}", donors[index].DisplayName);
-            command.Parameters.AddWithValue($"@ds{index}", donors[index].ResolutionSource);
-            command.Parameters.AddWithValue($"@dv{index}", donors[index].ResolutionVersion);
+            values.Append($"('', @di{index}, @dn{index}, @ds{index}, @dv{index}, @dc{index}, @dd{index})");
+            command.Parameters.AddWithValue($"@di{index}", donors[index].Donor.IdentityKey);
+            command.Parameters.AddWithValue($"@dn{index}", donors[index].Donor.DisplayName);
+            command.Parameters.AddWithValue($"@ds{index}", donors[index].Donor.ResolutionSource);
+            command.Parameters.AddWithValue($"@dv{index}", donors[index].Donor.ResolutionVersion);
+            command.Parameters.AddWithValue($"@dc{index}", (object?)donors[index].Donor.ConstituentId ?? DBNull.Value);
+            command.Parameters.AddWithValue($"@dd{index}", donors[index].HasDirect);
         }
-        command.CommandText = $"INSERT INTO TempImportDonors (Fund, IdentityKey, DisplayName, ResolutionSource, ResolutionVersion) VALUES {values}";
+        command.CommandText = $"INSERT INTO TempImportDonors (Fund, IdentityKey, DisplayName, ResolutionSource, ResolutionVersion, ConstituentId, HasDirect) VALUES {values}";
         await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
@@ -555,7 +559,7 @@ CREATE TEMPORARY TABLE TempImportContacts
             {
                 var parameterIndex = localIndex;
                 if (localIndex > 0) values.Append(',');
-                values.Append($"(@f{parameterIndex}, @i{parameterIndex}, @d{parameterIndex}, @g{parameterIndex}, @a{parameterIndex}, @p{parameterIndex}, @t{parameterIndex}, @m{parameterIndex}, @n{parameterIndex}, @r{parameterIndex}, @s{parameterIndex}, @x{parameterIndex}, @q{parameterIndex})");
+                values.Append($"(@f{parameterIndex}, @i{parameterIndex}, @d{parameterIndex}, @g{parameterIndex}, @a{parameterIndex}, @p{parameterIndex}, @t{parameterIndex}, @m{parameterIndex}, @n{parameterIndex}, @r{parameterIndex}, @s{parameterIndex}, @x{parameterIndex}, @q{parameterIndex}, @c{parameterIndex}, @sc{parameterIndex})");
                 var donation = donations[offset + localIndex];
                 command.Parameters.AddWithValue($"@f{parameterIndex}", donation.Fund);
                 command.Parameters.AddWithValue($"@i{parameterIndex}", donation.Donor.IdentityKey);
@@ -570,8 +574,10 @@ CREATE TEMPORARY TABLE TempImportContacts
                 command.Parameters.AddWithValue($"@s{parameterIndex}", (object?)donation.SoftCreditName ?? DBNull.Value);
                 command.Parameters.AddWithValue($"@x{parameterIndex}", donation.IsAnonymous);
                 command.Parameters.AddWithValue($"@q{parameterIndex}", donation.Frequency.HasValue ? (object)(int)donation.Frequency.Value : DBNull.Value);
+                command.Parameters.AddWithValue($"@c{parameterIndex}", (object?)donation.ConstituentId ?? DBNull.Value);
+                command.Parameters.AddWithValue($"@sc{parameterIndex}", donation.IsSoftCredit);
             }
-            command.CommandText = $"INSERT INTO TempImportDonations (Fund, IdentityKey, Date, GiftImportId, AccountName, PaymentMethod, GiftType, Amount, InternName, PrimaryAddressee, SoftCreditName, IsAnonymous, Frequency) VALUES {values}";
+            command.CommandText = $"INSERT INTO TempImportDonations (Fund, IdentityKey, Date, GiftImportId, AccountName, PaymentMethod, GiftType, Amount, InternName, PrimaryAddressee, SoftCreditName, IsAnonymous, Frequency, ConstituentId, IsSoftCredit) VALUES {values}";
             await command.ExecuteNonQueryAsync(cancellationToken);
         }
     }
@@ -583,7 +589,8 @@ CREATE TEMPORARY TABLE TempImportContacts
         CancellationToken cancellationToken)
     {
         var contacts = donations
-            .SelectMany(donation => donation.Contacts.Select(contact => (donation.Donor.Fund, donation.Donor.IdentityKey, Contact: contact)))
+            .Where(donation => !donation.IsSoftCredit && !donation.IsAnonymous)
+            .SelectMany(donation => donation.Contacts.Select(contact => (Fund: string.Empty, donation.Donor.IdentityKey, Contact: contact)))
             .DistinctBy(item => (item.Fund, item.IdentityKey, item.Contact.ContactType, item.Contact.NormalizedValue))
             .ToList();
         const int chunkSize = 500;
@@ -612,8 +619,8 @@ CREATE TEMPORARY TABLE TempImportContacts
     private static async Task UpsertStagedDonorsAsync(MySqlConnection connection, MySqlTransaction transaction, CancellationToken cancellationToken)
     {
         await ExecuteImportCommandAsync(connection, transaction, @"
-INSERT INTO Donors (Fund, DisplayName, IdentityKey, ResolutionSource, ResolutionVersion)
-SELECT Fund, DisplayName, IdentityKey, ResolutionSource, ResolutionVersion
+INSERT INTO Donors (ConstituentId, DisplayName, IdentityKey, ResolutionSource, ResolutionVersion)
+SELECT ConstituentId, DisplayName, IdentityKey, ResolutionSource, ResolutionVersion
 FROM TempImportDonors
 ON DUPLICATE KEY UPDATE
     DisplayName = VALUES(DisplayName),
@@ -627,11 +634,11 @@ ON DUPLICATE KEY UPDATE
         return await ExecuteImportCommandAsync(connection, transaction, @"
 INSERT INTO DonationData
     (DonorId, Date, GiftImportId, AccountName, PaymentMethod, GiftType, Amount, Fund,
-     InternName, PrimaryAddressee, SoftCreditName, IsAnonymous, Frequency)
+     InternName, PrimaryAddressee, SoftCreditName, IsAnonymous, Frequency, ConstituentId, IsSoftCredit)
 SELECT d.Id, s.Date, s.GiftImportId, s.AccountName, s.PaymentMethod, s.GiftType, s.Amount, s.Fund,
-       s.InternName, s.PrimaryAddressee, s.SoftCreditName, s.IsAnonymous, s.Frequency
+       s.InternName, s.PrimaryAddressee, s.SoftCreditName, s.IsAnonymous, s.Frequency, s.ConstituentId, s.IsSoftCredit
 FROM TempImportDonations s
-JOIN Donors d ON d.Fund = s.Fund AND d.IdentityKey = s.IdentityKey;", cancellationToken);
+JOIN Donors d ON d.IdentityKey = s.IdentityKey;", cancellationToken);
     }
 
     private static async Task<int> ReconcileStagedContactsAsync(MySqlConnection connection, MySqlTransaction transaction, CancellationToken cancellationToken)
@@ -640,20 +647,19 @@ JOIN Donors d ON d.Fund = s.Fund AND d.IdentityKey = s.IdentityKey;", cancellati
 DELETE existing
 FROM DonorContacts existing
 JOIN Donors donor ON donor.Id = existing.DonorId
-JOIN TempImportDonors stagedDonor ON stagedDonor.Fund = donor.Fund
-    AND stagedDonor.IdentityKey = donor.IdentityKey
+JOIN TempImportDonors stagedDonor ON stagedDonor.IdentityKey = donor.IdentityKey
 LEFT JOIN TempImportContacts stagedContact
     ON stagedContact.Fund = stagedDonor.Fund
     AND stagedContact.IdentityKey = stagedDonor.IdentityKey
     AND stagedContact.ContactType = existing.ContactType
     AND stagedContact.NormalizedValue = existing.NormalizedValue
-WHERE stagedContact.IdentityKey IS NULL;", cancellationToken);
+WHERE stagedContact.IdentityKey IS NULL AND stagedDonor.HasDirect = 1;", cancellationToken);
 
         return await ExecuteImportCommandAsync(connection, transaction, @"
 INSERT INTO DonorContacts (DonorId, ContactType, ContactValue, NormalizedValue)
 SELECT d.Id, c.ContactType, c.ContactValue, c.NormalizedValue
 FROM TempImportContacts c
-JOIN Donors d ON d.Fund = c.Fund AND d.IdentityKey = c.IdentityKey
+JOIN Donors d ON d.IdentityKey = c.IdentityKey
 ON DUPLICATE KEY UPDATE
     DateModified = IF(BINARY DonorContacts.ContactValue <=> BINARY VALUES(ContactValue), DonorContacts.DateModified, CURRENT_TIMESTAMP),
     ContactValue = VALUES(ContactValue);", cancellationToken);
@@ -695,9 +701,9 @@ ON DUPLICATE KEY UPDATE
         command.CommandTimeout = ImportCommandTimeoutSeconds;
         command.CommandText = @"
 INSERT INTO Donors
-    (Fund, DisplayName, IdentityKey, ResolutionSource, ResolutionVersion)
+    (ConstituentId, DisplayName, IdentityKey, ResolutionSource, ResolutionVersion)
 VALUES
-    (@Fund, @DisplayName, @IdentityKey, @ResolutionSource, @ResolutionVersion)
+    (@ConstituentId, @DisplayName, @IdentityKey, @ResolutionSource, @ResolutionVersion)
 AS incoming
 ON DUPLICATE KEY UPDATE
     DisplayName = incoming.DisplayName,
@@ -710,7 +716,7 @@ ON DUPLICATE KEY UPDATE
         await using var select = connection.CreateCommand();
         select.Transaction = transaction;
         select.CommandTimeout = ImportCommandTimeoutSeconds;
-        select.CommandText = "SELECT Id FROM Donors WHERE Fund = @Fund AND IdentityKey = @IdentityKey";
+        select.CommandText = "SELECT Id FROM Donors WHERE IdentityKey = @IdentityKey";
         select.Parameters.AddWithValue("@Fund", donor.Fund);
         select.Parameters.AddWithValue("@IdentityKey", donor.IdentityKey);
         var value = await select.ExecuteScalarAsync(cancellationToken);
@@ -816,6 +822,7 @@ ON DUPLICATE KEY UPDATE
     private static void AddDonorParameters(MySqlCommand command, DonorWriteModel donor)
     {
         command.Parameters.AddWithValue("@Fund", donor.Fund);
+        command.Parameters.AddWithValue("@ConstituentId", (object?)donor.ConstituentId ?? DBNull.Value);
         command.Parameters.AddWithValue("@DisplayName", donor.DisplayName);
         command.Parameters.AddWithValue("@IdentityKey", donor.IdentityKey);
         command.Parameters.AddWithValue("@ResolutionSource", donor.ResolutionSource);
@@ -827,7 +834,7 @@ ON DUPLICATE KEY UPDATE
         return new DonorRecord
         {
             Id = reader.GetInt64(reader.GetOrdinal("Id")),
-            Fund = reader.GetString(reader.GetOrdinal("Fund")),
+            ConstituentId = reader.IsDBNull(reader.GetOrdinal("ConstituentId")) ? null : reader.GetString(reader.GetOrdinal("ConstituentId")),
             DisplayName = reader.GetString(reader.GetOrdinal("DisplayName")),
             IdentityKey = reader.GetString(reader.GetOrdinal("IdentityKey")),
             ResolutionSource = reader.GetString(reader.GetOrdinal("ResolutionSource")),

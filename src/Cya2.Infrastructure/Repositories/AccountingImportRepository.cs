@@ -79,7 +79,7 @@ public sealed class AccountingImportRepository : IAccountingImportRepository
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Accounting backup/delete failed");
+            _logger.LogError("Accounting backup/delete failed. ExceptionType={ExceptionType}", ex.GetType().Name);
             throw;
         }
     }

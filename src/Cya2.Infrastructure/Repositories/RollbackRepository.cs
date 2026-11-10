@@ -89,7 +89,7 @@ WHERE TABLE_SCHEMA = DATABASE()
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "RollbackRepository.QueryBackupsAsync failed for {Table}", tableName);
+            _logger.LogError("RollbackRepository.QueryBackupsAsync failed for {Table}. ExceptionType={ExceptionType}", tableName, ex.GetType().Name);
             return Array.Empty<BackupSummary>();
         }
     }

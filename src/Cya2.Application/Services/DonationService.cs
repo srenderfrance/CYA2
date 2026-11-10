@@ -44,7 +44,7 @@ public class DonationService : IDonationService
             var context = await _userAccountContextService.GetContextAsync(userId, isAdminOrViewer);
             if (context == null || (!context.IsIntern && (context.Accounts == null || context.Accounts.Count == 0)))
             {
-                _logger.LogWarning("Donation context unavailable for user '{UserId}' (isAdminOrViewer={IsAdminOrViewer})", userId, isAdminOrViewer);
+                _logger.LogWarning("Donation context unavailable (isAdminOrViewer={IsAdminOrViewer})", isAdminOrViewer);
                 return result; // no accounts available
             }
 
@@ -249,9 +249,9 @@ public class DonationService : IDonationService
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex,
-                "Failed to load donation data for user '{UserId}' in range {StartDate:yyyy-MM-dd}..{EndDate:yyyy-MM-dd}",
-                userId,
+            _logger.LogError(
+                "Failed to load donation data. ExceptionType={ExceptionType}, range={StartDate:yyyy-MM-dd}..{EndDate:yyyy-MM-dd}",
+                ex.GetType().Name,
                 dateRange.StartDate,
                 dateRange.EndDate);
         }

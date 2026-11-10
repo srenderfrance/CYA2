@@ -37,8 +37,11 @@ public sealed class UserAuthorizationService : IUserAuthorizationService
         var resolvedUser = await ResolveUserAsync(userIdentifier);
         if (resolvedUser?.IsIntern() == true)
         {
-            var internName = InternAccountUtility.GetInternNameFromUserName(resolvedUser.Name);
-            return string.Equals(internName, accountFund, StringComparison.OrdinalIgnoreCase)
+            var linkedAccounts = await _userAccountAccessRepository.GetUserAccountsAsync(user.UserId);
+            return linkedAccounts.Any(account =>
+                    InternAccountUtility.TryGetInternDesignationName(account.Fund, out var internName) &&
+                    (string.Equals(internName, accountFund, StringComparison.OrdinalIgnoreCase) ||
+                     string.Equals(account.Fund, accountFund, StringComparison.OrdinalIgnoreCase)))
                 ? user
                 : user with { IsAuthorized = false, Reason = "User is not assigned to this account." };
         }
@@ -110,7 +113,7 @@ public sealed class UserAuthorizationService : IUserAuthorizationService
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Unable to revalidate user authorization for identifier {UserIdentifier}", userIdentifier);
+            _logger.LogWarning("Unable to revalidate user authorization. ExceptionType={ExceptionType}", ex.GetType().Name);
             throw;
         }
     }

@@ -86,8 +86,8 @@ Use this checklist with `SECURE_DEPLOYMENT_TODO.md` before enabling the applicat
   - Acceptance: expected results, counts, and authorization failures are recorded before real data is loaded.
 - [ ] Add a real Google OAuth callback integration test in a controlled non-production configuration, or document the manual regression test and release gate.
   - Acceptance: callback success, unknown-user rejection, invalid state/failure handling, and redirect behavior are verified.
-- [x] Add seven disposable-MySQL persistence integration tests and a dedicated workflow. See [Database tests](DATABASE_TESTS.md).
-  - Remaining: execute the enabled suite, extend import-lifecycle/workbook edge coverage and gate production promotion (A01–A07/A10/A13, B03/B10). Local tests were skipped without Docker.
+- [x] Add disposable-MySQL persistence integration tests and a dedicated workflow. See [Database tests](DATABASE_TESTS.md). The enabled database project passed 40/40 locally, including MySQL and synthetic workbook cases, with none skipped.
+  - Remaining: extend import-lifecycle and real UI/workbook edge coverage, verify on the deployed MySQL version and gate production promotion (A01–A07/A10/A13, B03/B10).
   - Acceptance: CI or a scheduled pipeline runs them without production credentials.
 - [ ] Establish test coverage goals for authorization, imports, cache invalidation, and financial calculations; publish results in CI.
   - Acceptance: critical paths have named tests and regression failures block release.

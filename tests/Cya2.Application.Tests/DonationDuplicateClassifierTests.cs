@@ -6,6 +6,13 @@ namespace Cya2.Application.Tests;
 public sealed class DonationDuplicateClassifierTests
 {
     [Fact]
+    public void IsSameAllocation_DistinguishesCaseSensitiveConstituentIds()
+    {
+        var first = new DonationDuplicateCandidate("G-1", "GENERAL", new DateTime(2026, 1, 10), 100m, "ACH", "Gift", "id:A1");
+        Assert.False(DonationDuplicateClassifier.IsSameAllocation(first, first with { DonorIdentityKey = "id:a1" }));
+    }
+
+    [Fact]
     public void IsSameAllocation_IgnoresContactFieldsBecauseTheyAreNotPartOfCandidate()
     {
         var first = Candidate("first@example.com", "555-1111");

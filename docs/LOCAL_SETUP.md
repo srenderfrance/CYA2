@@ -53,6 +53,16 @@ CREATE DATABASE cya2_test
 
 Use a different database name if `cya2_test` already exists. Do not use an existing database that contains application tables or real data.
 
+Verify the database-level defaults before initializing:
+
+```sql
+SELECT SCHEMA_NAME, DEFAULT_CHARACTER_SET_NAME, DEFAULT_COLLATION_NAME
+FROM information_schema.SCHEMATA
+WHERE SCHEMA_NAME = 'cya2_test';
+```
+
+Expect `utf8mb4` and `utf8mb4_0900_ai_ci`. A database created by a hosting provider may instead inherit a different default, even when its application tables use `utf8mb4`. Import staging relies on the database default and can fail with MySQL error 1253 if it is incompatible. For diagnosis and controlled correction of an existing database, see [Azure setup](AZURE_SETUP.md#4-create-the-fresh-database-and-initialize-the-schema); changing the database default does not convert existing tables or data.
+
 For this local test setup, the same local MySQL account can initialize the schema and run the application. A production deployment must use separate restricted runtime and schema setup accounts.
 
 ### 4. Initialize the schema from PowerShell
@@ -72,10 +82,10 @@ $env:CYA2_SCHEMA_CONNECTION_STRING = "Server=localhost;Port=3306;Database=cya2_t
 Run the database migrator:
 
 ```powershell
-dotnet run --project tools/Cya2.DatabaseMigrator -- --connection-string "$env:CYA2_SCHEMA_CONNECTION_STRING" --initialize
+dotnet run --project tools/Cya2.DatabaseMigrator -- --initialize
 ```
 
-The migrator runs `database/schema/001_InitialSchema.sql`, records the baseline, and applies later scripts from `database/migrations`. The application does not create or alter persistent tables.
+The initializer reads `CYA2_SCHEMA_CONNECTION_STRING` and applies `database/schema/001_InitialSchema.sql` to an empty database. It records no migration history and does not apply incremental migrations during pre-production. The application does not create or alter persistent tables.
 
 Refresh `cya2_test` in Workbench after the command succeeds. Tables such as `Users`, `Accounts`, `DonationData`, and `AccountingData` should appear.
 
@@ -216,25 +226,18 @@ database/schema/001_InitialSchema.sql
 
 This script creates the clean application schema, including the operational tables and rollback tables. It does not load donor data, accounting data, fake data, users, or secrets.
 
-Create an empty local database first. Then initialize it with the standalone runner using the setup account:
+Create an empty local database first with database defaults `utf8mb4` / `utf8mb4_0900_ai_ci`; verify them using the query in the walkthrough above. Then initialize it with the standalone runner using the setup account:
 
 ```powershell
 $env:CYA2_SCHEMA_CONNECTION_STRING = "Server=<local-host>;Port=<port>;Database=<database-name>;User ID=<setup-user>;Password=<setup-password>;SslMode=<local-development-mode>;"
-dotnet run --project tools/Cya2.DatabaseMigrator -- --connection-string "$env:CYA2_SCHEMA_CONNECTION_STRING" --initialize
+dotnet run --project tools/Cya2.DatabaseMigrator -- --initialize
 ```
 
 The command above is an example only. Do not replace the placeholders with real credentials in this document.
 
-The `--initialize` option applies `database/schema/001_InitialSchema.sql`, records the baseline, and then applies any pending scripts in `database/migrations`. It is safe only for an empty application database; the runner refuses initialization when application tables already exist. The application does not create, alter, or drop persistent tables during normal operation. Donation imports create session-scoped temporary staging tables; the runtime account therefore needs the separate MySQL `CREATE TEMPORARY TABLES` permission for that workflow.
+The `--initialize` option applies `database/schema/001_InitialSchema.sql` only to an empty database; it creates no migration history and does not support incremental migrations during pre-production. MySQL DDL may leave a partially initialized database if setup fails. Investigate before retrying and never recreate a populated database without an approved preservation plan. The application does not create, alter, or drop persistent tables during normal operation. Donation imports create session-scoped temporary staging tables; the runtime account therefore needs the separate MySQL `CREATE TEMPORARY TABLES` permission for that workflow.
 
-For later schema changes, use the standalone migration runner with the setup account rather than the web application:
-
-```powershell
-$env:CYA2_SCHEMA_CONNECTION_STRING = "Server=<local-host>;Port=<port>;Database=<database-name>;User ID=<setup-user>;Password=<setup-password>;SslMode=<local-development-mode>;"
-dotnet run --project tools/Cya2.DatabaseMigrator -- --connection-string "$env:CYA2_SCHEMA_CONNECTION_STRING"
-```
-
-The runner applies numbered scripts from `database/migrations` in order and records successful applications in `Cya2SchemaMigrations`. It is not invoked by Blazor startup. Existing databases created from `database/schema/001_InitialSchema.sql` require explicit schema verification before the deployment process adopts that baseline; do not insert a baseline history row without that verification.
+Pre-production schema changes belong in the initial schema. Existing databases require a separately reviewed, non-destructive reconciliation plan; running the initializer again or without `--initialize` is not a migration strategy.
 
 The setup account and restricted application account are MySQL database-infrastructure users. Create them with the DBA, hosting provider, or a protected provisioning process. The Blazor application and migration runner consume their connection strings but do not create database users or manage their passwords.
 
@@ -286,7 +289,7 @@ The code recognizes the following optional settings:
 }
 ```
 
-Financial replacements now use validated temporary staging and one atomic publication transaction. Legacy `BatchSize`, `UseLocalInfile` and `MaxAttempts` settings do not control these imports; local-infile loading and live-write retry/fallback have been removed. Apply schema migration 003 before using the updated application. See [import safety](IMPORT_SAFETY.md).
+Financial replacements now use validated temporary staging and one atomic publication transaction. Legacy `BatchSize`, `UseLocalInfile` and `MaxAttempts` settings do not control these imports; local-infile loading and live-write retry/fallback have been removed. Ensure the initial schema is compatible with the application version; existing databases require a reviewed reconciliation plan. See [import safety](IMPORT_SAFETY.md).
 
 Uploaded donation and accounting workbooks must use the `.xlsx` extension and are limited to 5,000 KB (5,120,000 bytes). The application validates the OOXML package signature before retaining a preview. This limit was selected because current workbooks are below 3,000 KB while allowing room for growth.
 

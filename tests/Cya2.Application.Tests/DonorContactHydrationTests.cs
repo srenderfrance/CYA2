@@ -113,6 +113,15 @@ public sealed class DonorContactHydrationTests
         DonorContactCache cache)
         => new(repository, cache, new CacheInvalidationVersion(), new DonorIdentityResolver());
 
+    [Fact]
+    public async Task HydrateAsync_SharedSoftCreditIdentityUsesVerifiedDirectContacts()
+    {
+        var repository = new FakeDonorContactRepository { Contacts = [Contact(5, "AddressLine1", "Direct donor address")] };
+        var donation = new DonationRecord { DonorId = 5, IsSoftCredit = true, AccountName = "Employer", Addressee = "Employer", SoftCreditName = "Alex Donor" };
+        await CreateService(repository, new DonorContactCache()).HydrateAsync([donation]);
+        Assert.Equal("Direct donor address", donation.Address);
+    }
+
     private static DonorContactRecord Contact(long donorId, string type, string value)
         => new() { DonorId = donorId, ContactType = type, ContactValue = value };
 

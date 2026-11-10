@@ -136,6 +136,21 @@ public sealed class CacheInvalidationTests
     }
 
     [Fact]
+    public async Task InternContext_UsesLinkedAccountDesignationRatherThanProfileName()
+    {
+        var user = new User { Id = 905, Name = "Different Profile", AuthLevel = "Intern", DefaultAccount = 45 };
+        var account = new Account { AccountId = 45, Fund = "Intern: Jane Doe", AccountNumber = "INT-905" };
+        var service = new UserAccountContextService(new FakeUserRepository(user), new FakeUserAccountAccessRepository(account),
+            new FakeAccountRepository(account), new CacheInvalidationVersion(), NullLogger<UserAccountContextService>.Instance);
+
+        var context = await service.GetContextAsync(user.Id.ToString());
+
+        Assert.NotNull(context);
+        Assert.Equal("Jane Doe", context.InternName);
+        Assert.Equal(context.InternName, Assert.Single(context.Accounts).InternName);
+    }
+
+    [Fact]
     public void CacheInvalidationVersion_IncrementsAtomically()
     {
         var version = new CacheInvalidationVersion();

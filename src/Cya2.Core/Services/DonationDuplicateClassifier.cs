@@ -38,7 +38,9 @@ public static class DonationDuplicateClassifier
             decimal.Round(candidate.Amount, 2, MidpointRounding.AwayFromZero),
             Normalize(candidate.PaymentMethod),
             Normalize(candidate.GiftType),
-            Normalize(candidate.DonorIdentityKey));
+            candidate.DonorIdentityKey.StartsWith("id:", StringComparison.Ordinal)
+                ? candidate.DonorIdentityKey.Trim()
+                : Normalize(candidate.DonorIdentityKey));
         return true;
     }
 

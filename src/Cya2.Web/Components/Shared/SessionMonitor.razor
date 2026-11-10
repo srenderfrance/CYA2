@@ -1,0 +1,137 @@
+@using System.Globalization
+@using static Microsoft.AspNetCore.Components.Web.RenderMode
+@using Cya2.Application.Interfaces
+@using System.Security.Claims
+@inject AuthenticationStateProvider AuthStateProvider
+@inject NavigationManager Navigation
+@inject IJSRuntime JS
+@inject SessionValidationService Validation
+@inject ISessionUserStateService SessionState
+@inject IUserSelectionService AccountSelections
+@inject IUserDateRangeSelectionService DateSelections
+@inject ILogger<SessionMonitor> Logger
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@implements IDisposable
+
+@code {
+    private readonly CancellationTokenSource cancellation = new();
+    private ClaimsPrincipal? principal;
+    private string userId = string.Empty;
+    private bool ready;
+    private bool invalidating;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+        principal = (await AuthStateProvider.GetAuthenticationStateAsync()).User;
+        if (principal.Identity?.IsAuthenticated != true) return;
+        userId = principal.FindFirstValue("UserId") ?? string.Empty;
+        Navigation.LocationChanged += OnLocationChanged;
+        _ = MonitorAsync(cancellation.Token);
+    }
+
+    private async Task MonitorAsync(CancellationToken token)
+    {
+        using var timer = new PeriodicTimer(TimeSpan.FromMinutes(1));
+        try
+        {
+            do
+            {
+                try
+                {
+                    var result = await Validation.ValidateAsync(principal!);
+                    if (result == SessionValidationResult.Revoked)
+                    {
+                        invalidating = true;
+                        AccountSelections.RemoveSelectedAccount(userId);
+                        DateSelections.RemoveDateRange(userId);
+                        await JS.InvokeVoidAsync("authHelpers.clearResumeState");
+                        Navigation.NavigateTo("/api/login", forceLoad: true);
+                        return;
+                    }
+                    if (result == SessionValidationResult.Expired)
+                    {
+                        await SaveAsync();
+                        await JS.InvokeVoidAsync("authHelpers.markResumeState");
+                        var returnUrl = Uri.EscapeDataString(new Uri(Navigation.Uri).PathAndQuery);
+                        Navigation.NavigateTo($"/api/login?returnUrl={returnUrl}", forceLoad: true);
+                        return;
+                    }
+                    if (result == SessionValidationResult.Valid)
+                    {
+                        if (!ready)
+                        {
+                            await RestoreAsync();
+                            ready = true;
+                        }
+                        await SaveAsync();
+                    }
+                }
+                catch (JSDisconnectedException)
+                {
+                    Logger.LogDebug("Session monitoring will resume when the browser reconnects.");
+                }
+                catch (Exception)
+                {
+                    Logger.LogWarning("Session monitoring encountered an error and will retry.");
+                }
+            } while (await timer.WaitForNextTickAsync(token));
+        }
+        catch (OperationCanceledException) when (token.IsCancellationRequested) { }
+    }
+
+    private async Task RestoreAsync()
+    {
+        var state = await JS.InvokeAsync<ResumeState?>("authHelpers.consumeResumeState");
+        if (state is null || !string.Equals(state.UserId, userId, StringComparison.Ordinal) ||
+            !string.Equals(state.Role, principal?.FindFirstValue("AuthLevel"), StringComparison.OrdinalIgnoreCase)) return;
+        if (!string.IsNullOrWhiteSpace(state.Account)) AccountSelections.SetSelectedAccount(userId, state.Account);
+        if (DateTime.TryParse(state.StartDate, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out var start) &&
+            DateTime.TryParse(state.EndDate, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out var end) && start <= end)
+            DateSelections.SetDateRange(userId, start, end, state.Preset ?? string.Empty);
+        if (!string.IsNullOrEmpty(state.Route) && state.Route.StartsWith('/') && !state.Route.StartsWith("//"))
+            Navigation.NavigateTo(state.Route, forceLoad: true, replace: true);
+    }
+
+    private async Task SaveAsync()
+    {
+        var account = AccountSelections.TryGetSelectedAccount(userId, out var selected) ? selected : SessionState.SelectedAccountFund;
+        var hasRange = DateSelections.TryGetDateRange(userId, out var range);
+        await JS.InvokeVoidAsync("authHelpers.saveResumeState", new ResumeState
+        {
+            UserId = userId,
+            Role = principal?.FindFirstValue("AuthLevel") ?? string.Empty,
+            Route = new Uri(Navigation.Uri).PathAndQuery,
+            Account = account,
+            StartDate = (hasRange ? range.StartDate : SessionState.SelectedStartDate)?.ToString("O", CultureInfo.InvariantCulture),
+            EndDate = (hasRange ? range.EndDate : SessionState.SelectedEndDate)?.ToString("O", CultureInfo.InvariantCulture),
+            Preset = hasRange ? range.Preset : SessionState.SelectedDatePreset
+        });
+    }
+
+    private async void OnLocationChanged(object? sender, LocationChangedEventArgs args)
+    {
+        if (!ready || invalidating) return;
+        try { await InvokeAsync(SaveAsync); }
+        catch (JSDisconnectedException) { }
+        catch (Exception) { Logger.LogWarning("Unable to save session resume state."); }
+    }
+
+    public void Dispose()
+    {
+        Navigation.LocationChanged -= OnLocationChanged;
+        cancellation.Cancel();
+        cancellation.Dispose();
+    }
+
+    private sealed class ResumeState
+    {
+        public string UserId { get; set; } = string.Empty;
+        public string Role { get; set; } = string.Empty;
+        public string Route { get; set; } = "/";
+        public string Account { get; set; } = string.Empty;
+        public string? StartDate { get; set; }
+        public string? EndDate { get; set; }
+        public string? Preset { get; set; }
+    }
+}

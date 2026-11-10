@@ -37,25 +37,24 @@ DELETE FROM DonorContacts
 WHERE DonorId BETWEEN 900001 AND 900013;
 
 DELETE FROM Donors
-WHERE Id BETWEEN 900001 AND 900013
-  AND Fund IN (@fixture_fund, @intern_fund);
+WHERE Id BETWEEN 900001 AND 900013;
 
 INSERT INTO Donors
-	(Id, Fund, DisplayName, IdentityKey, ResolutionSource, ResolutionVersion)
+	(Id, ConstituentId, DisplayName, IdentityKey, ResolutionSource, ResolutionVersion)
 VALUES
-	(900001, @fixture_fund, 'Donor1', 'donor1', 'AccountName', 1),
-	(900002, @fixture_fund, 'Donor2 Primary', 'donor2primary', 'PrimaryAddressee', 1),
-	(900003, @fixture_fund, 'Donor3 ThirdParty', 'donor3thirdparty', 'SoftCredit', 1),
-	(900004, @fixture_fund, 'Anonymous', 'anonymous', 'Anonymous', 1),
-	(900005, @fixture_fund, 'Donor5 Monthly', 'donor5monthly', 'AccountName', 1),
-	(900006, @fixture_fund, 'Donor6 CatchUp', 'donor6catchup', 'AccountName', 1),
-	(900007, @fixture_fund, 'Donor7 Quarterly', 'donor7quarterly', 'AccountName', 1),
-	(900008, @fixture_fund, 'Donor8 Yearly', 'donor8yearly', 'AccountName', 1),
-	(900009, @fixture_fund, 'Donor9 Sporadic', 'donor9sporadic', 'AccountName', 1),
-	(900010, @fixture_fund, 'Donor10 Separate Subaccount', 'donor10separatesubaccount', 'AccountName', 1),
-	(900011, @fixture_fund, 'Donor11 Merged Subaccount', 'donor11mergedsubaccount', 'AccountName', 1),
-	(900012, @intern_fund, 'Donor12 Intern Gift', 'donor12interngift', 'AccountName', 1),
-	(900013, @intern_fund, 'Donor13 Intern Gift', 'donor13interngift', 'AccountName', 1)
+	(900001, NULL, 'Donor1', 'name:donor1', 'AccountName', 1),
+	(900002, NULL, 'Donor2 Primary', 'name:donor2primary', 'PrimaryAddressee', 1),
+	(900003, NULL, 'Donor3 ThirdParty', 'name:donor3thirdparty', 'SoftCredit', 1),
+	(900004, NULL, 'Anonymous', 'anonymous', 'Anonymous', 1),
+	(900005, NULL, 'Donor5 Monthly', 'name:donor5monthly', 'AccountName', 1),
+	(900006, NULL, 'Donor6 CatchUp', 'name:donor6catchup', 'AccountName', 1),
+	(900007, NULL, 'Donor7 Quarterly', 'name:donor7quarterly', 'AccountName', 1),
+	(900008, NULL, 'Donor8 Yearly', 'name:donor8yearly', 'AccountName', 1),
+	(900009, NULL, 'Donor9 Sporadic', 'name:donor9sporadic', 'AccountName', 1),
+	(900010, NULL, 'Donor10 Separate Subaccount', 'name:donor10separatesubaccount', 'AccountName', 1),
+	(900011, NULL, 'Donor11 Merged Subaccount', 'name:donor11mergedsubaccount', 'AccountName', 1),
+	(900012, NULL, 'Donor12 Intern Gift', 'name:donor12interngift', 'AccountName', 1),
+	(900013, NULL, 'Donor13 Intern Gift', 'name:donor13interngift', 'AccountName', 1)
 ON DUPLICATE KEY UPDATE
 	DisplayName = VALUES(DisplayName),
 	ResolutionSource = VALUES(ResolutionSource),
@@ -81,7 +80,7 @@ ON DUPLICATE KEY UPDATE
 INSERT INTO DonationData
 	(DonorId, Date, GiftImportId, AccountName, PaymentMethod, GiftType, Amount,
 	 Fund, InternName, PrimaryAddressee, SoftCreditName,
-	 IsAnonymous, Frequency)
+	 ConstituentId, IsAnonymous, Frequency)
 VALUES
 	-- Donor1: AccountName fallback and one-time gift.
 	(900001, '2025-01-15 12:00:00', 'SYNTH-DONOR-001', 'Donor1', 'Check', 'Gift', 25.00,
@@ -157,3 +156,6 @@ ON DUPLICATE KEY UPDATE
 	SoftCreditName = VALUES(SoftCreditName),
 	IsAnonymous = VALUES(IsAnonymous),
 	Frequency = VALUES(Frequency);
+
+UPDATE DonationData SET IsSoftCredit = TRUE
+WHERE GiftImportId = 'SYNTH-DONOR-003';

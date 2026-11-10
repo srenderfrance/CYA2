@@ -45,6 +45,16 @@ public static class AuthenticationServiceCollectionExtensions
             options.Cookie.SameSite = SameSiteMode.Lax;
             options.Events = new CookieAuthenticationEvents
             {
+                OnValidatePrincipal = async context =>
+                {
+                    var validation = context.HttpContext.RequestServices.GetRequiredService<SessionValidationService>();
+                    var result = await validation.ValidateAsync(context.Principal!);
+                    if (result is SessionValidationResult.Revoked or SessionValidationResult.Expired)
+                    {
+                        context.RejectPrincipal();
+                        await context.HttpContext.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
+                    }
+                },
                 OnRedirectToLogin = context =>
                 {
                     if (context.Request.Path.StartsWithSegments("/_blazor") ||
@@ -106,7 +116,7 @@ public static class AuthenticationServiceCollectionExtensions
                     OnRemoteFailure = async context =>
                     {
                         var logger = context.HttpContext.RequestServices.GetRequiredService<ILogger<Program>>();
-                        logger.LogWarning(context.Failure, "Google OAuth remote failure");
+                        logger.LogWarning("Google OAuth remote failure. TraceId={TraceId}, ExceptionType={ExceptionType}", context.HttpContext.TraceIdentifier, context.Failure?.GetType().Name ?? "Unknown");
                         await context.HttpContext.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
                         context.Response.Redirect("/login-error");
                         context.HandleResponse();
@@ -205,12 +215,16 @@ internal static class GoogleAuthenticationEvents
                     return;
                 }
 
-                await RejectUnauthorizedAsync(signInResult.RejectionReason ?? "Unauthorized sign-in attempt");
+                await RejectUnauthorizedAsync("Unauthorized sign-in attempt");
                 return;
             }
 
             var user = signInResult.User!;
             var authLevel = user.AuthLevel?.Trim() ?? "User";
+            context.Properties ??= new AuthenticationProperties();
+            var expires = context.Properties.ExpiresUtc ?? DateTimeOffset.UtcNow.Add(AuthenticationServiceCollectionExtensions.SessionLifetime);
+            context.Properties.ExpiresUtc = expires;
+            identity.AddClaim(new Claim(SessionValidationService.ExpiresClaim, expires.ToUnixTimeSeconds().ToString(System.Globalization.CultureInfo.InvariantCulture)));
             identity.AddClaim(new Claim(ClaimTypes.Role, authLevel));
             identity.AddClaim(new Claim("AuthLevel", authLevel));
             identity.AddClaim(new Claim("DefaultAccount", user.DefaultAccount?.ToString() ?? string.Empty));
@@ -227,28 +241,28 @@ internal static class GoogleAuthenticationEvents
                 CookieRequestCultureProvider.MakeCookieValue(new RequestCulture(language)),
                 new CookieOptions { Path = "/", IsEssential = true, SameSite = SameSiteMode.Lax, Secure = context.Request.IsHttps });
 
-            context.Properties ??= new AuthenticationProperties();
-            context.Properties.RedirectUri = string.Equals(authLevel, "Admin", StringComparison.OrdinalIgnoreCase) ? "/admin" : "/";
+            if (string.IsNullOrWhiteSpace(context.Properties.RedirectUri) || context.Properties.RedirectUri == "/")
+                context.Properties.RedirectUri = string.Equals(authLevel, "Admin", StringComparison.OrdinalIgnoreCase) ? "/admin" : "/";
         }
         catch (InvalidOperationException ex) when (ex.Message.Contains("Database is currently unavailable", StringComparison.OrdinalIgnoreCase))
         {
-            monitor.MarkAsDisconnected(ex.Message);
-            logger.LogWarning(ex, "Database unavailable during Google ticket processing");
+            monitor.MarkAsDisconnected("Database unavailable during sign-in");
+            logger.LogWarning("Database unavailable during Google ticket processing. TraceId={TraceId}, ExceptionType={ExceptionType}", context.HttpContext.TraceIdentifier, ex.GetType().Name);
             await context.HttpContext.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
             context.Response.Redirect("/database-error");
             context.HandleResponse();
         }
         catch (MySql.Data.MySqlClient.MySqlException ex)
         {
-            monitor.MarkAsDisconnected(ex.Message);
-            logger.LogError(ex, "MySQL error during Google ticket processing");
+            monitor.MarkAsDisconnected("Database unavailable during sign-in");
+            logger.LogError("MySQL error during Google ticket processing. TraceId={TraceId}, MySqlErrorCode={ErrorCode}", context.HttpContext.TraceIdentifier, ex.Number);
             await context.HttpContext.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
             context.Response.Redirect("/database-error");
             context.HandleResponse();
         }
         catch (Exception ex)
         {
-            logger.LogError(ex, "Error during Google ticket processing");
+            logger.LogError("Error during Google ticket processing. TraceId={TraceId}, ExceptionType={ExceptionType}", context.HttpContext.TraceIdentifier, ex.GetType().Name);
             await context.HttpContext.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
             context.Response.Redirect("/login-error");
             context.HandleResponse();

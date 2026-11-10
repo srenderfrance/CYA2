@@ -42,9 +42,9 @@ public sealed class DatabaseMonitorService : BackgroundService, IDatabaseAvailab
 
     public void MarkAsDisconnected(string reason)
     {
-        _lastError = reason;
+        _lastError = "The database is currently unavailable.";
         _isConnected = false;
-        _logger.LogWarning("Database marked as disconnected: {Reason}", reason);
+        _logger.LogWarning("Database marked as disconnected.");
         OnConnectionStatusChanged(false);
     }
 
@@ -86,7 +86,7 @@ public sealed class DatabaseMonitorService : BackgroundService, IDatabaseAvailab
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error in DatabaseMonitorService monitor loop");
+                _logger.LogError("Error in database monitor loop. ExceptionType={ExceptionType}", ex.GetType().Name);
             }
 
             Thread.Sleep(5000);
@@ -141,7 +141,7 @@ public sealed class DatabaseMonitorService : BackgroundService, IDatabaseAvailab
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error raising ConnectionStatusChanged event");
+            _logger.LogError("Error raising database connection status event. ExceptionType={ExceptionType}", ex.GetType().Name);
         }
     }
 }

@@ -1,8 +1,11 @@
 using System.Net;
 using System.Security.Claims;
 using Cya2.Core.Interfaces;
+using Cya2.Core.Entities;
+using cya2.Services;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
@@ -95,12 +98,63 @@ public sealed class HealthEndpointTests
         Assert.Equal("/database-error", response.Headers.Location?.OriginalString);
     }
 
+    [Fact]
+    public async Task Outage_ErrorPageAndAssetHeadRequestRemainAvailable()
+    {
+        using var root = new WebAuthorizationTestHost();
+        using var host = CreateHost(root, new TestMonitor { IsConnected = false });
+        using var client = CreateClient(host);
+        using var page = await client.GetAsync("/database-error");
+        using var head = await client.SendAsync(new HttpRequestMessage(HttpMethod.Head, "/app.css"));
+
+        Assert.Equal(HttpStatusCode.OK, page.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, head.StatusCode);
+        Assert.Null(head.Headers.Location);
+    }
+
+    [Theory]
+    [InlineData("/app.css")]
+    [InlineData("/bootstrap/bootstrap.min.css")]
+    [InlineData("/bootstrap-icons/bootstrap-icons.css")]
+    [InlineData("/_content/Radzen.Blazor/Radzen.Blazor.js")]
+    [InlineData("/_content/Radzen.Blazor/css/default.css")]
+    [InlineData("/cya2.styles.css")]
+    [InlineData("/favicon.png")]
+    public async Task Outage_StaticAssetsRemainAvailable(string path)
+    {
+        using var root = new WebAuthorizationTestHost();
+        using var host = CreateHost(root, new TestMonitor { IsConnected = false });
+        using var client = CreateClient(host);
+        using var response = await client.GetAsync(path);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Null(response.Headers.Location);
+    }
+
+    [Fact]
+    public async Task Outage_UnknownAssetLikePathDoesNotBypassDatabaseCheck()
+    {
+        using var root = new WebAuthorizationTestHost();
+        using var host = CreateHost(root, new TestMonitor { IsConnected = false });
+        using var client = CreateClient(host);
+        using var response = await client.GetAsync("/sensitive.css");
+
+        Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
+        Assert.Equal("/database-error", response.Headers.Location?.OriginalString);
+    }
+
     private static WebApplicationFactory<Program> CreateHost(WebAuthorizationTestHost root, TestMonitor monitor) =>
-        root.WithWebHostBuilder(builder => builder.ConfigureServices(services =>
+        root.WithWebHostBuilder(builder =>
         {
-            services.RemoveAll<IDatabaseAvailabilityMonitor>();
-            services.AddSingleton<IDatabaseAvailabilityMonitor>(monitor);
-        }));
+            builder.UseStaticWebAssets();
+            builder.ConfigureServices(services =>
+            {
+                services.RemoveAll<IDatabaseAvailabilityMonitor>();
+                services.AddSingleton<IDatabaseAvailabilityMonitor>(monitor);
+                services.RemoveAll<IUserRepository>();
+                services.AddSingleton<IUserRepository, TestUserRepository>();
+            });
+        });
 
     private static HttpClient CreateClient(WebApplicationFactory<Program> host) => host.CreateClient(new WebApplicationFactoryClientOptions
     {
@@ -112,13 +166,33 @@ public sealed class HealthEndpointTests
     {
         var scheme = CookieAuthenticationDefaults.AuthenticationScheme;
         var options = host.Services.GetRequiredService<IOptionsMonitor<CookieAuthenticationOptions>>().Get(scheme);
-        var principal = new ClaimsPrincipal(new ClaimsIdentity([new Claim(ClaimTypes.NameIdentifier, "health-test")], scheme));
+        var expires = DateTimeOffset.UtcNow.AddMinutes(5);
+        var principal = new ClaimsPrincipal(new ClaimsIdentity([
+            new Claim(ClaimTypes.NameIdentifier, "health-test"),
+            new Claim("UserId", "7"),
+            new Claim("AuthLevel", "User"),
+            new Claim(SessionValidationService.ExpiresClaim, expires.ToUnixTimeSeconds().ToString(System.Globalization.CultureInfo.InvariantCulture))
+        ], scheme));
         var ticket = new AuthenticationTicket(principal, new AuthenticationProperties
         {
             IssuedUtc = DateTimeOffset.UtcNow,
-            ExpiresUtc = DateTimeOffset.UtcNow.AddMinutes(5)
+            ExpiresUtc = expires
         }, scheme);
         client.DefaultRequestHeaders.Add("Cookie", $"{options.Cookie.Name}={options.TicketDataFormat.Protect(ticket)}");
+    }
+
+    private sealed class TestUserRepository : IUserRepository
+    {
+        public Task<User?> GetByIdAsync(int id) => Task.FromResult<User?>(id == 7 ? new User { Id = 7, AuthLevel = "User" } : null);
+        public Task<User?> GetByEmailAsync(string email) => throw new NotImplementedException();
+        public Task<User?> GetByExternalIdAsync(string externalId) => throw new NotImplementedException();
+        public Task<List<User>> GetActiveUsersAsync() => throw new NotImplementedException();
+        public Task<bool> ExistsAsync(string email) => throw new NotImplementedException();
+        public Task<List<User>> GetAllAsync() => throw new NotImplementedException();
+        public Task<User> AddAsync(User entity) => throw new NotImplementedException();
+        public Task<User> UpdateAsync(User entity) => throw new NotImplementedException();
+        public Task DeleteAsync(int id) => throw new NotImplementedException();
+        public Task<bool> ExistsAsync(int id) => throw new NotImplementedException();
     }
 
     private sealed class TestMonitor : IDatabaseAvailabilityMonitor

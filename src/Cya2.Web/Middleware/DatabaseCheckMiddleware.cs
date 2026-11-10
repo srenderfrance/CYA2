@@ -26,7 +26,9 @@ public class DatabaseCheckMiddleware
 
     public async Task InvokeAsync(HttpContext context)
     {
-        if (context.Request.Path.StartsWithSegments("/css") ||
+        if (((HttpMethods.IsGet(context.Request.Method) || HttpMethods.IsHead(context.Request.Method)) &&
+             context.GetEndpoint()?.Metadata.GetMetadata<DatabaseIndependentAsset>() is not null) ||
+            context.Request.Path.StartsWithSegments("/css") ||
             context.Request.Path.StartsWithSegments("/health") ||
             context.Request.Path.StartsWithSegments("/js") ||
             context.Request.Path.StartsWithSegments("/lib") ||
@@ -56,7 +58,7 @@ public class DatabaseCheckMiddleware
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error checking database for auth path {Path}", context.Request.Path);
+                _logger.LogError("Error checking database for auth path. TraceId={TraceId}, ExceptionType={ExceptionType}", context.TraceIdentifier, ex.GetType().Name);
                 context.Response.Redirect("/database-error", false);
                 return;
             }

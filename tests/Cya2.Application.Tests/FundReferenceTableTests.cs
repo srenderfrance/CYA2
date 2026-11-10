@@ -1,8 +1,11 @@
 using Cya2.Application.DTOs;
 using Cya2.Application.Interfaces;
+using Cya2.Application.Models;
 using Cya2.Application.Services;
 using Cya2.Core.Entities;
 using Cya2.Core.Interfaces;
+using Cya2.Core.ReadModels;
+using Cya2.Core.Services;
 using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
 
@@ -10,6 +13,33 @@ namespace Cya2.Application.Tests;
 
 public sealed class FundReferenceTableTests
 {
+    [Fact]
+    public async Task AdminOverview_UsesOnlyExactInternFactsAndNoInternAccountingBalance()
+    {
+        var classification = new ExpenseClassificationService();
+        var calculation = new AccountCalculationService(classification, new AccountingTransactionProcessor(classification), null!);
+        var balanceCache = new AccountBalanceCache();
+        var preload = new AdminPreloadService(null!, null!, calculation, new AdminSharedCache(), null!, balanceCache,
+            null!, new CacheInvalidationVersion(), null!, null!, null!, NullLogger<AdminPreloadService>.Instance);
+        var data = new CacheRebuildData
+        {
+            Accounts = [new Account { AccountId = 2, Fund = "Intern: Jane Doe", AccountNumber = "INT-2", BalanceAdjustment = 500 },
+                        new Account { AccountId = 3, Fund = "Intern: John Doe", AccountNumber = "INT-3" }],
+            DonationsByInternName = new Dictionary<string, List<DonationRecord>>(StringComparer.Ordinal)
+            {
+                ["Jane Doe"] = [new DonationRecord { Amount = 10, Date = DateTime.UtcNow.Date, Fund = "Shared", InternName = "Jane Doe" }],
+                ["John Doe"] = [new DonationRecord { Amount = 20, Date = DateTime.UtcNow.Date, Fund = "Shared", InternName = "John Doe" }]
+            }
+        };
+
+        var overview = await preload.RebuildOverviewFromDataAsync(data);
+
+        Assert.Equal(10m, overview.Single(row => row.Fund == "Intern: Jane Doe").Last12MonthsDonations);
+        Assert.Equal(20m, overview.Single(row => row.Fund == "Intern: John Doe").Last12MonthsDonations);
+        Assert.All(overview, row => Assert.Equal(0m, row.CurrentBalance));
+        Assert.Equal(0, balanceCache.Count);
+    }
+
     [Fact]
     public void BuildRows_IncludesBothSubfundTypesWithParentValuesWithoutMutatingAccounts()
     {

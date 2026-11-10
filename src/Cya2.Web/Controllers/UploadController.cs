@@ -159,14 +159,14 @@ namespace cya2.Controllers
                 await _antiforgery.ValidateRequestAsync(HttpContext);
                 return true;
             }
-            catch (AntiforgeryValidationException exception)
+            catch (AntiforgeryValidationException)
             {
-                _logger.LogWarning(exception,
-                    "Antiforgery validation failed for upload endpoint {Path}. HasHeaderToken={HasHeaderToken}, HasFormToken={HasFormToken}, ContentType={ContentType}",
+                _logger.LogWarning(
+                    "Antiforgery validation failed for upload endpoint {Path}. TraceId={TraceId}, HasHeaderToken={HasHeaderToken}, HasFormToken={HasFormToken}",
                     Request.Path,
+                    HttpContext.TraceIdentifier,
                     Request.Headers.ContainsKey("RequestVerificationToken"),
-                    Request.HasFormContentType && Request.Form.ContainsKey("__RequestVerificationToken"),
-                    Request.ContentType ?? string.Empty);
+                    Request.HasFormContentType && Request.Form.ContainsKey("__RequestVerificationToken"));
                 return false;
             }
         }

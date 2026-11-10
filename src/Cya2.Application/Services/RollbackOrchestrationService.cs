@@ -50,7 +50,7 @@ public sealed class RollbackOrchestrationService : IRollbackService
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error executing rollback.");
+            _logger.LogError("Error executing rollback. ExceptionType={ExceptionType}", ex.GetType().Name);
             result = new RollbackResult { ErrorMessage = "Rollback failed." };
         }
 
@@ -96,7 +96,7 @@ public sealed class RollbackOrchestrationService : IRollbackService
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error checking rollback availability");
+            _logger.LogError("Error checking rollback availability. ExceptionType={ExceptionType}", ex.GetType().Name);
             info.ErrorMessage = "Backup availability could not be checked. Try again after connectivity is restored.";
         }
 

@@ -1,4 +1,5 @@
 @using Cya2.Shared.Utilities
+@using Cya2.Core.Utilities
 @inject IStringLocalizer<Resource> Localizer
 @inject AccountsOverviewAccessService OverviewAccessService
 @inject AuthenticationStateProvider AuthStateProvider
@@ -57,7 +58,7 @@
                         EmptyText="@Localizer["NoBalancesFound"]">
             <Columns>
                 <RadzenDataGridColumn TItem="FundBalanceRow" Property="Fund" Title="@Localizer["Account"]">
-                    <Template Context="row">@DisplayFormatter.FormatFundDisplay(row.Fund)</Template>
+                    <Template Context="row">@InternAccountUtility.GetAccountSelectorDisplayName(row.Fund)</Template>
                 </RadzenDataGridColumn>
                 @if (!showDonations12m)
                 {
@@ -205,9 +206,9 @@
             financialsLoaded = true;
             isLoading = false;
         }
-        catch (Exception ex)
+        catch (Exception)
         {
-            errorMessage = $"Error loading accounts: {ex.Message}";
+            errorMessage = Localizer["SafeOperationError"];
             isLoading = false;
         }
 
@@ -224,13 +225,13 @@
             foreach (var row in fundBalances)
             {
                 var value = showDonations12m ? row.Last12MonthsDonations : row.CurrentBalance;
-                sb.AppendLine($"{DisplayFormatter.FormatFundDisplay(row.Fund)}\t{value}");
+                sb.AppendLine($"{InternAccountUtility.GetAccountSelectorDisplayName(row.Fund)}\t{value}");
             }
             await JS.InvokeVoidAsync("navigator.clipboard.writeText", sb.ToString());
         }
-        catch (Exception ex)
+        catch (Exception)
         {
-            errorMessage = $"Error copying table: {ex.Message}";
+            errorMessage = Localizer["SafeOperationError"];
         }
     }
 

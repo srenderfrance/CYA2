@@ -11,6 +11,38 @@ namespace Cya2.Application.Services;
 /// </summary>
 public class UserManagementService
 {
+    public const string OrganizationEmailDomain = "@scene8.net";
+
+    public static bool IsOrganizationEmail(string? email)
+    {
+        var value = email?.Trim();
+        if (string.IsNullOrEmpty(value) || value.Length > 254 || value.Any(char.IsWhiteSpace))
+            return false;
+
+        var separator = value.IndexOf('@');
+        if (separator <= 0 || separator > 64 || separator != value.LastIndexOf('@') ||
+            !value[separator..].Equals(OrganizationEmailDomain, StringComparison.OrdinalIgnoreCase))
+            return false;
+
+        return System.Net.Mail.MailAddress.TryCreate(value, out var address) &&
+               string.Equals(address.Address, value, StringComparison.OrdinalIgnoreCase);
+    }
+
+    public static bool TryBuildOrganizationEmail(string? username, out string email)
+    {
+        email = string.Empty;
+        var localPart = username?.Trim();
+        if (string.IsNullOrEmpty(localPart) || localPart.Contains('@'))
+            return false;
+
+        var candidate = localPart + OrganizationEmailDomain;
+        if (!IsOrganizationEmail(candidate))
+            return false;
+
+        email = candidate;
+        return true;
+    }
+
     private readonly IUserRepository _userRepository;
     private readonly IUserAccountAccessRepository _userAccountAccessRepository;
     private readonly IAccountRepository _accountRepository;
@@ -55,7 +87,7 @@ public class UserManagementService
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error getting user by email.");
+            _logger.LogError("Error getting user by email. ExceptionType={ExceptionType}", ex.GetType().Name);
             return null;
         }
     }
@@ -76,7 +108,7 @@ public class UserManagementService
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error getting active users");
+            _logger.LogError("Error getting active users. ExceptionType={ExceptionType}", ex.GetType().Name);
             return new List<UserDto>();
         }
     }
@@ -101,7 +133,7 @@ public class UserManagementService
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error validating user access for user {UserId}", userId);
+            _logger.LogError("Error validating user access. ExceptionType={ExceptionType}", ex.GetType().Name);
             return false;
         }
     }
@@ -125,7 +157,7 @@ public class UserManagementService
             var actorUserId = await _adminAuthorizationContext.GetCurrentAdminUserIdAsync();
             if (actorUserId is null)
             {
-                return new List<AdminUserDto>();
+                throw new UnauthorizedAccessException("Administrator access is required.");
             }
 
             _logger.LogInformation("UserManagementService.GetAdminUsersAsync: requesting all users from repository.");
@@ -145,12 +177,18 @@ public class UserManagementService
             _logger.LogInformation("UserManagementService.GetAdminUsersAsync: mapped {Count} users.", mapped.Count);
             return mapped;
         }
+        catch (UnauthorizedAccessException)
+        {
+            throw;
+        }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error getting admin users list");
-            return new List<AdminUserDto>();
+            _logger.LogError("Error getting admin users list. ExceptionType={ExceptionType}", ex.GetType().Name);
+            throw new InvalidOperationException("Unable to load the administrator user list.");
         }
     }
+
+    public Task<bool> IsCurrentUserAdminAsync() => _adminAuthorizationContext.IsCurrentUserAdminAsync();
 
     public async Task<AdminUserOperationDto> UpdateAdminUserAsync(AdminUserUpdateDto request)
     {
@@ -180,10 +218,28 @@ public class UserManagementService
                 return new AdminUserOperationDto { IsSuccess = false, Message = "Selected user not found" };
             }
 
+            var targetEmail = string.IsNullOrWhiteSpace(request.Email) ? user.Email : request.Email.Trim();
+            if (!IsOrganizationEmail(targetEmail))
+            {
+                return new AdminUserOperationDto { IsSuccess = false, Message = "A valid @scene8.net email is required." };
+            }
+
+            if (!string.Equals(user.Email, targetEmail, StringComparison.OrdinalIgnoreCase))
+            {
+                var existingUser = await _userRepository.GetByEmailAsync(targetEmail);
+                if (existingUser is not null && existingUser.Id != user.Id)
+                    return new AdminUserOperationDto { IsSuccess = false, Message = "A user with this email already exists" };
+            }
+
             var originalName = user.Name;
             var wasIntern = user.IsIntern();
             var targetName = string.IsNullOrWhiteSpace(request.Name) ? user.Name : request.Name.Trim();
             var targetAuthLevel = string.IsNullOrWhiteSpace(request.AuthLevel) ? user.AuthLevel : request.AuthLevel.Trim();
+
+            if (wasIntern && !string.Equals(targetAuthLevel, user.AuthLevel, StringComparison.OrdinalIgnoreCase))
+            {
+                return new AdminUserOperationDto { IsSuccess = false, Message = "An intern's role cannot be changed. Create a new user for a different role." };
+            }
 
             if (string.Equals(targetAuthLevel, "Intern", StringComparison.OrdinalIgnoreCase))
             {
@@ -204,7 +260,7 @@ public class UserManagementService
 
             if (!string.IsNullOrWhiteSpace(request.Name)) user.Name = targetName;
             if (!string.IsNullOrWhiteSpace(request.Email)) user.Email = request.Email.Trim();
-            if (!string.IsNullOrWhiteSpace(request.AuthLevel)) user.AuthLevel = targetAuthLevel;
+            if (!wasIntern && !string.IsNullOrWhiteSpace(request.AuthLevel)) user.AuthLevel = targetAuthLevel;
 
             await _userRepository.UpdateAsync(user);
 
@@ -212,25 +268,17 @@ public class UserManagementService
             {
                 await EnsureInternAccountAccessAsync(user, originalName, request.ReuseExistingInternAccount);
             }
-            else if (wasIntern)
-            {
-                // Keep the former intern account and its donation history, but remove access when the user is no longer an intern.
-                var linkedAccounts = await _userAccountAccessRepository.GetUserAccountsAsync(user.Id);
-                foreach (var internAccount in linkedAccounts.Where(account => InternAccountUtility.IsInternFund(account.Fund)))
-                {
-                    await _userAccountAccessRepository.RevokeAccessAsync(user.Id, internAccount.AccountId);
-                }
-            }
 
-            _cacheInvalidator?.Invalidate(CacheDataDomains.Authorization);
+            _cacheInvalidator?.Invalidate(CacheDataDomains.Authorization |
+                (string.Equals(user.AuthLevel, "Intern", StringComparison.OrdinalIgnoreCase) ? CacheDataDomains.AccountMetadata : CacheDataDomains.None));
             await RecordAuditAsync(actorUserId, AuditEventTypes.AdminUserUpdated);
 
             return new AdminUserOperationDto { IsSuccess = true, Message = "User updated successfully" };
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error updating admin user {UserId}", request.UserId);
-            return new AdminUserOperationDto { IsSuccess = false, Message = $"Error updating user: {ex.Message}" };
+            _logger.LogError("Error updating admin user. ExceptionType={ExceptionType}", ex.GetType().Name);
+            return new AdminUserOperationDto { IsSuccess = false, Message = "Unable to update the user. Please try again." };
         }
     }
 
@@ -248,7 +296,7 @@ public class UserManagementService
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error loading linked accounts for user {UserId}", userId);
+            _logger.LogError("Error loading linked accounts. ExceptionType={ExceptionType}", ex.GetType().Name);
             return new List<Cya2.Core.Entities.Account>();
         }
     }
@@ -296,8 +344,8 @@ public class UserManagementService
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error granting account access.");
-            return new AdminUserOperationDto { IsSuccess = false, Message = $"Error linking account: {ex.Message}" };
+            _logger.LogError("Error granting account access. ExceptionType={ExceptionType}", ex.GetType().Name);
+            return new AdminUserOperationDto { IsSuccess = false, Message = "Unable to link the account. Please try again." };
         }
     }
 
@@ -330,8 +378,8 @@ public class UserManagementService
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error revoking account access.");
-            return new AdminUserOperationDto { IsSuccess = false, Message = $"Error removing account link: {ex.Message}" };
+            _logger.LogError("Error revoking account access. ExceptionType={ExceptionType}", ex.GetType().Name);
+            return new AdminUserOperationDto { IsSuccess = false, Message = "Unable to remove the account link. Please try again." };
         }
     }
 
@@ -348,21 +396,8 @@ public class UserManagementService
             if (string.IsNullOrWhiteSpace(name))
                 return new AdminUserOperationDto { IsSuccess = false, Message = "Name is required" };
 
-            if (string.IsNullOrWhiteSpace(email))
-                return new AdminUserOperationDto { IsSuccess = false, Message = "Email is required" };
-
-            try
-            {
-                var parsed = new System.Net.Mail.MailAddress(email);
-                if (!string.Equals(parsed.Address, email.Trim(), StringComparison.OrdinalIgnoreCase))
-                {
-                    return new AdminUserOperationDto { IsSuccess = false, Message = "Please enter a valid email address" };
-                }
-            }
-            catch
-            {
-                return new AdminUserOperationDto { IsSuccess = false, Message = "Please enter a valid email address" };
-            }
+            if (!IsOrganizationEmail(email))
+                return new AdminUserOperationDto { IsSuccess = false, Message = "A valid @scene8.net email is required." };
 
             if (await _userRepository.ExistsAsync(email.Trim()))
             {
@@ -418,7 +453,8 @@ public class UserManagementService
                 await _userAccountAccessRepository.SetUserDefaultAccountAsync(user.Id, realAccountIds[0]);
             }
 
-            _cacheInvalidator?.Invalidate(CacheDataDomains.Authorization);
+            _cacheInvalidator?.Invalidate(CacheDataDomains.Authorization |
+                (isInternUser ? CacheDataDomains.AccountMetadata : CacheDataDomains.None));
             await RecordAuditAsync(actorUserId, AuditEventTypes.AdminUserCreated);
 
             return new AdminUserOperationDto
@@ -429,8 +465,8 @@ public class UserManagementService
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error creating admin user.");
-            return new AdminUserOperationDto { IsSuccess = false, Message = $"Error: {ex.Message}" };
+            _logger.LogError("Error creating admin user. ExceptionType={ExceptionType}", ex.GetType().Name);
+            return new AdminUserOperationDto { IsSuccess = false, Message = "Unable to create the user. Please try again." };
         }
     }
 
@@ -460,8 +496,8 @@ public class UserManagementService
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error deleting user.");
-            return new AdminUserOperationDto { IsSuccess = false, Message = $"Error: {ex.Message}" };
+            _logger.LogError("Error deleting user. ExceptionType={ExceptionType}", ex.GetType().Name);
+            return new AdminUserOperationDto { IsSuccess = false, Message = "Unable to delete the user. Please try again." };
         }
     }
 

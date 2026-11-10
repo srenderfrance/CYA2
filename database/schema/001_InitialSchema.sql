@@ -54,7 +54,7 @@ CREATE TABLE IF NOT EXISTS SubAccounts
 CREATE TABLE IF NOT EXISTS Users
 (
 	Id INT NOT NULL AUTO_INCREMENT,
-	GoogleId VARCHAR(255) NOT NULL,
+	GoogleId VARCHAR(255) NULL,
 	Email VARCHAR(320) NOT NULL,
 	Name VARCHAR(255) NOT NULL,
 	Language VARCHAR(16) NOT NULL DEFAULT 'en',
@@ -96,16 +96,16 @@ CREATE TABLE IF NOT EXISTS AccountsUsers
 CREATE TABLE IF NOT EXISTS Donors
 (
 	Id BIGINT NOT NULL AUTO_INCREMENT,
-	Fund VARCHAR(255) NOT NULL,
+	ConstituentId VARCHAR(255) COLLATE utf8mb4_bin NULL,
 	DisplayName VARCHAR(255) NOT NULL,
-	IdentityKey VARCHAR(512) NOT NULL,
+	IdentityKey VARCHAR(512) COLLATE utf8mb4_bin NOT NULL,
 	ResolutionSource VARCHAR(32) NOT NULL,
 	ResolutionVersion INT NOT NULL,
 	DateCreated DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
 	DateModified DATETIME NULL,
 	PRIMARY KEY (Id),
-	UNIQUE KEY uq_donors_fund_identity (Fund, IdentityKey),
-	KEY ix_donors_fund (Fund),
+	UNIQUE KEY uq_donors_identity (IdentityKey),
+	UNIQUE KEY uq_donors_constituent (ConstituentId),
 	KEY ix_donors_display_name (DisplayName)
 ) ENGINE=InnoDB
   DEFAULT CHARSET=utf8mb4
@@ -138,6 +138,8 @@ CREATE TABLE IF NOT EXISTS DonationData
 	DonorId BIGINT NOT NULL,
 	Date DATETIME NOT NULL,
 	GiftImportId VARCHAR(255) NULL,
+	ConstituentId VARCHAR(255) COLLATE utf8mb4_bin NULL,
+	IsSoftCredit BOOLEAN NOT NULL DEFAULT FALSE,
 	AccountName VARCHAR(255) NOT NULL,
 	PaymentMethod VARCHAR(255) NOT NULL,
 	GiftType VARCHAR(255) NOT NULL,
@@ -191,6 +193,8 @@ CREATE TABLE IF NOT EXISTS DonationDataBackup
 	DonorId BIGINT NOT NULL,
 	Date DATETIME NOT NULL,
 	GiftImportId VARCHAR(255) NULL,
+	ConstituentId VARCHAR(255) COLLATE utf8mb4_bin NULL,
+	IsSoftCredit BOOLEAN NOT NULL DEFAULT FALSE,
 	AccountName VARCHAR(255) NOT NULL,
 	PaymentMethod VARCHAR(255) NOT NULL,
 	GiftType VARCHAR(255) NOT NULL,
@@ -217,7 +221,7 @@ CREATE TABLE IF NOT EXISTS DonorsBackup
 (
 	BackupId CHAR(36) NOT NULL,
 	Id BIGINT NOT NULL,
-	Fund VARCHAR(255) NOT NULL,
+	ConstituentId VARCHAR(255) COLLATE utf8mb4_bin NULL,
 	DisplayName VARCHAR(255) NOT NULL,
 	IdentityKey VARCHAR(512) NOT NULL,
 	ResolutionSource VARCHAR(32) NOT NULL,

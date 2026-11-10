@@ -10,7 +10,7 @@ public interface IHomeSummaryCache
         CancellationToken cancellationToken = default);
 
     bool TryGet(HomeSummaryCacheKey key, out HomeSummaryCacheEntry entry);
-    void RemoveStaleGenerations(long generation);
+    void RemoveStaleGenerations(long normalGeneration, long internGeneration);
     void InvalidateAll();
     int Count { get; }
 }

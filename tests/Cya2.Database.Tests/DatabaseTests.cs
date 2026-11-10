@@ -17,25 +17,150 @@ public sealed class DatabaseTests(MySqlFixture mysql, ITestOutputHelper output) 
     private static readonly AvailableDatabase Guard = new();
 
     [MySqlFact]
-    public async Task FreshSchema_MigrationsAreAppliedOnce_AndEditedBaselineIsRejected()
+    public async Task InternDonationReads_MatchExactStoredNamesAndAgreeWithBulk()
     {
         var db = await mysql.CreateDatabaseAsync();
-        var expected = 1 + Directory.GetFiles(Path.Combine(AppContext.BaseDirectory, "database", "migrations"), "*.sql").Length;
-        Assert.Equal(expected.ToString(), await ScalarAsync(db.SetupConnection, "SELECT COUNT(*) FROM Cya2SchemaMigrations"));
-        Assert.Equal("2", await ScalarAsync(db.SetupConnection, "SELECT COUNT(*) FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name IN ('DonationBackupSnapshots', 'AccountingBackupSnapshots') AND column_name='BackupAt' AND datetime_precision=6"));
-        var rerun = await MigrateAsync(db.SetupConnection);
-        Assert.True(rerun.ExitCode == 0, rerun.Output);
-        Assert.Equal(expected.ToString(), await ScalarAsync(db.SetupConnection, "SELECT COUNT(*) FROM Cya2SchemaMigrations"));
-        Assert.Equal("1", await ScalarAsync(db.SetupConnection, "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema=DATABASE() AND table_name='AuditEvents'"));
-        var altered = Path.GetTempFileName();
-        try
+        await ExecuteAsync(db.SetupConnection, "INSERT INTO Donors (DisplayName,IdentityKey,ResolutionSource,ResolutionVersion) VALUES ('Test','test','AccountName',1); INSERT INTO DonationData (DonorId,Date,AccountName,PaymentMethod,GiftType,Amount,Fund,InternName) VALUES (1,'2026-01-15','Donor','Check','Gift',1,'Shared','Ann Lee'),(1,'2026-01-15','Donor','Check','Gift',2,'Shared','Annette Leeds'),(1,'2026-01-15','Donor','Check','Gift',3,'Shared','Lee, Ann'),(1,'2026-01-15','Donor','Check','Gift',4,'Shared','ann Lee'),(1,'2026-01-15','Donor','Check','Gift',5,'Shared','Ánn Lee'),(1,'2026-01-15','Donor','Check','Gift',6,'Shared','Ann Lee '),(1,'2026-01-15','Donor','Check','Gift',7,'Other','Ann Lee')");
+        var reader = new DonationReadRepository(Config(db), Guard, NullLogger<DonationReadRepository>.Instance);
+        var names = new[] { "Ann Lee", "Annette Leeds", "Lee, Ann", "ann Lee", "Ánn Lee", "Ann Lee " };
+
+        var allNames = await reader.GetCurrentInternNamesAsync();
+        var bulk = await reader.GetInternDonationsByNamesAndDateRangeAsync(names, Date.AddDays(-1), Date.AddDays(1));
+
+        Assert.All(names, name => Assert.Contains(name, allNames));
+        foreach (var name in names)
         {
-            await File.WriteAllTextAsync(altered, await File.ReadAllTextAsync(Path.Combine(AppContext.BaseDirectory, "database", "schema", "001_InitialSchema.sql")) + "\n-- checksum test\n");
-            var rejected = await MigrateAsync(db.SetupConnection, baselinePath: altered);
-            Assert.Equal(1, rejected.ExitCode);
-            Assert.Contains("checksum", rejected.Output, StringComparison.OrdinalIgnoreCase);
+            var single = await reader.GetInternDonationsByInternNameAndDateRangeAsync(name, Date.AddDays(-1), Date.AddDays(1));
+            Assert.Equal(single.Select(row => row.Id).Order(), bulk[name].Select(row => row.Id).Order());
+            Assert.All(single, row => Assert.Equal(name, row.InternName));
         }
-        finally { File.Delete(altered); }
+        Assert.Equal(2, bulk["Ann Lee"].Count);
+        Assert.All(names.Skip(1), name => Assert.Single(bulk[name]));
+    }
+
+    [MySqlFact]
+    public async Task NameOnlyPromotion_PreservesDirectContactTimestamps_AndRollbackRestoresOriginalIdentity()
+    {
+        var db = await mysql.CreateDatabaseAsync();
+        var repository = Donations(db);
+        CanonicalDonationWriteModel Gift(string? id, bool soft, DateTime date) => new()
+        {
+            Donor = new DonorWriteModel { Fund = "Test Fund", DisplayName = "Alex Smith", IdentityKey = "alexsmith", ResolutionSource = soft ? "SoftCredit" : "AccountName", ResolutionVersion = 1 },
+            ConstituentId = id, IsSoftCredit = soft, AccountName = soft ? "Employer" : "Alex Smith",
+            PrimaryAddressee = soft ? "Employer" : "Alex Smith", SoftCreditName = soft ? "Alex Smith" : null,
+            Date = date, Fund = "Test Fund", Amount = 10, PaymentMethod = "Check", GiftType = "Donation",
+            Contacts = soft ? [] : [Email("alex@example.invalid")]
+        };
+        await repository.ReplaceCanonicalDonationsAsync([Gift(null, false, Date.AddMonths(-2))], default);
+        await ExecuteAsync(db.SetupConnection, "UPDATE DonorContacts SET DateCreated='2020-01-01', DateModified='2021-01-01'");
+        var original = await ScalarAsync(db.RuntimeConnection, "SELECT DonorId FROM DonationData");
+        await repository.ReplaceCanonicalDonationsAsync([Gift("000123", false, Date)], default);
+        Assert.Equal("1", await ScalarAsync(db.RuntimeConnection, "SELECT COUNT(*) FROM Donors"));
+        Assert.Equal("1", await ScalarAsync(db.RuntimeConnection, "SELECT COUNT(DISTINCT DonorId) FROM DonationData"));
+        Assert.Equal("1", await ScalarAsync(db.RuntimeConnection, "SELECT COUNT(*) FROM DonorContacts WHERE DateCreated='2020-01-01' AND DateModified='2021-01-01'"));
+        var rollback = await Rollback(db).RollbackDonationsAsync();
+        Assert.True(rollback.Success, rollback.ErrorMessage);
+        Assert.Equal(original, await ScalarAsync(db.RuntimeConnection, "SELECT DonorId FROM DonationData"));
+        Assert.Equal("1", await ScalarAsync(db.RuntimeConnection, "SELECT COUNT(*) FROM DonorContacts WHERE DateCreated='2020-01-01' AND DateModified='2021-01-01'"));
+    }
+
+    [MySqlFact]
+    public async Task NewAmbiguity_SeparatesRetainedSoftCreditsWithoutCopyingContacts_AndRollbackRelinks()
+    {
+        var db = await mysql.CreateDatabaseAsync();
+        var repository = Donations(db);
+        CanonicalDonationWriteModel Gift(string id, bool soft, DateTime date) => new()
+        {
+            Donor = new DonorWriteModel { Fund = "Test Fund", DisplayName = "Same Name", IdentityKey = "samename", ResolutionSource = soft ? "SoftCredit" : "AccountName", ResolutionVersion = 1 },
+            ConstituentId = id, IsSoftCredit = soft, AccountName = soft ? "Employer" : "Same Name",
+            PrimaryAddressee = soft ? "Employer" : "Same Name", SoftCreditName = soft ? "Same Name" : null,
+            Date = date, Fund = "Test Fund", Amount = 10, PaymentMethod = "Check", GiftType = "Donation",
+            Contacts = soft ? [] : [Email(id + "@example.invalid")]
+        };
+        await repository.ReplaceCanonicalDonationsAsync([
+            Gift("1", false, Date.AddMonths(-2)), Gift("employer", true, Date.AddMonths(-1))], default);
+        await repository.ReplaceCanonicalDonationsAsync([Gift("2", false, Date)], default);
+        Assert.Equal("3", await ScalarAsync(db.RuntimeConnection, "SELECT COUNT(DISTINCT DonorId) FROM DonationData"));
+        Assert.Equal("0", await ScalarAsync(db.RuntimeConnection, "SELECT COUNT(*) FROM DonorContacts c JOIN Donors d ON d.Id=c.DonorId WHERE d.ConstituentId IS NULL"));
+        Assert.Equal("employer", await ScalarAsync(db.RuntimeConnection, "SELECT ConstituentId FROM DonationData WHERE IsSoftCredit=1"));
+        var rollback = await Rollback(db).RollbackDonationsAsync();
+        Assert.True(rollback.Success, rollback.ErrorMessage);
+        Assert.Equal("1", await ScalarAsync(db.RuntimeConnection, "SELECT COUNT(DISTINCT DonorId) FROM DonationData"));
+        Assert.Equal("1@example.invalid", await ScalarAsync(db.RuntimeConnection, "SELECT ContactValue FROM DonorContacts"));
+    }
+
+    [MySqlFact]
+    public async Task SharedConstituentIdentity_CombinesFunds_IgnoresOrganizationIds_AndRollsBackRelinks()
+    {
+        var db = await mysql.CreateDatabaseAsync();
+        var repository = Donations(db);
+        CanonicalDonationWriteModel Gift(string name, string? id, string fund, bool soft = false, DateTime? date = null, string? email = null) => new()
+        {
+            Donor = new DonorWriteModel { Fund = fund, DisplayName = name, IdentityKey = name, ResolutionSource = soft ? "SoftCredit" : "AccountName", ResolutionVersion = 1 },
+            Date = date ?? Date, AccountName = soft ? "Employer" : name, PrimaryAddressee = soft ? "Employer" : name,
+            SoftCreditName = soft ? name : null, ConstituentId = id, IsSoftCredit = soft,
+            Fund = fund, Amount = 10, PaymentMethod = "Check", GiftType = "Donation", Contacts = email == null ? [] : [Email(email)]
+        };
+        await repository.ReplaceCanonicalDonationsAsync([Gift("Alex Smith", "employer", "A", true, Date.AddMonths(-1))], default);
+        var originalId = await ScalarAsync(db.RuntimeConnection, "SELECT DonorId FROM DonationData");
+        await repository.ReplaceCanonicalDonationsAsync([
+            Gift("Alex Smith", "000123", "B", email: "alex@example.invalid"),
+            Gift("Smith, Alex", "employer", "C", true, email: "employer@example.invalid"),
+            Gift("Other Person", "employer", "C", true)
+        ], default);
+        Assert.Equal("1", await ScalarAsync(db.RuntimeConnection, "SELECT COUNT(DISTINCT DonorId) FROM DonationData WHERE Fund IN ('A','B')"));
+        Assert.Equal("3", await ScalarAsync(db.RuntimeConnection, "SELECT COUNT(*) FROM DonationData d JOIN Donors n ON n.Id=d.DonorId WHERE n.ConstituentId='000123'"));
+        Assert.Equal("0", await ScalarAsync(db.RuntimeConnection, "SELECT COUNT(*) FROM Donors WHERE ConstituentId='employer'"));
+        Assert.Equal("alex@example.invalid", await ScalarAsync(db.RuntimeConnection, "SELECT ContactValue FROM DonorContacts"));
+        var rollback = await Rollback(db).RollbackDonationsAsync();
+        Assert.True(rollback.Success, rollback.ErrorMessage);
+        Assert.Equal("1", await ScalarAsync(db.RuntimeConnection, "SELECT COUNT(*) FROM DonationData"));
+        Assert.Equal(originalId, await ScalarAsync(db.RuntimeConnection, "SELECT DonorId FROM DonationData"));
+        Assert.Equal("0", await ScalarAsync(db.RuntimeConnection, "SELECT COUNT(*) FROM DonorContacts"));
+    }
+
+    [MySqlFact]
+    public async Task SharedIdentity_AmbiguousNamesRemainSeparate_AndSoftOnlyUploadKeepsDirectContacts()
+    {
+        var db = await mysql.CreateDatabaseAsync();
+        var repository = Donations(db);
+        CanonicalDonationWriteModel Gift(string? id, bool soft, DateTime date) => new()
+        {
+            Donor = new DonorWriteModel { Fund = "Test Fund", DisplayName = "Same Name", IdentityKey = "samename", ResolutionSource = "AccountName", ResolutionVersion = 1 },
+            ConstituentId = id, IsSoftCredit = soft, AccountName = soft ? "Employer" : "Same Name", PrimaryAddressee = soft ? "Employer" : "Same Name", SoftCreditName = soft ? "Same Name" : null,
+            Date = date, Fund = "Test Fund", Amount = 10, PaymentMethod = "Check", GiftType = "Donation", Contacts = soft ? [] : [Email("direct@example.invalid")]
+        };
+        await repository.ReplaceCanonicalDonationsAsync([Gift("1", false, Date.AddMonths(-1)), Gift("employer", true, Date)], default);
+        Assert.Equal("1", await ScalarAsync(db.RuntimeConnection, "SELECT COUNT(DISTINCT DonorId) FROM DonationData"));
+        await repository.ReplaceCanonicalDonationsAsync([Gift("employer", true, Date)], default);
+        Assert.Equal("1", await ScalarAsync(db.RuntimeConnection, "SELECT COUNT(*) FROM DonorContacts"));
+        await repository.ReplaceCanonicalDonationsAsync([Gift("2", false, Date), Gift("employer", true, Date)], default);
+        Assert.Equal("3", await ScalarAsync(db.RuntimeConnection, "SELECT COUNT(DISTINCT DonorId) FROM DonationData"));
+    }
+
+    [MySqlFact]
+    public async Task FreshSchema_InitializesWithoutHistory_AndRejectsRerunsWithoutChangingData()
+    {
+        var db = await mysql.CreateDatabaseAsync();
+        Assert.Equal("0", await ScalarAsync(db.SetupConnection, "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema=DATABASE() AND table_name='Cya2SchemaMigrations'"));
+        Assert.Equal("2", await ScalarAsync(db.SetupConnection, "SELECT COUNT(*) FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name IN ('DonationBackupSnapshots', 'AccountingBackupSnapshots') AND column_name='BackupAt' AND datetime_precision=6"));
+        Assert.Equal("4", await ScalarAsync(db.SetupConnection, "SELECT COUNT(*) FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name IN ('DonationData', 'DonationDataBackup') AND column_name IN ('ConstituentId', 'IsSoftCredit')"));
+        Assert.Equal("1", await ScalarAsync(db.SetupConnection, "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema=DATABASE() AND table_name='AuditEvents'"));
+        await Donations(db).ReplaceCanonicalDonationsAsync([Donation(contacts: [Email("original@example.invalid")])], default);
+
+        var rerun = await MigrateAsync(db.SetupConnection);
+        Assert.True(rerun.ExitCode == 1, rerun.Output);
+        Assert.Contains("requires --initialize", rerun.Output, StringComparison.OrdinalIgnoreCase);
+
+        var reinitialize = await MigrateAsync(db.SetupConnection, initialize: true);
+        Assert.True(reinitialize.ExitCode == 1, reinitialize.Output);
+        Assert.Contains("requires an empty database", reinitialize.Output, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal("1", await ScalarAsync(db.RuntimeConnection, "SELECT COUNT(*) FROM DonationData"));
+        Assert.Equal("10.00", await ScalarAsync(db.RuntimeConnection, "SELECT CAST(Amount AS CHAR) FROM DonationData"));
+        Assert.Equal("1", await ScalarAsync(db.RuntimeConnection, "SELECT COUNT(*) FROM Donors"));
+        Assert.Equal("original@example.invalid", await ScalarAsync(db.RuntimeConnection, "SELECT ContactValue FROM DonorContacts"));
+        Assert.Equal("1", await ScalarAsync(db.RuntimeConnection, "SELECT COUNT(*) FROM DonationBackupSnapshots"));
+        Assert.Equal("0", await ScalarAsync(db.SetupConnection, "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema=DATABASE() AND table_name='Cya2SchemaMigrations'"));
     }
 
     [MySqlFact]

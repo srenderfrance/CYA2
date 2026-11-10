@@ -59,7 +59,8 @@ public sealed record DonationCacheRecord(
     string AccountName,
     string? SoftCreditName,
     string? Addressee,
-    bool IsAnonymous);
+    bool IsAnonymous,
+    bool IsSoftCredit = false);
 
 public sealed record SubAccountCacheRecord(
     int Id,

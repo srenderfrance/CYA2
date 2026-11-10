@@ -120,9 +120,9 @@
             // Optional: Show a brief success message (you could add a notification service call here)
             Console.WriteLine("Donor information copied to clipboard");
         }
-        catch (Exception ex)
+        catch (Exception)
         {
-            Console.WriteLine($"Error copying to clipboard: {ex.Message}");
+            Console.WriteLine("Error copying to clipboard.");
         }
     }
 

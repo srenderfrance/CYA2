@@ -65,6 +65,16 @@ public sealed class InternAccountUtilityTests
         Assert.Equal("General", InternAccountUtility.GetAccountSelectorDisplayName("General: Donations"));
     }
 
+    [Theory]
+    [InlineData("Intern: Jane Doe", "Doe, Jane (Intern)")]
+    [InlineData("Intern: John Smith", "Smith, John (Intern)")]
+    [InlineData("General: Donations", "General")]
+    [InlineData("Operations", "Operations")]
+    public void GetAccountSelectorDisplayName_ProvidesOverviewLabels(string fund, string expected)
+    {
+        Assert.Equal(expected, InternAccountUtility.GetAccountSelectorDisplayName(fund));
+    }
+
     [Fact]
     public void GetAccountSelectorSortKey_UsesFormattedInternName()
     {

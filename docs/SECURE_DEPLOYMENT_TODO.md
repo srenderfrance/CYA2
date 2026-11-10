@@ -1,6 +1,6 @@
 # Secure Setup, Deployment, and Data Protection TODO
 
-> **Historical implementation checklist, reconciled 2026-11-04.** Use [Production review](PRODUCTION_REVIEW.md) as the current staged backlog. Checked historical implementation work does not prove current production configuration; unsupported session/diagnostic guarantees below have been reopened. Current local evidence: build passed, 191 tests passed, seven Docker cases skipped; environment acceptance remains pending.
+> **Historical implementation checklist, reconciled 2026-11-04.** Use [Production review](PRODUCTION_REVIEW.md) as the current staged backlog. Checked historical implementation work does not prove current production configuration; unsupported session/diagnostic guarantees below have been reopened. The original review recorded 191 tests passed and seven Docker cases skipped; a later enabled database-project run passed 40/40 with none skipped. Environment acceptance remains pending.
 
 Use this checklist to prepare the application for safe local setup, deployment, and handling of donor data.
 
@@ -102,16 +102,16 @@ Production policy: upload previews and in-memory import progress records are ret
 
 - [x] Shorten the authentication cookie lifetime from the current 24-hour period. The cookie now has a four-hour absolute lifetime.
 - [x] Decide on an appropriate cookie lifetime for the application. The policy is four hours, non-sliding, and non-persistent.
-- [ ] Verify and repair route/account/date resume through reauthentication (A08). Code exists but starts in static layout OnAfterRenderAsync; end-to-end behavior is not established.
+- [ ] Verify route/account/date resume through reauthentication (A08). An interactive monitor now handles it; browser end-to-end behavior remains to be verified.
 - [x] Revalidate the current database user and role before account selection and account-specific dashboard, donation, expense, and export reads; stale authentication claims cannot grant all-account access.
 - [x] Revalidate regular-user account membership before account selection and account-specific reads; removed `AccountsUsers` links are denied even when prior data was cached.
 - [x] Ensure a removed user cannot use protected account data or imports after access is removed. Missing database users are treated as revoked; existing import ownership/current-admin checks remain enforced.
-- [ ] Ensure a revoked Admin cannot retain a stale Admin shell/session (A08). Administrative service mutations revalidate live, but cookie-based route claims and static-layout polling are not proactive session revocation.
-- [ ] Establish and test active-circuit revalidation independent of cookie expiry (A08); the current one-minute loop is placed in a static layout lifecycle method.
+- [ ] Verify a revoked Admin cannot retain a stale Admin shell/session (A08). The interactive monitor and cookie validation check the current role; browser acceptance remains pending.
+- [ ] Verify active-circuit revalidation independent of cookie expiry (A08); an interactive monitor now checks initially and every minute.
 - [ ] Verify session refresh/resume clearing on deletion/demotion and transient database failures (A08/B02).
 - [x] Add service-level removed-user/current-role/account-membership tests. Historical 83-test count is superseded by the review's current validation; this does not prove browser-circuit revocation.
 
-Sensitive account reads and selections revalidate immediately before use. A reliable maximum interval for proactive active-session termination is **not established**; see A08.
+Sensitive account reads and selections revalidate immediately before use. The monitor targets one-minute revalidation while connected; browser behavior and recovery remain to be verified (A08).
 
 ### 9. Separate database setup permissions from everyday permissions
 

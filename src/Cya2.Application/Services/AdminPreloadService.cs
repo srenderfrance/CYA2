@@ -27,7 +27,6 @@ public sealed class AdminPreloadService : IAdminPreloadService
     private long _localGeneration = -1;
     private Lazy<Task<IReadOnlyList<Account>>>? _accounts;
     private Lazy<Task<IReadOnlyList<SubAccount>>>? _subAccounts;
-    private Lazy<Task<IReadOnlyList<AdminUserDto>>>? _staff;
     private Lazy<Task<IReadOnlyList<AdminAccountOverviewDto>>>? _overview;
 
     public AdminPreloadService(
@@ -62,12 +61,10 @@ public sealed class AdminPreloadService : IAdminPreloadService
     {
         var accounts = await GetAccountsAsync(cancellationToken);
         var subAccounts = await GetSubAccountsAsync(cancellationToken);
-        var staff = await GetStaffAsync(cancellationToken);
         return new AdminPreloadState
         {
             Accounts = accounts,
-            SubAccounts = subAccounts,
-            Staff = staff
+            SubAccounts = subAccounts
         };
     }
 
@@ -82,6 +79,23 @@ public sealed class AdminPreloadService : IAdminPreloadService
         foreach (var account in data.Accounts)
         {
             cancellationToken.ThrowIfCancellationRequested();
+            if (InternAccountUtility.IsInternFund(account.Fund))
+            {
+                var internDonations = InternAccountUtility.TryGetInternDesignationName(account.Fund, out var internName) &&
+                    data.DonationsByInternName.TryGetValue(internName, out var internRows)
+                    ? internRows
+                    : [];
+                result.Add(new AdminAccountOverviewDto
+                {
+                    Fund = account.Fund,
+                    CurrentBalance = 0m,
+                    Last12MonthsDonations = internDonations
+                        .Where(row => row.Date.Date >= startDate && row.Date.Date <= endDate)
+                        .Sum(row => Convert.ToDecimal(row.Amount))
+                });
+                continue;
+            }
+
             var contextAccount = ToContextAccount(account);
             var donations = data.DonationsByAccountId.TryGetValue(account.AccountId, out var accountDonations)
                 ? accountDonations
@@ -156,14 +170,24 @@ public sealed class AdminPreloadService : IAdminPreloadService
 
     public async Task<IReadOnlyList<AdminUserDto>> GetStaffAsync(CancellationToken cancellationToken = default)
     {
+        if (!await _userManagementService.IsCurrentUserAdminAsync())
+        {
+            throw new UnauthorizedAccessException("Administrator access is required.");
+        }
+
         ResetForGenerationChange();
-        if (_sharedCache.TryGetStaff(_cacheInvalidationVersion.Current, out var sharedStaff))
+        var generation = _cacheInvalidationVersion.Current;
+        if (_sharedCache.TryGetStaff(generation, out var sharedStaff))
         {
             return sharedStaff;
         }
 
-        EnsureInitialized();
-        return await _staff!.Value.WaitAsync(cancellationToken);
+        var staff = await _userManagementService.GetAdminUsersAsync().WaitAsync(cancellationToken);
+        if (generation == _cacheInvalidationVersion.Current)
+        {
+            _sharedCache.SetStaff(generation, staff);
+        }
+        return staff;
     }
 
     public async Task<IReadOnlyList<AdminAccountOverviewDto>> GetAccountOverviewAsync(CancellationToken cancellationToken = default)
@@ -191,7 +215,6 @@ public sealed class AdminPreloadService : IAdminPreloadService
         {
             _accounts = null;
             _subAccounts = null;
-            _staff = null;
             _overview = null;
             _localGeneration = _cacheInvalidationVersion.Current;
         }
@@ -226,7 +249,6 @@ public sealed class AdminPreloadService : IAdminPreloadService
         {
             _accounts ??= new Lazy<Task<IReadOnlyList<Account>>>(LoadAccountsAsync);
             _subAccounts ??= new Lazy<Task<IReadOnlyList<SubAccount>>>(LoadSubAccountsAsync);
-            _staff ??= new Lazy<Task<IReadOnlyList<AdminUserDto>>>(LoadStaffAsync);
             _overview ??= new Lazy<Task<IReadOnlyList<AdminAccountOverviewDto>>>(LoadOverviewAsync);
         }
     }
@@ -270,13 +292,6 @@ public sealed class AdminPreloadService : IAdminPreloadService
         return subAccounts;
     }
 
-    private async Task<IReadOnlyList<AdminUserDto>> LoadStaffAsync()
-    {
-        var staff = await _userManagementService.GetAdminUsersAsync() ?? new List<AdminUserDto>();
-        _sharedCache.SetStaff(_cacheInvalidationVersion.Current, staff);
-        return staff;
-    }
-
     private async Task<IReadOnlyList<AdminAccountOverviewDto>> LoadOverviewAsync()
     {
         var stopwatch = Stopwatch.StartNew();
@@ -289,7 +304,7 @@ public sealed class AdminPreloadService : IAdminPreloadService
             trailingStart,
             trailingEnd);
         var normalAccounts = accounts
-            .Where(account => !string.IsNullOrWhiteSpace(account.Fund))
+            .Where(account => !string.IsNullOrWhiteSpace(account.Fund) && !InternAccountUtility.IsInternFund(account.Fund))
             .Select(account => (
                 account.AccountId,
                 account.Fund,
@@ -300,17 +315,25 @@ public sealed class AdminPreloadService : IAdminPreloadService
                     .ToList()))
             .ToList();
         var donationTask = _donationReadRepository.GetDonationsForAccountsAsync(normalAccounts, trailingStart, trailingEnd);
+        var internNames = accounts
+            .Where(account => InternAccountUtility.TryGetInternDesignationName(account.Fund, out _))
+            .Select(account => { InternAccountUtility.TryGetInternDesignationName(account.Fund, out var name); return name; })
+            .Distinct(StringComparer.Ordinal)
+            .ToList();
+        var internDonationTask = _donationReadRepository.GetInternDonationsByNamesAndDateRangeAsync(internNames, trailingStart, trailingEnd);
         var accountingTask = _expenseReadRepository.GetAccountingDataForAccountsAsync(
-            accounts.Select(account => (account.AccountId, account.AccountingClass, account.AccountNumber)).ToList(),
+            accounts.Where(account => !InternAccountUtility.IsInternFund(account.Fund))
+                .Select(account => (account.AccountId, account.AccountingClass, account.AccountNumber)).ToList(),
             trailingStart,
             trailingEnd);
-        await Task.WhenAll(donationTask, accountingTask);
+        await Task.WhenAll(donationTask, internDonationTask, accountingTask);
 
         var data = new CacheRebuildData
         {
             Accounts = accounts,
             SubAccounts = subAccounts,
             DonationsByAccountId = donationTask.Result,
+            DonationsByInternName = internDonationTask.Result,
             AccountingByAccountId = accountingTask.Result
         };
         var result = await RebuildOverviewFromDataAsync(data);
@@ -333,7 +356,6 @@ public sealed class AdminPreloadService : IAdminPreloadService
 
             _accounts = null;
             _subAccounts = null;
-            _staff = null;
             _overview = null;
             _localGeneration = currentGeneration;
         }

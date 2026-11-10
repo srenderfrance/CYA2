@@ -13,8 +13,46 @@ namespace Cya2.Database.Tests;
 
 public sealed class ImportValidationTests
 {
-    private static readonly string[] DonationHeaders = ["Gift Date", "Name", "Gift Payment Type", "Gift Type", "Fund Split Amount", "Fund Notes", "Soft Credit Recipient Name", "Preferred Address Line 1", "Preferred City", "Preferred State", "Preferred ZIP", "Preferred Country", "Personal Email Number", "Home Phone Number", "Personal Mobile Phone Number", "Gift Is Anonymous", "Gift Import ID", "Primary Addressee", "Honor/Memorial Name"];
+    private static readonly string[] DonationHeaders = ["Gift Date", "Name", "Gift Payment Type", "Gift Type", "Fund Split Amount", "Fund Notes", "Soft Credit Recipient Name", "Preferred Address Line 1", "Preferred City", "Preferred State", "Preferred ZIP", "Preferred Country", "Personal Email Number", "Home Phone Number", "Personal Mobile Phone Number", "Gift Is Anonymous", "Gift Import ID", "Primary Addressee", "Honor/Memorial Name", "Constituent ID"];
     private static readonly string[] AccountingHeaders = ["Class", "Date", "Num", "Amount", "Account #", "Account", "Type"];
+
+    [Fact]
+    public async Task ConstituentColumnIsRequiredButBlankValuesAreAllowed()
+    {
+        var repository = new Repository();
+        using var source = Workbook("donations");
+        using var package = new ExcelPackage(source);
+        package.Workbook.Worksheets[0].Cells[1, DonationHeaders.Length].Value = "Other";
+        using var workbook = new MemoryStream(package.GetAsByteArray());
+        var result = await Processor("donations", repository, new Invalidator()).ProcessAsync(workbook, "test", default);
+        Assert.Contains("Missing column: Constituent ID", result.Errors);
+        Assert.Equal(0, repository.Writes);
+    }
+
+    [Fact]
+    public async Task ConstituentIdsPreserveZerosAndSoftCreditContactsAreExcluded()
+    {
+        var repository = new Repository();
+        using var source = Workbook("donations");
+        using var package = new ExcelPackage(source);
+        var sheet = package.Workbook.Worksheets[0];
+        sheet.Cells[2, DonationHeaders.Length].Value = "000123";
+        sheet.Cells[3, DonationHeaders.Length].Value = "organization-1";
+        sheet.Cells[3, 2].Value = "Employer Organization";
+        sheet.Cells[3, 18].Value = "Employer Organization";
+        sheet.Cells[3, 7].Value = "Synthetic Donor";
+        sheet.Cells[3, 13].Value = "organization@example.invalid";
+        sheet.Cells[3, 17].Value = sheet.Cells[2, 17].Value;
+        using var workbook = new MemoryStream(package.GetAsByteArray());
+        var result = await Processor("donations", repository, new Invalidator()).ProcessAsync(workbook, "test", default);
+        Assert.Empty(result.Errors);
+        Assert.Equal(2, repository.Published.Count);
+        Assert.Equal("000123", repository.Published[0].ConstituentId);
+        Assert.Equal("organization-1", repository.Published[1].ConstituentId);
+        Assert.All(repository.Published, row => Assert.Equal("id:000123", row.Donor.IdentityKey));
+        Assert.True(repository.Published[1].IsSoftCredit);
+        Assert.Empty(repository.Published[1].Contacts);
+    }
 
     [Theory]
     [InlineData("donations")]

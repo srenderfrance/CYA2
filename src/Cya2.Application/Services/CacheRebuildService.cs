@@ -1,6 +1,7 @@
 using Cya2.Application.Interfaces;
 using Cya2.Core.Interfaces;
 using Cya2.Application.Models;
+using Cya2.Core.Utilities;
 using Microsoft.Extensions.Logging;
 
 namespace Cya2.Application.Services;
@@ -37,25 +38,37 @@ public sealed class CacheRebuildService : ICacheRebuildService
         var preload = await _adminPreloadService.PreloadMetadataAsync(cancellationToken);
         cancellationToken.ThrowIfCancellationRequested();
 
-        var internNames = await _donationReadRepository.GetCurrentInternNamesAsync();
-        cancellationToken.ThrowIfCancellationRequested();
+        var internAccounts = preload.Accounts
+            .Where(account => InternAccountUtility.TryGetInternDesignationName(account.Fund, out _))
+            .ToList();
+        var standardAccounts = preload.Accounts
+            .Where(account => !InternAccountUtility.IsInternFund(account.Fund))
+            .ToList();
+        var internNames = internAccounts
+            .Select(account => { InternAccountUtility.TryGetInternDesignationName(account.Fund, out var name); return name; })
+            .Distinct(StringComparer.Ordinal)
+            .ToList();
 
         var now = DateTime.Now;
         var homeStart = new DateTime(now.Year - 1, 1, 1);
         var homeEnd = now.Date;
-        var normalAccounts = preload.Accounts
+        var overviewStart = DateTime.UtcNow.Date.AddMonths(-12);
+        var rebuildStart = homeStart < overviewStart ? homeStart : overviewStart;
+        var rebuildEnd = homeEnd > DateTime.UtcNow.Date ? homeEnd : DateTime.UtcNow.Date;
+        var internEnd = new DateTime(now.Year, 12, 31) > rebuildEnd ? new DateTime(now.Year, 12, 31) : rebuildEnd;
+        var normalAccounts = standardAccounts
             .Select(account => (account.AccountId, account.Fund, MergedSubFunds: (IReadOnlyList<string>)preload.SubAccounts
                 .Where(subAccount => subAccount.AccountId == account.AccountId && string.Equals(subAccount.Kind, "Merged", StringComparison.OrdinalIgnoreCase))
                 .Select(subAccount => subAccount.SubFund)
                 .ToList()))
             .Where(account => !string.IsNullOrWhiteSpace(account.Fund))
             .ToList();
-        var donationTask = _donationReadRepository.GetDonationsForAccountsAsync(normalAccounts, homeStart, homeEnd);
-        var internDonationTask = _donationReadRepository.GetInternDonationsByNamesAndDateRangeAsync(internNames, homeStart, homeEnd);
+        var donationTask = _donationReadRepository.GetDonationsForAccountsAsync(normalAccounts, rebuildStart, rebuildEnd);
+        var internDonationTask = _donationReadRepository.GetInternDonationsByNamesAndDateRangeAsync(internNames, rebuildStart, internEnd);
         var accountingTask = _expenseReadRepository.GetAccountingDataForAccountsAsync(
-            preload.Accounts.Select(account => (account.AccountId, account.AccountingClass, account.AccountNumber)).ToList(),
-            homeStart,
-            homeEnd);
+            standardAccounts.Select(account => (account.AccountId, account.AccountingClass, account.AccountNumber)).ToList(),
+            rebuildStart,
+            rebuildEnd);
         _logger.LogInformation(
             "Central cache rebuild financial loads started: normalDonationTask={NormalDonationTask}, internDonationTask={InternDonationTask}, accountingTask={AccountingTask}",
             !donationTask.IsCompleted,
@@ -94,10 +107,10 @@ public sealed class CacheRebuildService : ICacheRebuildService
             WarmMissingGiftDonorsAsync(account, data, missingGiftRange, throttler, cancellationToken));
         await Task.WhenAll(missingGiftTasks);
 
-        var normalTasks = preload.Accounts.Select(account =>
+        var normalTasks = standardAccounts.Select(account =>
             WarmNormalSummaryAsync(account, data, throttler, cancellationToken));
-        var internTasks = internNames.Select(internName =>
-            WarmInternSummaryAsync(internName, data, throttler, cancellationToken));
+        var internTasks = internAccounts.Select(account =>
+            WarmInternSummaryAsync(account, data, throttler, cancellationToken));
 
         await Task.WhenAll(normalTasks.Concat(internTasks));
         _logger.LogInformation(
@@ -114,7 +127,10 @@ public sealed class CacheRebuildService : ICacheRebuildService
         SemaphoreSlim throttler,
         CancellationToken cancellationToken)
     {
-        if (!data.DonationsByAccountId.TryGetValue(account.AccountId, out var donations))
+        var isIntern = InternAccountUtility.TryGetInternDesignationName(account.Fund, out var internName);
+        if (!(isIntern
+                ? data.DonationsByInternName.TryGetValue(internName, out var donations)
+                : data.DonationsByAccountId.TryGetValue(account.AccountId, out donations)))
         {
             donations = [];
         }
@@ -127,6 +143,7 @@ public sealed class CacheRebuildService : ICacheRebuildService
                 {
                     AccountId = account.AccountId,
                     Fund = account.Fund,
+                    InternName = isIntern ? internName : string.Empty,
                     AccountingClass = account.AccountingClass,
                     AccountNumber = account.AccountNumber,
                     Overhead = account.Overhead
@@ -159,7 +176,7 @@ public sealed class CacheRebuildService : ICacheRebuildService
     }
 
     private async Task WarmInternSummaryAsync(
-        string internName,
+        Cya2.Core.Entities.Account account,
         CacheRebuildData data,
         SemaphoreSlim throttler,
         CancellationToken cancellationToken)
@@ -167,7 +184,7 @@ public sealed class CacheRebuildService : ICacheRebuildService
         await throttler.WaitAsync(cancellationToken);
         try
         {
-            await _financialDashboardService.WarmInternSummaryFromDataAsync(internName, data, cancellationToken);
+            await _financialDashboardService.WarmInternSummaryFromDataAsync(account, data, cancellationToken);
         }
         finally
         {

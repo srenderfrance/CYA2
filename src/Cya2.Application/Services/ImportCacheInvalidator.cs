@@ -124,7 +124,8 @@ public sealed class ImportCacheInvalidator : IImportCacheInvalidator
                 _accountingDataCache.RemoveStaleGenerations(_cacheInvalidationVersion.Accounting);
             _accountBalanceCache.RemoveStaleGeneration(_cacheInvalidationVersion.Current);
             _homeSummaryCache.RemoveStaleGenerations(_cacheInvalidationVersion.GetGeneration(
-                CacheDataDomains.Donations | CacheDataDomains.Accounting | CacheDataDomains.AccountMetadata));
+                CacheDataDomains.Donations | CacheDataDomains.Accounting | CacheDataDomains.AccountMetadata),
+                _cacheInvalidationVersion.GetGeneration(CacheDataDomains.Donations | CacheDataDomains.AccountMetadata));
         }
 
         if (hasAccountMetadata || hasAuthorization)

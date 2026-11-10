@@ -1168,7 +1168,6 @@ private ElementReference customOverheadElement;
 
 private FinancialDashboardDto dashboardData = new();
 private FinancialSummaryDto customSummary = new();
-private string debugMessage = string.Empty;
 
 private const int MaxDashboardMemoryCacheItems = 15;
 
@@ -1398,7 +1397,6 @@ private bool showMissingGiftDialog = false;
             canSearchAccounts = dashboardData.CanSearchAccounts;
             isAdminUser = homeAuthorization.Context?.IsAdminOrViewer == true && !homeAuthorization.Context.IsViewer;
             selectedAccount = ResolveSelectedAccount(dashboardData);
-            BuildDebugMessage(string.IsNullOrWhiteSpace(requestedFund) ? "initial-summary-load" : "initial-summary-load-requested-fund");
 
             var defaultFundFromDto = dashboardData.UserAccounts.FirstOrDefault(a => a.IsDefault)?.SelectionKey;
             if (string.IsNullOrWhiteSpace(defaultFundFromDto))
@@ -1430,8 +1428,7 @@ private bool showMissingGiftDialog = false;
         }
         catch (Exception ex)
         {
-            Logger.LogError(ex, "Home.OnInitializedAsync failed");
-            BuildDebugMessage("initial-load-error", ex.Message);
+            Logger.LogError("Home initialization failed. ExceptionType={ExceptionType}", ex.GetType().Name);
         }
         finally
         {
@@ -1689,12 +1686,10 @@ private bool showMissingGiftDialog = false;
             }
             catch { }
             await ComputeMissingGiftAlertsAsync();
-            BuildDebugMessage("account-selection");
         }
         catch (Exception ex)
         {
-            Logger.LogError(ex, "Home.accountSelection failed");
-            BuildDebugMessage("account-selection-error", ex.Message);
+            Logger.LogError("Home account selection failed. ExceptionType={ExceptionType}", ex.GetType().Name);
         }
         finally
         {
@@ -1806,36 +1801,6 @@ private bool showMissingGiftDialog = false;
         return new Cya2.Core.ValueObjects.DateRange(new DateTime(now.Year, now.Month, 1), now);
     }
 
-    private void BuildDebugMessage(string source, string? note = null)
-    {
-        try
-        {
-            var lines = new List<string>
-            {
-                $"Source={source}",
-                $"UserId={cachedUserId}",
-                $"SelectedAccount={selectedAccount}",
-                $"Dashboard.SelectedAccount={dashboardData.SelectedAccount}",
-                $"HasAccountData={dashboardData.HasAccountData}",
-                $"UserAccounts={dashboardData.UserAccounts?.Count ?? 0}",
-                $"CurrentMonth: Donations={dashboardData.CurrentMonth?.TotalDonations:C2}, Expenses={dashboardData.CurrentMonth?.TotalExpenses:C2}, Overhead={dashboardData.CurrentMonth?.TotalOverhead:C2}, InternalTransfers={dashboardData.CurrentMonth?.InternalTransfers:C2}",
-                $"PriorMonth: Donations={dashboardData.PriorMonth?.TotalDonations:C2}, Expenses={dashboardData.PriorMonth?.TotalExpenses:C2}",
-                $"CurrentYear: Donations={dashboardData.CurrentYear?.TotalDonations:C2}, Expenses={dashboardData.CurrentYear?.TotalExpenses:C2}"
-            };
-
-            if (!string.IsNullOrWhiteSpace(note))
-            {
-                lines.Add($"Note={note}");
-            }
-
-            debugMessage = string.Join("\n", lines);
-        }
-        catch (Exception ex)
-        {
-            Logger.LogWarning(ex, "Home.BuildDebugMessage failed");
-        }
-    }
-
     private void ShowOverheadTooltip(ElementReference element)
     {
         TooltipService.Open(element, "This number is an estimate.", new TooltipOptions
@@ -1851,20 +1816,4 @@ private bool showMissingGiftDialog = false;
         TooltipService.Close();
     }
 
-    private async Task CopyDebugMessageAsync()
-    {
-        if (string.IsNullOrEmpty(debugMessage))
-        {
-            return;
-        }
-
-        try
-        {
-            await JS.InvokeVoidAsync("navigator.clipboard.writeText", debugMessage);
-        }
-        catch (Exception ex)
-        {
-            Logger.LogWarning(ex, "CopyDebugMessageAsync failed");
-        }
-    }
 }

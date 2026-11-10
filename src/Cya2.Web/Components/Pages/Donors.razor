@@ -440,9 +440,9 @@
                 await JS.InvokeVoidAsync("import", "/js/autocomplete-tab.js");
                 await JS.InvokeVoidAsync("enableAutocompleteTabBehavior", "donorAutoCompleteContainer");
             }
-            catch (Exception ex)
+            catch (Exception)
             {
-                await JS.InvokeVoidAsync("console.error", ex.Message);
+                await JS.InvokeVoidAsync("console.error", "Unable to initialize donor search.");
             }
         }
     }
@@ -566,8 +566,14 @@
                 userId);
 
             PrepareDonorRows(donorsInRange);
+            foreach (var group in donorsInRange.GroupBy(d => d.Name, StringComparer.OrdinalIgnoreCase))
+            {
+                foreach (var donor in group)
+                    donor.SelectionLabel = group.Count() > 1 ? $"{donor.Name} (record {donor.DonorId})" : donor.Name;
+            }
+            ClearDonorSelection();
             donorNames = donorsInRange
-                .Select(d => d.Name)
+                .Select(d => d.SelectionLabel)
                 .Where(n => !string.IsNullOrWhiteSpace(n))
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .OrderBy(n => n)
@@ -597,7 +603,7 @@
 
         ResetDonorContact();
 
-        var selectedSummary = donorsInRange.FirstOrDefault(d => string.Equals(d.Name, selectedDonor, StringComparison.OrdinalIgnoreCase));
+        var selectedSummary = donorsInRange.FirstOrDefault(d => string.Equals(d.SelectionLabel, selectedDonor, StringComparison.OrdinalIgnoreCase));
         if (selectedSummary != null)
         {
             donorEmail = selectedSummary.Email ?? string.Empty;
@@ -731,7 +737,7 @@
     private async Task OnDonorRowSelect(DonorSummaryDto summary)
     {
         if (summary == null) return;
-        selectedDonor = summary.Name;
+        selectedDonor = summary.SelectionLabel;
         searchText = string.Empty;
         await OnDonorSelected();
     }
@@ -884,7 +890,7 @@
         }
 
         var selectedSummary = donorsInRange.FirstOrDefault(donor =>
-            string.Equals(donor.Name, selectedDonor, StringComparison.OrdinalIgnoreCase));
+            string.Equals(donor.SelectionLabel, selectedDonor, StringComparison.OrdinalIgnoreCase));
         var payload = selectedSummary == null
             ? string.Empty
             : FormatDonorContactForCopy(selectedSummary);
@@ -945,11 +951,10 @@
             return;
         }
 
-        var funds = await ResolveFundNamesAsync(currentAccount, selectedSubAccount);
-
         var req = new
         {
-            Funds = funds,
+            AccountId = currentAccount.AccountId,
+            SelectedSubAccount = selectedSubAccount,
             AllDates = dateRangeState.SelectedPreset == Cya2.Application.DTOs.DateRangePreset.AllDates,
             StartDate = dateRangeState.SelectedPreset == Cya2.Application.DTOs.DateRangePreset.AllDates ? (DateTime?)null : dateRangeState.StartDate,
             EndDate = dateRangeState.SelectedPreset == Cya2.Application.DTOs.DateRangePreset.AllDates ? (DateTime?)null : dateRangeState.EndDate,

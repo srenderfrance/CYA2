@@ -79,6 +79,49 @@ public sealed class AuthorizationBoundaryTests
         Assert.Equal(0, donorService.ReadCount);
     }
 
+    [Theory]
+    [InlineData("Primary", true)]
+    [InlineData("All", false)]
+    [InlineData("Sub_2", true)]
+    public async Task DonorExport_UsesAuthorizedAccountSelection(string selection, bool allDates)
+    {
+        var donorService = new RecordingDonorService();
+        var authorization = CreateAuthorizationService(new User { Id = 7, Email = "user@example.test", AuthLevel = "User" }, new Dictionary<int, HashSet<int>> { [7] = [12] });
+        var context = new FakeUserAccountContextService(new UserAccountContext
+        {
+            UserId = 7,
+            Accounts = [new UserAccountContextAccount { AccountId = 12, Fund = "Allowed", InternName = "Example Intern" }]
+        });
+        var service = new DonorExportService(donorService, context, authorization);
+        var start = new DateTime(2025, 1, 1);
+        var end = new DateTime(2025, 12, 31);
+
+        var result = await service.GetSelectionExportDataAsync("7", false, 12, selection, allDates, start, end);
+
+        Assert.True(result.FundsAuthorized);
+        Assert.Equal(1, donorService.ReadCount);
+        Assert.Equal(12, donorService.SelectedAccount!.AccountId);
+        Assert.Equal("Example Intern", donorService.SelectedAccount.InternName);
+        Assert.Equal(selection, donorService.Selection);
+        Assert.Equal("7", donorService.SelectionUserId);
+        if (allDates) Assert.Null(donorService.SelectionRange);
+        else Assert.Equal(start, donorService.SelectionRange!.StartDate);
+    }
+
+    [Fact]
+    public async Task DonorExport_RejectsUnauthorizedAccountEvenIfContextContainsIt()
+    {
+        var donorService = new RecordingDonorService();
+        var authorization = CreateAuthorizationService(new User { Id = 7, Email = "user@example.test", AuthLevel = "User" }, new Dictionary<int, HashSet<int>> { [7] = [12] });
+        var context = new FakeUserAccountContextService(new UserAccountContext { Accounts = [new UserAccountContextAccount { AccountId = 13, Fund = "Other" }] });
+        var service = new DonorExportService(donorService, context, authorization);
+
+        var result = await service.GetSelectionExportDataAsync("7", false, 13, "All", true, null, null);
+
+        Assert.False(result.FundsAuthorized);
+        Assert.Equal(0, donorService.ReadCount);
+    }
+
     [Fact]
     public async Task DonorExport_AllowsOnlyCurrentAccountMembership()
     {
@@ -200,13 +243,17 @@ public sealed class AuthorizationBoundaryTests
     private sealed class RecordingDonorService : IDonorService
     {
         public int ReadCount { get; private set; }
+        public AccountOptionDto? SelectedAccount { get; private set; }
+        public string? Selection { get; private set; }
+        public string? SelectionUserId { get; private set; }
+        public DateRange? SelectionRange { get; private set; }
         public string? GetLastQuery() => null;
         public Task<List<DonorSummaryDto>> GetAllDonorSummariesAsync(IEnumerable<string> fundNames) { ReadCount++; return Task.FromResult(new List<DonorSummaryDto>()); }
         public Task<List<DonorSummaryDto>> GetDonorSummariesAsync(IEnumerable<string> fundNames, DateRange dateRange) { ReadCount++; return Task.FromResult(new List<DonorSummaryDto>()); }
         public Task<List<DonorSummaryDto>> GetDonorSummariesAsync(string accountFund, DateRange dateRange) => Task.FromResult(new List<DonorSummaryDto>());
         public Task<List<DonorSummaryDto>> GetDonorSummariesForAccountAsync(int accountId, string accountFund, DateRange dateRange) => Task.FromResult(new List<DonorSummaryDto>());
         public Task<List<DonorSummaryDto>> GetDonorSummariesForAccountAsync(AccountOptionDto account, DateRange dateRange, string userId = "") => Task.FromResult(new List<DonorSummaryDto>());
-        public Task<List<DonorSummaryDto>> GetDonorSummariesForSelectionAsync(AccountOptionDto account, string selectedSubAccount, DateRange? dateRange, string userId = "") => Task.FromResult(new List<DonorSummaryDto>());
+        public Task<List<DonorSummaryDto>> GetDonorSummariesForSelectionAsync(AccountOptionDto account, string selectedSubAccount, DateRange? dateRange, string userId = "") { ReadCount++; SelectedAccount = account; Selection = selectedSubAccount; SelectionRange = dateRange; SelectionUserId = userId; return Task.FromResult(new List<DonorSummaryDto>()); }
         public Task<List<DonorSummaryDto>> GetMissingGiftDonorsAsync(AccountOptionDto account, DateRange dateRange) => Task.FromResult(new List<DonorSummaryDto>());
         public Task WarmMissingGiftDonorsFromDataAsync(AccountOptionDto account, IReadOnlyList<DonationRecord> donations, DateRange dateRange, CancellationToken cancellationToken = default) => Task.CompletedTask;
         public Task<List<DonorSummaryDto>> GetAllDonorSummariesAsync(int accountId, string accountFund) => Task.FromResult(new List<DonorSummaryDto>());

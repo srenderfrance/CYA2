@@ -65,7 +65,7 @@ public sealed class CacheDataVersionMonitorService : BackgroundService
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(ex, "Cache data-version monitor check failed");
+                _logger.LogWarning("Cache data-version monitor check failed. ExceptionType={ExceptionType}", ex.GetType().Name);
             }
 
             try

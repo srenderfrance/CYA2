@@ -117,11 +117,9 @@
 
             await InvokeAsync(StateHasChanged);
         }
-        catch (Exception ex)
+        catch (Exception)
         {
-            _p.Status = string.Format(
-                GetLocalizedString("ErrorPollingProgress", "Error polling progress: {0}"),
-                ex.Message);
+            _p.Status = GetLocalizedString("SafeOperationError", "The operation could not be completed. Please try again.");
             await InvokeAsync(StateHasChanged);
         }
     }

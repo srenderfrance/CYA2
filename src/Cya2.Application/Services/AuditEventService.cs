@@ -38,10 +38,11 @@ public sealed class AuditEventService : IAuditEventService
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex,
-                "Audit event persistence failed. EventType={EventType} Outcome={Outcome}",
+            _logger.LogWarning(
+                "Audit event persistence failed. EventType={EventType} Outcome={Outcome} ExceptionType={ExceptionType}",
                 eventType,
-                outcome);
+                outcome,
+                ex.GetType().Name);
         }
     }
 }

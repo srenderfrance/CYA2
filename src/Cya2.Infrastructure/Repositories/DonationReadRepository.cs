@@ -1,7 +1,6 @@
 using Cya2.Core.Entities;
 using Cya2.Core.Interfaces;
 using Cya2.Core.ReadModels;
-using Cya2.Core.Utilities;
 using Dapper;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
@@ -32,7 +31,7 @@ public sealed class DonationReadRepository : IDonationReadRepository
         }
 
         const string sql = @"
-SELECT DISTINCT TRIM(InternName)
+SELECT DISTINCT InternName COLLATE utf8mb4_0900_bin
 FROM DonationData
 WHERE InternName IS NOT NULL
   AND TRIM(InternName) <> ''";
@@ -71,6 +70,9 @@ GROUP BY Fund";
 SELECT
     d.Id,
     d.DonorId,
+    d.ConstituentId,
+    d.IsSoftCredit,
+    dn.IdentityKey AS DonorIdentityKey,
     dn.DisplayName AS DonorDisplayName,
     d.Date,
     d.Frequency,
@@ -355,63 +357,14 @@ WHERE dn.DisplayName LIKE @SearchTerm
             return new List<DonationRecord>();
         }
 
-        // Imported intern designations can vary in name order and punctuation, so lookup accepts normalized equivalents.
-        var criteria = InternAccountUtility.CreateDesignationCriteria(internName);
-
         await using var conn = new MySqlConnection(ConnStr);
 
         var rows = await conn.QueryAsync<DonationRecord>(
             $@"{DonationProjection}
 WHERE d.Date >= @StartDate
   AND d.Date <= @EndDate
-  AND (
-      d.InternName COLLATE utf8mb4_0900_ai_ci = @InternName COLLATE utf8mb4_0900_ai_ci
-      OR (@HasAlternateDesignation = 1 AND d.InternName COLLATE utf8mb4_0900_ai_ci = @AlternateDesignation COLLATE utf8mb4_0900_ai_ci)
-      OR (
-          LOCATE(',', d.InternName) > 0
-          AND TRIM(CONCAT(
-              TRIM(SUBSTRING_INDEX(d.InternName, ',', -1)),
-              ' ',
-              TRIM(SUBSTRING_INDEX(d.InternName, ',', 1))
-          )) COLLATE utf8mb4_0900_ai_ci = @InternName COLLATE utf8mb4_0900_ai_ci
-      )
-      OR (
-          @HasAlternateDesignation = 1
-          AND LOCATE(',', d.InternName) > 0
-          AND TRIM(CONCAT(
-              TRIM(SUBSTRING_INDEX(d.InternName, ',', -1)),
-              ' ',
-              TRIM(SUBSTRING_INDEX(d.InternName, ',', 1))
-          )) COLLATE utf8mb4_0900_ai_ci = @AlternateDesignation COLLATE utf8mb4_0900_ai_ci
-      )
-      OR (
-          @HasNameTokens = 1
-          AND d.InternName IS NOT NULL
-          AND d.InternName COLLATE utf8mb4_0900_ai_ci LIKE @FirstToken COLLATE utf8mb4_0900_ai_ci
-          AND d.InternName COLLATE utf8mb4_0900_ai_ci LIKE @LastToken COLLATE utf8mb4_0900_ai_ci
-      )
-      OR (
-          LOWER(REPLACE(REPLACE(REPLACE(REPLACE(COALESCE(d.InternName,''), ' ', ''), ',', ''), '.', ''), '-', '')) = @DesignationLookupKey
-      )
-      OR (
-          @HasAlternateLookupKey = 1
-          AND LOWER(REPLACE(REPLACE(REPLACE(REPLACE(COALESCE(d.InternName,''), ' ', ''), ',', ''), '.', ''), '-', '')) = @AlternateLookupKey
-      )
-  )",
-            new
-            {
-                StartDate = startDate,
-                EndDate = endDate,
-                InternName = criteria.InternDesignationName,
-                AlternateDesignation = criteria.AlternateDesignation,
-                HasAlternateDesignation = criteria.HasAlternateDesignation ? 1 : 0,
-                HasNameTokens = criteria.HasNameTokens ? 1 : 0,
-                FirstToken = $"%{criteria.FirstName}%",
-                LastToken = $"%{criteria.LastName}%",
-                DesignationLookupKey = criteria.DesignationLookupKey,
-                AlternateLookupKey = criteria.AlternateLookupKey,
-                HasAlternateLookupKey = criteria.HasAlternateLookupKey ? 1 : 0
-            });
+  AND d.InternName COLLATE utf8mb4_0900_bin = @InternName COLLATE utf8mb4_0900_bin",
+            new { StartDate = startDate, EndDate = endDate, InternName = internName });
 
         var rowList = rows.ToList();
         _logger.LogInformation(
@@ -500,11 +453,10 @@ WHERE d.Date >= @StartDate
 
         var names = internNames
             .Where(name => !string.IsNullOrWhiteSpace(name))
-            .Select(name => name.Trim())
-            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Distinct(StringComparer.Ordinal)
             .ToList();
 
-        var result = names.ToDictionary(name => name, _ => new List<DonationRecord>(), StringComparer.OrdinalIgnoreCase);
+        var result = names.ToDictionary(name => name, _ => new List<DonationRecord>(), StringComparer.Ordinal);
         if (names.Count == 0)
         {
             return result;
@@ -513,7 +465,7 @@ WHERE d.Date >= @StartDate
         const string sql = $@"{DonationProjection}
 WHERE d.Date >= @StartDate
   AND d.Date <= @EndDate
-  AND d.InternName COLLATE utf8mb4_0900_ai_ci IN @InternNames";
+  AND d.InternName COLLATE utf8mb4_0900_bin IN @InternNames";
 
         await using var conn = new MySqlConnection(ConnStr);
         var rows = (await conn.QueryAsync<DonationRecord>(
@@ -527,7 +479,7 @@ WHERE d.Date >= @StartDate
 
         foreach (var row in rows)
         {
-            if (!string.IsNullOrWhiteSpace(row.InternName) && result.TryGetValue(row.InternName.Trim(), out var donations))
+            if (!string.IsNullOrWhiteSpace(row.InternName) && result.TryGetValue(row.InternName, out var donations))
             {
                 donations.Add(row);
             }

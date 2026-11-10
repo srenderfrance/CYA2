@@ -1,4 +1,4 @@
-using System.Security.Cryptography;
+﻿using System.Security.Cryptography;
 using System.Text;
 using MySql.Data.MySqlClient;
 
@@ -10,85 +10,20 @@ const string baselineFileName = "001_InitialSchema.sql";
 try
 {
     var options = MigrationOptions.Parse(args);
-    var migrationDirectory = Path.GetFullPath(options.MigrationsDirectory);
-    var baselinePath = Path.GetFullPath(options.BaselineScript);
-    if (!Directory.Exists(migrationDirectory))
+    if (!options.Initialize)
     {
-        throw new InvalidOperationException($"Migration directory was not found: {migrationDirectory}");
+        throw new InvalidOperationException("Pre-production schema setup requires --initialize and an empty database.");
     }
 
+    if (args.Contains("--migrations-directory", StringComparer.Ordinal))
+    {
+        throw new InvalidOperationException("Incremental migrations are not supported during pre-production.");
+    }
+
+    var baselinePath = Path.GetFullPath(options.BaselineScript);
     if (!File.Exists(baselinePath))
     {
         throw new InvalidOperationException($"Initial schema script was not found: {baselinePath}");
-    }
-
-    var migrations = MigrationFile.LoadAll(migrationDirectory);
-    await using var connection = new MySqlConnection(options.ConnectionString);
-    await connection.OpenAsync();
-
-    await AcquireLockAsync(connection);
-    try
-    {
-        await ExecuteAsync(connection, $"CREATE TABLE IF NOT EXISTS `{historyTable}` (MigrationId VARCHAR(32) NOT NULL PRIMARY KEY, ScriptName VARCHAR(255) NOT NULL, Checksum CHAR(64) NOT NULL, AppliedAt DATETIME NOT NULL, AppliedBy VARCHAR(255) NOT NULL, ExecutionDurationMs BIGINT NOT NULL DEFAULT 0) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;");
-        var applied = await LoadAppliedAsync(connection);
-        if (options.Initialize)
-        {
-            await InitializeDatabaseAsync(connection, baselinePath, applied);
-            applied = await LoadAppliedAsync(connection);
-        }
-
-        ValidateAppliedChecksums(applied, migrations, baselinePath);
-
-        foreach (var migration in migrations.Where(m => !applied.ContainsKey(m.Id)))
-        {
-            Console.WriteLine($"Applying {migration.FileName}...");
-            var started = System.Diagnostics.Stopwatch.StartNew();
-            await using var transaction = await connection.BeginTransactionAsync();
-            try
-            {
-                foreach (var statement in migration.Statements)
-                {
-                    await ExecuteAsync(connection, statement, transaction);
-                }
-
-                await ExecuteAsync(connection, $"INSERT INTO `{historyTable}` (MigrationId, ScriptName, Checksum, AppliedAt, AppliedBy, ExecutionDurationMs) VALUES (@id, @name, @checksum, UTC_TIMESTAMP(), @appliedBy, @duration);", transaction,
-                    new MySqlParameter("@id", migration.Id),
-                    new MySqlParameter("@name", migration.FileName),
-                    new MySqlParameter("@checksum", migration.Checksum),
-                    new MySqlParameter("@appliedBy", Environment.UserName),
-                    new MySqlParameter("@duration", started.ElapsedMilliseconds));
-                await transaction.CommitAsync();
-            }
-            catch
-            {
-                await transaction.RollbackAsync();
-                throw;
-            }
-
-            Console.WriteLine($"Applied {migration.FileName}.");
-        }
-
-        Console.WriteLine(migrations.All(m => applied.ContainsKey(m.Id)) && applied.ContainsKey(baselineId)
-            ? "Database schema is up to date."
-            : "Database migrations completed.");
-    }
-
-    finally
-    {
-        await ReleaseLockAsync(connection);
-    }
-
-static async Task InitializeDatabaseAsync(MySqlConnection connection, string baselinePath, Dictionary<string, AppliedMigration> applied)
-{
-    var applicationTableCount = await GetApplicationTableCountAsync(connection);
-    if (applicationTableCount > 0)
-    {
-        throw new InvalidOperationException("Initialization requires an empty database. Application tables already exist; omit --initialize for an existing database.");
-    }
-
-    if (applied.ContainsKey(baselineId))
-    {
-        return;
     }
 
     var content = await File.ReadAllTextAsync(baselinePath, Encoding.UTF8);
@@ -98,29 +33,30 @@ static async Task InitializeDatabaseAsync(MySqlConnection connection, string bas
         throw new InvalidOperationException($"Initial schema script '{baselinePath}' is empty.");
     }
 
-    var checksum = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(content))).ToLowerInvariant();
-    Console.WriteLine($"Initializing database with {baselineFileName}...");
-    var started = System.Diagnostics.Stopwatch.StartNew();
-    foreach (var statement in statements)
+    await using var connection = new MySqlConnection(options.ConnectionString);
+    await connection.OpenAsync();
+    await AcquireLockAsync(connection);
+    try
     {
-        await ExecuteAsync(connection, statement);
+        await using var countCommand = new MySqlCommand(
+            "SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = DATABASE();", connection);
+        if (Convert.ToInt32(await countCommand.ExecuteScalarAsync()) != 0)
+        {
+            throw new InvalidOperationException("Initialization requires an empty database.");
+        }
+
+        Console.WriteLine($"Initializing database with {baselineFileName}...");
+        foreach (var statement in statements)
+        {
+            await ExecuteAsync(connection, statement);
+        }
+
+        Console.WriteLine($"Initialized database with {baselineFileName}.");
     }
-
-    await ExecuteAsync(connection, $"INSERT INTO `{historyTable}` (MigrationId, ScriptName, Checksum, AppliedAt, AppliedBy, ExecutionDurationMs) VALUES (@id, @name, @checksum, UTC_TIMESTAMP(), @appliedBy, @duration);", null,
-        new MySqlParameter("@id", baselineId),
-        new MySqlParameter("@name", baselineFileName),
-        new MySqlParameter("@checksum", checksum),
-        new MySqlParameter("@appliedBy", Environment.UserName),
-        new MySqlParameter("@duration", started.ElapsedMilliseconds));
-    Console.WriteLine($"Initialized database with {baselineFileName}.");
-}
-
-static async Task<int> GetApplicationTableCountAsync(MySqlConnection connection)
-{
-    await using var command = new MySqlCommand("SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME <> @historyTable;", connection);
-    command.Parameters.AddWithValue("@historyTable", historyTable);
-    return Convert.ToInt32(await command.ExecuteScalarAsync());
-}
+    finally
+    {
+        await ReleaseLockAsync(connection);
+    }
 
     return 0;
 }

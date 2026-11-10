@@ -157,10 +157,10 @@ ORDER BY Date";
         catch (Exception ex)
         {
             _logger.LogError(
-                ex,
-                "Accounting batch load failed: accountCount={AccountCount}, elapsedMs={ElapsedMs}",
+                "Accounting batch load failed: accountCount={AccountCount}, elapsedMs={ElapsedMs}, exceptionType={ExceptionType}",
                 accounts.Count,
-                stopwatch.ElapsedMilliseconds);
+                stopwatch.ElapsedMilliseconds,
+                ex.GetType().Name);
             throw;
         }
     }

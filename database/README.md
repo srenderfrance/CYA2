@@ -22,12 +22,22 @@ It does not contain production data, fake seed data, database users, passwords, 
 
 This describes the schema script, not the entire directory: opt-in synthetic SQL data is separately available under [fixtures](fixtures/SYNTHETIC_DATA_README.md). See the [production review](../docs/PRODUCTION_REVIEW.md) for unverified import/staging/rollback behavior and pre-live database acceptance.
 
-Create the target database using the deployment environment or a database administrator. For a new database, the standalone initialization/migration runner applies the baseline and future migrations:
+Create an empty target database with the database default character set `utf8mb4` and collation `utf8mb4_0900_ai_ci`. Verify the defaults even when the hosting provider created the database:
+
+```sql
+SELECT SCHEMA_NAME, DEFAULT_CHARACTER_SET_NAME, DEFAULT_COLLATION_NAME
+FROM information_schema.SCHEMATA
+WHERE SCHEMA_NAME = 'cya2_test';
+```
+
+Substitute the actual database name. Import staging relies on the database default; `utf8mb3` combined with `utf8mb4` collations can produce MySQL error 1253. Schema initialization's session `SET NAMES` and individual table defaults do not change the database default. See [Azure setup](../docs/AZURE_SETUP.md#4-create-the-fresh-database-and-initialize-the-schema) for a database-default correction and safety checks. That change does not convert existing tables or data.
+
+For a new empty database, the standalone initializer applies the initial schema:
 
 For example, using the MySQL client with credentials supplied outside the repository:
 
 ```text
-dotnet run --project tools/Cya2.DatabaseMigrator -- --connection-string "$env:CYA2_SCHEMA_CONNECTION_STRING" --initialize
+dotnet run --project tools/Cya2.DatabaseMigrator -- --initialize
 ```
 
 The target database must already exist, and `CYA2_SCHEMA_CONNECTION_STRING` must use the setup account. The application runtime account should not need `CREATE`, `ALTER`, `DROP`, or other schema-management permissions. The application assumes that this schema setup has completed successfully before imports are run. Permission to create temporary tables is required for import transactions, but those tables are session-scoped and not persistent.
@@ -47,20 +57,5 @@ Schema setup and source data import are separate operations:
 
 ## Future schema changes
 
-Once this baseline is established, add later structural changes as new, ordered scripts under `migrations`, for example:
-
-```text
-002_AddImportExpiration.sql
-003_AddNewIndex.sql
-```
-
-Run the standalone migration tool with the schema setup account for later changes:
-
-```powershell
-dotnet run --project tools/Cya2.DatabaseMigrator -- --connection-string "$env:CYA2_SCHEMA_CONNECTION_STRING"
-```
-
-The runner applies scripts in order, records them in `Cya2SchemaMigrations`, prevents concurrent runs with a MySQL named lock, and fails if an applied script's checksum changes. The initial script uses `CREATE TABLE IF NOT EXISTS` for clean setup and limited safe re-execution; it is not intended to repair an existing database whose columns or constraints have drifted from the schema. `--initialize` is rejected when application tables already exist.
-
-For a database that was already initialized with `schema/001_InitialSchema.sql`, verify the schema before treating that baseline as adopted. The runner intentionally does not infer or silently create a baseline history record. See `database/migrations/README.md` for migration authoring and baseline guidance.
+During pre-production, incorporate schema changes into `schema/001_InitialSchema.sql`; the initializer does not apply incremental migrations or record schema history. It takes a named lock and rejects nonempty databases. MySQL DDL may leave partial changes if initialization fails, so investigate before retrying. Existing databases with data or schema drift require a separately reviewed, non-destructive reconciliation and recovery plan; do not rerun initialization or drop existing data as a shortcut.
 

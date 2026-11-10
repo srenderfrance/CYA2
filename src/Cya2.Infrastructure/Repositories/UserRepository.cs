@@ -36,18 +36,10 @@ public sealed class UserRepository : IUserRepository
     public async Task<List<User>> GetAllAsync()
     {
         _dbGuard.ThrowIfUnavailable();
-        try
-        {
-            const string sql = "SELECT Id, GoogleId, Email, Name, Language, AuthLevel, DefaultAccount FROM Users ORDER BY Name";
-            await using var conn = new MySqlConnection(ConnStr);
-            var rows = await conn.QueryAsync<User>(sql);
-            return rows.ToList();
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "UserRepository.GetAllAsync failed.");
-            return new List<User>();
-        }
+        const string sql = "SELECT Id, GoogleId, Email, Name, Language, AuthLevel, DefaultAccount FROM Users ORDER BY Name";
+        await using var conn = new MySqlConnection(ConnStr);
+        var rows = await conn.QueryAsync<User>(sql);
+        return rows.ToList();
     }
 
     public async Task<User> AddAsync(User entity)

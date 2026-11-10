@@ -174,7 +174,7 @@ public sealed class AdminRecentAccountSnapshotService : IAdminRecentAccountSnaps
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Admin account cache warmup failed");
+            _logger.LogWarning("Admin account cache warmup failed. ExceptionType={ExceptionType}", ex.GetType().Name);
         }
         finally
         {

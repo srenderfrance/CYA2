@@ -56,9 +56,9 @@
             var subAccounts = await AdminPreloadService.GetSubAccountsAsync();
             accounts = FundReferenceTableService.BuildRows(primaryAccounts, subAccounts);
         }
-        catch (Exception ex)
+        catch (Exception)
         {
-            errorMessage = $"Error loading accounts: {ex.Message}";
+            errorMessage = Localizer["SafeOperationError"];
         }
     }
 
@@ -75,9 +75,9 @@
 
             await JS.InvokeVoidAsync("navigator.clipboard.writeText", sb.ToString());
         }
-        catch (Exception ex)
+        catch (Exception)
         {
-            errorMessage = $"Error copying table: {ex.Message}";
+            errorMessage = Localizer["SafeOperationError"];
         }
     }
 }

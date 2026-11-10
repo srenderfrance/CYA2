@@ -1,23 +1,23 @@
-# CYA2: Fresh Production Installation on Azure
+# CYA2: Azure App Service Linux and MySQL Setup
 
-This guide provisions a **new production installation**, not a migration of an existing application database. It targets **Windows Azure App Service**, **Azure Database for MySQL Flexible Server**, and a custom HTTPS domain. Azure resources are created using the **Azure Portal**, not Azure CLI.
+This guide covers a **test deployment**, not approval for production use or migration of an existing application database. It targets **Linux Azure App Service with .NET 10** and **Azure Database for MySQL Flexible Server**. Resources can be configured in the Azure Portal; publication is manual and does not require a GitHub connection.
 
-The database starts empty. The repository schema runner creates the application tables; approved donor-system and accounting exports are subsequently uploaded through Admin. Do not copy a development database or synthetic test data into production.
+Use a separate, clearly identified test app and empty test database, even when using a production Azure subscription or server. Do not initialize, overwrite, or load test data into a database used by another application or for real operations. Use synthetic data for testing. Production use requires separate security, recovery, data reconciliation, and operational approval.
 
-Related documentation: [local testing setup](LOCAL_SETUP.md), [schema migration instructions](../database/migrations/README.md), and [cache architecture](../src/Cya2.Web/docs/CACHE_ARCHITECTURE.md).
+The repository schema runner creates the application tables for a fresh database; the web application does not initialize them. Related documentation: [local testing setup](LOCAL_SETUP.md), [database tests](DATABASE_TESTS.md), and [cache architecture](../src/Cya2.Web/docs/CACHE_ARCHITECTURE.md).
 
 ## 1. Decisions and prerequisites
 
 Have these available before provisioning:
 
 - An Azure subscription and permission to create resource groups, App Service, MySQL, virtual networks, Key Vault, and role assignments. Use MFA and least-privilege administrator access.
-- A production domain and access to its DNS provider. Examples below use `<app.example.org>`; substitute your actual host without angle brackets.
+- The App Service default HTTPS hostname, or an approved custom domain and access to its DNS provider. Examples below use `<app.example.org>` for whichever hostname is selected.
 - A Google Cloud project and OAuth web client approved for the organization, including the first administrator's Google account.
 - A clean checkout of this repository, Visual Studio with ASP.NET/web development tooling, and the .NET SDK selected by `global.json`. All active projects target .NET 10.
 - A secure setup workstation with MySQL Workbench and network access to the private database. The private-network options are described below.
 - An agreed Azure region, monthly budget, backup policy, recovery objectives, and staff responsible for secrets and updates. Set a budget alert in **Cost Management**; an alert is not a spending cap.
 
-Use a dedicated production resource group. Keep App Service and MySQL in the same region. Choose service tiers based on measured memory, import performance, availability, and budget rather than assuming Free/shared hosting is production-ready.
+Use separate test resources where possible and get approval before sharing an existing server. Keep App Service and MySQL in the same region where practical. Choose service tiers based on VNet integration support, measured memory, import performance, availability, and budget rather than assuming Free/shared hosting is production-ready.
 
 ### Important current application constraints
 
@@ -29,11 +29,11 @@ Use a dedicated production resource group. Keep App Service and MySQL in the sam
 - Google OAuth is implemented by the application. Do not enable App Service Authentication (Easy Auth) as an additional sign-in layer unless separately designed and tested.
 - The app currently uses a MySQL password connection string, not an Entra token-based database connection. Managed identity below is used for **Key Vault access**, not a claim that database authentication is passwordless.
 
-## 2. Create the production resource group and network
+## 2. Prepare the resource group and network
 
 In the Azure Portal:
 
-1. Open **Resource groups > Create**. Select the production subscription, resource group name, and region.
+1. Select the approved subscription and resource group, or create a dedicated test resource group in the approved region.
 2. Open **Virtual networks > Create** in that group and region. Choose non-overlapping address ranges with the network administrator.
 3. Create separate subnets for:
    - App Service outbound VNet integration, delegated to `Microsoft.Web/serverFarms`.
@@ -49,11 +49,13 @@ Use an existing approved VPN/connected administration network, or create a short
 
 A developer's laptop cannot reach a private MySQL server just because it has Azure Portal access. The schema runner and Workbench must run from a network that can resolve and reach the database's private endpoint/address. Bastion connects you to the VM; it does not automatically give your laptop private MySQL connectivity. Budget for VM/Bastion charges and remove temporary resources after setup.
 
-## 3. Create Azure Database for MySQL Flexible Server
+## 3. Prepare Azure Database for MySQL Flexible Server
+
+If an approved server already exists, confirm its engine version, network, DNS, TLS, backups, and access settings below; do not change shared-server settings without authorization. Create a separate empty test database in section 4.
 
 1. In the Portal, open **Azure Database for MySQL flexible servers > Create**.
-2. Select the production resource group and region. Choose a supported MySQL version **8.0 or later** compatible with the repository's `utf8mb4_0900_ai_ci` schema. Validate the selected engine version against the schema/imports before go-live; do not choose MariaDB.
-3. Select an appropriate production compute/storage tier. Configure storage growth and capacity alerts. Enable high availability if required by the agreed availability target and supported by the selected tier/region.
+2. Select the approved resource group and region. Choose a supported MySQL version **8.0 or later** compatible with the repository's `utf8mb4_0900_ai_ci` schema. Validate the selected engine version against the schema/imports; do not choose MariaDB.
+3. Select an appropriate compute/storage tier. Configure storage growth and capacity alerts. Enable high availability if required by the agreed availability target and supported by the selected tier/region.
 4. Create a strong server administrator credential. Store it in the organization's restricted administrative secret store. It is not the application's runtime credential.
 5. Under **Networking**, select **Private access (VNet integration)** and the dedicated MySQL delegated subnet. Create/select its private DNS zone and ensure it is linked to the VNet used by App Service and the setup machine.
 6. Configure backup retention (for example 30 days where supported) according to policy. Consider geo-redundant backup **at creation time** if the recovery requirements call for it and the region supports it. Record the choice; it is not interchangeable with zone high availability.
@@ -73,12 +75,32 @@ Azure Portal provisioning creates the server, not CYA2's schema or restricted ru
 In Workbench on the secure setup host, create a new database:
 
 ```sql
-CREATE DATABASE cya2_prod
+CREATE DATABASE cya2_test
   CHARACTER SET utf8mb4
   COLLATE utf8mb4_0900_ai_ci;
 ```
 
-Use a separate schema/setup identity from the runtime identity. For the one-time initialization, the Azure MySQL administrator can act as the setup identity; never save its credential in App Service. For ongoing updates, have the database administrator create a dedicated schema-management user with only the permissions needed by the reviewed migration scripts.
+If the database already exists, do not create or recreate it. Confirm that it is the intended empty test database and check its database-level defaults before initialization:
+
+```sql
+SELECT SCHEMA_NAME, DEFAULT_CHARACTER_SET_NAME, DEFAULT_COLLATION_NAME
+FROM information_schema.SCHEMATA
+WHERE SCHEMA_NAME = 'cya2_test';
+```
+
+Replace `cya2_test` with the exact database name. The expected values are `utf8mb4` and `utf8mb4_0900_ai_ci`; the server's default and the tables' defaults are separate. Donation import temporary tables rely on the database default, and an incompatible default such as `utf8mb3` can cause MySQL error 1253. The schema initializer's `SET NAMES` and explicit permanent-table settings do not change the database default.
+
+For a confirmed test database with an incorrect default, a database administrator can review and apply the following change after confirming the target and backup/recovery requirements. Replace the identifier with the exact database name and retain backticks, especially for names containing hyphens:
+
+```sql
+ALTER DATABASE `cya2_test`
+  CHARACTER SET utf8mb4
+  COLLATE utf8mb4_0900_ai_ci;
+```
+
+This changes defaults for subsequently created objects; it does not convert existing tables, columns, or data. Re-run the read-only query above. For a populated or shared database, assess existing table/column collations, application compatibility, backup and recovery separately; do not convert tables, drop data, or reinitialize as a shortcut. After a confirmed default change, restart the app outside import activity so fresh connections pick up the setting, and validate a synthetic import and its outcome. Reconcile any failed or uncertain import before retrying; see [import safety](IMPORT_SAFETY.md).
+
+Use a separate schema/setup identity from the runtime identity. For the one-time initialization, the Azure MySQL administrator can act as the setup identity; never save its credential in App Service. Replace `cya2_test` in the examples with the name of the separate empty test database if needed.
 
 From the **repository root** on that setup host, provide the setup connection through a process environment variable. Avoid placing the password in shell history or passing it as a command-line argument:
 
@@ -99,56 +121,54 @@ finally {
 Enter a connection string with this shape into the hidden prompt (substitute values, and use the CA/trust configuration appropriate to the setup host):
 
 ```text
-Server=<mysql-server>.mysql.database.azure.com;Port=3306;Database=cya2_prod;User ID=<setup-user>;Password=<setup-password>;SslMode=VerifyFull;
+Server=<mysql-server>.mysql.database.azure.com;Port=3306;Database=cya2_test;User ID=<setup-user>;Password=<setup-password>;SslMode=VerifyFull;
 ```
 
 `MySql.Data` uses `VerifyFull` for certificate and hostname verification. Its certificate trust must be valid on the machine making the connection; if supplying an explicit CA file, use the connector's `SslCa` setting and an existing secured file path. Do not paste a workstation CA path into App Service configuration.
 
-The runner reads `CYA2_SCHEMA_CONNECTION_STRING`, applies `database/schema/001_InitialSchema.sql`, records baseline `000001`, and applies scripts in `database/migrations`, including the audit schema. It validates script checksums and serializes migrations with a database lock. Refresh Workbench and verify `Users`, `Accounts`, `SubAccounts`, `Donors`, `DonorContacts`, `DonationData`, `AccountingData`, `AuditEvents`, and `Cya2SchemaMigrations` exist.
+The runner reads `CYA2_SCHEMA_CONNECTION_STRING`, takes a database lock, checks that the database is empty, and applies `database/schema/001_InitialSchema.sql`. Refresh Workbench and verify `Users`, `Accounts`, `SubAccounts`, `Donors`, `DonorContacts`, `DonationData`, `AccountingData`, and `AuditEvents` exist. During pre-production, it does not create schema migration history or apply incremental migrations.
 
-- `--initialize` requires an empty database. If it fails partway, investigate before retrying; MySQL DDL is not reliably rolled back as a whole. Recreate only this confirmed-empty/new deployment database when appropriate.
-- For subsequent releases, run the same runner **without `--initialize`**, after a backup and review of pending scripts.
-- Do not replace the runner with manually opening only the baseline SQL: that skips later migrations and their history/checksums.
+- `--initialize` requires an empty database. If it fails partway, investigate before retrying; MySQL DDL is not reliably rolled back as a whole. Only recreate a disposable test database after confirming its identity and authorization; never drop a shared or existing database as a shortcut.
+- A repeat run against a nonempty database is rejected. Running without `--initialize` and incremental migrations are not supported by the current runner. Existing databases and future schema changes need a separately reviewed, non-destructive reconciliation plan and backup.
 
 ### Create the restricted runtime MySQL user
 
 Using Workbench as the database administrator, substitute a strong generated password and execute:
 
 ```sql
-CREATE USER 'cya2_app'@'%' IDENTIFIED BY '<generated-runtime-password>' REQUIRE SSL;
+CREATE USER 'cya2_test_app'@'%' IDENTIFIED BY '<generated-runtime-password>' REQUIRE SSL;
 GRANT SELECT, INSERT, UPDATE, DELETE, CREATE TEMPORARY TABLES
-  ON cya2_prod.* TO 'cya2_app'@'%';
-SHOW GRANTS FOR 'cya2_app'@'%';
+	ON cya2_test.* TO 'cya2_test_app'@'%';
+SHOW GRANTS FOR 'cya2_test_app'@'%';
 ```
 
 `%` is a MySQL host pattern, not permission to bypass Azure network isolation. Keep private networking and least-privilege network rules in place. Do not grant the runtime user `CREATE`, `ALTER`, `DROP`, `FILE`, `GRANT OPTION`, or global administration rights. Donation imports require session-scoped temporary tables; those permissions do not authorize persistent schema changes. The schema migration identity, runtime MySQL identity, Azure identity, and application Admin user are four separate concepts.
 
 Verify the runtime user can connect over verified TLS and read the initialized tables. Store its connection string in Key Vault in the next steps; never commit the SQL with a real password or put credentials in a support ticket.
 
-## 5. Create Windows App Service
+## 5. Prepare Linux App Service
 
 1. In the Portal, open **App Services > Create > Web App**.
-2. Select the same subscription, resource group, and region. Choose **Publish: Code**, **Operating System: Windows**, and a **.NET 10** runtime stack.
-3. Confirm the selected runtime actually supports .NET 10 in the target service/region before publishing. If it is unavailable, stop and choose a separately validated self-contained/container hosting path; do not select .NET 8 for this .NET 10 application.
-4. Create/select a dedicated production App Service plan. Standard or higher is a practical baseline for this guide; size it for the app's cache footprint and import memory, and choose a higher availability tier if policy requires it.
+2. Select the approved subscription, resource group, and region. Choose **Publish: Code**, **Operating System: Linux**, and a **.NET 10** runtime stack. For an existing app, verify these settings and the target before publishing.
+3. Confirm the selected Linux runtime actually supports .NET 10 in the target service/region before publishing. If it is unavailable, stop and choose a separately validated self-contained/container hosting path; do not select .NET 8 for this .NET 10 application.
+4. Create/select an approved App Service plan for the test. Standard or higher is a practical baseline for this guide; size it for VNet integration, the app's cache footprint and import memory.
 5. Set the plan/app to **one instance**. Disable autoscale for this initial deployment.
 6. After creation, use **Settings > Configuration / General settings** (Portal labels may vary) to set:
    - **Always On: On**.
    - **Web sockets: On** for Blazor's SignalR transport.
    - **ARR affinity / session affinity: On**.
    - **HTTPS Only: On**, minimum inbound TLS **1.2 or higher**, and **FTPS: Disabled** unless an approved deployment process specifically needs it.
-   - Use a 64-bit worker for the published application.
 7. Leave App Service **Authentication** disabled; CYA2 handles Google sign-in itself.
 8. Under **Networking > VNet integration**, add outbound integration with the dedicated App Service subnet. Verify private DNS resolution and reachability to MySQL. Keep necessary outbound HTTPS access for Google OAuth and Azure secret retrieval.
 9. Under **Identity**, turn **System assigned** managed identity **On** and save.
 
-This guide uses Windows hosting to align with Visual Studio publishing and App Service's built-in ASP.NET Core hosting. Do not mix Linux startup-command instructions into this configuration.
+Use the built-in Linux .NET stack, not a custom container. The framework-dependent publish output contains `cya2.dll`. Start with the platform's default startup behavior; if detection fails, inspect the startup logs and configure the startup command `dotnet cya2.dll` in App Service's general configuration. Do not assume IIS or a Windows `web.config` controls Linux startup.
 
 ## 6. Key Vault and application settings
 
 ### Create and authorize Key Vault
 
-1. Create a production **Key Vault** in the resource group, using Azure RBAC permissions. Keep soft delete and purge protection enabled.
+1. Create or select an approved **Key Vault** for the test, using Azure RBAC permissions. Keep soft delete and purge protection enabled.
 2. Have a designated secret administrator create secrets for the runtime database connection string and Google OAuth client secret. Optionally store the client ID and temporary bootstrap values here as well.
 3. Under Key Vault **Access control (IAM)**, give the App Service's managed identity **Key Vault Secrets User**, scoped to the required vault/secrets. Do not give the app Secret Officer/Administrator privileges.
 4. Ensure the vault's networking permits secret retrieval by App Service. If using a private endpoint, configure its private DNS/VNet connectivity too. A role assignment alone does not bypass a vault firewall.
@@ -166,7 +186,7 @@ Open App Service **Settings > Environment variables** (older Portal versions: **
 | `Authentication__Google__ClientSecret` | Key Vault reference to the Google OAuth client secret |
 | `InitialAdminBootstrap__Email` | Temporary, exact Google email for the first Admin; preferably a Key Vault reference |
 | `InitialAdminBootstrap__Name` | Temporary Admin display name; preferably a Key Vault reference |
-| `AllowedHosts` | The custom hostname and actual App Service default hostname, separated by `;`, without scheme/path |
+| `AllowedHosts` | The selected App Service hostname and any approved custom hostname, separated by `;`, without scheme/path |
 | `CacheInvalidation__EnableDataVersionMonitor` | `true` |
 | `CacheInvalidation__MonitorIntervalMinutes` | `15` (initial repository default) |
 
@@ -179,7 +199,7 @@ A Key Vault reference value has this form:
 The **runtime** database secret has this form:
 
 ```text
-Server=<mysql-server>.mysql.database.azure.com;Port=3306;Database=cya2_prod;User ID=cya2_app;Password=<runtime-password>;SslMode=VerifyFull;
+Server=<mysql-server>.mysql.database.azure.com;Port=3306;Database=cya2_test;User ID=cya2_test_app;Password=<runtime-password>;SslMode=VerifyFull;
 ```
 
 Verify the CA chain is trusted by App Service as well as by the setup machine. Arrange a deployed CA bundle/trust configuration if required by current Azure MySQL certificate guidance; validate its accessibility after every deployment. Do not weaken TLS verification to make it work.
@@ -192,19 +212,21 @@ Do not enable development authentication bypasses or verbose production logging.
 
 ### Bind the domain
 
+For isolated testing using the App Service default HTTPS hostname, skip the custom-domain steps below and verify its HTTPS certificate. Otherwise:
+
 1. In App Service **Custom domains**, add `<app.example.org>`.
 2. At the domain's DNS provider, add the exact validation TXT and routing record displayed by the Portal. Typically a subdomain uses CNAME and the `asuid` verification record; apex domains may require an A record. Use the actual values shown for this web app, not an assumed `<name>.azurewebsites.net` format.
 3. Complete hostname validation and binding. Keep ownership verification records in place to reduce dangling-domain takeover risk.
 4. Under **Certificates**, create an App Service managed certificate if eligible, or upload/bind an approved certificate. Bind it to the custom hostname using SNI TLS.
 5. Verify HTTPS and certificate hostname/chain validity before registering or testing production sign-in. Managed certificate issuance/renewal has DNS and access requirements; keep those satisfied.
 
-Decide the canonical staff hostname. Use the custom HTTPS hostname consistently; avoid switching between the Azure default and custom host during a login because cookies are host-specific.
+For isolated testing, the App Service default HTTPS hostname can be used without a custom domain. Otherwise, decide the canonical staff hostname and bind its certificate as above. Use the chosen hostname consistently; avoid switching hosts during a login because cookies are host-specific.
 
 ### Configure Google Cloud
 
 In Google Cloud Console (outside Azure Portal):
 
-1. Configure the OAuth consent screen/branding and audience for the organization's intended Google users. Publish/verify the application as required; do not rely on a restricted test-user configuration for staff production access.
+1. Configure the OAuth consent screen/branding and audience. For testing, add the approved test users if the Google application is in testing mode. Publish/verify it as required before any staff production access.
 2. Create/select an OAuth **Web application** client.
 3. Add the exact authorized redirect URI:
 
@@ -217,43 +239,60 @@ https://<app.example.org>/signin-google
 
 The app's sign-in entry point is `/api/login`; `/signin-google` is the OAuth middleware callback, not a page to visit manually. Authentication cookies are Secure/HttpOnly and expire after four hours. If Google reports an HTTP redirect URI or a wrong hostname, inspect App Service forwarding/host configuration before changing production callback security. Do not register an HTTP callback as a workaround.
 
-## 8. Publish from Visual Studio
+## 8. Publish manually to Linux App Service
 
-This first-install path uses Visual Studio's UI rather than Azure CLI:
+Build and test the reviewed revision locally and confirm the test database schema matches it. Verify the target is the test app, not an app serving real users. Publish only the web project output; never include credentials, workbooks, or the repository itself.
 
-1. Build/test the reviewed revision locally and confirm the schema version matches that revision. Do not publish unreviewed changes to production.
-2. In Solution Explorer, right-click **src/Cya2.Web/cya2.csproj > Publish**.
-3. Choose **Azure > Azure App Service (Windows)**, sign into the intended tenant/subscription, and select the web app created above. Do not create a second web app accidentally through the wizard.
-4. Use **Release**, `net10.0`, and a framework-dependent deployment for the verified installed runtime. Check that the selected target/profile is production before each publish.
-5. Use an organization-approved publishing authentication method. If the publishing method requires SCM basic authentication, enable it only under the organization's deployment policy and disable it again when no longer needed; do not enable FTP/basic credentials globally as an undocumented shortcut. Never commit publish profiles containing credentials.
-6. Publish only the web project output. Do not deploy the repository, database credentials, exports, or development settings as web content.
-7. Confirm a successful deployment in App Service's deployment logs, then restart if required to apply configuration changes. Do not start an import during publish/restart.
+### Visual Studio
 
-### If using the repository GitHub Actions workflow instead
+1. In Solution Explorer, right-click **src/Cya2.Web/cya2.csproj > Publish**.
+2. Choose **Azure > Azure App Service (Linux)**, sign into the intended tenant/subscription, and select the existing test web app. Labels may vary with Visual Studio versions.
+3. Use **Release**, `net10.0`, and framework-dependent deployment with no Windows-specific runtime identifier. Verify the target and publish output; exclude `appsettings.Development.json`, `AccountImports` workbooks, and any secrets. The app expects the .NET 10 runtime installed in the selected Linux stack.
+4. Publish using an organization-approved authentication method. If the method requires SCM basic authentication, enable it only under the organization's policy and disable it again afterward. Never commit publish profiles containing credentials. Do not enable FTP/basic credentials globally as a shortcut.
+5. Check App Service deployment and startup logs. Do not run imports while publishing or restarting.
 
-The existing `.github/workflows/azure-webapps-dotnet-core.yml` is **not automatically pointed at your new production resource**. As currently committed it has `AZURE_WEBAPP_NAME: CYA2`, deploys on pushes to `main`, and names its GitHub environment `Development`.
+### Publish folder and ZIP
 
-Before enabling it for production, deliberately update/review the target app name and production GitHub environment/approvals. Its Azure login uses GitHub OIDC secrets `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, and `AZURE_SUBSCRIPTION_ID`; create the Entra app/service principal and GitHub federated credential with the exact repository/environment subject through the relevant Portal/GitHub UIs, and scope deployment rights to the target web app. Configure values in the GitHub scope referenced by the workflow. Do not substitute a long-lived Azure password or upload production secrets to the repository.
+Alternatively, create a fresh publish folder and ZIP from the repository root in PowerShell:
 
-The workflow builds/tests/publishes the web project but **does not initialize or migrate MySQL**. Do not run both an unreviewed Deployment Center-generated workflow and the repository workflow against the same production app. This guide does not change or enable CI/CD automatically.
+```powershell
+$publish = Join-Path $env:TEMP ("cya2-publish-" + [guid]::NewGuid())
+dotnet publish src/Cya2.Web/cya2.csproj -c Release -f net10.0 --no-self-contained -o $publish
+if ($LASTEXITCODE -ne 0) { throw "Publish failed; do not deploy." }
+Remove-Item (Join-Path $publish 'appsettings.Development.json') -Force -ErrorAction SilentlyContinue
+Remove-Item (Join-Path $publish 'AccountImports') -Recurse -Force -ErrorAction SilentlyContinue
+```
+
+Inspect the entire publish folder for workbooks, credentials, development-only files, and other unintended content before creating the archive. Then, from the repository root:
+
+```powershell
+New-Item -ItemType Directory -Path .\artifacts -Force | Out-Null
+Compress-Archive -Path "$publish\*" -DestinationPath .\artifacts\cya2-linux-deploy.zip -Force
+```
+
+The archive must contain `cya2.dll` and the other published files at its root, not an enclosing publish folder. Deploy the ZIP using an approved App Service ZIP deployment method and check the deployment logs; a ZIP is not itself a GitHub integration. Protect and delete the temporary publish folder and archive according to your organization's policy. Do not start imports during deployment.
+
+Do not enable GitHub deployment for this test unless separately approved. The repository has an existing workflow whose target and environment must be reviewed before it is connected to any app; neither manual publication nor the workflow initializes MySQL.
 
 ## 9. Bootstrap the first application Admin
 
 1. Confirm the database schema is initialized, the bootstrap values are configured, and the `Users` table is empty.
-2. Browse to the custom HTTPS hostname and sign in using exactly the Google email in `InitialAdminBootstrap__Email`.
+2. Browse to the selected HTTPS hostname and sign in using exactly the Google email in `InitialAdminBootstrap__Email`.
 3. The first successful matching sign-in creates the application Admin and links the Google identity. An arbitrary first visitor must not become Admin.
 4. Confirm the Admin page opens. Use application user management for later users and assign least-privilege roles.
 5. **Remove** both bootstrap environment variables from App Service and save. Remove/disable the temporary bootstrap secrets according to the secret policy. Restart only when no import is running, then sign out/in and verify the saved Admin still works without bootstrap settings.
 
 Bootstrap is disabled after any `Users` row exists; failed bootstrap is not a reason to insert ad hoc production users or weaken sign-in checks. Verify the empty database, exact Google email, secret-reference resolution, and application logs first.
 
-## 10. Populate and validate production data
+## 10. Populate and validate test data
+
+Use synthetic test data only. Do not import real donor or accounting data until production use and its privacy controls are separately approved.
 
 Using the application's Admin UI:
 
 1. Create/import the primary account definitions, then verify Class, Fund Num, Overhead, and subfund-to-primary relationships. Follow the actual account-import UI; do not assume donation uploads create all account configuration.
-2. Upload current approved donation-system and accounting exports, one import at a time. Never commit these workbooks or put them in the web deployment directory.
-3. Reconcile imported row counts, date coverage, donation totals, account balances, donor identity/contact display, and merged/separate subfund behavior against authoritative source reports.
+2. Upload synthetic donation and accounting workbooks through the Admin UI, one import at a time. Never commit workbooks or package them with the deployment.
+3. Reconcile imported row counts, date coverage, donation totals, account balances, donor identity/contact display, and merged/separate subfund behavior against the synthetic input and expected results.
 4. Verify Fund References includes subfunds and inherits parent metadata; compare Accounts Overview with expected balances/donations.
 5. Test Admin, Viewer, regular User, and Intern access through the UI using appropriately authorized test users. A Viewer must not gain Admin mutation access, and Intern selection must retain intern identity rather than a shared fund.
 6. Check English/Spanish language selection, Google sign-out/in, mobile navigation, copy/export, and real-time import progress. Confirm WebSockets work (normally a `101` upgrade for the Blazor connection), not merely that the first page loads.
@@ -261,11 +300,13 @@ Using the application's Admin UI:
 
 Do not announce go-live until reconciliation and access checks pass. The DB's Donors/DonorContacts are current-state display projections, not the organization's official donor database.
 
+The separate account-definition import currently reads exactly one `.xlsx` from the application's `AccountImports` directory under the content root; it is not the donation/accounting upload flow. That directory can be overwritten on redeployment or be read-only when running from a package. Do not put sensitive workbooks in the deployment ZIP or treat this directory as durable storage. Validate a secure, temporary handling method for synthetic account-import testing on the chosen deployment mode, or create accounts through Admin; this path needs a separate reviewed design before production use.
+
 ## 11. Operations, durability, and go-live checklist
 
 ### Secrets, data protection, and deployment safety
 
-- Verify ASP.NET Core Data Protection keys persist on the Windows App Service instance's platform-managed persistent storage. The app does not configure an explicit external key store; do not assume keys survive moving to another app/slot or that slot swaps preserve login cookies. Validate sign-in after restart/redeploy. If cross-slot/shared key storage or stronger key-at-rest controls are required, implement and review that separately before adopting slots/scale-out.
+- The app does not configure an explicit Data Protection key store. On Linux, verify the actual key location, persistence and access permissions after restart and redeployment; do not assume keys survive an app/slot move or that cookies survive a slot swap. Review key protection at rest and configure an appropriate durable store separately if needed before production use or scale-out.
 - Keep one instance and affinity. Do not add Azure SignalR and assume all caches/import queues become distributed.
 - Schedule schema changes, deployment, and restarts outside imports. MySQL backups do not protect in-memory previews or queued work.
 - Rotate runtime DB and OAuth secrets on a documented schedule; test new credentials, update Key Vault, refresh application configuration, and verify imports/sign-in after rotation.
@@ -282,12 +323,12 @@ Do not announce go-live until reconciliation and access checks pass. The DB's Do
 ### Final acceptance
 
 - [ ] Correct subscription/resource group/region; budget and operational ownership assigned.
-- [ ] Single Windows App Service worker, supported .NET 10 runtime, Always On, WebSockets, affinity, HTTPS, valid custom-domain certificate.
+- [ ] Single Linux App Service worker, supported .NET 10 runtime, Always On, WebSockets, affinity, HTTPS, and a valid certificate for the selected hostname.
 - [ ] Private MySQL DNS/network path works from App Service; no unrestricted public DB firewall rule.
-- [ ] New schema initialized with the repository runner and migration history verified.
+- [ ] Database defaults verified as `utf8mb4` / `utf8mb4_0900_ai_ci`; separate empty test database initialized with the repository runner and required tables verified, with no migration-history expectation.
 - [ ] Runtime user has data/temporary-table privileges only; setup/admin credential is not in App Service.
 - [ ] Key Vault references resolve using managed identity; secrets are absent from source and publish artifacts.
-- [ ] Custom-host Google login, bootstrap removal, role restrictions, and culture selection verified.
+- [ ] Selected-host Google login, bootstrap removal, role restrictions, and culture selection verified.
 - [ ] Accounts/imports reconciled through the UI; sensitive logs checked.
 - [ ] Backups, restore drill, alerts, and update process approved.
 - [ ] Temporary setup VM/Bastion access/resources removed when no longer required; retain an approved future migration access path.
@@ -299,9 +340,10 @@ Do not announce go-live until reconciliation and access checks pass. The DB's Do
 | Database-limited mode or `/database-error` | Correct runtime secret and database name; private DNS/VNet integration; port 3306; TLS chain and hostname; runtime user permissions; schema initialization. Limited mode deliberately avoids crashing the whole app. |
 | Key Vault reference remains unresolved | Managed identity enabled, Secrets User role scope/propagation, existing secret identifier, vault networking/DNS. Never copy secrets into tracked JSON to bypass this. |
 | Google `redirect_uri_mismatch` or correlation failure | Exact custom HTTPS callback, consistent browser hostname, correct OAuth client, HTTPS/forwarding and cookie settings; do not switch hosts mid-login. |
-| HTTP 500.30 / 500.31 or failed startup | Supported .NET 10 runtime/bitness, correct web-project publish output, App Service deployment/startup logs. Avoid permanently enabling public detailed error pages. |
+| Failed startup | Linux .NET 10 runtime, ZIP contents at archive root, `cya2.dll`, App Service deployment/startup logs, and startup command if platform detection fails. Avoid public detailed error pages. |
 | Static page works but interactions disconnect | WebSockets setting, browser/proxy policies, single worker/affinity, restarts, worker memory, and actual Blazor connection. |
-| Imports fail despite normal reads | `CREATE TEMPORARY TABLES` plus data permissions; schema/migration version; upload limits; no deployment/restart during import; inspect redacted diagnostics. Do not grant runtime schema-administrator rights. |
+| Donation import fails with MySQL error 1253 | Check the target database's default character set and collation using the read-only query in section 4. A non-`utf8mb4` default is a possible cause, not proof of the failing statement; reconcile import outcome before retrying and verify existing table collations separately. |
+| Imports fail despite normal reads | `CREATE TEMPORARY TABLES` plus data permissions; schema compatibility; upload limits; no deployment/restart during import; inspect redacted diagnostics. For account-definition imports also check the content-root `AccountImports` directory and deployment mode. Do not grant runtime schema-administrator rights. |
 | Login/session fails after switching slots/apps | Data Protection key-ring/application isolation and host-specific cookies; sign in afresh. Sharing key rings/slots requires deliberate design. |
 
 ## Microsoft reference documentation
@@ -312,6 +354,7 @@ Portal labels, runtime availability, certificate chains, and service limits chan
 - [MySQL private networking](https://learn.microsoft.com/en-us/azure/mysql/flexible-server/concepts-networking-vnet)
 - [MySQL TLS connectivity](https://learn.microsoft.com/en-us/azure/mysql/flexible-server/how-to-connect-tls-ssl)
 - [App Service general configuration](https://learn.microsoft.com/en-us/azure/app-service/configure-common)
+- [Deploy a ZIP package to App Service](https://learn.microsoft.com/en-us/azure/app-service/deploy-zip)
 - [App Service VNet integration](https://learn.microsoft.com/en-us/azure/app-service/overview-vnet-integration)
 - [App Service Key Vault references](https://learn.microsoft.com/en-us/azure/app-service/app-service-key-vault-references)
 - [Custom domains](https://learn.microsoft.com/en-us/azure/app-service/app-service-web-tutorial-custom-domain)

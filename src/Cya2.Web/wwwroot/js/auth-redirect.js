@@ -7,6 +7,8 @@ window.authHelpers = {
         }
 
         sessionStorage.setItem('cya2.auth.resume', JSON.stringify({
+            userId: typeof state.userId === 'string' ? state.userId : '',
+            role: typeof state.role === 'string' ? state.role : '',
             route: state.route,
             account: typeof state.account === 'string' ? state.account : '',
             startDate: typeof state.startDate === 'string' ? state.startDate : null,
@@ -16,6 +18,10 @@ window.authHelpers = {
     },
 
     consumeResumeState: function () {
+        if (sessionStorage.getItem('cya2.auth.resume.pending') !== '1') {
+            return null;
+        }
+        sessionStorage.removeItem('cya2.auth.resume.pending');
         const value = sessionStorage.getItem('cya2.auth.resume');
         sessionStorage.removeItem('cya2.auth.resume');
         if (!value) {
@@ -30,7 +36,12 @@ window.authHelpers = {
         }
     },
 
+    markResumeState: function () {
+        sessionStorage.setItem('cya2.auth.resume.pending', '1');
+    },
+
     clearResumeState: function () {
         sessionStorage.removeItem('cya2.auth.resume');
+        sessionStorage.removeItem('cya2.auth.resume.pending');
     }
 };

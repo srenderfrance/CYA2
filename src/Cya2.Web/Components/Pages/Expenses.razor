@@ -359,9 +359,9 @@
             expenseTotal = expenseData.ExpenseTotal;
             transferTotal = expenseData.TransferTotal;
         }
-        catch (Exception ex)
+        catch (Exception)
         {
-            errorMessage = $"Error initializing data: {ex.Message}";
+            errorMessage = Localizer["SafeOperationError"];
             isLoading = false;
         }
         finally
@@ -410,9 +410,9 @@
             }
             await LoadExpenseData(canAccessAllAccounts);
         }
-        catch (Exception ex)
+        catch (Exception)
         {
-            errorMessage = $"Error applying date filter: {ex.Message}";
+            errorMessage = Localizer["SafeOperationError"];
             isLoading = false;
         }
     }
@@ -462,9 +462,9 @@
             expenseTotal = expenseData.ExpenseTotal;
             transferTotal = expenseData.TransferTotal;
         }
-        catch (Exception ex)
+        catch (Exception)
         {
-            errorMessage = $"Error loading expense data: {ex.Message}";
+            errorMessage = Localizer["SafeOperationError"];
         }
         finally
         {

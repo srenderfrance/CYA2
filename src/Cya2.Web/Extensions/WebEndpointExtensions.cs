@@ -1,4 +1,5 @@
 using cya2.Components;
+using cya2.Middleware;
 using Cya2.Core.Interfaces;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
@@ -18,7 +19,7 @@ public static class WebEndpointExtensions
 {
     public static IEndpointRouteBuilder MapCya2Endpoints(this IEndpointRouteBuilder endpoints)
     {
-        endpoints.MapStaticAssets();
+        endpoints.MapStaticAssets().WithMetadata(DatabaseIndependentAsset.Instance);
         endpoints.MapHealthChecks("/health/live", new HealthCheckOptions
         {
             Predicate = _ => false

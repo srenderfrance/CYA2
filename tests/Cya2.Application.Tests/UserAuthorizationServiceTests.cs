@@ -81,6 +81,23 @@ public sealed class UserAuthorizationServiceTests
         Assert.True(result.IsAuthorized);
     }
 
+    [Fact]
+    public async Task InternAuthorization_UsesCurrentlyLinkedInternAccount()
+    {
+        var user = new User { Id = 7, Name = "Different Profile", AuthLevel = "Intern" };
+        var access = new FakeAccountAccessRepository(new Dictionary<int, HashSet<int>>())
+        {
+            Accounts = [new Account { AccountId = 12, Fund = "Intern: Jane Doe" }]
+        };
+        var service = new UserAuthorizationService(new FakeUserRepository(user), access, NullLogger<UserAuthorizationService>.Instance);
+
+        Assert.True((await service.ValidateAccountAccessAsync("7", "Jane Doe")).IsAuthorized);
+        Assert.True((await service.ValidateAccountAccessAsync("7", "Intern: Jane Doe")).IsAuthorized);
+        Assert.False((await service.ValidateAccountAccessAsync("7", "Different Profile")).IsAuthorized);
+        access.Accounts.Clear();
+        Assert.False((await service.ValidateAccountAccessAsync("7", "Jane Doe")).IsAuthorized);
+    }
+
     private static UserAuthorizationService CreateService(User? user, Dictionary<int, HashSet<int>> memberships)
     {
         return new UserAuthorizationService(
@@ -108,9 +125,10 @@ public sealed class UserAuthorizationServiceTests
     private sealed class FakeAccountAccessRepository : IUserAccountAccessRepository
     {
         private readonly Dictionary<int, HashSet<int>> _memberships;
+        public List<Account> Accounts { get; set; } = [];
         public FakeAccountAccessRepository(Dictionary<int, HashSet<int>> memberships) => _memberships = memberships;
         public Task<bool> HasAccessAsync(int userId, int accountId) => Task.FromResult(_memberships.TryGetValue(userId, out var accounts) && accounts.Contains(accountId));
-        public Task<List<Account>> GetUserAccountsAsync(int userId) => Task.FromResult(new List<Account>());
+        public Task<List<Account>> GetUserAccountsAsync(int userId) => Task.FromResult(Accounts.ToList());
         public Task<List<User>> GetAccountUsersAsync(int accountId) => Task.FromResult(new List<User>());
         public Task<Dictionary<int, List<int>>> GetAccountUserIdsAsync() => Task.FromResult(new Dictionary<int, List<int>>());
         public Task<Account?> GetAccountByIdAsync(int accountId) => Task.FromResult<Account?>(null);

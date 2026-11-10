@@ -122,7 +122,7 @@ try
 catch (Exception ex)
 {
     var startupLogger = app.Services.GetRequiredService<ILogger<Program>>();
-    startupLogger.LogWarning(ex, "Unable to parse the effective MySQL connection configuration for diagnostics");
+    startupLogger.LogWarning("Unable to parse the effective MySQL connection configuration for diagnostics. ExceptionType={ExceptionType}", ex.GetType().Name);
 }
 
 string[] supportedCultures = ["en-US", "es-US"];
@@ -140,19 +140,19 @@ try
 catch (Exception ex)
 {
     var logger = app.Services.GetRequiredService<ILogger<Program>>();
-    logger.LogWarning(ex, "Database connectivity check failed");
+    logger.LogWarning("Database connectivity check failed. ExceptionType={ExceptionType}", ex.GetType().Name);
     initialDbConnected = false;
 }
 
 AppDomain.CurrentDomain.UnhandledException += (sender, args) =>
 {
     var ex = args.ExceptionObject as Exception;
-    Console.Error.WriteLine($"Unhandled exception: {ex?.Message}");
+    Console.Error.WriteLine($"Unhandled exception. ExceptionType={ex?.GetType().Name ?? "Unknown"}");
     GlobalSettings.AllowMySqlLoading = false;
     try
     {
         var monitor = app.Services.GetRequiredService<IDatabaseAvailabilityMonitor>();
-        monitor.MarkAsDisconnected(ex?.Message ?? "Unhandled exception");
+        monitor.MarkAsDisconnected("Unhandled exception");
     }
     catch { }
 };
@@ -218,7 +218,7 @@ app.Lifetime.ApplicationStarted.Register(() =>
         }
         catch (Exception ex)
         {
-            lifecycleLogger.LogError(ex, "Unable to start central cache creation after application startup delay");
+            lifecycleLogger.LogError("Unable to start central cache creation after application startup delay. ExceptionType={ExceptionType}", ex.GetType().Name);
         }
     });
 });

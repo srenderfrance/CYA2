@@ -69,30 +69,40 @@ namespace Cya2.Application.Services
             DateRange? dateRange,
             string userId = "")
         {
+            if (!string.IsNullOrWhiteSpace(account.InternName))
+            {
+                if (!string.Equals(selectedSubAccount, "Primary", StringComparison.OrdinalIgnoreCase) &&
+                    !string.Equals(selectedSubAccount, "All", StringComparison.OrdinalIgnoreCase))
+                {
+                    return new List<DonorSummaryDto>();
+                }
+
+                var internFunds = new[] { InternAccountUtility.BuildInternFund(account.InternName) };
+                return dateRange is null
+                    ? await GetAllDonorSummariesAsync(internFunds)
+                    : await GetDonorSummariesForAccountFactsAsync(account, internFunds, dateRange, userId);
+            }
+
             var subAccounts = await GetSubAccountsForAccountAsync(account.AccountId);
             var separateFunds = subAccounts
                 .Where(subAccount => subAccount.IsSeparate())
                 .Select(subAccount => subAccount.SubFund)
                 .Where(fund => !string.IsNullOrWhiteSpace(fund))
                 .ToList();
+            var primaryFunds = new[] { account.Fund }.Concat(subAccounts
+                .Where(subAccount => subAccount.IsMerged())
+                .Select(subAccount => subAccount.SubFund));
 
             if (string.Equals(selectedSubAccount, "Primary", StringComparison.OrdinalIgnoreCase))
             {
                 return dateRange is null
-                    ? await GetAllDonorSummariesAsync(new[] { account.Fund })
-                    : await GetDonorSummariesForAccountFactsAsync(account, new[] { account.Fund }, dateRange!, userId);
+                    ? await GetAllDonorSummariesAsync(primaryFunds)
+                    : await GetDonorSummariesForAccountFactsAsync(account, primaryFunds, dateRange!, userId);
             }
 
             if (string.Equals(selectedSubAccount, "All", StringComparison.OrdinalIgnoreCase))
             {
-                if (separateFunds.Count == 0)
-                {
-                    return dateRange is null
-                        ? await GetAllDonorSummariesAsync(account.AccountId, account.Fund)
-                        : await GetDonorSummariesForAccountAsync(account, dateRange!, userId);
-                }
-
-                var funds = new[] { account.Fund }.Concat(separateFunds);
+                var funds = primaryFunds.Concat(separateFunds);
                 return dateRange is null
                     ? await GetAllDonorSummariesAsync(funds)
                     : await GetDonorSummariesForAccountFactsAsync(account, funds, dateRange!, userId);
@@ -114,9 +124,7 @@ namespace Cya2.Application.Services
                 }
             }
 
-            return dateRange is null
-                ? await GetAllDonorSummariesAsync(account.AccountId, account.Fund)
-                : await GetDonorSummariesForAccountAsync(account, dateRange!, userId);
+            return new List<DonorSummaryDto>();
         }
 
         public async Task<List<DonorSummaryDto>> GetMissingGiftDonorsAsync(AccountOptionDto account, DateRange dateRange)
@@ -145,6 +153,7 @@ namespace Cya2.Application.Services
                 .Where(summary => summary.HasMissingGiftAlert)
                 .Select(summary => new DonorSummaryDto
                 {
+                    DonorId = summary.DonorId,
                     Name = summary.Name,
                     Frequency = summary.Frequency,
                     HasMissingGiftAlert = true,
@@ -204,6 +213,7 @@ namespace Cya2.Application.Services
                 .Where(summary => summary.HasMissingGiftAlert && summary.MissingMonths.Count > 0)
                 .Select(summary => new DonorSummaryDto
                 {
+                    DonorId = summary.DonorId,
                     Name = summary.Name,
                     Frequency = summary.Frequency,
                     HasMissingGiftAlert = true,
@@ -483,6 +493,9 @@ namespace Cya2.Application.Services
                 .Where(d => string.Equals(ResolveDonorDisplayName(d), normalizedLookupName, StringComparison.OrdinalIgnoreCase))
                 .ToList();
 
+            if (matchingDonations.Select(d => d.DonorId).Distinct().Count() > 1)
+                return null;
+
             await HydrateDonorContactsAsync(matchingDonations);
 
             var r = matchingDonations
@@ -636,7 +649,7 @@ namespace Cya2.Application.Services
                 .Select(d => new { Donation = d, Identity = ResolveDonorIdentity(d) })
                 .Where(x => !string.IsNullOrWhiteSpace(x.Identity.DisplayName))
                 .GroupBy(
-                    x => $"{x.Donation.DonorId}\u001F{x.Identity.DisplayName.Trim()}",
+                    x => x.Donation.DonorId > 0 ? $"id:{x.Donation.DonorId}" : $"name:{DonorIdentityResolver.NormalizeIdentityKey(x.Identity.DisplayName)}",
                     StringComparer.OrdinalIgnoreCase);
 
             // Use the latest available donation date in the loaded dataset as the
@@ -669,8 +682,9 @@ namespace Cya2.Application.Services
                 // Use stored frequency from most recent donation if available,
                 // otherwise fall back to live classification.
                 var mostRecent = donorRows.OrderByDescending(x => x.Date).First();
-                var frequency = mostRecent.Frequency
-                    ?? _frequencyService.ClassifyDonor(giftHistory);
+                var frequency = donorRows.Select(row => row.Fund).Distinct(StringComparer.OrdinalIgnoreCase).Count() > 1
+                    ? _frequencyService.ClassifyDonor(giftHistory)
+                    : mostRecent.Frequency ?? _frequencyService.ClassifyDonor(giftHistory);
 
                 var hasDirect = identities.Any(i => i.IsDirect);
                 var sourceOrganizations = identities
@@ -690,6 +704,7 @@ namespace Cya2.Application.Services
 
                 yield return new DonorSummaryDto
                 {
+                    DonorId = donorRows[0].DonorId,
                     Name = donorDisplayName,
                     SourceSummary = sourceSummary,
                     Total = donorRows.Sum(x => Convert.ToDecimal(x.Amount)),

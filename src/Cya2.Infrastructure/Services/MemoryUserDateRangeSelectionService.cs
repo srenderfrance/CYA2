@@ -31,7 +31,7 @@ public sealed class MemoryUserDateRangeSelectionService : IUserDateRangeSelectio
             && existing.EndDate.Date == endDate.Date
             && string.Equals(existing.Preset, normalizedPreset, StringComparison.OrdinalIgnoreCase))
         {
-            _logger.LogDebug("MemoryUserDateRangeSelectionService: Range unchanged for {UserId}; skipping write", userId);
+            _logger.LogDebug("MemoryUserDateRangeSelectionService: Range unchanged; skipping write");
             return;
         }
 
@@ -44,7 +44,7 @@ public sealed class MemoryUserDateRangeSelectionService : IUserDateRangeSelectio
         };
 
         _cache.Set(key, selection, options);
-        _logger.LogDebug("MemoryUserDateRangeSelectionService: Set range for {UserId} -> {Start:yyyy-MM-dd}..{End:yyyy-MM-dd}, preset={Preset}", userId, startDate, endDate, selection.Preset);
+        _logger.LogDebug("MemoryUserDateRangeSelectionService: Set range {Start:yyyy-MM-dd}..{End:yyyy-MM-dd}", startDate, endDate);
     }
 
     public bool TryGetDateRange(string userId, out UserDateRangeSelection selection)
@@ -61,7 +61,7 @@ public sealed class MemoryUserDateRangeSelectionService : IUserDateRangeSelectio
             selection = cached!;
         }
 
-        _logger.LogDebug("MemoryUserDateRangeSelectionService: TryGet for {UserId} -> found={Found}, range={Start:yyyy-MM-dd}..{End:yyyy-MM-dd}, preset={Preset}", userId, found, selection.StartDate, selection.EndDate, selection.Preset);
+        _logger.LogDebug("MemoryUserDateRangeSelectionService: TryGet found={Found}", found);
         return found;
     }
 
@@ -73,7 +73,7 @@ public sealed class MemoryUserDateRangeSelectionService : IUserDateRangeSelectio
         }
 
         _cache.Remove(UserKey(userId));
-        _logger.LogDebug("MemoryUserDateRangeSelectionService: Removed range for {UserId}", userId);
+        _logger.LogDebug("MemoryUserDateRangeSelectionService: Removed range");
     }
 
     private static string UserKey(string userId) => $"UserDateRange:{userId}";

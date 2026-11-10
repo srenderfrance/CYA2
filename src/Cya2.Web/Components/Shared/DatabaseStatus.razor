@@ -5,6 +5,8 @@
 @inject IDatabaseAvailabilityMonitor DbMonitorService
 @inject IConfiguration Configuration
 @inject AuthenticationStateProvider AuthenticationStateProvider
+@inject IStringLocalizer<Resource> Localizer
+@inject ILogger<DatabaseStatus> Logger
 @rendermode InteractiveServer
 @implements IDisposable
 
@@ -38,14 +40,14 @@
         try
         {
             IsConnected = DbMonitorService.IsConnected;
-            LastError = DbMonitorService.LastError;
+            LastError = Localizer["SafeDatabaseError"];
             DbMonitorService.ConnectionStatusChanged += OnConnectionStatusChanged;
         }
         catch (Exception ex)
         {
-            Console.Error.WriteLine($"Error initializing DatabaseStatus component: {ex.Message}");
+            Logger.LogWarning("Database status initialization failed. ExceptionType={ExceptionType}", ex.GetType().Name);
             IsConnected = false;
-            LastError = "Error initializing component";
+            LastError = Localizer["SafeDatabaseError"];
         }
     }
 
@@ -84,7 +86,7 @@
         try
         {
             IsConnected = isConnected;
-            LastError = DbMonitorService.LastError;
+            LastError = Localizer["SafeDatabaseError"];
             IsVisible = !isConnected;
 
             InvokeAsync(async () =>
@@ -94,12 +96,12 @@
             }).ContinueWith(t =>
             {
                 if (t.IsFaulted)
-                    Console.Error.WriteLine($"UI update error: {t.Exception?.Message}");
+                    Logger.LogWarning("Database status UI update failed.");
             });
         }
         catch (Exception ex)
         {
-            Console.Error.WriteLine($"Error in connection status handler: {ex.Message}");
+            Logger.LogWarning("Database status handler failed. ExceptionType={ExceptionType}", ex.GetType().Name);
         }
     }
 
@@ -131,7 +133,7 @@
             }
             else
             {
-                LastError = "Could not reach database server.";
+                LastError = Localizer["SafeDatabaseError"];
                 if (_reconnectAttempts >= 3)
                 {
                     NavigationManager.NavigateTo("/database-error", true);
@@ -144,7 +146,8 @@
         catch (Exception ex)
         {
             IsConnected = false;
-            LastError = $"Retry failed: {ex.Message}";
+            LastError = Localizer["SafeDatabaseError"];
+            Logger.LogWarning("Database retry failed. ExceptionType={ExceptionType}", ex.GetType().Name);
             _reconnectAttempts++;
             if (_reconnectAttempts >= 3)
             {

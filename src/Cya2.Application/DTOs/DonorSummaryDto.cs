@@ -5,6 +5,8 @@ namespace Cya2.Application.DTOs;
 
 public class DonorSummaryDto
 {
+    public long DonorId { get; set; }
+    public string SelectionLabel { get; set; } = string.Empty;
     public string Name { get; set; } = string.Empty;
     public string SourceSummary { get; set; } = string.Empty;
     public decimal Total { get; set; }

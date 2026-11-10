@@ -250,7 +250,10 @@
     <value>End of Year Balance</value>
   </data>
   <data name="EnterUpdateEmail" xml:space="preserve">
-    <value>Enter or updated email</value>
+    <value>Enter email username</value>
+  </data>
+  <data name="OrganizationEmailUsernameRequired" xml:space="preserve">
+    <value>Enter a valid email username only, without @scene8.net. Existing users must have a scene8.net email.</value>
   </data>
   <data name="EnterUpdateName" xml:space="preserve">
     <value>Enter or updated name</value>
@@ -407,6 +410,12 @@
   </data>
   <data name="LoginAttemptNotCompleted" xml:space="preserve">
     <value>Your login attempt could not be completed.</value>
+  </data>
+  <data name="SafeOperationError" xml:space="preserve">
+    <value>The operation could not be completed. Please try again.</value>
+  </data>
+  <data name="SafeDatabaseError" xml:space="preserve">
+    <value>The database is currently unavailable. Please try again.</value>
   </data>
   <data name="TrySigningInAgain" xml:space="preserve">
     <value>Please try signing in again.</value>

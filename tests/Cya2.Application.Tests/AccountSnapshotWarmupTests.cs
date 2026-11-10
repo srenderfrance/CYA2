@@ -13,6 +13,25 @@ namespace Cya2.Application.Tests;
 public sealed class AccountSnapshotWarmupTests
 {
     [Fact]
+    public async Task WarmSelectedIntern_UsesInternIdentityAndSkipsAccountingAndExpenses()
+    {
+        var account = new UserAccountContextAccount { AccountId = 9, Fund = "Intern: Jane Doe", InternName = "Jane Doe" };
+        var accounting = new TrackingAccountingCache();
+        var expenses = new TrackingExpenseService();
+        var donors = new TrackingDonorService();
+        using var warmup = new AccountSnapshotWarmupService(new TrackingDonationCache(), new NoOpDonationLoader(), accounting,
+            new NoOpAccountingLoader(), new CacheInvalidationVersion(), new TrackingDashboardService(), new TrackingDonationService(),
+            expenses, donors, NullLogger<AccountSnapshotWarmupService>.Instance);
+
+        await warmup.WarmSelectedAccountAsync(account, "user-9");
+
+        Assert.Equal(0, expenses.LoadCalls);
+        Assert.Equal("Jane Doe", donors.LastAccount?.InternName);
+        Assert.Equal("user-9", donors.LastUserId);
+        Assert.Equal(1, donors.MissingGiftCalls);
+    }
+
+    [Fact]
     public async Task WarmSelectedAccountAsync_ExistingSnapshot_WarmsDerivedCaches()
     {
         var account = new UserAccountContextAccount
@@ -318,8 +337,10 @@ public sealed class AccountSnapshotWarmupTests
     {
         public int SummaryCalls { get; private set; }
         public int MissingGiftCalls { get; private set; }
+        public AccountOptionDto? LastAccount { get; private set; }
+        public string? LastUserId { get; private set; }
         public List<DateRange> WarmedWarningRanges { get; } = [];
-        public Task<List<DonorSummaryDto>> GetDonorSummariesForAccountAsync(AccountOptionDto account, DateRange dateRange, string userId = "") { SummaryCalls++; return Task.FromResult(new List<DonorSummaryDto>()); }
+        public Task<List<DonorSummaryDto>> GetDonorSummariesForAccountAsync(AccountOptionDto account, DateRange dateRange, string userId = "") { SummaryCalls++; LastAccount = account; LastUserId = userId; return Task.FromResult(new List<DonorSummaryDto>()); }
         public Task<List<DonorSummaryDto>> GetDonorSummariesForSelectionAsync(AccountOptionDto account, string selectedSubAccount, DateRange? dateRange, string userId = "") => Task.FromResult(new List<DonorSummaryDto>());
         public Task<List<DonorSummaryDto>> GetDonorSummariesAsync(string accountFund, DateRange dateRange) => Task.FromResult(new List<DonorSummaryDto>());
         public Task<List<DonorSummaryDto>> GetDonorSummariesAsync(IEnumerable<string> fundNames, DateRange dateRange) => Task.FromResult(new List<DonorSummaryDto>());

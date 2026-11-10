@@ -5,6 +5,7 @@ using Cya2.Core.Entities;
 using Cya2.Core.Interfaces;
 using cya2.Components.Shared.LanguageResources;
 using cya2.Extensions;
+using cya2.Services;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Google;
 using Microsoft.AspNetCore.Authentication.OAuth;
@@ -41,6 +42,43 @@ public sealed class GoogleSignInCultureTests
         var parsedCulture = CookieRequestCultureProvider.ParseCookieValue(cookieValue);
         Assert.Equal(expectedCulture, parsedCulture!.Cultures.Single().Value);
         Assert.Equal(expectedCulture, parsedCulture.UICultures.Single().Value);
+    }
+
+    [Theory]
+    [InlineData("en-US")]
+    [InlineData("es-US")]
+    public void SafeErrorMessages_AreLocalized(string culture)
+    {
+        using var services = new ServiceCollection().AddLogging().AddLocalization().BuildServiceProvider();
+        var localizer = services.GetRequiredService<IStringLocalizer<Resource>>();
+        var originalCulture = CultureInfo.CurrentUICulture;
+        try
+        {
+            CultureInfo.CurrentUICulture = CultureInfo.GetCultureInfo(culture);
+            Assert.False(localizer["SafeOperationError"].ResourceNotFound);
+            Assert.False(localizer["SafeDatabaseError"].ResourceNotFound);
+        }
+        finally
+        {
+            CultureInfo.CurrentUICulture = originalCulture;
+        }
+    }
+
+    [Fact]
+    public async Task SuccessfulSignIn_PreservesRequestedReturnRouteAndTicketExpiry()
+    {
+        using var services = CreateServices(new GoogleSignInResult(new User { Id = 7, AuthLevel = "User" }));
+        var context = CreateTicketContext(services);
+        var expiry = DateTimeOffset.UtcNow.AddHours(4);
+        context.Properties!.ExpiresUtc = expiry;
+        context.Properties.RedirectUri = "/donors";
+
+        await services.GetRequiredService<IOptionsMonitor<GoogleOptions>>()
+            .Get(GoogleDefaults.AuthenticationScheme).Events.OnTicketReceived(context);
+
+        Assert.Equal("/donors", context.Properties.RedirectUri);
+        Assert.Equal(expiry.ToUnixTimeSeconds(), context.Properties.ExpiresUtc!.Value.ToUnixTimeSeconds());
+        Assert.Equal(expiry.ToUnixTimeSeconds().ToString(CultureInfo.InvariantCulture), context.Principal!.FindFirst(SessionValidationService.ExpiresClaim)!.Value);
     }
 
     [Fact]

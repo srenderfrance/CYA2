@@ -70,7 +70,7 @@ public sealed class AccountAccessListingService : IAccountAccessListingService
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error getting users with access to account {AccountId}", accountId);
+            _logger.LogError("Error getting users with access to an account. ExceptionType={ExceptionType}", ex.GetType().Name);
             return Array.Empty<AccountAccessUserDto>();
         }
     }

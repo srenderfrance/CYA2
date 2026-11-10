@@ -14,6 +14,7 @@ This is a .net 10 app that uses blazor, dapper and mysql, radzen components and 
 - Keep intern-related code comments and primary documentation up to date whenever intern behavior changes.
 - When an agreed implementation plan exists, follow it as the authoritative scope. Do not propose or ask to change the plan without explicitly stating that the suggestion would deviate from the agreed plan and explaining the deviation first.
 - User tests application behavior through the UI and expects diagnoses not to assume direct database edits when app-driven creation is being tested.
+- Intern user renaming is intended only to correct typos, not actual name changes; do not address actual intern name change/history continuity as an edge case.
 
 ## Data Management
 - The Donors and DonorContacts tables are application display projections, not the organization's official donor database. Contact data should be current-state only: each upload must remove contact values no longer present and retain DateCreated plus DateModified, without historical contact rows.

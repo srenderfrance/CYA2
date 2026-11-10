@@ -10,7 +10,7 @@ public sealed class CacheRebuildData
     public IReadOnlyDictionary<int, List<DonationRecord>> DonationsByAccountId { get; init; } =
         new Dictionary<int, List<DonationRecord>>();
     public IReadOnlyDictionary<string, List<DonationRecord>> DonationsByInternName { get; init; } =
-        new Dictionary<string, List<DonationRecord>>(StringComparer.OrdinalIgnoreCase);
+        new Dictionary<string, List<DonationRecord>>(StringComparer.Ordinal);
     public IReadOnlyDictionary<int, List<AccountingRecord>> AccountingByAccountId { get; init; } =
         new Dictionary<int, List<AccountingRecord>>();
 }

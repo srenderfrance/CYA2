@@ -6,6 +6,8 @@ public class DonationRecord
 {
     public int Id { get; set; }
     public long DonorId { get; set; }
+    public string? ConstituentId { get; set; }
+    public bool IsSoftCredit { get; set; }
     public string DonorIdentityKey { get; set; } = string.Empty;
     public string? DonorDisplayName { get; set; }
     public DateTime Date { get; set; }

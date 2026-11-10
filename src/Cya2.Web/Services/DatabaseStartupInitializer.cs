@@ -22,7 +22,7 @@ internal sealed class DatabaseStartupInitializer
         }
         catch (Exception ex)
         {
-            logger.LogWarning(ex, "Database connectivity check failed");
+            logger.LogWarning("Database connectivity check failed. ExceptionType={ExceptionType}", ex.GetType().Name);
         }
 
         GlobalSettings.AllowMySqlLoading = initialDbConnected;

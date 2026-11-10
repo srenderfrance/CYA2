@@ -63,7 +63,8 @@ public sealed class DonationDataCacheLoader : IDonationDataCacheLoader
                 d.AccountName,
                 d.SoftCreditName,
                 d.Addressee,
-                d.IsAnonymous))
+                d.IsAnonymous,
+                d.IsSoftCredit))
             .ToList();
 
         var subAccountRecords = (subAccounts ?? [])
