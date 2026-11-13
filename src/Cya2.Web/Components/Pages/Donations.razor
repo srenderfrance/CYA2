@@ -859,7 +859,7 @@
             var dto = await DonationService.GetDonationDataAsync(
                 passedAccount ?? string.Empty,
                 subAccountValue,
-                new DateRange(dateRangeState.StartDate, dateRangeState.EndDate),
+                new Cya2.Core.ValueObjects.DateRange(dateRangeState.StartDate, dateRangeState.EndDate),
                 userId,
                 isAdminOrViewer,
                 forceRefresh: false) ?? new DonationDataDto();

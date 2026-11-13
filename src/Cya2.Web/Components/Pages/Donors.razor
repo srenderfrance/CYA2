@@ -558,7 +558,7 @@
 
             var range = dateRangeState.SelectedPreset == Cya2.Application.DTOs.DateRangePreset.AllDates
                 ? null
-                : new DateRange(dateRangeState.StartDate, dateRangeState.EndDate);
+                : new Cya2.Core.ValueObjects.DateRange(dateRangeState.StartDate, dateRangeState.EndDate);
             donorsInRange = await DonorService.GetDonorSummariesForSelectionAsync(
                 currentAccount,
                 selectedSubAccount,
@@ -839,11 +839,11 @@
         }
     }
 
-    private DateRange? GetDonorSummaryWarmupRange()
+    private Cya2.Core.ValueObjects.DateRange? GetDonorSummaryWarmupRange()
     {
         return dateRangeState.SelectedPreset == Cya2.Application.DTOs.DateRangePreset.AllDates
             ? null
-            : new DateRange(dateRangeState.StartDate, dateRangeState.EndDate);
+            : new Cya2.Core.ValueObjects.DateRange(dateRangeState.StartDate, dateRangeState.EndDate);
     }
 
     private async Task accountSelection(string accountName)

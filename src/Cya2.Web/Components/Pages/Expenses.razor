@@ -310,7 +310,7 @@
 
             // If selectedAccount is empty, we intend the service to use server/session defaults and not to set the client session automatically.
             var passedAccount = selectedAccount;
-            expenseData = await ExpenseService.GetExpenseDataAsync(passedAccount ?? string.Empty, new DateRange(dateRangeState.StartDate, dateRangeState.EndDate), userId, isAdminOrViewer);
+            expenseData = await ExpenseService.GetExpenseDataAsync(passedAccount ?? string.Empty, new Cya2.Core.ValueObjects.DateRange(dateRangeState.StartDate, dateRangeState.EndDate), userId, isAdminOrViewer);
             canAccessAllAccounts = expenseData.CanSearchAccounts;
             isInternUser = expenseData.IsInternUser;
 
@@ -431,7 +431,7 @@
             errorMessage = string.Empty;
             StateHasChanged();
 
-            var dateRange = new DateRange(dateRangeState.StartDate, dateRangeState.EndDate);
+            var dateRange = new Cya2.Core.ValueObjects.DateRange(dateRangeState.StartDate, dateRangeState.EndDate);
             expenseData = await ExpenseService.GetExpenseDataAsync(selectedAccount ?? string.Empty, dateRange, userId, isAdminOrViewer);
             canAccessAllAccounts = expenseData.CanSearchAccounts;
             isInternUser = expenseData.IsInternUser;
