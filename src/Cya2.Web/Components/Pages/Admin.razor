@@ -352,12 +352,14 @@
             }
         </RadzenCard>
 
+         @* Temporarily disabled bulk account and user import paths.
          <RadzenCard>
              <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" JustifyContent="JustifyContent.SpaceBetween" Gap="0.5rem" Class="rz-mt-1 rz-mb-4">
-                 <RadzenText TextStyle="TextStyle.H5" Style="font-weight: 800; color: #1f2937;">Import Accounts from Local Excel</RadzenText>
-                 <RadzenButton Text="Load Preview" ButtonStyle="ButtonStyle.Primary" Click="LoadAccountImportPreview" Disabled="@accountImportBusy" />
+                 <RadzenText TextStyle="TextStyle.H5" Style="font-weight: 800; color: #1f2937;">Import Accounts from Excel</RadzenText>
+                 <RadzenButton Text="Load Preview" ButtonStyle="ButtonStyle.Primary" Click="LoadAccountImportPreview" Disabled="@(accountImportBusy || accountImportWorkbook is null)" />
              </RadzenStack>
-             <RadzenText TextStyle="TextStyle.Body2">Place one .xlsx file with fund, fund#, and overhead columns in the server's AccountImports folder, then load the preview. The class column is optional.</RadzenText>
+             <RadzenText TextStyle="TextStyle.Body2">Select an .xlsx workbook with fund, fund#, and overhead columns, then load the preview. The class column is optional. Maximum file size: 10 MB.</RadzenText>
+              <InputFile OnChange="OnAccountImportFileChange" accept=".xlsx" disabled="@accountImportBusy" />
              @if (accountImportBusy)
              {
                  <RadzenProgressBar Mode="ProgressBarMode.Indeterminate" Class="rz-mt-3" />
@@ -387,9 +389,10 @@
         <RadzenCard>
             <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" JustifyContent="JustifyContent.SpaceBetween" Gap="0.5rem" Class="rz-mt-1 rz-mb-4">
                 <RadzenText TextStyle="TextStyle.H5">Import Users from Excel</RadzenText>
-                <RadzenButton Text="Load Preview" ButtonStyle="ButtonStyle.Primary" Click="LoadUserImportPreview" Disabled="@userImportBusy" />
+                <RadzenButton Text="Load Preview" ButtonStyle="ButtonStyle.Primary" Click="LoadUserImportPreview" Disabled="@(userImportBusy || userImportWorkbook is null)" />
             </RadzenStack>
-            <RadzenText TextStyle="TextStyle.Body2">Place one .xlsx file with User and Level columns in the server's UserImports folder. Account access is assigned separately.</RadzenText>
+            <RadzenText TextStyle="TextStyle.Body2">Select an .xlsx workbook with User and Level columns. Account access is assigned separately. Maximum file size: 10 MB.</RadzenText>
+            <InputFile OnChange="OnUserImportFileChange" accept=".xlsx" disabled="@userImportBusy" />
             @if (userImportBusy)
             {
                 <RadzenProgressBar Mode="ProgressBarMode.Indeterminate" Class="rz-mt-3" />
@@ -413,7 +416,8 @@
                 </div>
                 <RadzenButton Text="Create Users" ButtonStyle="ButtonStyle.Primary" Class="rz-mt-3" Click="ImportUsers" Disabled="@(!userImportPreview.CanImport || userImportBusy)" />
             }
-        </RadzenCard>
+         </RadzenCard>
+         *@
 
         <!-- Manage Users section -->
         <RadzenCard>
@@ -905,12 +909,17 @@
         private string fundUpdateSuccess = string.Empty;
 
         private Cya2.Application.DTOs.AccountImportPreviewDto? accountImportPreview;
+        private byte[]? accountImportWorkbook;
+        private string? accountImportFileName;
         private string accountImportMessage = string.Empty;
         private bool accountImportBusy { get; set; }
         private UserImportPreviewDto? userImportPreview;
+        private byte[]? userImportWorkbook;
+        private string? userImportFileName;
         private string userImportMessage = string.Empty;
         private bool userImportBusy;
         private bool userImportSuccess;
+        private const long MaxBulkImportFileSize = 10 * 1024 * 1024;
 
         // New UI-only state for fund creation toggle and subfund inputs
         private bool createSubFund = false;
@@ -1863,21 +1872,102 @@
             }
         }
 
+        private async Task OnAccountImportFileChange(InputFileChangeEventArgs e)
+        {
+            var file = e.File;
+            accountImportWorkbook = null;
+            accountImportFileName = null;
+            accountImportPreview = null;
+            accountImportMessage = string.Empty;
+            accountImportBusy = true;
+            try
+            {
+                if (file.Size > MaxBulkImportFileSize)
+                {
+                    accountImportMessage = "The selected workbook exceeds the 10 MB limit.";
+                    return;
+                }
+
+                accountImportWorkbook = await ReadBulkImportWorkbookAsync(file);
+                accountImportFileName = file.Name;
+            }
+            catch (Exception ex)
+            {
+                accountImportMessage = "The selected workbook could not be uploaded.";
+                _logger.LogError("Account workbook upload failed. ExceptionType={ExceptionType}", ex.GetType().Name);
+            }
+            finally
+            {
+                accountImportBusy = false;
+            }
+        }
+
+        private async Task OnUserImportFileChange(InputFileChangeEventArgs e)
+        {
+            var file = e.File;
+            userImportWorkbook = null;
+            userImportFileName = null;
+            userImportPreview = null;
+            userImportSuccess = false;
+            userImportMessage = string.Empty;
+            userImportBusy = true;
+            try
+            {
+                if (file.Size > MaxBulkImportFileSize)
+                {
+                    userImportMessage = "The selected workbook exceeds the 10 MB limit.";
+                    return;
+                }
+
+                userImportWorkbook = await ReadBulkImportWorkbookAsync(file);
+                userImportFileName = file.Name;
+            }
+            catch (Exception ex)
+            {
+                userImportMessage = "The selected workbook could not be uploaded.";
+                _logger.LogError("User workbook upload failed. ExceptionType={ExceptionType}", ex.GetType().Name);
+            }
+            finally
+            {
+                userImportBusy = false;
+            }
+        }
+
+        private static async Task<byte[]> ReadBulkImportWorkbookAsync(IBrowserFile file)
+        {
+            await using var stream = file.OpenReadStream(MaxBulkImportFileSize);
+            using var buffer = new MemoryStream();
+            await stream.CopyToAsync(buffer);
+            if (buffer.Length > MaxBulkImportFileSize)
+                throw new IOException("The workbook exceeds the upload limit.");
+            return buffer.ToArray();
+        }
+
         private async Task LoadAccountImportPreview()
         {
+            var workbook = accountImportWorkbook;
+            var fileName = accountImportFileName;
+            if (workbook is null || fileName is null)
+            {
+                accountImportMessage = "Select an .xlsx workbook first.";
+                accountImportPreview = null;
+                return;
+            }
+
             accountImportBusy = true;
             accountImportMessage = string.Empty;
             accountImportPreview = null;
             try
             {
-                accountImportPreview = await AccountImportService.PreviewAsync();
+                using var stream = new MemoryStream(workbook, writable: false);
+                accountImportPreview = await AccountImportService.PreviewAsync(stream, fileName);
                 accountImportMessage = accountImportPreview.Errors.Count == 0
                     ? "Preview loaded successfully. Review the rows before creating accounts."
                     : string.Join(" ", accountImportPreview.Errors);
             }
             catch (Exception ex)
             {
-                accountImportMessage = Localizer["SafeOperationError"];
+                accountImportMessage = "Unable to load the account workbook preview. Please try again or contact an administrator.";
                 _logger.LogError("Account import preview failed. ExceptionType={ExceptionType}", ex.GetType().Name);
             }
             finally
@@ -1916,17 +2006,27 @@
 
         private async Task LoadUserImportPreview()
         {
+            var workbook = userImportWorkbook;
+            var fileName = userImportFileName;
+            if (workbook is null || fileName is null)
+            {
+                userImportMessage = "Select an .xlsx workbook first.";
+                userImportPreview = null;
+                return;
+            }
+
             userImportBusy = true;
             userImportSuccess = false;
             userImportPreview = null;
             try
             {
-                userImportPreview = await UserImportService.PreviewAsync();
+                using var stream = new MemoryStream(workbook, writable: false);
+                userImportPreview = await UserImportService.PreviewAsync(stream, fileName);
                 userImportMessage = userImportPreview.CanImport ? "Review the users before creating them." : string.Join(" ", userImportPreview.Errors);
             }
             catch (Exception ex)
             {
-                userImportMessage = Localizer["SafeOperationError"];
+                userImportMessage = "Unable to load the user workbook preview. Please try again or contact an administrator.";
                 _logger.LogError("User import preview failed. ExceptionType={ExceptionType}", ex.GetType().Name);
             }
             finally { userImportBusy = false; }

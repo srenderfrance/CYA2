@@ -3,18 +3,16 @@ using Cya2.Core.Entities;
 using Cya2.Core.Interfaces;
 using Cya2.Infrastructure.Services;
 using Microsoft.Extensions.Configuration;
-using Microsoft.Extensions.FileProviders;
-using Microsoft.Extensions.Hosting;
 using OfficeOpenXml;
 using Xunit;
 
 namespace Cya2.Database.Tests;
 
-public sealed class AccountImportTests(MySqlFixture mysql) : IDisposable, IClassFixture<MySqlFixture>
+public sealed class AccountImportTests(MySqlFixture mysql) : IClassFixture<MySqlFixture>
 {
-    private readonly string _root = Path.Combine(Path.GetTempPath(), "cya2-account-import-test-" + Guid.NewGuid().ToString("N"));
     private readonly Accounts _accounts = new();
     private readonly Authorization _authorization = new();
+    private byte[] _workbookBytes = [];
 
     static AccountImportTests()
     {
@@ -25,7 +23,7 @@ public sealed class AccountImportTests(MySqlFixture mysql) : IDisposable, IClass
     public async Task RequestedHeadersDistinguishFundFromFundNumber()
     {
         WriteWorkbook(false);
-        var preview = await CreateService().PreviewAsync();
+        var preview = await PreviewAsync();
         Assert.True(preview.CanImport, string.Join(" ", preview.Errors));
         Assert.Equal("Primary", preview.Rows[0].Fund);
         Assert.Equal("0012", preview.Rows[0].AccountNumber);
@@ -40,7 +38,7 @@ public sealed class AccountImportTests(MySqlFixture mysql) : IDisposable, IClass
     {
         WriteWorkbook(false, includeClass, blankClasses: true);
         _accounts.Items.Add(new Account { Fund = "Other", AccountNumber = "9", AccountingClass = string.Empty });
-        var preview = await CreateService().PreviewAsync();
+        var preview = await PreviewAsync();
         Assert.True(preview.CanImport, string.Join(" ", preview.Errors));
         Assert.Equal(2, preview.Rows.Count);
         Assert.All(preview.Rows, row => Assert.Equal(string.Empty, row.AccountingClass));
@@ -50,13 +48,12 @@ public sealed class AccountImportTests(MySqlFixture mysql) : IDisposable, IClass
     public async Task DuplicateClassHeadersAreRejected()
     {
         WriteWorkbook(false);
-        var path = Path.Combine(_root, "AccountImports", "input.xlsx");
-        using (var package = new ExcelPackage(new FileInfo(path)))
+        using (var package = new ExcelPackage(new MemoryStream(_workbookBytes)))
         {
             package.Workbook.Worksheets[0].Cells[1, 5].Value = "Accounting Class";
-            package.Save();
+            _workbookBytes = package.GetAsByteArray();
         }
-        var preview = await CreateService().PreviewAsync();
+        var preview = await PreviewAsync();
         Assert.False(preview.CanImport);
         Assert.Contains(preview.Errors, error => error.Contains("Class column appears more than once"));
     }
@@ -68,8 +65,8 @@ public sealed class AccountImportTests(MySqlFixture mysql) : IDisposable, IClass
         await MySqlFixture.ExecuteAsync(db.SetupConnection, "INSERT INTO Users (Id, Email, Name, AuthLevel) VALUES (1, 'admin@scene8.net', 'Admin', 'Admin')");
         WriteWorkbook(false, includeClass: true, blankClasses: true);
         var config = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["ConnectionStrings:default"] = db.RuntimeConnection }).Build();
-        var service = new AccountImportService(new EnvironmentStub { ContentRootPath = _root }, config, new Cya2.Infrastructure.Repositories.AccountRepository(config, new Guard()), new Invalidator(), new Preload(), new Guard(), _authorization);
-        var preview = await service.PreviewAsync();
+        var service = new AccountImportService(config, new Cya2.Infrastructure.Repositories.AccountRepository(config, new Guard()), new Invalidator(), new Preload(), new Guard(), _authorization);
+        var preview = await service.PreviewAsync(new MemoryStream(_workbookBytes), "accounts.xlsx");
         Assert.True(preview.CanImport, string.Join(" ", preview.Errors));
         var result = await service.ImportAsync();
         Assert.True(result.IsSuccess, result.Message);
@@ -78,14 +75,26 @@ public sealed class AccountImportTests(MySqlFixture mysql) : IDisposable, IClass
     }
 
     [Fact]
-    public async Task DuplicateClassesAndExistingClassesRejectPreview()
+    public async Task DuplicateClassesRejectPreviewAndExistingRowsAreMarkedSkipped()
     {
         WriteWorkbook(true);
         _accounts.Items.Add(new Account { Fund = "Other", AccountNumber = "9", AccountingClass = "class a" });
-        var preview = await CreateService().PreviewAsync();
+        var preview = await PreviewAsync();
         Assert.False(preview.CanImport);
         Assert.Contains(preview.Errors, error => error.Contains("Duplicate Class"));
-        Assert.Contains(preview.Errors, error => error.Contains("Row 2") && error.Contains("Class"));
+        Assert.All(preview.Rows, row => Assert.True(row.IsExisting));
+    }
+
+    [Fact]
+    public async Task ExistingAccountRowsAreSkippedWhileNewRowsRemainImportable()
+    {
+        WriteWorkbook(false, includeClass: true, blankClasses: true);
+        _accounts.Items.Add(new Account { Fund = "Primary", AccountNumber = "0012", AccountingClass = string.Empty });
+        var preview = await PreviewAsync();
+        Assert.True(preview.CanImport, string.Join(" ", preview.Errors));
+        Assert.Equal(1, preview.SkippedCount);
+        Assert.True(preview.Rows[0].IsExisting);
+        Assert.False(preview.Rows[1].IsExisting);
     }
 
     [Fact]
@@ -94,15 +103,15 @@ public sealed class AccountImportTests(MySqlFixture mysql) : IDisposable, IClass
         WriteWorkbook(false);
         _authorization.Actor = null;
         var service = CreateService();
-        Assert.False((await service.PreviewAsync()).CanImport);
+        Assert.False((await service.PreviewAsync(new MemoryStream(_workbookBytes), "accounts.xlsx")).CanImport);
         Assert.False((await service.ImportAsync()).IsSuccess);
     }
 
-    private AccountImportService CreateService() => new(new EnvironmentStub { ContentRootPath = _root }, new ConfigurationBuilder().Build(), _accounts, new Invalidator(), new Preload(), new Guard(), _authorization);
+    private AccountImportService CreateService() => new(new ConfigurationBuilder().Build(), _accounts, new Invalidator(), new Preload(), new Guard(), _authorization);
+    private Task<Cya2.Application.DTOs.AccountImportPreviewDto> PreviewAsync() => CreateService().PreviewAsync(new MemoryStream(_workbookBytes), "accounts.xlsx");
 
     private void WriteWorkbook(bool duplicate, bool includeClass = true, bool blankClasses = false)
     {
-        Directory.CreateDirectory(Path.Combine(_root, "AccountImports"));
         using var package = new ExcelPackage();
         var sheet = package.Workbook.Worksheets.Add("Accounts");
         sheet.Cells[1, 1].Value = "fund";
@@ -120,17 +129,7 @@ public sealed class AccountImportTests(MySqlFixture mysql) : IDisposable, IClass
             sheet.Cells[3, 3].Value = "0013";
             if (!blankClasses) sheet.Cells[3, 4].Value = "Class A";
         }
-        File.WriteAllBytes(Path.Combine(_root, "AccountImports", "input.xlsx"), package.GetAsByteArray());
-    }
-
-    public void Dispose() => Directory.Delete(_root, true);
-
-    private sealed class EnvironmentStub : IHostEnvironment
-    {
-        public string EnvironmentName { get; set; } = "Test";
-        public string ApplicationName { get; set; } = "Test";
-        public string ContentRootPath { get; set; } = "";
-        public IFileProvider ContentRootFileProvider { get; set; } = new NullFileProvider();
+        _workbookBytes = package.GetAsByteArray();
     }
     private sealed class Authorization : IAdminAuthorizationContext
     {

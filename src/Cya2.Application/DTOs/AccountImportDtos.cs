@@ -7,6 +7,7 @@ public sealed class AccountImportRowDto
     public string Fund { get; init; } = string.Empty;
     public string AccountingClass { get; init; } = string.Empty;
     public decimal Overhead { get; init; }
+    public bool IsExisting { get; init; }
 }
 
 public sealed class AccountImportPreviewDto
@@ -14,7 +15,8 @@ public sealed class AccountImportPreviewDto
     public string FileName { get; init; } = string.Empty;
     public List<AccountImportRowDto> Rows { get; init; } = [];
     public List<string> Errors { get; init; } = [];
-    public bool CanImport => Rows.Count > 0 && Errors.Count == 0;
+    public int SkippedCount => Rows.Count(row => row.IsExisting);
+    public bool CanImport => Rows.Any(row => !row.IsExisting) && Errors.Count == 0;
 }
 
 public sealed class AccountImportResultDto

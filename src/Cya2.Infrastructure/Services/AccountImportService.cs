@@ -5,7 +5,6 @@ using Cya2.Application.Interfaces;
 using Cya2.Core.Entities;
 using Cya2.Core.Interfaces;
 using Dapper;
-using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Configuration;
 using MySql.Data.MySqlClient;
 using OfficeOpenXml;
@@ -14,7 +13,6 @@ namespace Cya2.Infrastructure.Services;
 
 public sealed class AccountImportService : IAccountImportService
 {
-    private readonly IHostEnvironment _environment;
     private readonly IConfiguration _configuration;
     private readonly IAccountRepository _accountRepository;
     private readonly IImportCacheInvalidator _cacheInvalidator;
@@ -23,9 +21,9 @@ public sealed class AccountImportService : IAccountImportService
     private readonly IAdminAuthorizationContext _authorization;
     private int? _previewActor;
     private IReadOnlyList<AccountImportRowDto>? _previewRows;
+    private int _previewSkippedCount;
 
     public AccountImportService(
-        IHostEnvironment environment,
         IConfiguration configuration,
         IAccountRepository accountRepository,
         IImportCacheInvalidator cacheInvalidator,
@@ -33,7 +31,6 @@ public sealed class AccountImportService : IAccountImportService
         IDatabaseGuard dbGuard,
         IAdminAuthorizationContext authorization)
     {
-        _environment = environment;
         _configuration = configuration;
         _accountRepository = accountRepository;
         _cacheInvalidator = cacheInvalidator;
@@ -42,35 +39,25 @@ public sealed class AccountImportService : IAccountImportService
         _authorization = authorization;
     }
 
-    private string ImportDirectory => Path.Combine(_environment.ContentRootPath, "AccountImports");
-
-    public async Task<AccountImportPreviewDto> PreviewAsync(CancellationToken cancellationToken = default)
+    public async Task<AccountImportPreviewDto> PreviewAsync(Stream workbook, string fileName, CancellationToken cancellationToken = default)
     {
         _previewRows = null;
+        _previewSkippedCount = 0;
         _previewActor = await _authorization.GetCurrentAdminUserIdAsync();
         if (_previewActor is null) return InvalidPreview("Administrator authorization is required.");
-        var files = Directory.Exists(ImportDirectory)
-            ? Directory.GetFiles(ImportDirectory, "*.xlsx", SearchOption.TopDirectoryOnly)
-            : [];
-
-        if (files.Length == 0)
-            return InvalidPreview("No .xlsx file was found in the AccountImports folder.");
-
-        if (files.Length > 1)
-            return InvalidPreview("More than one .xlsx file was found. Leave only the account import workbook in the folder.");
-
-        var filePath = files[0];
+        var safeFileName = Path.GetFileName(fileName);
+        if (!string.Equals(Path.GetExtension(safeFileName), ".xlsx", StringComparison.OrdinalIgnoreCase))
+            return InvalidPreview("Select an .xlsx workbook.", safeFileName);
+        if (workbook.CanSeek && workbook.Length > 10 * 1024 * 1024)
+            return InvalidPreview("The workbook exceeds the 10 MB limit.", safeFileName);
         try
         {
-            if (new FileInfo(filePath).Length > 10 * 1024 * 1024)
-                return InvalidPreview("The workbook exceeds the 10 MB limit.");
-            await using var stream = File.OpenRead(filePath);
-            using var package = new ExcelPackage(stream);
+            using var package = new ExcelPackage(workbook);
             var worksheet = package.Workbook.Worksheets.FirstOrDefault();
             if (worksheet?.Dimension == null)
-                return InvalidPreview("The workbook does not contain a worksheet with data.", Path.GetFileName(filePath));
+                return InvalidPreview("The workbook does not contain a worksheet with data.", safeFileName);
             if (worksheet.Dimension.End.Row > 10001 || worksheet.Dimension.End.Column > 256)
-                return InvalidPreview("The workbook exceeds the supported row or column limit.");
+                return InvalidPreview("The workbook exceeds the supported row or column limit.", safeFileName);
 
             var headers = FindHeaders(worksheet);
             var errors = new List<string>();
@@ -83,7 +70,7 @@ public sealed class AccountImportService : IAccountImportService
                 errors.Add("The Class column appears more than once.");
 
             if (errors.Count > 0)
-                return new AccountImportPreviewDto { FileName = Path.GetFileName(filePath), Errors = errors };
+                return new AccountImportPreviewDto { FileName = safeFileName, Errors = errors };
 
             var rows = new List<AccountImportRowDto>();
             for (var rowNumber = worksheet.Dimension.Start.Row + 1; rowNumber <= worksheet.Dimension.End.Row; rowNumber++)
@@ -129,29 +116,39 @@ public sealed class AccountImportService : IAccountImportService
 
             _dbGuard.ThrowIfUnavailable();
             var existingAccounts = await _accountRepository.GetAllAsync();
-            foreach (var row in rows)
+            var previewRows = rows.Select(row =>
             {
-                if (existingAccounts.Any(account => string.Equals(account.Fund.Trim(), row.Fund, StringComparison.OrdinalIgnoreCase)))
-                    errors.Add(ImportDiagnosticMessages.ExistingValue(row.RowNumber, "Fund"));
-                if (existingAccounts.Any(account => string.Equals(account.AccountNumber.Trim(), row.AccountNumber, StringComparison.OrdinalIgnoreCase)))
-                    errors.Add(ImportDiagnosticMessages.ExistingValue(row.RowNumber, "Account Number"));
-                if (!string.IsNullOrWhiteSpace(row.AccountingClass) && existingAccounts.Any(account => string.Equals(account.AccountingClass?.Trim(), row.AccountingClass, StringComparison.OrdinalIgnoreCase)))
-                    errors.Add(ImportDiagnosticMessages.ExistingValue(row.RowNumber, "Class"));
-            }
+                var isExisting = existingAccounts.Any(account =>
+                    (!string.IsNullOrWhiteSpace(row.Fund) && string.Equals(account.Fund.Trim(), row.Fund, StringComparison.OrdinalIgnoreCase)) ||
+                    (!string.IsNullOrWhiteSpace(row.AccountNumber) && string.Equals(account.AccountNumber.Trim(), row.AccountNumber, StringComparison.OrdinalIgnoreCase)) ||
+                    (!string.IsNullOrWhiteSpace(row.AccountingClass) && string.Equals(account.AccountingClass?.Trim(), row.AccountingClass, StringComparison.OrdinalIgnoreCase)));
+                return new AccountImportRowDto
+                {
+                    RowNumber = row.RowNumber,
+                    Fund = row.Fund,
+                    AccountNumber = row.AccountNumber,
+                    AccountingClass = row.AccountingClass,
+                    Overhead = row.Overhead,
+                    IsExisting = isExisting
+                };
+            }).ToList();
 
             if (errors.Count == 0 && rows.Count > 0)
-                _previewRows = rows.Select(row => new AccountImportRowDto { RowNumber = row.RowNumber, Fund = row.Fund, AccountNumber = row.AccountNumber, AccountingClass = row.AccountingClass, Overhead = row.Overhead }).ToArray();
+            {
+                _previewRows = previewRows.Where(row => !row.IsExisting).ToArray();
+                _previewSkippedCount = previewRows.Count(row => row.IsExisting);
+            }
 
             return new AccountImportPreviewDto
             {
-                FileName = Path.GetFileName(filePath),
-                Rows = rows,
+                FileName = safeFileName,
+                Rows = previewRows,
                 Errors = errors.Distinct(StringComparer.OrdinalIgnoreCase).ToList()
             };
         }
         catch (Exception ex) when (ex is IOException or InvalidDataException or FormatException)
         {
-            return InvalidPreview(ImportDiagnosticMessages.WorkbookReadFailure(), Path.GetFileName(filePath));
+            return InvalidPreview(ImportDiagnosticMessages.WorkbookReadFailure(), safeFileName);
         }
     }
 
@@ -165,7 +162,9 @@ public sealed class AccountImportService : IAccountImportService
     {
         var actor = await _authorization.GetCurrentAdminUserIdAsync();
         var rows = _previewRows;
+        var skippedCount = _previewSkippedCount;
         _previewRows = null;
+        _previewSkippedCount = 0;
         if (actor is null || actor != _previewActor)
             return new AccountImportResultDto { Message = "Administrator authorization is required." };
         if (rows == null || rows.Count == 0)
@@ -247,9 +246,9 @@ VALUES (@Fund, @AccountingClass, @AccountNumber, UTC_TIMESTAMP(), @Overhead, '',
         }
         catch
         {
-            return new AccountImportResultDto { IsSuccess = true, ImportedCount = rows.Count, Message = "Accounts were created, but refreshing failed. Refresh the account list." };
+            return new AccountImportResultDto { IsSuccess = true, ImportedCount = rows.Count, Message = $"Created {rows.Count:N0} account(s); existing accounts skipped: {skippedCount:N0}. Refresh the account list." };
         }
-        return new AccountImportResultDto { IsSuccess = true, ImportedCount = rows.Count, Message = $"Successfully imported {rows.Count:N0} account(s)." };
+        return new AccountImportResultDto { IsSuccess = true, ImportedCount = rows.Count, Message = $"Successfully imported {rows.Count:N0} account(s); existing accounts skipped: {skippedCount:N0}." };
     }
 
     private static readonly string[] RequiredHeaders = ["AccountNumber", "Fund", "Overhead"];

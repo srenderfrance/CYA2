@@ -2,25 +2,22 @@ using Cya2.Application.Interfaces;
 using Cya2.Core.Entities;
 using Cya2.Core.Interfaces;
 using Cya2.Infrastructure.Services;
-using Microsoft.Extensions.FileProviders;
-using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging.Abstractions;
 using OfficeOpenXml;
 using Xunit;
 
 namespace Cya2.Database.Tests;
 
-public sealed class UserImportTests : IDisposable
+public sealed class UserImportTests
 {
-    private readonly string _root = Path.Combine(Path.GetTempPath(), "cya2-user-import-test-" + Guid.NewGuid().ToString("N"));
     private readonly Authorization _authorization = new();
     private readonly Users _users = new();
     private readonly Store _store = new();
     private readonly Invalidator _invalidator = new();
+    private byte[] _workbookBytes = [];
 
     public UserImportTests()
     {
-        Directory.CreateDirectory(Path.Combine(_root, "UserImports"));
         ExcelPackage.License.SetNonCommercialOrganization("Servant Partners");
     }
 
@@ -29,7 +26,7 @@ public sealed class UserImportTests : IDisposable
     {
         WriteWorkbook(("first.user@scene8.net", "normal"), ("other.person@scene8.net", "view all"), ("third.person@scene8.net", "admin"));
         var service = CreateService();
-        var preview = await service.PreviewAsync();
+        var preview = await PreviewAsync(service);
         Assert.True(preview.CanImport);
         Assert.Equal(new[] { "User", "Viewer", "Admin" }, preview.Rows.Select(row => row.AuthLevel));
         Assert.Equal("First User", preview.Rows[0].Name);
@@ -47,7 +44,7 @@ public sealed class UserImportTests : IDisposable
     {
         WriteWorkbook(("first.user@scene8.net", "normal"), ("FIRST.USER@scene8.net", "admin"), ("wrong@example.com", "normal"), ("bad.level@scene8.net", "other"));
         var service = CreateService();
-        var preview = await service.PreviewAsync();
+        var preview = await PreviewAsync(service);
         Assert.False(preview.CanImport);
         Assert.Equal(3, preview.Errors.Count);
         Assert.False((await service.ImportAsync()).IsSuccess);
@@ -55,20 +52,35 @@ public sealed class UserImportTests : IDisposable
     }
 
     [Fact]
-    public async Task ExistingUserOrChangedAdminRejectsPreview()
+    public async Task ExistingUsersAreSkippedAndChangedAdminCannotCommit()
     {
-        WriteWorkbook(("first.user@scene8.net", "normal"));
+        WriteWorkbook(("first.user@scene8.net", "normal"), ("other.person@scene8.net", "view all"));
         var service = CreateService();
-        _users.Existing = true;
-        Assert.False((await service.PreviewAsync()).CanImport);
-        _users.Existing = false;
-        Assert.True((await service.PreviewAsync()).CanImport);
+        _users.ExistingEmails.Add("first.user@scene8.net");
+        var preview = await PreviewAsync(service);
+        Assert.True(preview.CanImport);
+        Assert.Equal(1, preview.SkippedCount);
+        Assert.True(preview.Rows[0].IsExisting);
+        Assert.False(preview.Rows[1].IsExisting);
+        var result = await service.ImportAsync();
+        Assert.True(result.IsSuccess);
+        Assert.Contains("existing users skipped: 1", result.Message);
+        Assert.Single(_store.Entries!);
+        Assert.Equal("other.person@scene8.net", _store.Entries[0].Email);
+
+        WriteWorkbook(("new.person@scene8.net", "normal"));
+        Assert.True((await PreviewAsync(service)).CanImport);
         _authorization.Actor = 2;
         Assert.False((await service.ImportAsync()).IsSuccess);
-        Assert.Null(_store.Entries);
     }
 
-    private UserImportService CreateService() => new(new EnvironmentStub { ContentRootPath = _root }, _authorization, _users, _store, _invalidator, new Guard(), new Audit(), new Preload(), NullLogger<UserImportService>.Instance);
+    private UserImportService CreateService() => new(_authorization, _users, _store, _invalidator, new Guard(), new Audit(), new Preload(), NullLogger<UserImportService>.Instance);
+
+    private async Task<Cya2.Application.DTOs.UserImportPreviewDto> PreviewAsync(UserImportService service)
+    {
+        await using var stream = new MemoryStream(_workbookBytes);
+        return await service.PreviewAsync(stream, "users.xlsx");
+    }
 
     private void WriteWorkbook(params (string Email, string Level)[] rows)
     {
@@ -81,17 +93,7 @@ public sealed class UserImportTests : IDisposable
             sheet.Cells[i + 2, 1].Value = rows[i].Email;
             sheet.Cells[i + 2, 2].Value = rows[i].Level;
         }
-        File.WriteAllBytes(Path.Combine(_root, "UserImports", "input.xlsx"), package.GetAsByteArray());
-    }
-
-    public void Dispose() => Directory.Delete(_root, true);
-
-    private sealed class EnvironmentStub : IHostEnvironment
-    {
-        public string EnvironmentName { get; set; } = "Test";
-        public string ApplicationName { get; set; } = "Test";
-        public string ContentRootPath { get; set; } = "";
-        public IFileProvider ContentRootFileProvider { get; set; } = new NullFileProvider();
+        _workbookBytes = package.GetAsByteArray();
     }
 
     private sealed class Authorization : IAdminAuthorizationContext
@@ -103,8 +105,8 @@ public sealed class UserImportTests : IDisposable
 
     private sealed class Users : IUserRepository
     {
-        public bool Existing { get; set; }
-        public Task<bool> ExistsAsync(string email) => Task.FromResult(Existing);
+        public HashSet<string> ExistingEmails { get; } = new(StringComparer.OrdinalIgnoreCase);
+        public Task<bool> ExistsAsync(string email) => Task.FromResult(ExistingEmails.Contains(email));
         public Task<bool> ExistsAsync(int id) => throw new NotImplementedException();
         public Task<User?> GetByIdAsync(int id) => throw new NotImplementedException();
         public Task<List<User>> GetAllAsync() => throw new NotImplementedException();

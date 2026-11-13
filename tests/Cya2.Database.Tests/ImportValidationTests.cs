@@ -142,6 +142,93 @@ public sealed class ImportValidationTests
     }
 
     [Theory]
+    [InlineData(1, "Monday, Sep 14, 2026 04:21:03 PM GMT-7 - Cash Basis")]
+    [InlineData(7, "Friday, Jan 01, 2027 01:00:00 AM GMT-7 - CASH BASIS  ")]
+    public async Task AccountingCashBasisFooterAfterBlankRowsIsIgnored(int column, string footer)
+    {
+        var repository = new Repository();
+        using var source = Workbook("accounting");
+        using var package = new ExcelPackage(source);
+        var sheet = package.Workbook.Worksheets[0];
+        sheet.Cells[10, column].Value = footer;
+        sheet.Cells[12, 1].Style.Font.Bold = true;
+        using var workbook = new MemoryStream(package.GetAsByteArray());
+
+        var result = await Processor("accounting", repository, new Invalidator()).ProcessAsync(workbook, "test", default);
+
+        Assert.Empty(result.Errors);
+        Assert.Equal(2, result.InsertedRows);
+        Assert.Equal(1, repository.Writes);
+    }
+
+    [Theory]
+    [InlineData(9, "Monday, Sep 14, 2026 04:21:03 PM GMT-7 - Cash Basis")]
+    [InlineData(10, "Monday, Sep 14, 2026 04:21:03 PM GMT-7 - Accrual Basis")]
+    public async Task AccountingUnrecognizedFooterRejectsUpload(int row, string footer)
+    {
+        var repository = new Repository();
+        using var source = Workbook("accounting");
+        using var package = new ExcelPackage(source);
+        package.Workbook.Worksheets[0].Cells[row, 1].Value = footer;
+        using var workbook = new MemoryStream(package.GetAsByteArray());
+
+        var result = await Processor("accounting", repository, new Invalidator()).ProcessAsync(workbook, "test", default);
+
+        Assert.NotEmpty(result.Errors);
+        Assert.Equal(0, repository.Writes);
+    }
+
+    [Fact]
+    public async Task AccountingTransactionAfterBlankRowsIsNotMistakenForFooter()
+    {
+        var repository = new Repository();
+        using var source = Workbook("accounting");
+        using var package = new ExcelPackage(source);
+        var sheet = package.Workbook.Worksheets[0];
+        sheet.Cells[7, 1, 7, 7].Copy(sheet.Cells[10, 1]);
+        sheet.Cells[10, 6].Value = "Synthetic Cash Basis";
+        using var workbook = new MemoryStream(package.GetAsByteArray());
+
+        var result = await Processor("accounting", repository, new Invalidator()).ProcessAsync(workbook, "test", default);
+
+        Assert.Empty(result.Errors);
+        Assert.Equal(3, result.InsertedRows);
+        Assert.Equal(1, repository.Writes);
+    }
+
+    [Fact]
+    public async Task AccountingMalformedTransactionStillRejectsUploadWithFooter()
+    {
+        var repository = new Repository();
+        using var source = Workbook("accounting", invalid: true);
+        using var package = new ExcelPackage(source);
+        package.Workbook.Worksheets[0].Cells[10, 1].Value = "Monday, Sep 14, 2026 04:21:03 PM GMT-7 - Cash Basis";
+        using var workbook = new MemoryStream(package.GetAsByteArray());
+
+        var result = await Processor("accounting", repository, new Invalidator()).ProcessAsync(workbook, "test", default);
+
+        Assert.NotEmpty(result.Errors);
+        Assert.Equal(0, repository.Writes);
+    }
+
+    [Fact]
+    public async Task AccountingCashBasisRowBeforeLastPopulatedRowIsNotIgnored()
+    {
+        var repository = new Repository();
+        using var source = Workbook("accounting");
+        using var package = new ExcelPackage(source);
+        var sheet = package.Workbook.Worksheets[0];
+        sheet.Cells[10, 1].Value = "Monday, Sep 14, 2026 04:21:03 PM GMT-7 - Cash Basis";
+        sheet.Cells[11, 1].Value = "Unexpected data";
+        using var workbook = new MemoryStream(package.GetAsByteArray());
+
+        var result = await Processor("accounting", repository, new Invalidator()).ProcessAsync(workbook, "test", default);
+
+        Assert.NotEmpty(result.Errors);
+        Assert.Equal(0, repository.Writes);
+    }
+
+    [Theory]
     [InlineData("donations", true)]
     [InlineData("accounting", true)]
     [InlineData("donations", false)]

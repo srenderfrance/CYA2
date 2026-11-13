@@ -4,14 +4,12 @@ using Cya2.Application.Interfaces;
 using Cya2.Application.Services;
 using Cya2.Core.Entities;
 using Cya2.Core.Interfaces;
-using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using OfficeOpenXml;
 
 namespace Cya2.Infrastructure.Services;
 
 public sealed class UserImportService(
-    IHostEnvironment environment,
     IAdminAuthorizationContext authorization,
     IUserRepository users,
     IUserBatchAdministrationStore store,
@@ -23,20 +21,20 @@ public sealed class UserImportService(
 {
     private int? _previewActor;
     private ImportUserEntry[]? _preview;
+    private int _previewSkippedCount;
 
-    public async Task<UserImportPreviewDto> PreviewAsync(CancellationToken cancellationToken = default)
+    public async Task<UserImportPreviewDto> PreviewAsync(Stream workbook, string fileName, CancellationToken cancellationToken = default)
     {
         _preview = null;
+        _previewSkippedCount = 0;
         _previewActor = await authorization.GetCurrentAdminUserIdAsync();
         if (_previewActor is null) return Invalid("Administrator authorization is required.");
-        var directory = Path.Combine(environment.ContentRootPath, "UserImports");
-        var files = Directory.Exists(directory) ? Directory.GetFiles(directory, "*.xlsx", SearchOption.TopDirectoryOnly) : [];
-        if (files.Length != 1) return Invalid("Place exactly one .xlsx workbook in the UserImports folder.");
+        var safeFileName = Path.GetFileName(fileName);
+        if (!string.Equals(Path.GetExtension(safeFileName), ".xlsx", StringComparison.OrdinalIgnoreCase)) return Invalid("Select an .xlsx workbook.");
+        if (workbook.CanSeek && workbook.Length > 10 * 1024 * 1024) return Invalid("The workbook exceeds the 10 MB limit.");
         try
         {
-            if (new FileInfo(files[0]).Length > 10 * 1024 * 1024) return Invalid("The workbook exceeds the 10 MB limit.");
-            await using var stream = File.OpenRead(files[0]);
-            using var package = new ExcelPackage(stream);
+            using var package = new ExcelPackage(workbook);
             var sheet = package.Workbook.Worksheets.FirstOrDefault();
             if (sheet?.Dimension is null) return Invalid("The workbook does not contain a worksheet with data.");
             if (sheet.Dimension.End.Row > 10001 || sheet.Dimension.End.Column > 256) return Invalid("The workbook exceeds the supported row or column limit.");
@@ -69,15 +67,19 @@ public sealed class UserImportService(
                 }
                 if (role is null) errors.Add($"Row {row}: Level must be admin, normal, or view all.");
                 if (!seen.Add(email)) errors.Add($"Row {row}: Duplicate user email in workbook.");
-                if (await users.ExistsAsync(email)) errors.Add($"Row {row}: User email already exists.");
+                var isExisting = await users.ExistsAsync(email);
                 var name = string.Join(" ", local.Select(part => CultureInfo.InvariantCulture.TextInfo.ToTitleCase(part.ToLowerInvariant())));
-                rows.Add(new UserImportRowDto(row, email, name, role ?? string.Empty));
+                rows.Add(new UserImportRowDto(row, email, name, role ?? string.Empty, isExisting));
             }
             if (rows.Count == 0 && errors.Count == 0) errors.Add("The workbook contains no user rows.");
-            if (errors.Count == 0) _preview = rows.Select(row => new ImportUserEntry(row.Name, row.Email, row.AuthLevel)).ToArray();
+            if (errors.Count == 0)
+            {
+                _preview = rows.Where(row => !row.IsExisting).Select(row => new ImportUserEntry(row.Name, row.Email, row.AuthLevel)).ToArray();
+                _previewSkippedCount = rows.Count(row => row.IsExisting);
+            }
             return new UserImportPreviewDto { Rows = rows, Errors = errors };
         }
-        catch (Exception ex) when (ex is IOException or InvalidDataException or FormatException)
+        catch (Exception ex) when (ex is IOException or InvalidDataException or FormatException or ArgumentException)
         {
             return Invalid("The workbook could not be read.");
         }
@@ -87,7 +89,9 @@ public sealed class UserImportService(
     {
         var actor = await authorization.GetCurrentAdminUserIdAsync();
         var preview = _preview;
+        var skippedCount = _previewSkippedCount;
         _preview = null;
+        _previewSkippedCount = 0;
         using var operation = AuditOperationScope.Begin(actor);
         if (actor is null || actor != _previewActor)
         {
@@ -110,7 +114,7 @@ public sealed class UserImportService(
             committed = true;
             cacheInvalidator.Invalidate(CacheDataDomains.Authorization);
             preload.Invalidate();
-            return new(true, $"Successfully imported {preview.Length:N0} user(s). Assign account access separately.");
+            return new(true, $"Successfully imported {preview.Length:N0} user(s); existing users skipped: {skippedCount:N0}. Assign account access separately.");
         }
         catch (Exception ex)
         {

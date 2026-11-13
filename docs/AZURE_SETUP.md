@@ -247,7 +247,7 @@ Build and test the reviewed revision locally and confirm the test database schem
 
 1. In Solution Explorer, right-click **src/Cya2.Web/cya2.csproj > Publish**.
 2. Choose **Azure > Azure App Service (Linux)**, sign into the intended tenant/subscription, and select the existing test web app. Labels may vary with Visual Studio versions.
-3. Use **Release**, `net10.0`, and framework-dependent deployment with no Windows-specific runtime identifier. Verify the target and publish output; exclude `appsettings.Development.json`, `AccountImports` workbooks, and any secrets. The app expects the .NET 10 runtime installed in the selected Linux stack.
+3. Use **Release**, `net10.0`, and framework-dependent deployment with no Windows-specific runtime identifier. Verify the target and publish output; exclude `appsettings.Development.json`, any workbooks, and any secrets. The app expects the .NET 10 runtime installed in the selected Linux stack.
 4. Publish using an organization-approved authentication method. If the method requires SCM basic authentication, enable it only under the organization's policy and disable it again afterward. Never commit publish profiles containing credentials. Do not enable FTP/basic credentials globally as a shortcut.
 5. Check App Service deployment and startup logs. Do not run imports while publishing or restarting.
 
@@ -260,7 +260,6 @@ $publish = Join-Path $env:TEMP ("cya2-publish-" + [guid]::NewGuid())
 dotnet publish src/Cya2.Web/cya2.csproj -c Release -f net10.0 --no-self-contained -o $publish
 if ($LASTEXITCODE -ne 0) { throw "Publish failed; do not deploy." }
 Remove-Item (Join-Path $publish 'appsettings.Development.json') -Force -ErrorAction SilentlyContinue
-Remove-Item (Join-Path $publish 'AccountImports') -Recurse -Force -ErrorAction SilentlyContinue
 ```
 
 Inspect the entire publish folder for workbooks, credentials, development-only files, and other unintended content before creating the archive. Then, from the repository root:
@@ -300,7 +299,7 @@ Using the application's Admin UI:
 
 Do not announce go-live until reconciliation and access checks pass. The DB's Donors/DonorContacts are current-state display projections, not the organization's official donor database.
 
-The separate account-definition import currently reads exactly one `.xlsx` from the application's `AccountImports` directory under the content root; it is not the donation/accounting upload flow. That directory can be overwritten on redeployment or be read-only when running from a package. Do not put sensitive workbooks in the deployment ZIP or treat this directory as durable storage. Validate a secure, temporary handling method for synthetic account-import testing on the chosen deployment mode, or create accounts through Admin; this path needs a separate reviewed design before production use.
+Account-definition and bulk-user workbooks are selected and uploaded through their respective Admin import sections; these are separate from donation/accounting uploads. Each workbook is limited to 10 MB and is validated in a preview before the administrator can create accounts or users. Uploaded workbooks are processed for the import and must not be included in deployment artifacts or stored as durable application data. Use synthetic workbooks for testing.
 
 ## 11. Operations, durability, and go-live checklist
 
@@ -343,7 +342,7 @@ The separate account-definition import currently reads exactly one `.xlsx` from 
 | Failed startup | Linux .NET 10 runtime, ZIP contents at archive root, `cya2.dll`, App Service deployment/startup logs, and startup command if platform detection fails. Avoid public detailed error pages. |
 | Static page works but interactions disconnect | WebSockets setting, browser/proxy policies, single worker/affinity, restarts, worker memory, and actual Blazor connection. |
 | Donation import fails with MySQL error 1253 | Check the target database's default character set and collation using the read-only query in section 4. A non-`utf8mb4` default is a possible cause, not proof of the failing statement; reconcile import outcome before retrying and verify existing table collations separately. |
-| Imports fail despite normal reads | `CREATE TEMPORARY TABLES` plus data permissions; schema compatibility; upload limits; no deployment/restart during import; inspect redacted diagnostics. For account-definition imports also check the content-root `AccountImports` directory and deployment mode. Do not grant runtime schema-administrator rights. |
+| Imports fail despite normal reads | `CREATE TEMPORARY TABLES` plus data permissions; schema compatibility; upload limits; no deployment/restart during import; inspect redacted diagnostics. Do not grant runtime schema-administrator rights. |
 | Login/session fails after switching slots/apps | Data Protection key-ring/application isolation and host-specific cookies; sign in afresh. Sharing key rings/slots requires deliberate design. |
 
 ## Microsoft reference documentation

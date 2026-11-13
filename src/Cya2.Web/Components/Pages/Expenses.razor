@@ -1,6 +1,5 @@
 @page "/expenses"
 @using Microsoft.AspNetCore.Authorization
-@using Cya2.Shared.Utilities
 @using Cya2.Core.Utilities
 @using Radzen
 @using Radzen.Blazor
@@ -8,7 +7,6 @@
 @using System.Security.Claims
 @using Cya2.Application.DTOs
 @using Cya2.Application.Interfaces
-@using Cya2.Core.ValueObjects
 @inject AuthenticationStateProvider AuthStateProvider
 @inject IExpenseService ExpenseService
 @inject Cya2.Application.Interfaces.ISessionUserStateService SessionUserStateService
