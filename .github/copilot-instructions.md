@@ -19,6 +19,7 @@ This is a .net 10 app that uses blazor, dapper and mysql, radzen components and 
 ## Data Management
 - The Donors and DonorContacts tables are application display projections, not the organization's official donor database. Contact data should be current-state only: each upload must remove contact values no longer present and retain DateCreated plus DateModified, without historical contact rows.
 - For CYA2, restricted audit-stream records may include internal numeric user IDs and should have a 90-day retention period. General diagnostic logs must continue to exclude personal values and sensitive account/intern data.
+- For CYA2 audit-failure signals, use monitoring logs only for now; do not add email, webhooks, or external alert delivery without a new decision.
 
 ## Database Schema Management
 - CYA2 is developing its initial database version. Until production, all schema changes must be incorporated into database/schema/001_InitialSchema.sql, not new incremental migrations; no schema migration history should be recorded during this pre-production development phase.

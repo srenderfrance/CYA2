@@ -54,8 +54,9 @@ public sealed class GoogleSignInService : IGoogleSignInService
 
             if (string.IsNullOrWhiteSpace(emailMatch.GoogleId))
             {
-                emailMatch.GoogleId = googleId;
-                await _userRepository.UpdateAsync(emailMatch);
+                emailMatch = await _userRepository.TryBindGoogleIdAsync(emailMatch.Id, email, googleId);
+                if (emailMatch is null)
+                    return new GoogleSignInResult(null, "Google ID mismatch");
             }
 
             user = emailMatch;

@@ -16,6 +16,8 @@ public class AdminUserUpdateDto
     public string? Name { get; set; }
     public string? Email { get; set; }
     public string? AuthLevel { get; set; }
+    public int? GrantAccountId { get; set; }
+    public int? RevokeAccountId { get; set; }
     // Reuse requires an explicit Admin confirmation so a new or renamed user never silently inherits another intern's historical data.
     public bool ReuseExistingInternAccount { get; set; }
 }

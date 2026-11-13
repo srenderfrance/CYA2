@@ -6,6 +6,25 @@ namespace Cya2.Application.Tests;
 public sealed class ConstituentIdentityResolverTests
 {
     [Fact]
+    public void RecipientIdIsAuthoritativeAndUsesSameNamespaceAsDirectDonor()
+    {
+        var direct = new ConstituentIdentityEvidence("Direct Name", "000123", false, false);
+        var soft = new ConstituentIdentityEvidence("Different Name", "employer", true, false, "000123");
+        var resolver = new ConstituentIdentityResolver([direct, soft]);
+        Assert.Equal(resolver.Resolve(direct), resolver.Resolve(soft));
+        Assert.Equal(("id:000123", "000123"), resolver.Resolve(soft));
+        Assert.Equal(("anonymous", (string?)null), resolver.Resolve(soft with { IsAnonymous = true }));
+    }
+
+    [Fact]
+    public void BlankSoftIdUsesExistingNameFallbackAndConflictingIdsStayDistinct()
+    {
+        var resolver = new ConstituentIdentityResolver([
+            new("Alex", "1", false, false), new("Alex", "employer", true, false, "2")]);
+        Assert.Equal(("name:alex", (string?)null), resolver.Resolve(new("Alex", "employer", true, false)));
+        Assert.Equal(("id:2", "2"), resolver.Resolve(new("Alex", "employer", true, false, "2")));
+    }
+    [Fact]
     public void DirectIdsAreAuthoritativeAndSoftCreditOrganizationIdsAreIgnored()
     {
         var resolver = new ConstituentIdentityResolver([

@@ -84,17 +84,7 @@ public class UserSettingsService : IUserSettingsService
     {
         try
         {
-            var user = await _userRepository.GetByIdAsync(userId);
-            if (user == null)
-            {
-                return false;
-            }
-
-            user.Language = NormalizeLanguage(language);
-            var updated = await _userRepository.UpdateAsync(user);
-
-            var success = updated != null && updated.Id == userId;
-            return success;
+            return await _userRepository.UpdateLanguageAsync(userId, NormalizeLanguage(language));
         }
         catch (Exception ex)
         {

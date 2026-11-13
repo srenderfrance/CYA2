@@ -25,6 +25,7 @@ public sealed class CanonicalDonationWriteModel
     public required DateTime Date { get; init; }
     public string? GiftImportId { get; init; }
     public string? ConstituentId { get; init; }
+    public string? SoftCreditRecipientId { get; init; }
     public bool IsSoftCredit { get; init; }
     public required string AccountName { get; init; }
     public required string PaymentMethod { get; init; }

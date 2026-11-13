@@ -6,4 +6,6 @@ public interface IAuditEventRepository
 {
     Task AddAsync(AuditEvent auditEvent, CancellationToken cancellationToken = default);
     Task<int> DeleteExpiredAsync(DateTime expiresBeforeUtc, CancellationToken cancellationToken = default);
+    Task<int> FlagInterruptedImportsAsync(string currentHostInstanceId, DateTime startedBeforeUtc, CancellationToken cancellationToken = default)
+        => throw new NotSupportedException();
 }

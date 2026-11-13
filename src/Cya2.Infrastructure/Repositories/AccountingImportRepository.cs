@@ -125,6 +125,7 @@ public sealed class AccountingImportRepository : IAccountingImportRepository
 SELECT AccountingClass,Date,Num,Amount,AccountNumber,Account,Type,DateCreated FROM TempImportAccounting", connection, transaction) { CommandTimeout = 300 };
                 var inserted = await publish.ExecuteNonQueryAsync(ct);
                 if (inserted != rows.Count) throw new InvalidOperationException("Staged accounting count did not match publication count.");
+                await TransactionalAudit.RecordAsync(connection, transaction, Cya2.Application.Interfaces.AuditEventTypes.AccountingImportCompleted, _logger, inserted, cancellationToken: ct);
                 await ImportTransaction.CommitAsync(transaction, ConnStr, "AccountingBackupSnapshots", backupId, ct);
                 return new ImportBatchResult { Inserted = inserted };
             }

@@ -13,7 +13,7 @@ The rules below are the intended contract. The [production review](../../../docs
 Implementation:
 
 - `src/Cya2.Core/Utilities/InternAccountUtility.cs`
-- `src/Cya2.Application/Services/UserManagementService.cs` (`EnsureInternAccountAccessAsync`)
+- `src/Cya2.Infrastructure/Repositories/UserAdministrationStore.cs` (`EnsureInternAsync`)
 - `database/schema/001_InitialSchema.sql`
 
 ## Donation and Donor Data
@@ -21,7 +21,7 @@ Implementation:
 - Normal accounts load donation and donor data by fund, including merged subaccounts where appropriate.
 - An intern account loads by `DonationData.InternName`, never by its fund. A single source fund can contain data belonging to multiple interns, so using the fund would return the wrong rows.
 - Donor selection and account-authorized export use the same intern-name lookup for all dates and date ranges; their summary cache scope retains that intern identity.
-- Donor identity is shared across funds using direct Constituent IDs or unambiguous normalized-name matches. This never broadens intern donation reads: only gifts matching the selected InternName contribute to totals. Contacts come only from direct gifts linked to the shared donor, not intermediary contacts.
+- Donor identity is shared across funds using direct Constituent IDs, eligible third-party soft-credit recipient IDs, or unambiguous normalized-name matches when an applicable ID is blank. This never broadens intern donation reads: only gifts matching the selected InternName contribute to totals. Contacts come only from direct gifts linked to the shared donor, not intermediary contacts.
 - Single and bulk reads require an exact stored `InternName`, including case, accents, punctuation, order, and whitespace; they do not infer alternate names. Imports must use the account designation exactly or those gifts will not appear for that account.
 
 Implementation:
@@ -53,11 +53,13 @@ Implementation:
 - Renaming an Intern user is intended to correct typos, not to represent an actual name change. It retains the linked account and donation rows while changing the exact lookup designation; imported `InternName` values must match the corrected designation.
 - Creating or renaming to a designation with an existing intern account requires explicit Admin confirmation before reuse. This prevents a user from silently inheriting another intern account’s history.
 - An existing Intern user's role cannot be changed. A different role requires a new user account; the Admin role selector is disabled for an existing Intern. Other permitted profile and access changes remain available.
+- User, intern account, and access-link changes are committed together; the Admin staff editor submits profile and selected access changes as one transaction. If an outcome cannot be confirmed, refresh and verify it before retrying.
 
 Implementation:
 
 - `src/Cya2.Application/DTOs/AdminUserDtos.cs`
 - `src/Cya2.Application/Services/UserManagementService.cs`
+- `src/Cya2.Infrastructure/Repositories/UserAdministrationStore.cs`
 - `src/Cya2.Web/Components/Pages/Admin.razor`
 
 ## Authorization and Account Context

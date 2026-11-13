@@ -89,7 +89,7 @@ namespace Cya2.Infrastructure.Services
                 "Soft Credit Recipient Name", "Preferred Address Line 1", "Preferred City", "Preferred State",
                 "Preferred ZIP", "Preferred Country", "Personal Email Number", "Home Phone Number",
                 "Personal Mobile Phone Number", "Gift Is Anonymous", "Gift Import ID",
-                "Primary Addressee", "Constituent ID"
+                "Primary Addressee", "Constituent ID", "Soft Credit Recipient ID"
             };
             foreach (var column in required)
             {
@@ -165,11 +165,19 @@ namespace Cya2.Infrastructure.Services
                 var sourceName = GetCellText(ws, rowNumber, map["Name"]);
                 var identity = _identityResolver.Resolve(new DonorIdentityInput(fund ?? string.Empty, sourceName, softCredit, addressee, isAnonymous));
                 var isSoftCredit = string.Equals(identity.ResolutionSource, "SoftCredit", StringComparison.Ordinal);
+                var isThirdParty = _identityResolver.IsThirdPartySoftCredit(new DonorIdentityInput(fund ?? string.Empty, sourceName, softCredit, addressee, isAnonymous));
                 var constituentId = GetCellText(ws, rowNumber, map["Constituent ID"]);
+                var softCreditRecipientId = GetCellText(ws, rowNumber, map["Soft Credit Recipient ID"]);
                 if (constituentId?.Length > 255)
                 {
                     result.FailedRows++;
                     result.Errors.Add(ImportDiagnosticMessages.InvalidCell(rowNumber, "Constituent ID"));
+                    continue;
+                }
+                if (softCreditRecipientId?.Length > 255)
+                {
+                    result.FailedRows++;
+                    result.Errors.Add(ImportDiagnosticMessages.InvalidCell(rowNumber, "Soft Credit Recipient ID"));
                     continue;
                 }
 
@@ -184,6 +192,8 @@ namespace Cya2.Infrastructure.Services
                     Fund = fund ?? string.Empty,
                     GiftImportId = GetCellText(ws, rowNumber, map["Gift Import ID"]),
                     ConstituentId = constituentId,
+                    SoftCreditRecipientId = isAnonymous ? null : softCreditRecipientId,
+                    IsThirdPartySoftCredit = isThirdParty,
                     IsSoftCredit = isSoftCredit,
                     InternName = GetCellText(ws, rowNumber, honorMemorialColumnName),
                     PrimaryAddressee = isAnonymous ? null : addressee,
@@ -214,11 +224,13 @@ namespace Cya2.Infrastructure.Services
             }
 
             var identityResolver = new ConstituentIdentityResolver(allRows.Select(row => new ConstituentIdentityEvidence(
-                row.ResolvedDonorName ?? row.AccountName, row.ConstituentId, row.IsSoftCredit, row.IsAnonymous)));
+                row.ResolvedDonorName ?? row.AccountName, row.ConstituentId, row.IsSoftCredit, row.IsAnonymous,
+                row.IsThirdPartySoftCredit ? row.SoftCreditRecipientId : null)));
             foreach (var row in allRows)
             {
                 row.DonorIdentityKey = identityResolver.Resolve(new ConstituentIdentityEvidence(
-                    row.ResolvedDonorName ?? row.AccountName, row.ConstituentId, row.IsSoftCredit, row.IsAnonymous)).Key;
+                    row.ResolvedDonorName ?? row.AccountName, row.ConstituentId, row.IsSoftCredit, row.IsAnonymous,
+                    row.IsThirdPartySoftCredit ? row.SoftCreditRecipientId : null)).Key;
             }
             var canonicalRows = ConsolidateDuplicates(allRows, result);
             if (result.Errors.Count > 0 || canonicalRows.Count == 0)
@@ -285,7 +297,8 @@ namespace Cya2.Infrastructure.Services
                 }
 
                 if (existing.IsSoftCredit != row.IsSoftCredit ||
-                    !string.Equals(existing.ConstituentId, row.ConstituentId, StringComparison.Ordinal))
+                    !string.Equals(existing.ConstituentId, row.ConstituentId, StringComparison.Ordinal) ||
+                    !string.Equals(existing.SoftCreditRecipientId, row.SoftCreditRecipientId, StringComparison.Ordinal))
                 {
                     canonical.Add(row);
                     continue;
@@ -404,6 +417,7 @@ namespace Cya2.Infrastructure.Services
                 Date = row.Date,
                 GiftImportId = row.GiftImportId,
                 ConstituentId = row.ConstituentId,
+                SoftCreditRecipientId = row.SoftCreditRecipientId,
                 IsSoftCredit = row.IsSoftCredit,
                 AccountName = row.AccountName,
                 PaymentMethod = row.PaymentMethod,

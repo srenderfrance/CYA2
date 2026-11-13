@@ -30,7 +30,20 @@ public sealed class GoogleSignInServiceTests
 
         Assert.True(result.IsAuthorized);
         Assert.Equal("google-2", user.GoogleId);
-        Assert.Equal(1, repository.UpdateCalls);
+        Assert.Equal(1, repository.BindCalls);
+        Assert.Equal(0, repository.UpdateCalls);
+    }
+
+    [Fact]
+    public async Task ResolveUserAsync_RejectsIdentityWhenConcurrentBindingFails()
+    {
+        var repository = new FakeUserRepository(CreateUser(string.Empty, "user@example.test")) { RejectBinding = true };
+
+        var result = await CreateService(repository).ResolveUserAsync("google-2", "user@example.test");
+
+        Assert.False(result.IsAuthorized);
+        Assert.Equal("Google ID mismatch", result.RejectionReason);
+        Assert.Equal(0, repository.UpdateCalls);
     }
 
     [Fact]
@@ -138,6 +151,8 @@ public sealed class GoogleSignInServiceTests
     {
         private readonly List<User> _users;
         public int UpdateCalls { get; private set; }
+        public int BindCalls { get; private set; }
+        public bool RejectBinding { get; set; }
         public int InitialAdminCreateCalls { get; private set; }
 
         public FakeUserRepository(User? user = null) => _users = user is null ? [] : [user];
@@ -147,6 +162,14 @@ public sealed class GoogleSignInServiceTests
         public Task<List<User>> GetAllAsync() => Task.FromResult(_users.ToList());
         public Task<User> AddAsync(User entity) { _users.Add(entity); return Task.FromResult(entity); }
         public Task<User> UpdateAsync(User entity) { UpdateCalls++; return Task.FromResult(entity); }
+        public Task<User?> TryBindGoogleIdAsync(int userId, string email, string googleId)
+        {
+            BindCalls++;
+            var user = _users.SingleOrDefault(user => user.Id == userId && user.Email == email);
+            if (RejectBinding || user is null || !string.IsNullOrEmpty(user.GoogleId)) return Task.FromResult<User?>(null);
+            user.GoogleId = googleId;
+            return Task.FromResult<User?>(user);
+        }
         public Task DeleteAsync(int id) => Task.CompletedTask;
         public Task<bool> ExistsAsync(int id) => Task.FromResult(false);
         public Task<List<User>> GetActiveUsersAsync() => Task.FromResult(_users.ToList());

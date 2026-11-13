@@ -1,6 +1,9 @@
 namespace Cya2.Core.Services;
 
-public sealed record ConstituentIdentityEvidence(string Name, string? ConstituentId, bool IsSoftCredit, bool IsAnonymous);
+public sealed record ConstituentIdentityEvidence(string Name, string? ConstituentId, bool IsSoftCredit, bool IsAnonymous, string? SoftCreditRecipientId = null)
+{
+    public string? DonorId => IsSoftCredit ? SoftCreditRecipientId : ConstituentId;
+}
 
 public sealed class ConstituentIdentityResolver
 {
@@ -8,11 +11,11 @@ public sealed class ConstituentIdentityResolver
 
     public ConstituentIdentityResolver(IEnumerable<ConstituentIdentityEvidence> evidence)
     {
-        foreach (var item in evidence.Where(item => !item.IsAnonymous && !item.IsSoftCredit && !string.IsNullOrWhiteSpace(item.ConstituentId)))
+        foreach (var item in evidence.Where(item => !item.IsAnonymous && !string.IsNullOrWhiteSpace(item.DonorId)))
         {
             var name = DonorIdentityResolver.NormalizeIdentityKey(item.Name);
             if (!_idsByName.TryGetValue(name, out var ids)) _idsByName[name] = ids = new(StringComparer.Ordinal);
-            ids.Add(item.ConstituentId!.Trim());
+            ids.Add(item.DonorId!.Trim());
         }
     }
 
@@ -20,9 +23,9 @@ public sealed class ConstituentIdentityResolver
     {
         if (item.IsAnonymous) return ("anonymous", null);
         var name = DonorIdentityResolver.NormalizeIdentityKey(item.Name);
-        if (!item.IsSoftCredit && !string.IsNullOrWhiteSpace(item.ConstituentId))
+        if (!string.IsNullOrWhiteSpace(item.DonorId))
         {
-            var id = item.ConstituentId.Trim();
+            var id = item.DonorId.Trim();
             return ("id:" + id, id);
         }
         if (_idsByName.TryGetValue(name, out var ids) && ids.Count == 1)

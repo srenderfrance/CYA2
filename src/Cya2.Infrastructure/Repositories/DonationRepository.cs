@@ -46,10 +46,10 @@ public sealed partial class DonationRepository : IDonationRepository
 INSERT INTO DonationDataBackup
     (BackupId, Id, DonorId, Date, GiftImportId, AccountName, PaymentMethod, GiftType,
      Amount, Fund, InternName, PrimaryAddressee, SoftCreditName,
-     IsAnonymous, Frequency, DateCreated, ConstituentId, IsSoftCredit, BackupAt, Pinned, SourceRangeStart)
+     IsAnonymous, Frequency, DateCreated, ConstituentId, SoftCreditRecipientId, IsSoftCredit, BackupAt, Pinned, SourceRangeStart)
 SELECT @BackupId, Id, DonorId, Date, GiftImportId, AccountName, PaymentMethod, GiftType,
        Amount, Fund, InternName, PrimaryAddressee, SoftCreditName,
-       IsAnonymous, Frequency, DateCreated, ConstituentId, IsSoftCredit, UTC_TIMESTAMP(), 0, @SourceRangeStart
+       IsAnonymous, Frequency, DateCreated, ConstituentId, SoftCreditRecipientId, IsSoftCredit, UTC_TIMESTAMP(), 0, @SourceRangeStart
 FROM DonationData";
                 backup.Parameters.AddWithValue("@BackupId", backupId);
                 backup.Parameters.AddWithValue("@SourceRangeStart", fromDate);
@@ -435,6 +435,7 @@ WHERE IdentityKey = @IdentityKey";
 
             _logger.LogInformation("Canonical donation set-based rows and contacts prepared. BatchCount={BatchCount}, Inserted={Inserted}, ContactsAdded={ContactsAdded}", donations.Count, inserted, contactsAdded);
             if (inserted != donations.Count) throw new InvalidOperationException("Staged donation count did not match publication count.");
+            await TransactionalAudit.RecordAsync(connection, transaction, Cya2.Application.Interfaces.AuditEventTypes.DonationImportCompleted, _logger, inserted, cancellationToken: cancellationToken);
             await ImportTransaction.CommitAsync(transaction, ConnectionString, "DonationBackupSnapshots", backupId, cancellationToken);
             _logger.LogInformation("Canonical donation set-based transaction committed. BatchCount={BatchCount}, Inserted={Inserted}, ContactsAdded={ContactsAdded}", donations.Count, inserted, contactsAdded);
             return new DonationImportPersistenceResult
@@ -494,6 +495,7 @@ CREATE TEMPORARY TABLE TempImportDonations
     IsAnonymous BOOLEAN NOT NULL,
     Frequency TINYINT NULL,
     ConstituentId VARCHAR(255) COLLATE utf8mb4_bin NULL,
+    SoftCreditRecipientId VARCHAR(255) COLLATE utf8mb4_bin NULL,
     IsSoftCredit BOOLEAN NOT NULL DEFAULT FALSE,
     PRIMARY KEY (StageId),
     KEY ix_TempImportDonations_Lookup (Fund(100), IdentityKey(200))
@@ -559,7 +561,7 @@ CREATE TEMPORARY TABLE TempImportContacts
             {
                 var parameterIndex = localIndex;
                 if (localIndex > 0) values.Append(',');
-                values.Append($"(@f{parameterIndex}, @i{parameterIndex}, @d{parameterIndex}, @g{parameterIndex}, @a{parameterIndex}, @p{parameterIndex}, @t{parameterIndex}, @m{parameterIndex}, @n{parameterIndex}, @r{parameterIndex}, @s{parameterIndex}, @x{parameterIndex}, @q{parameterIndex}, @c{parameterIndex}, @sc{parameterIndex})");
+                values.Append($"(@f{parameterIndex}, @i{parameterIndex}, @d{parameterIndex}, @g{parameterIndex}, @a{parameterIndex}, @p{parameterIndex}, @t{parameterIndex}, @m{parameterIndex}, @n{parameterIndex}, @r{parameterIndex}, @s{parameterIndex}, @x{parameterIndex}, @q{parameterIndex}, @c{parameterIndex}, @sr{parameterIndex}, @sc{parameterIndex})");
                 var donation = donations[offset + localIndex];
                 command.Parameters.AddWithValue($"@f{parameterIndex}", donation.Fund);
                 command.Parameters.AddWithValue($"@i{parameterIndex}", donation.Donor.IdentityKey);
@@ -575,9 +577,10 @@ CREATE TEMPORARY TABLE TempImportContacts
                 command.Parameters.AddWithValue($"@x{parameterIndex}", donation.IsAnonymous);
                 command.Parameters.AddWithValue($"@q{parameterIndex}", donation.Frequency.HasValue ? (object)(int)donation.Frequency.Value : DBNull.Value);
                 command.Parameters.AddWithValue($"@c{parameterIndex}", (object?)donation.ConstituentId ?? DBNull.Value);
+                command.Parameters.AddWithValue($"@sr{parameterIndex}", (object?)donation.SoftCreditRecipientId ?? DBNull.Value);
                 command.Parameters.AddWithValue($"@sc{parameterIndex}", donation.IsSoftCredit);
             }
-            command.CommandText = $"INSERT INTO TempImportDonations (Fund, IdentityKey, Date, GiftImportId, AccountName, PaymentMethod, GiftType, Amount, InternName, PrimaryAddressee, SoftCreditName, IsAnonymous, Frequency, ConstituentId, IsSoftCredit) VALUES {values}";
+            command.CommandText = $"INSERT INTO TempImportDonations (Fund, IdentityKey, Date, GiftImportId, AccountName, PaymentMethod, GiftType, Amount, InternName, PrimaryAddressee, SoftCreditName, IsAnonymous, Frequency, ConstituentId, SoftCreditRecipientId, IsSoftCredit) VALUES {values}";
             await command.ExecuteNonQueryAsync(cancellationToken);
         }
     }
@@ -634,9 +637,9 @@ ON DUPLICATE KEY UPDATE
         return await ExecuteImportCommandAsync(connection, transaction, @"
 INSERT INTO DonationData
     (DonorId, Date, GiftImportId, AccountName, PaymentMethod, GiftType, Amount, Fund,
-     InternName, PrimaryAddressee, SoftCreditName, IsAnonymous, Frequency, ConstituentId, IsSoftCredit)
+     InternName, PrimaryAddressee, SoftCreditName, IsAnonymous, Frequency, ConstituentId, SoftCreditRecipientId, IsSoftCredit)
 SELECT d.Id, s.Date, s.GiftImportId, s.AccountName, s.PaymentMethod, s.GiftType, s.Amount, s.Fund,
-       s.InternName, s.PrimaryAddressee, s.SoftCreditName, s.IsAnonymous, s.Frequency, s.ConstituentId, s.IsSoftCredit
+       s.InternName, s.PrimaryAddressee, s.SoftCreditName, s.IsAnonymous, s.Frequency, s.ConstituentId, s.SoftCreditRecipientId, s.IsSoftCredit
 FROM TempImportDonations s
 JOIN Donors d ON d.IdentityKey = s.IdentityKey;", cancellationToken);
     }

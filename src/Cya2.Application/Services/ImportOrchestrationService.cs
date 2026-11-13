@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using Cya2.Application.Interfaces;
 using Cya2.Core.Interfaces;
+using Cya2.Core.Entities;
 using Microsoft.Extensions.Logging;
 
 namespace Cya2.Application.Services;
@@ -81,18 +82,17 @@ public sealed class ImportOrchestrationService : IImportOrchestrationService
         }
 
         var progressId = Guid.NewGuid().ToString("N");
+        using var operation = AuditOperationScope.Begin(int.TryParse(actor.UserId, out var actorId) ? actorId : null, progressId);
         _progressService.Start(progressId, importType, actor.UserId);
-        await RecordImportAuditAsync(actor.UserId, importType, AuditOutcomes.Started, cancellationToken: cancellationToken);
         try
         {
+            await RecordImportAuditAsync(actor.UserId, importType, AuditOutcomes.Started, cancellationToken: cancellationToken);
             await using var stream = new MemoryStream(preview.Data, writable: false);
             var importResult = await GetProcessor(importType).ProcessAsync(stream, progressId, cancellationToken);
             try
             {
-                await RecordImportAuditAsync(actor.UserId, importType,
-                importResult.FailedRows > 0 || importResult.Errors.Count > 0 || importResult.InsertedRows == 0 ? AuditOutcomes.Failed : AuditOutcomes.Succeeded,
-                importResult.InsertedRows,
-                CancellationToken.None);
+                if (!importResult.PublicationCommitted)
+                    await RecordImportAuditAsync(actor.UserId, importType, AuditOutcomes.Failed, importResult.InsertedRows, CancellationToken.None);
             }
             catch
             {
@@ -109,7 +109,9 @@ public sealed class ImportOrchestrationService : IImportOrchestrationService
             _progressService.AddErrors(progressId, [message]);
             _progressService.SetStatus(progressId, message);
             _progressService.Complete(progressId);
-            await RecordImportAuditAsync(actor.UserId, importType, AuditOutcomes.Failed, cancellationToken: CancellationToken.None);
+            await RecordImportAuditAsync(actor.UserId, importType,
+                ex is ImportOutcomeUnknownException ? AuditOutcomes.Unknown : ex is OperationCanceledException ? AuditOutcomes.Cancelled : AuditOutcomes.Failed,
+                cancellationToken: CancellationToken.None);
             throw;
         }
     }
@@ -139,15 +141,26 @@ public sealed class ImportOrchestrationService : IImportOrchestrationService
         }
 
         _progressService.Start(result.ProgressId!, importType, actor.UserId);
-        await RecordImportAuditAsync(actor.UserId, importType, AuditOutcomes.Started);
+        using var operation = AuditOperationScope.Begin(int.TryParse(actor.UserId, out var auditActorId) ? auditActorId : null, result.ProgressId);
         var id = result.ProgressId;
-        _logger.LogInformation("Queueing background {ImportType} import. PreviewId={PreviewId}, ProgressId={ProgressId}", importType, previewId, id);
-        await _workQueue.EnqueueAsync(new ImportWorkItem(
-            importType,
-            previewId,
-            id,
-            int.TryParse(actor.UserId, out var actorUserId) ? actorUserId : null,
-            preview.Data));
+        try
+        {
+            await RecordImportAuditAsync(actor.UserId, importType, AuditOutcomes.Started);
+            _logger.LogInformation("Queueing background {ImportType} import. PreviewId={PreviewId}, ProgressId={ProgressId}", importType, previewId, id);
+            await _workQueue.EnqueueAsync(new ImportWorkItem(
+                importType,
+                previewId,
+                id,
+                int.TryParse(actor.UserId, out var actorUserId) ? actorUserId : null,
+                preview.Data));
+        }
+        catch (Exception ex)
+        {
+            await RecordImportAuditAsync(actor.UserId, importType, ex is OperationCanceledException ? AuditOutcomes.Cancelled : AuditOutcomes.Failed, cancellationToken: CancellationToken.None);
+            _progressService.SetStatus(id!, "Import did not start. No publication was attempted.");
+            _progressService.Complete(id!);
+            throw;
+        }
 
         return result;
     }
@@ -178,8 +191,11 @@ public sealed class ImportOrchestrationService : IImportOrchestrationService
                 _ => AuditEventTypes.AccountingImportFailed
             };
 
+        var actorId = int.TryParse(actorUserId, out var parsedActorId) ? parsedActorId : (int?)null;
+        if (outcome == AuditOutcomes.Started)
+            return _auditEvents.RecordRequiredAsync(actorId, eventType, outcome, itemCount: itemCount, cancellationToken: cancellationToken);
         return _auditEvents.RecordAsync(
-            int.TryParse(actorUserId, out var actorId) ? actorId : null,
+            actorId,
             eventType,
             outcome,
             itemCount: itemCount,

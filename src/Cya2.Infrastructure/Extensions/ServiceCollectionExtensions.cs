@@ -19,6 +19,8 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<ICacheDataVersionProvider, MySqlCacheDataVersionProvider>();
 
         services.AddScoped<IUserRepository, UserRepository>();
+        services.AddScoped<IUserAdministrationStore, UserAdministrationStore>();
+        services.AddScoped<IUserBatchAdministrationStore, UserAdministrationStore>();
         services.AddScoped<IUserAccountAccessRepository, UserAccountAccessRepository>();
         services.AddScoped<IAccountRepository, AccountRepository>();
         services.AddScoped<ISubAccountRepository, SubAccountRepository>();
@@ -28,6 +30,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IDonationRepository, DonationRepository>();
         services.AddScoped<IAccountingImportRepository, AccountingImportRepository>();
         services.AddScoped<IAccountImportService, AccountImportService>();
+        services.AddScoped<IUserImportService, UserImportService>();
         services.AddScoped<IRollbackRepository, RollbackRepository>();
         services.AddScoped<IAuditEventRepository, AuditEventRepository>();
         services.AddScoped<IImportProcessor, DonationImportProcessor>();

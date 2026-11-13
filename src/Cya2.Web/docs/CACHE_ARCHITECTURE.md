@@ -16,6 +16,8 @@ User creation, updates, deletion, and account-access changes invalidate the `Aut
 
 Creating or updating an Intern also invalidates `AccountMetadata`, so a newly created or corrected intern account is included in the next central warmup.
 
+User-administration changes invalidate after a successful transaction. If the store throws after a mutation is attempted, the outcome may be unknown: create/update conservatively invalidate both `Authorization` and `AccountMetadata`, and delete invalidates `Authorization`. The UI asks the administrator to refresh and verify before retrying. Invalidation failure is logged without personal values; it is not transactional with the database.
+
 Donation imports that reconcile contacts invalidate both `Donations` and `DonorContacts` immediately after confirmed publication. Unknown commit outcomes conservatively invalidate both; validation rejection and confirmed pre-commit failures leave generations unchanged. Accounting publication invalidates `Accounting`. Existing generation-aware summary/overview rebuild scheduling is unchanged. Processor tests verify the emitted flags; warm-cache UI and enabled MySQL acceptance remain required. See [import safety](../../../docs/IMPORT_SAFETY.md).
 
 ## Fund References

@@ -9,4 +9,6 @@ public interface IUserRepository : IRepository<User>
     Task<List<User>> GetActiveUsersAsync();
     Task<bool> ExistsAsync(string email);
     Task<User?> TryCreateInitialAdminAsync(User user) => Task.FromResult<User?>(null);
+    Task<User?> TryBindGoogleIdAsync(int userId, string email, string googleId) => throw new NotSupportedException();
+    Task<bool> UpdateLanguageAsync(int userId, string language) => throw new NotSupportedException();
 }

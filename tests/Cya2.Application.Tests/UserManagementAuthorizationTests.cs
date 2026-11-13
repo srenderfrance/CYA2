@@ -155,7 +155,7 @@ public sealed class UserManagementAuthorizationTests
         repositories.Users.Failure = new InvalidOperationException(sentinel);
         var logger = new RecordingLogger<UserManagementService>();
         var service = new UserManagementService(repositories.Users, repositories.AccountAccess, repositories.Accounts,
-            new FakeAdminAuthorizationContext(isAdmin: true), logger);
+            new FakeAdminAuthorizationContext(isAdmin: true), logger, repositories.Administration);
 
         var result = await service.CreateAdminUserAsync("Test User", "test@scene8.net", "User", []);
 
@@ -232,6 +232,64 @@ public sealed class UserManagementAuthorizationTests
 
         Assert.False(grant.IsSuccess);
         Assert.False(revoke.IsSuccess);
+        Assert.Equal(0, repositories.AccessGrants);
+        Assert.Equal(0, repositories.AccessRevokes);
+    }
+
+    [Fact]
+    public async Task UnconfirmedAdministrationMutation_InvalidatesCachesAndWarnsBeforeRetry()
+    {
+        var repositories = new RecordingRepositories();
+        repositories.Administration.Failure = new InvalidOperationException("private failure detail");
+        var invalidator = new RecordingCacheInvalidator();
+        var service = CreateService(repositories, new FakeAdminAuthorizationContext(true), invalidator);
+
+        var result = await service.UpdateAdminUserAsync(new AdminUserUpdateDto { UserId = 2, Name = "Changed" });
+
+        Assert.False(result.IsSuccess);
+        Assert.Contains("verify before retrying", result.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("private failure detail", result.Message);
+        Assert.Contains(CacheDataDomains.Authorization | CacheDataDomains.AccountMetadata, invalidator.InvalidatedDomains);
+    }
+
+    [Theory]
+    [InlineData(UserAdministrationStatus.LastAdmin)]
+    [InlineData(UserAdministrationStatus.SelfChange)]
+    [InlineData(UserAdministrationStatus.NotAuthorized)]
+    public async Task ProtectedAdministrationResult_DoesNotMutateOrInvalidate(UserAdministrationStatus status)
+    {
+        var repositories = new RecordingRepositories();
+        repositories.Administration.ForcedStatus = status;
+        var invalidator = new RecordingCacheInvalidator();
+        var service = CreateService(repositories, new FakeAdminAuthorizationContext(true), invalidator);
+
+        var update = await service.UpdateAdminUserAsync(new AdminUserUpdateDto { UserId = 2, AuthLevel = "User", GrantAccountId = 3 });
+        var delete = await service.DeleteAdminUserAsync(2);
+
+        Assert.False(update.IsSuccess);
+        Assert.False(delete.IsSuccess);
+        Assert.Equal(0, repositories.UserUpdates);
+        Assert.Equal(0, repositories.UserDeletes);
+        Assert.Empty(invalidator.InvalidatedDomains);
+    }
+
+    [Fact]
+    public async Task UpdatingProfileAndAccounts_UsesOneAdministrationCommand()
+    {
+        var repositories = new RecordingRepositories();
+        var invalidator = new RecordingCacheInvalidator();
+        var service = CreateService(repositories, new FakeAdminAuthorizationContext(true), invalidator);
+
+        var result = await service.UpdateAdminUserAsync(new AdminUserUpdateDto
+        {
+            UserId = 2, Name = "Changed", GrantAccountId = 3, RevokeAccountId = 4
+        });
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(1, repositories.Administration.LastUpdate!.ActorId);
+        Assert.Equal(3, repositories.Administration.LastUpdate.GrantAccountId);
+        Assert.Equal(4, repositories.Administration.LastUpdate.RevokeAccountId);
+        Assert.Contains(CacheDataDomains.Authorization, invalidator.InvalidatedDomains);
         Assert.Equal(0, repositories.AccessGrants);
         Assert.Equal(0, repositories.AccessRevokes);
     }
@@ -409,6 +467,7 @@ public sealed class UserManagementAuthorizationTests
             repositories.Accounts,
             authorizationContext,
             NullLogger<UserManagementService>.Instance,
+            repositories.Administration,
             cacheInvalidator);
 
     private sealed class FakeAdminAuthorizationContext(bool isAdmin) : IAdminAuthorizationContext
@@ -429,15 +488,79 @@ public sealed class UserManagementAuthorizationTests
 
     private sealed class RecordingRepositories
     {
+        public RecordingRepositories() => Administration = new RecordingAdministrationStore(this);
         public RecordingUserRepository Users { get; } = new();
         public RecordingAccountAccessRepository AccountAccess { get; } = new();
         public RecordingAccountRepository Accounts { get; } = new();
+        public RecordingAdministrationStore Administration { get; }
 
         public int UserUpdates => Users.UserUpdates;
         public int UserAdds => Users.UserAdds;
         public int UserDeletes => Users.UserDeletes;
         public int AccessGrants => AccountAccess.AccessGrants;
         public int AccessRevokes => AccountAccess.AccessRevokes;
+    }
+
+    private sealed class RecordingAdministrationStore(RecordingRepositories repositories) : IUserAdministrationStore
+    {
+        public UserAdministrationStatus? ForcedStatus { get; set; }
+        public Exception? Failure { get; set; }
+        public UpdateUserCommand? LastUpdate { get; private set; }
+
+        public async Task<UserAdministrationResult> CreateAsync(CreateUserCommand command)
+        {
+            if (ForcedStatus is { } status) return new(status);
+            if (await repositories.Users.ExistsAsync(command.Email)) return new(UserAdministrationStatus.DuplicateEmail);
+            var intern = command.AuthLevel.Equals("Intern", StringComparison.OrdinalIgnoreCase);
+            var fund = "Intern: " + command.Name;
+            var account = intern ? await repositories.Accounts.GetByFundAsync(fund) : null;
+            if (account is not null && !command.ReuseInternAccount) return new(UserAdministrationStatus.InternReuseRequired);
+            var user = await repositories.Users.AddAsync(new User("", command.Email, command.Name, "en-US", command.AuthLevel, null));
+            if (intern)
+            {
+                account ??= await repositories.Accounts.AddAsync(new Account { Fund = fund, AccountingClass = null });
+                await repositories.AccountAccess.GrantAccessAsync(user.Id, account.AccountId);
+            }
+            return new(UserAdministrationStatus.Success, intern);
+        }
+
+        public async Task<UserAdministrationResult> UpdateAsync(UpdateUserCommand command)
+        {
+            LastUpdate = command;
+            if (Failure is not null) throw Failure;
+            if (ForcedStatus is { } status) return new(status);
+            var user = (await repositories.Users.GetByIdAsync(command.UserId))!;
+            var role = string.IsNullOrWhiteSpace(command.AuthLevel) ? user.AuthLevel : command.AuthLevel;
+            if (user.IsIntern() && !role.Equals(user.AuthLevel, StringComparison.OrdinalIgnoreCase))
+                return new(UserAdministrationStatus.InternRoleChange);
+            if (!string.IsNullOrWhiteSpace(command.Email) && !command.Email.Equals(user.Email, StringComparison.OrdinalIgnoreCase))
+            {
+                var existing = await repositories.Users.GetByEmailAsync(command.Email);
+                if (existing is not null && existing.Id != user.Id) return new(UserAdministrationStatus.DuplicateEmail);
+            }
+            var intern = role.Equals("Intern", StringComparison.OrdinalIgnoreCase);
+            if (intern && !string.IsNullOrWhiteSpace(command.Name))
+            {
+                var linked = repositories.AccountAccess.UserAccounts.FirstOrDefault();
+                if (linked is not null)
+                {
+                    linked.Fund = "Intern: " + command.Name.Trim();
+                    await repositories.Accounts.UpdateAsync(linked);
+                }
+            }
+            if (!string.IsNullOrWhiteSpace(command.Name)) user.Name = command.Name.Trim();
+            if (!string.IsNullOrWhiteSpace(command.Email)) user.Email = command.Email.Trim();
+            if (!user.IsIntern() && !string.IsNullOrWhiteSpace(command.AuthLevel)) user.AuthLevel = command.AuthLevel.Trim();
+            await repositories.Users.UpdateAsync(user);
+            return new(UserAdministrationStatus.Success, intern);
+        }
+
+        public async Task<UserAdministrationResult> DeleteAsync(int actorId, int userId)
+        {
+            if (ForcedStatus is { } status) return new(status);
+            await repositories.Users.DeleteAsync(userId);
+            return new(UserAdministrationStatus.Success);
+        }
     }
 
     private sealed class RecordingUserRepository : IUserRepository

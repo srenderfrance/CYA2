@@ -6,6 +6,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using MySql.Data.MySqlClient;
+using Cya2.Core.Entities;
 
 namespace cya2.Services.Imports;
 
@@ -41,6 +42,7 @@ public sealed class ImportWorkQueue : BackgroundService, IImportWorkQueue
             _logger.LogInformation("Import work queue worker started.");
             await foreach (var workItem in _queue.Reader.ReadAllAsync(stoppingToken))
             {
+                using var operation = AuditOperationScope.Begin(workItem.ActorUserId, workItem.ProgressId);
                 _logger.LogInformation(
                     "Import work item dequeued. ImportType={ImportType}, PreviewId={PreviewId}, ProgressId={ProgressId}",
                     workItem.ImportType, workItem.PreviewId, workItem.ProgressId);
@@ -55,10 +57,10 @@ public sealed class ImportWorkQueue : BackgroundService, IImportWorkQueue
                     var importResult = await processor.ProcessAsync(stream, workItem.ProgressId, stoppingToken);
                     try
                     {
-                        await auditEvents.RecordAsync(
+                        if (!importResult.PublicationCommitted) await auditEvents.RecordAsync(
                         workItem.ActorUserId,
-                        GetAuditEventType(workItem.ImportType, importResult.FailedRows > 0 || importResult.Errors.Count > 0 || importResult.InsertedRows == 0 ? AuditOutcomes.Failed : AuditOutcomes.Succeeded),
-                        importResult.FailedRows > 0 || importResult.Errors.Count > 0 || importResult.InsertedRows == 0 ? AuditOutcomes.Failed : AuditOutcomes.Succeeded,
+                        GetAuditEventType(workItem.ImportType, AuditOutcomes.Failed),
+                        AuditOutcomes.Failed,
                         itemCount: importResult.InsertedRows,
                         cancellationToken: CancellationToken.None);
                     }
@@ -88,10 +90,17 @@ public sealed class ImportWorkQueue : BackgroundService, IImportWorkQueue
             _logger.LogCritical("Import work queue worker stopped unexpectedly. ExceptionType={ExceptionType}", ex.GetType().Name);
             throw new InvalidOperationException("The import work queue worker stopped unexpectedly.");
         }
+        finally
+        {
+            _queue.Writer.TryComplete();
+            while (_queue.Reader.TryRead(out var pending))
+                await ReportFailureAsync(pending, new OperationCanceledException(), CancellationToken.None);
+        }
     }
 
     private async Task ReportFailureAsync(ImportWorkItem workItem, Exception exception, CancellationToken cancellationToken)
     {
+        using var operation = AuditOperationScope.Begin(workItem.ActorUserId, workItem.ProgressId);
         var errorMessage = exception is ImportOutcomeUnknownException ? exception.Message
             : exception is OperationCanceledException ? "Import cancelled before publication completed."
             : ImportDiagnosticMessages.ImportFailed();
@@ -117,7 +126,7 @@ public sealed class ImportWorkQueue : BackgroundService, IImportWorkQueue
             await auditEvents.RecordAsync(
                 workItem.ActorUserId,
                 GetAuditEventType(workItem.ImportType, AuditOutcomes.Failed),
-                AuditOutcomes.Failed,
+                exception is ImportOutcomeUnknownException ? AuditOutcomes.Unknown : exception is OperationCanceledException ? AuditOutcomes.Cancelled : AuditOutcomes.Failed,
                 cancellationToken: cancellationToken);
             var progress = errorScope.ServiceProvider.GetRequiredService<IImportProgressService>();
             progress.AddErrors(workItem.ProgressId, new[] { errorMessage });

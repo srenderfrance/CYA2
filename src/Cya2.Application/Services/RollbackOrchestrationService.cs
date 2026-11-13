@@ -1,5 +1,6 @@
 using Cya2.Application.Interfaces;
 using Cya2.Core.Interfaces;
+using Cya2.Core.Entities;
 using Microsoft.Extensions.Logging;
 
 namespace Cya2.Application.Services;
@@ -32,8 +33,10 @@ public sealed class RollbackOrchestrationService : IRollbackService
     public async Task<RollbackResult> ExecuteRollbackAsync(string target, CancellationToken cancellationToken = default)
     {
         var actorUserId = await _adminAuthorizationContext.GetCurrentAdminUserIdAsync();
+        using var operation = AuditOperationScope.Begin(actorUserId);
         if (actorUserId is null)
         {
+            await _auditEvents.RecordAsync(null, AuditEventTypes.RollbackFailed, AuditOutcomes.Denied, cancellationToken: CancellationToken.None);
             return new RollbackResult { ErrorMessage = "Administrator authorization is required." };
         }
 
@@ -51,7 +54,7 @@ public sealed class RollbackOrchestrationService : IRollbackService
         catch (Exception ex)
         {
             _logger.LogError("Error executing rollback. ExceptionType={ExceptionType}", ex.GetType().Name);
-            result = new RollbackResult { ErrorMessage = "Rollback failed." };
+            result = new RollbackResult { ErrorMessage = ex is OperationCanceledException ? "Rollback cancelled." : "Rollback failed.", Cancelled = ex is OperationCanceledException, OutcomeUnknown = ex is ImportOutcomeUnknownException };
         }
 
         if (result.Success || result.ChangesCommitted || result.OutcomeUnknown)
@@ -68,7 +71,7 @@ public sealed class RollbackOrchestrationService : IRollbackService
             await _auditEvents.RecordAsync(
                 actorUserId,
                 result.Success ? AuditEventTypes.RollbackCompleted : AuditEventTypes.RollbackFailed,
-                result.Success ? AuditOutcomes.Succeeded : AuditOutcomes.Failed,
+                result.OutcomeUnknown ? AuditOutcomes.Unknown : result.ChangesCommitted && !result.Success ? AuditOutcomes.Partial : result.Cancelled ? AuditOutcomes.Cancelled : result.Success ? AuditOutcomes.Succeeded : AuditOutcomes.Failed,
                 itemCount: result.DonationRowsRestored + result.AccountingRowsRestored,
                 cancellationToken: CancellationToken.None);
         }
@@ -106,18 +109,19 @@ public sealed class RollbackOrchestrationService : IRollbackService
     private async Task<RollbackResult> RollbackBothAsync(CancellationToken cancellationToken)
     {
         var donation = await _executor.RollbackDonationsAsync(cancellationToken);
-        if (donation.OutcomeUnknown) return donation;
+        if (donation.OutcomeUnknown || donation.Cancelled) return donation;
         RollbackResult accounting;
         try { accounting = await _executor.RollbackAccountingAsync(cancellationToken); }
-        catch
+        catch (Exception ex)
         {
-            accounting = new RollbackResult { ErrorMessage = "Accounting rollback did not complete." };
+            accounting = new RollbackResult { ErrorMessage = "Accounting rollback did not complete.", Cancelled = ex is OperationCanceledException, OutcomeUnknown = ex is ImportOutcomeUnknownException };
         }
         var result = new RollbackResult
         {
             Success = donation.Success && accounting.Success,
             ChangesCommitted = donation.Success || donation.ChangesCommitted || accounting.Success || accounting.ChangesCommitted,
             OutcomeUnknown = donation.OutcomeUnknown || accounting.OutcomeUnknown,
+            Cancelled = donation.Cancelled || accounting.Cancelled,
             Warnings = [.. donation.Warnings, .. accounting.Warnings],
             Message = $"Donations: {donation.Message}, Accounting: {accounting.Message}",
             DonationRowsRestored = donation.DonationRowsRestored,

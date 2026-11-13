@@ -41,7 +41,7 @@ public sealed partial class DonationRepository
         }
     }
 
-    private sealed record RetainedIdentity(int DonationId, long OldDonorId, string Name, string? SourceId, bool SoftCredit, bool Anonymous, string Source, int Version)
+    private sealed record RetainedIdentity(int DonationId, long OldDonorId, string Name, string? SourceId, string? SoftCreditRecipientId, bool SoftCredit, bool Anonymous, string Source, int Version)
     {
         public string Key { get; set; } = string.Empty;
         public string? ConstituentId { get; set; }
@@ -64,30 +64,35 @@ public sealed partial class DonationRepository
         await using (var command = connection.CreateCommand())
         {
             command.CommandText = @"SELECT d.Id, d.DonorId, d.AccountName, d.SoftCreditName, d.PrimaryAddressee,
- d.IsAnonymous, d.ConstituentId, d.IsSoftCredit, d.Fund, d.Date
+ d.IsAnonymous, d.ConstituentId, d.IsSoftCredit, d.Fund, d.Date, d.SoftCreditRecipientId
  FROM DonationData d";
             await using var reader = await command.ExecuteReaderAsync(cancellationToken);
             while (await reader.ReadAsync(cancellationToken))
             {
-                var identity = resolver.Resolve(new DonorIdentityInput(reader.GetString(8), reader.GetString(2),
-                    reader.IsDBNull(3) ? null : reader.GetString(3), reader.IsDBNull(4) ? null : reader.GetString(4), reader.GetBoolean(5)));
+                var input = new DonorIdentityInput(reader.GetString(8), reader.GetString(2),
+                    reader.IsDBNull(3) ? null : reader.GetString(3), reader.IsDBNull(4) ? null : reader.GetString(4), reader.GetBoolean(5));
+                var identity = resolver.Resolve(input);
                 var row = new RetainedIdentity(reader.GetInt32(0), reader.GetInt64(1), identity.DisplayName,
-                    reader.IsDBNull(6) ? null : reader.GetString(6), reader.GetBoolean(7), reader.GetBoolean(5), identity.ResolutionSource, identity.ResolutionVersion);
+                    reader.IsDBNull(6) ? null : reader.GetString(6),
+                    resolver.IsThirdPartySoftCredit(input) && !reader.IsDBNull(10) ? reader.GetString(10) : null,
+                    reader.GetBoolean(7), reader.GetBoolean(5), identity.ResolutionSource, identity.ResolutionVersion);
                 if (reader.GetDateTime(9) < start) retained.Add(row);
-                evidence.Add(new(row.Name, row.SourceId, row.SoftCredit, row.Anonymous));
+                evidence.Add(new(row.Name, row.SourceId, row.SoftCredit, row.Anonymous, row.SoftCreditRecipientId));
             }
         }
-        evidence.AddRange(incoming.Select(row => new ConstituentIdentityEvidence(row.Donor.DisplayName, row.ConstituentId, row.IsSoftCredit, row.IsAnonymous)));
+        evidence.AddRange(incoming.Select(row => new ConstituentIdentityEvidence(row.Donor.DisplayName, row.ConstituentId, row.IsSoftCredit, row.IsAnonymous,
+            resolver.IsThirdPartySoftCredit(new DonorIdentityInput(row.Fund, row.AccountName, row.SoftCreditName, row.PrimaryAddressee, row.IsAnonymous)) ? row.SoftCreditRecipientId : null)));
         var identities = new ConstituentIdentityResolver(evidence);
         foreach (var row in incoming)
         {
-            var resolved = identities.Resolve(new(row.Donor.DisplayName, row.ConstituentId, row.IsSoftCredit, row.IsAnonymous));
+            var resolved = identities.Resolve(new(row.Donor.DisplayName, row.ConstituentId, row.IsSoftCredit, row.IsAnonymous,
+                resolver.IsThirdPartySoftCredit(new DonorIdentityInput(row.Fund, row.AccountName, row.SoftCreditName, row.PrimaryAddressee, row.IsAnonymous)) ? row.SoftCreditRecipientId : null));
             row.Donor.IdentityKey = resolved.Key;
             row.Donor.ConstituentId = resolved.ConstituentId;
         }
         foreach (var row in retained)
         {
-            var resolved = identities.Resolve(new(row.Name, row.SourceId, row.SoftCredit, row.Anonymous));
+            var resolved = identities.Resolve(new(row.Name, row.SourceId, row.SoftCredit, row.Anonymous, row.SoftCreditRecipientId));
             row.Key = resolved.Key;
             row.ConstituentId = resolved.ConstituentId;
         }

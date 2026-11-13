@@ -139,6 +139,7 @@ CREATE TABLE IF NOT EXISTS DonationData
 	Date DATETIME NOT NULL,
 	GiftImportId VARCHAR(255) NULL,
 	ConstituentId VARCHAR(255) COLLATE utf8mb4_bin NULL,
+	SoftCreditRecipientId VARCHAR(255) COLLATE utf8mb4_bin NULL,
 	IsSoftCredit BOOLEAN NOT NULL DEFAULT FALSE,
 	AccountName VARCHAR(255) NOT NULL,
 	PaymentMethod VARCHAR(255) NOT NULL,
@@ -194,6 +195,7 @@ CREATE TABLE IF NOT EXISTS DonationDataBackup
 	Date DATETIME NOT NULL,
 	GiftImportId VARCHAR(255) NULL,
 	ConstituentId VARCHAR(255) COLLATE utf8mb4_bin NULL,
+	SoftCreditRecipientId VARCHAR(255) COLLATE utf8mb4_bin NULL,
 	IsSoftCredit BOOLEAN NOT NULL DEFAULT FALSE,
 	AccountName VARCHAR(255) NOT NULL,
 	PaymentMethod VARCHAR(255) NOT NULL,
@@ -309,6 +311,9 @@ CREATE TABLE IF NOT EXISTS AuditEvents
 (
 	Id BIGINT NOT NULL AUTO_INCREMENT,
 	ActorUserId INT NULL,
+	TargetUserId INT NULL,
+	OperationId CHAR(32) NOT NULL,
+	HostInstanceId CHAR(32) NOT NULL,
 	EventType VARCHAR(64) NOT NULL,
 	Outcome VARCHAR(32) NOT NULL,
 	OccurredAtUtc DATETIME NOT NULL,
@@ -317,10 +322,8 @@ CREATE TABLE IF NOT EXISTS AuditEvents
 	PRIMARY KEY (Id),
 	KEY ix_audit_events_occurred_at_utc (OccurredAtUtc),
 	KEY ix_audit_events_actor_occurred_at_utc (ActorUserId, OccurredAtUtc),
-	CONSTRAINT fk_audit_events_actor
-		FOREIGN KEY (ActorUserId) REFERENCES Users (Id)
-		ON DELETE SET NULL
-		ON UPDATE CASCADE
+	KEY ix_audit_events_target_occurred_at_utc (TargetUserId, OccurredAtUtc),
+	UNIQUE KEY uq_audit_events_operation_event_outcome (OperationId, EventType, Outcome)
 ) ENGINE=InnoDB
   DEFAULT CHARSET=utf8mb4
   COLLATE=utf8mb4_0900_ai_ci;

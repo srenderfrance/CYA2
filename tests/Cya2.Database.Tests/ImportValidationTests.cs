@@ -13,7 +13,7 @@ namespace Cya2.Database.Tests;
 
 public sealed class ImportValidationTests
 {
-    private static readonly string[] DonationHeaders = ["Gift Date", "Name", "Gift Payment Type", "Gift Type", "Fund Split Amount", "Fund Notes", "Soft Credit Recipient Name", "Preferred Address Line 1", "Preferred City", "Preferred State", "Preferred ZIP", "Preferred Country", "Personal Email Number", "Home Phone Number", "Personal Mobile Phone Number", "Gift Is Anonymous", "Gift Import ID", "Primary Addressee", "Honor/Memorial Name", "Constituent ID"];
+    private static readonly string[] DonationHeaders = ["Gift Date", "Name", "Gift Payment Type", "Gift Type", "Fund Split Amount", "Fund Notes", "Soft Credit Recipient Name", "Preferred Address Line 1", "Preferred City", "Preferred State", "Preferred ZIP", "Preferred Country", "Personal Email Number", "Home Phone Number", "Personal Mobile Phone Number", "Gift Is Anonymous", "Gift Import ID", "Primary Addressee", "Honor/Memorial Name", "Constituent ID", "Soft Credit Recipient ID"];
     private static readonly string[] AccountingHeaders = ["Class", "Date", "Num", "Amount", "Account #", "Account", "Type"];
 
     [Fact]
@@ -22,7 +22,7 @@ public sealed class ImportValidationTests
         var repository = new Repository();
         using var source = Workbook("donations");
         using var package = new ExcelPackage(source);
-        package.Workbook.Worksheets[0].Cells[1, DonationHeaders.Length].Value = "Other";
+        package.Workbook.Worksheets[0].Cells[1, 20].Value = "Other";
         using var workbook = new MemoryStream(package.GetAsByteArray());
         var result = await Processor("donations", repository, new Invalidator()).ProcessAsync(workbook, "test", default);
         Assert.Contains("Missing column: Constituent ID", result.Errors);
@@ -36,8 +36,8 @@ public sealed class ImportValidationTests
         using var source = Workbook("donations");
         using var package = new ExcelPackage(source);
         var sheet = package.Workbook.Worksheets[0];
-        sheet.Cells[2, DonationHeaders.Length].Value = "000123";
-        sheet.Cells[3, DonationHeaders.Length].Value = "organization-1";
+        sheet.Cells[2, 20].Value = "000123";
+        sheet.Cells[3, 20].Value = "organization-1";
         sheet.Cells[3, 2].Value = "Employer Organization";
         sheet.Cells[3, 18].Value = "Employer Organization";
         sheet.Cells[3, 7].Value = "Synthetic Donor";
@@ -52,6 +52,74 @@ public sealed class ImportValidationTests
         Assert.All(repository.Published, row => Assert.Equal("id:000123", row.Donor.IdentityKey));
         Assert.True(repository.Published[1].IsSoftCredit);
         Assert.Empty(repository.Published[1].Contacts);
+    }
+
+    [Fact]
+    public async Task MissingSoftRecipientHeaderRejectsUpload()
+    {
+        var repository = new Repository();
+        using var source = Workbook("donations");
+        using var package = new ExcelPackage(source);
+        package.Workbook.Worksheets[0].Cells[1, 21].Value = "Other";
+        using var workbook = new MemoryStream(package.GetAsByteArray());
+        var result = await Processor("donations", repository, new Invalidator()).ProcessAsync(workbook, "test", default);
+        Assert.Contains("Missing column: Soft Credit Recipient ID", result.Errors);
+        Assert.Equal(0, repository.Writes);
+    }
+
+    [Fact]
+    public async Task ThirdPartyRecipientIdMatchesDirectDonorAndPreservesSourceIds()
+    {
+        var repository = new Repository();
+        using var source = Workbook("donations");
+        using var package = new ExcelPackage(source);
+        var sheet = package.Workbook.Worksheets[0];
+        sheet.Cells[2, 20].Value = "000123";
+        sheet.Cells[3, 20].Value = "organization-1";
+        sheet.Cells[3, 21].Value = "000123";
+        sheet.Cells[3, 2].Value = sheet.Cells[3, 18].Value = "Synthetic Employer";
+        sheet.Cells[3, 7].Value = "Different Display Name";
+        sheet.Cells[3, 13].Value = "employer@example.invalid";
+        using var workbook = new MemoryStream(package.GetAsByteArray());
+        var result = await Processor("donations", repository, new Invalidator()).ProcessAsync(workbook, "test", default);
+        Assert.Empty(result.Errors);
+        Assert.All(repository.Published, row => Assert.Equal("id:000123", row.Donor.IdentityKey));
+        Assert.Equal("organization-1", repository.Published[1].ConstituentId);
+        Assert.Equal("000123", repository.Published[1].SoftCreditRecipientId);
+        Assert.Empty(repository.Published[1].Contacts);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task RecipientIdDoesNotOverrideDirectOrAnonymousIdentity(bool anonymous)
+    {
+        var repository = new Repository();
+        using var source = Workbook("donations");
+        using var package = new ExcelPackage(source);
+        var sheet = package.Workbook.Worksheets[0];
+        sheet.Cells[2, 20].Value = "direct";
+        sheet.Cells[2, 21].Value = "soft-id";
+        sheet.Cells[2, 7].Value = "Synthetic Donor";
+        if (anonymous) sheet.Cells[2, 16].Value = "Yes";
+        using var workbook = new MemoryStream(package.GetAsByteArray());
+        var result = await Processor("donations", repository, new Invalidator()).ProcessAsync(workbook, "test", default);
+        Assert.Empty(result.Errors);
+        Assert.Equal(anonymous ? "anonymous" : "id:direct", repository.Published[0].Donor.IdentityKey);
+        if (anonymous) Assert.Null(repository.Published[0].SoftCreditRecipientId);
+    }
+
+    [Fact]
+    public async Task TooLongRecipientIdRejectsWholeUpload()
+    {
+        var repository = new Repository();
+        using var source = Workbook("donations");
+        using var package = new ExcelPackage(source);
+        package.Workbook.Worksheets[0].Cells[2, 21].Value = new string('x', 256);
+        using var workbook = new MemoryStream(package.GetAsByteArray());
+        var result = await Processor("donations", repository, new Invalidator()).ProcessAsync(workbook, "test", default);
+        Assert.NotEmpty(result.Errors);
+        Assert.Equal(0, repository.Writes);
     }
 
     [Theory]

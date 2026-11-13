@@ -94,6 +94,8 @@ The cache data-version monitor runs in the host as a background coordinator, but
 
 Cache invalidation maintains independent generations for donations, accounting, account metadata, donor/contact projections, and authorization while retaining the aggregate generation for compatibility. Donation and accounting cache keys use their respective generations, allowing independent invalidation without rebuilding unrelated fact data.
 
+User-administration transactions invalidate authorization after success and account metadata for intern creation or profile changes. An exception after a mutation is attempted can indicate an unknown commit outcome: create/update conservatively invalidate both domains, and deletion invalidates authorization. See the [Web/Admin supplement](../src/Cya2.Web/docs/CACHE_ARCHITECTURE.md); cache invalidation itself is not transactional with MySQL.
+
 ### 2. Derived caches
 
 Donation and expense DTOs are not cached. They are projected per request from authoritative fact caches plus user-scoped overflow facts needed outside the broad cache window.
@@ -316,7 +318,7 @@ Use `IAccountFactDataService.GetDonationDataAsync` for the normal account-range 
 
 Primary includes the primary fund and its merged subfunds; All additionally includes separate subfunds. Explicit selections accept only separate subaccounts, and invalid selections return no rows. Donor exports revalidate account access and reuse this selection path. Intern selections use an intern-identity cache scope and name-based donation reads rather than shared fund selection.
 
-Donor IDs are global across funds, resolved from direct Constituent IDs and unambiguous normalized-name matches for name-only/soft-credit gifts. Summaries group the already-authorized selected donations by shared DonorId, not display name; duplicate names remain distinct. Combined-fund giving frequency is calculated from selected gifts. Fact caches preserve DonorId and soft-credit metadata; contact caches remain current-state projections keyed by DonorId. Donation publication and rollback invalidate both donation and contact generations because retained historical gifts can be relinked. Shared identity does not authorize donation access outside the selected account or intern scope.
+Donor IDs are global across funds, resolved from direct Constituent IDs, eligible third-party soft-credit recipient IDs, and unambiguous normalized-name matches when an applicable ID is blank. Equal direct and recipient IDs share an identity. Summaries group the already-authorized selected donations by shared DonorId, not display name; duplicate names remain distinct. Combined-fund giving frequency is calculated from selected gifts. Fact caches preserve DonorId and soft-credit metadata; contact caches remain current-state projections keyed by DonorId. Donation publication and rollback invalidate both donation and contact generations because retained historical gifts can be relinked. Shared identity does not authorize donation access outside the selected account or intern scope.
 
 The Donors page is cache-aware at the presentation boundary as well as in the application services:
 

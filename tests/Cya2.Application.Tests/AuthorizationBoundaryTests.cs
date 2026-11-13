@@ -46,7 +46,7 @@ public sealed class AuthorizationBoundaryTests
     }
 
     [Fact]
-    public async Task TerminalAuditFailureDoesNotRelabelCommittedImport()
+    public async Task CommittedImportDoesNotDuplicateTransactionalSuccessAudit()
     {
         var previews = CreatePreviewStore();
         Assert.True(previews.TrySet("preview-1", new ImportPreview([1], "test.xlsx", "", DateTime.UtcNow, "1", "donations")));
@@ -57,8 +57,22 @@ public sealed class AuthorizationBoundaryTests
         Assert.True(result.PublicationCommitted);
         Assert.Equal(1, result.InsertedRows);
         Assert.Empty(result.Errors);
-        Assert.Single(result.Warnings);
-        Assert.DoesNotContain(AuditOutcomes.Failed, audit.Outcomes);
+        Assert.Empty(result.Warnings);
+        Assert.Equal([AuditOutcomes.Started], audit.Outcomes);
+    }
+
+    [Fact]
+    public async Task ImportDoesNotRunWhenRequiredStartAuditFails()
+    {
+        var previews = CreatePreviewStore();
+        Assert.True(previews.TrySet("preview-1", new ImportPreview([1], "test.xlsx", "", DateTime.UtcNow, "1", "donations")));
+        var processor = new RecordingImportProcessor("donations");
+        var audit = new TerminalFailureAudit { RejectStart = true };
+        var service = CreateImportService(previews, processor, new ImportActor("1", true), audit: audit);
+
+        await Assert.ThrowsAsync<AuditPersistenceException>(() => service.ImportFromPreviewAsync("preview-1", "donations"));
+
+        Assert.Equal(0, processor.CallCount);
     }
 
     [Fact]
@@ -206,10 +220,15 @@ public sealed class AuthorizationBoundaryTests
     private sealed class TerminalFailureAudit : IAuditEventService
     {
         public List<string> Outcomes { get; } = [];
+        public bool RejectStart;
+        public Task RecordRequiredAsync(int? actorUserId, string eventType, string outcome, string? traceId = null, int? itemCount = null, CancellationToken cancellationToken = default)
+        {
+            if (RejectStart) throw new AuditPersistenceException();
+            return RecordAsync(actorUserId, eventType, outcome, traceId, itemCount, cancellationToken);
+        }
         public Task RecordAsync(int? actorUserId, string eventType, string outcome, string? traceId = null, int? itemCount = null, CancellationToken cancellationToken = default)
         {
             Outcomes.Add(outcome);
-            if (outcome != AuditOutcomes.Started) throw new InvalidOperationException("Injected terminal audit failure");
             return Task.CompletedTask;
         }
     }
@@ -296,6 +315,8 @@ public sealed class AuthorizationBoundaryTests
 
     private sealed class NoOpAuditEventService : IAuditEventService
     {
+        public Task RecordRequiredAsync(int? actorUserId, string eventType, string outcome, string? traceId = null, int? itemCount = null, CancellationToken cancellationToken = default)
+            => Task.CompletedTask;
         public Task RecordAsync(int? actorUserId, string eventType, string outcome, string? traceId = null, int? itemCount = null, CancellationToken cancellationToken = default)
             => Task.CompletedTask;
     }

@@ -36,6 +36,7 @@
 @inject Cya2.Application.Interfaces.IUserIdResolver UserIdResolver
 @inject Cya2.Application.Interfaces.IUserAuthorizationService UserAuthorizationService
 @inject IAccountImportService AccountImportService
+@inject IUserImportService UserImportService
 
 <RadzenStack Orientation="Orientation.Vertical" Gap="1rem" Class="rz-pt-0 rz-px-4 rz-pb-4" Style="max-width:100%; overflow-x:hidden; box-sizing:border-box;">
     <!-- Top row: accounts buttons on the left, upload buttons on the right -->
@@ -351,13 +352,12 @@
             }
         </RadzenCard>
 
-         @* One-time local account import section temporarily disabled.
          <RadzenCard>
              <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" JustifyContent="JustifyContent.SpaceBetween" Gap="0.5rem" Class="rz-mt-1 rz-mb-4">
                  <RadzenText TextStyle="TextStyle.H5" Style="font-weight: 800; color: #1f2937;">Import Accounts from Local Excel</RadzenText>
                  <RadzenButton Text="Load Preview" ButtonStyle="ButtonStyle.Primary" Click="LoadAccountImportPreview" Disabled="@accountImportBusy" />
              </RadzenStack>
-             <RadzenText TextStyle="TextStyle.Body2">Place one .xlsx file containing Account Number, Fund, Class, and Overhead in the AccountImports folder, then load the preview.</RadzenText>
+             <RadzenText TextStyle="TextStyle.Body2">Place one .xlsx file with fund, fund#, and overhead columns in the server's AccountImports folder, then load the preview. The class column is optional.</RadzenText>
              @if (accountImportBusy)
              {
                  <RadzenProgressBar Mode="ProgressBarMode.Indeterminate" Class="rz-mt-3" />
@@ -383,7 +383,37 @@
                  <RadzenButton Text="Create Accounts" ButtonStyle="ButtonStyle.Primary" Class="rz-mt-3" Click="ImportAccounts" Disabled="@(!accountImportPreview.CanImport || accountImportBusy)" />
              }
          </RadzenCard>
-         *@
+
+        <RadzenCard>
+            <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" JustifyContent="JustifyContent.SpaceBetween" Gap="0.5rem" Class="rz-mt-1 rz-mb-4">
+                <RadzenText TextStyle="TextStyle.H5">Import Users from Excel</RadzenText>
+                <RadzenButton Text="Load Preview" ButtonStyle="ButtonStyle.Primary" Click="LoadUserImportPreview" Disabled="@userImportBusy" />
+            </RadzenStack>
+            <RadzenText TextStyle="TextStyle.Body2">Place one .xlsx file with User and Level columns in the server's UserImports folder. Account access is assigned separately.</RadzenText>
+            @if (userImportBusy)
+            {
+                <RadzenProgressBar Mode="ProgressBarMode.Indeterminate" Class="rz-mt-3" />
+            }
+            @if (!string.IsNullOrWhiteSpace(userImportMessage))
+            {
+                <RadzenAlert AlertStyle="@(userImportSuccess || userImportPreview?.CanImport == true ? AlertStyle.Success : AlertStyle.Danger)" ShowIcon="true" Variant="Variant.Filled" Class="rz-mt-3">@userImportMessage</RadzenAlert>
+            }
+            @if (userImportPreview is not null && userImportPreview.Rows.Count > 0)
+            {
+                <div style="overflow-x:auto; max-height:360px;">
+                    <table class="rz-grid-table rz-grid-table-striped" style="width:100%;">
+                        <thead><tr><th>Row</th><th>Email</th><th>Name</th><th>Role</th></tr></thead>
+                        <tbody>
+                        @foreach (var row in userImportPreview.Rows)
+                        {
+                            <tr><td>@row.RowNumber</td><td>@row.Email</td><td>@row.Name</td><td>@row.AuthLevel</td></tr>
+                        }
+                        </tbody>
+                    </table>
+                </div>
+                <RadzenButton Text="Create Users" ButtonStyle="ButtonStyle.Primary" Class="rz-mt-3" Click="ImportUsers" Disabled="@(!userImportPreview.CanImport || userImportBusy)" />
+            }
+        </RadzenCard>
 
         <!-- Manage Users section -->
         <RadzenCard>
@@ -877,6 +907,10 @@
         private Cya2.Application.DTOs.AccountImportPreviewDto? accountImportPreview;
         private string accountImportMessage = string.Empty;
         private bool accountImportBusy { get; set; }
+        private UserImportPreviewDto? userImportPreview;
+        private string userImportMessage = string.Empty;
+        private bool userImportBusy;
+        private bool userImportSuccess;
 
         // New UI-only state for fund creation toggle and subfund inputs
         private bool createSubFund = false;
@@ -1338,10 +1372,6 @@
                     return;
                 }
 
-                var successMessages = new List<string>();
-                var errorMessages = new List<string>();
-                var profileUpdated = false;
-
                 var hasProfileChanges = !string.IsNullOrWhiteSpace(newName)
                                         || !string.IsNullOrWhiteSpace(newEmail)
                                         || !string.IsNullOrWhiteSpace(newAuthLevel);
@@ -1354,76 +1384,31 @@
                     return;
                 }
 
-                if (hasProfileChanges)
+                var request = new Cya2.Application.DTOs.AdminUserUpdateDto
                 {
-                    var request = new Cya2.Application.DTOs.AdminUserUpdateDto
-                    {
-                        UserId = selectedUser.Id,
-                        Name = string.IsNullOrWhiteSpace(newName) ? null : newName,
-                        Email = updatedEmail,
-                        AuthLevel = string.IsNullOrWhiteSpace(newAuthLevel) ? null : newAuthLevel
-                    };
-
-                    var profileOp = await UserManagementService.UpdateAdminUserAsync(request);
-                    if (profileOp.RequiresInternAccountReuse && await ConfirmInternAccountReuseAsync())
-                    {
-                        // A renamed intern may collide with retained history; retry only after the Admin selects reuse.
-                        request.ReuseExistingInternAccount = true;
-                        profileOp = await UserManagementService.UpdateAdminUserAsync(request);
-                    }
-                    if (profileOp.IsSuccess)
-                    {
-                        successMessages.Add(profileOp.Message);
-                        NotifyMutation(NotificationSeverity.Success, "User updated", profileOp.Message);
-                        profileUpdated = true;
-                    }
-                    else
-                    {
-                        staffUpdateError = profileOp.Message;
-                        NotifyMutation(NotificationSeverity.Error, "User update failed", profileOp.Message);
-                        return;
-                    }
+                    UserId = selectedUser.Id,
+                    Name = string.IsNullOrWhiteSpace(newName) ? null : newName,
+                    Email = updatedEmail,
+                    AuthLevel = string.IsNullOrWhiteSpace(newAuthLevel) ? null : newAuthLevel,
+                    GrantAccountId = hasGrantChange ? accountToAddId : null,
+                    RevokeAccountId = hasRevokeChange ? selectedLinkedAccountId : null
+                };
+                var operation = await UserManagementService.UpdateAdminUserAsync(request);
+                if (operation.RequiresInternAccountReuse && await ConfirmInternAccountReuseAsync())
+                {
+                    // A renamed intern may collide with retained history; retry only after the Admin selects reuse.
+                    request.ReuseExistingInternAccount = true;
+                    operation = await UserManagementService.UpdateAdminUserAsync(request);
+                }
+                if (!operation.IsSuccess)
+                {
+                    staffUpdateError = operation.Message;
+                    NotifyMutation(NotificationSeverity.Error, "User update failed", operation.Message);
+                    return;
                 }
 
-                if (hasGrantChange)
-                {
-                    var grantOp = await UserManagementService.GrantAccountAccessAsync(selectedUser.Id, accountToAddId);
-                    if (grantOp.IsSuccess)
-                    {
-                        successMessages.Add(grantOp.Message);
-                        NotifyMutation(NotificationSeverity.Success, "Account access updated", grantOp.Message);
-                    }
-                    else
-                    {
-                        errorMessages.Add(grantOp.Message);
-                        NotifyMutation(NotificationSeverity.Error, "Account access update failed", grantOp.Message);
-                    }
-                }
-
-                if (hasRevokeChange)
-                {
-                    var revokeOp = await UserManagementService.RevokeAccountAccessAsync(selectedUser.Id, selectedLinkedAccountId);
-                    if (revokeOp.IsSuccess)
-                    {
-                        successMessages.Add(revokeOp.Message);
-                        NotifyMutation(NotificationSeverity.Success, "Account access updated", revokeOp.Message);
-                    }
-                    else
-                    {
-                        errorMessages.Add(revokeOp.Message);
-                        NotifyMutation(NotificationSeverity.Error, "Account access update failed", revokeOp.Message);
-                    }
-                }
-
-                if (successMessages.Any())
-                {
-                    staffUpdateSuccess = string.Join(" ", successMessages);
-                }
-
-                if (errorMessages.Any())
-                {
-                    staffUpdateError = string.Join(" ", errorMessages);
-                }
+                staffUpdateSuccess = operation.Message;
+                NotifyMutation(NotificationSeverity.Success, "User updated", operation.Message);
 
                 // Clear editing inputs and account action selections after attempting update
                 newName = string.Empty;
@@ -1434,7 +1419,7 @@
 
                 await LoadAllStaff();
 
-                if (profileUpdated)
+                if (hasProfileChanges)
                 {
                     // A successful intern profile update can rename or relink its automatic account.
                     AdminPreloadService.Invalidate();
@@ -1910,11 +1895,11 @@
             accountImportMessage = string.Empty;
             try
             {
-                var result = await AccountImportService.ImportAsync(accountImportPreview.Rows);
+                var result = await AccountImportService.ImportAsync();
                 accountImportMessage = result.Message;
+                accountImportPreview = null;
                 if (result.IsSuccess)
                 {
-                    accountImportPreview = null;
                     await LoadAllAccounts();
                 }
             }
@@ -1927,6 +1912,44 @@
             {
                 accountImportBusy = false;
             }
+        }
+
+        private async Task LoadUserImportPreview()
+        {
+            userImportBusy = true;
+            userImportSuccess = false;
+            userImportPreview = null;
+            try
+            {
+                userImportPreview = await UserImportService.PreviewAsync();
+                userImportMessage = userImportPreview.CanImport ? "Review the users before creating them." : string.Join(" ", userImportPreview.Errors);
+            }
+            catch (Exception ex)
+            {
+                userImportMessage = Localizer["SafeOperationError"];
+                _logger.LogError("User import preview failed. ExceptionType={ExceptionType}", ex.GetType().Name);
+            }
+            finally { userImportBusy = false; }
+        }
+
+        private async Task ImportUsers()
+        {
+            if (userImportPreview?.CanImport != true) return;
+            userImportBusy = true;
+            try
+            {
+                var result = await UserImportService.ImportAsync();
+                userImportMessage = result.Message;
+                userImportSuccess = result.IsSuccess;
+                userImportPreview = null;
+                if (result.IsSuccess) await LoadAllStaff();
+            }
+            catch (Exception ex)
+            {
+                userImportMessage = Localizer["SafeOperationError"];
+                _logger.LogError("User import failed. ExceptionType={ExceptionType}", ex.GetType().Name);
+            }
+            finally { userImportBusy = false; }
         }
 
         private async Task LoadAllStaff()

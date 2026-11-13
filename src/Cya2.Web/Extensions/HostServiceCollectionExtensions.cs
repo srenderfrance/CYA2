@@ -31,6 +31,7 @@ public static class HostServiceCollectionExtensions
         services.AddScoped<IAdminAuthorizationContext, AdminAuthorizationContext>();
         services.AddHostedService<ImportRetentionCleanupService>();
         services.AddHostedService<AuditRetentionCleanupService>();
+        services.AddHostedService<AuditReconciliationService>();
         services.AddSingleton<ImportWorkQueue>();
         services.AddSingleton<IImportWorkQueue>(sp => sp.GetRequiredService<ImportWorkQueue>());
         services.AddSingleton<Microsoft.Extensions.Hosting.IHostedService>(sp =>

@@ -10,6 +10,7 @@ using OfficeOpenXml;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using Microsoft.AspNetCore.Antiforgery;
+using Cya2.Core.Entities;
 
 namespace cya2.Controllers
 {
@@ -57,6 +58,8 @@ namespace cya2.Controllers
         [HttpPost("export-data")]
         public async Task<IActionResult> ExportData()
         {
+            using var operation = AuditOperationScope.Begin(null);
+            int? auditActorId = null;
             try
             {
                 try
@@ -119,8 +122,10 @@ namespace cya2.Controllers
                 var userId = _userIdResolver.ResolveUserId(User);
                 if (string.IsNullOrWhiteSpace(userId))
                 {
+                    await _auditEvents.RecordAsync(null, AuditEventTypes.DonorExportDenied, AuditOutcomes.Denied, HttpContext.TraceIdentifier);
                     return Unauthorized();
                 }
+                auditActorId = int.TryParse(userId, out var numericActorId) ? numericActorId : null;
 
                 var authLevel = User.FindFirst("AuthLevel")?.Value ?? string.Empty;
                 var isAdminOrViewerHint = User.IsInRole("Admin")
@@ -134,6 +139,7 @@ namespace cya2.Controllers
                         req.Funds, req.AllDates, req.StartDate, req.EndDate);
                 if (!exportData.UserContextFound)
                 {
+                    await _auditEvents.RecordAsync(auditActorId, AuditEventTypes.DonorExportDenied, AuditOutcomes.Denied, HttpContext.TraceIdentifier);
                     return Forbid();
                 }
                 if (!exportData.FundsAuthorized)
@@ -157,15 +163,6 @@ namespace cya2.Controllers
                 {
                     return BadRequest("No export data provided.");
                 }
-
-                _logger.LogInformation("Donor export generated: requestedFundCount={RequestedFundCount}; generatedRows={Count}",
-                    requestedFunds.Count, donorRows.Count);
-                await _auditEvents.RecordAsync(
-                    int.TryParse(userId, out var actorId) ? actorId : null,
-                    AuditEventTypes.DonorExportCompleted,
-                    AuditOutcomes.Succeeded,
-                    HttpContext.TraceIdentifier,
-                    donorRows.Count);
 
                 // Use EPPlus license API for non-commercial organization
                 ExcelPackage.License.SetNonCommercialOrganization("Servant Partners");
@@ -204,6 +201,9 @@ namespace cya2.Controllers
                 ws.Cells[ws.Dimension.Address].AutoFitColumns();
                 var bytes = package.GetAsByteArray();
                 var fileName = BuildExportFileName(requestedFunds, req.AllDates, req.StartDate, req.EndDate);
+                await _auditEvents.RecordRequiredAsync(auditActorId, AuditEventTypes.DonorExportCompleted, AuditOutcomes.Succeeded,
+                    HttpContext.TraceIdentifier, donorRows.Count, CancellationToken.None);
+                _logger.LogInformation("Donor export workbook generated. GeneratedRows={Count}", donorRows.Count);
                 // Return the file as a FileContentResult
                 var result = File(bytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", fileName);
                 return result;
@@ -211,6 +211,8 @@ namespace cya2.Controllers
             catch (Exception ex)
             {
                 _logger.LogError("Donor export failed. TraceId={TraceId}, ExceptionType={ExceptionType}", HttpContext.TraceIdentifier, ex.GetType().Name);
+                await _auditEvents.RecordAsync(auditActorId, AuditEventTypes.DonorExportFailed,
+                    ex is OperationCanceledException ? AuditOutcomes.Cancelled : AuditOutcomes.Failed, HttpContext.TraceIdentifier, cancellationToken: CancellationToken.None);
                 return Problem(
                     detail: $"An unexpected error occurred while generating the export. TraceId={HttpContext.TraceIdentifier}",
                     statusCode: StatusCodes.Status500InternalServerError);

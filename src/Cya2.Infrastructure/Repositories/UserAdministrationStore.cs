@@ -4,12 +4,30 @@ using Cya2.Core.Utilities;
 using Dapper;
 using Microsoft.Extensions.Configuration;
 using MySql.Data.MySqlClient;
+using Cya2.Application.Interfaces;
+using Cya2.Infrastructure.Services;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Cya2.Infrastructure.Repositories;
 
-public sealed class UserAdministrationStore(IConfiguration configuration, IDatabaseGuard guard) : IUserAdministrationStore
+public sealed class UserAdministrationStore(IConfiguration configuration, IDatabaseGuard guard, ILogger<UserAdministrationStore>? logger = null) : IUserAdministrationStore, IUserBatchAdministrationStore
 {
+    private readonly ILogger _logger = logger ?? NullLogger<UserAdministrationStore>.Instance;
     private static UserAdministrationResult Result(UserAdministrationStatus status, bool intern = false) => new(status, intern);
+
+    public Task<UserAdministrationResult> CreateBatchAsync(int actorId, IReadOnlyList<ImportUserEntry> users) => ExecuteAsync(actorId, async (conn, tx) =>
+    {
+        foreach (var user in users)
+        {
+            if (await conn.ExecuteScalarAsync<int>("SELECT COUNT(*) FROM Users WHERE Email=@Email", user, tx) != 0)
+                return Result(UserAdministrationStatus.DuplicateEmail);
+            var id = await conn.ExecuteScalarAsync<int>("INSERT INTO Users (GoogleId, Email, Name, Language, AuthLevel) VALUES (NULL, @Email, @Name, 'en-US', @AuthLevel); SELECT LAST_INSERT_ID();", user, tx);
+            using var audit = AuditOperationScope.Begin(actorId, targetUserId: id);
+            await TransactionalAudit.RecordAsync(conn, tx, AuditEventTypes.AdminUserCreated, _logger, targetUserId: id);
+        }
+        return Result(UserAdministrationStatus.Success);
+    });
 
     public Task<UserAdministrationResult> CreateAsync(CreateUserCommand command) => ExecuteAsync(command.ActorId, async (conn, tx) =>
     {
@@ -36,6 +54,9 @@ public sealed class UserAdministrationStore(IConfiguration configuration, IDatab
             if (command.AccountIds.Distinct().Count() == 1)
                 await conn.ExecuteAsync("UPDATE Users SET DefaultAccount=@accountId WHERE Id=@id", new { id, accountId = command.AccountIds[0] }, tx);
         }
+        await TransactionalAudit.RecordAsync(conn, tx, AuditEventTypes.AdminUserCreated, _logger, targetUserId: id);
+        if (intern || command.AccountIds.Count > 0)
+            await TransactionalAudit.RecordAsync(conn, tx, AuditEventTypes.AccountAccessGranted, _logger, itemCount: intern ? 1 : command.AccountIds.Distinct().Count(), targetUserId: id);
         return Result(UserAdministrationStatus.Success, intern);
     });
 
@@ -48,6 +69,7 @@ public sealed class UserAdministrationStore(IConfiguration configuration, IDatab
         var role = string.IsNullOrWhiteSpace(command.AuthLevel) ? user.AuthLevel : command.AuthLevel.Trim();
         if (user.IsIntern() && !string.Equals(role, user.AuthLevel, StringComparison.OrdinalIgnoreCase))
             return Result(UserAdministrationStatus.InternRoleChange);
+        if (user.IsIntern()) role = user.AuthLevel;
         if (user.IsAdmin() && !string.Equals(role, "Admin", StringComparison.OrdinalIgnoreCase))
         {
             if (command.ActorId == command.UserId) return Result(UserAdministrationStatus.SelfChange);
@@ -58,9 +80,13 @@ public sealed class UserAdministrationStore(IConfiguration configuration, IDatab
         var accountIds = new[] { command.GrantAccountId, command.RevokeAccountId }.Where(id => id.HasValue).Select(id => id!.Value).Distinct().ToArray();
         if (!await AccountsExistAsync(conn, tx, accountIds)) return Result(UserAdministrationStatus.InvalidAccount);
         if (command.GrantAccountId.HasValue && command.GrantAccountId == command.RevokeAccountId) return Result(UserAdministrationStatus.InvalidAccount);
+        if (command.GrantAccountId is int grantId && await HasAccessAsync(conn, tx, command.UserId, grantId))
+            return Result(UserAdministrationStatus.AccountAlreadyLinked);
+        if (command.RevokeAccountId is int revokeId && !await HasAccessAsync(conn, tx, command.UserId, revokeId))
+            return Result(UserAdministrationStatus.AccountNotLinked);
 
         var intern = string.Equals(role, "Intern", StringComparison.OrdinalIgnoreCase);
-        if (intern)
+        if (intern && (!string.IsNullOrWhiteSpace(command.Name) || !string.IsNullOrWhiteSpace(command.Email) || !string.IsNullOrWhiteSpace(command.AuthLevel)))
         {
             var status = await EnsureInternAsync(conn, tx, user.Id, name, user.Name, command.ReuseInternAccount);
             if (status != UserAdministrationStatus.Success) return Result(status);
@@ -74,8 +100,14 @@ public sealed class UserAdministrationStore(IConfiguration configuration, IDatab
         if (command.RevokeAccountId is int revoke)
         {
             await conn.ExecuteAsync("DELETE FROM AccountsUsers WHERE UserId=@UserId AND AccountId=@revoke", new { command.UserId, revoke }, tx);
-            await conn.ExecuteAsync("UPDATE Users SET DefaultAccount=NULL WHERE Id=@UserId AND DefaultAccount=@revoke", new { command.UserId, revoke }, tx);
+            await conn.ExecuteAsync("UPDATE Users SET DefaultAccount=(SELECT CASE WHEN COUNT(*)=1 THEN MIN(AccountId) ELSE NULL END FROM AccountsUsers WHERE UserId=@UserId) WHERE Id=@UserId AND DefaultAccount=@revoke", new { command.UserId, revoke }, tx);
         }
+        if (!string.IsNullOrWhiteSpace(command.Name) || !string.IsNullOrWhiteSpace(command.Email) || !string.IsNullOrWhiteSpace(command.AuthLevel))
+            await TransactionalAudit.RecordAsync(conn, tx, AuditEventTypes.AdminUserUpdated, _logger, targetUserId: command.UserId);
+        if (command.GrantAccountId.HasValue)
+            await TransactionalAudit.RecordAsync(conn, tx, AuditEventTypes.AccountAccessGranted, _logger, itemCount: 1, targetUserId: command.UserId);
+        if (command.RevokeAccountId.HasValue)
+            await TransactionalAudit.RecordAsync(conn, tx, AuditEventTypes.AccountAccessRevoked, _logger, itemCount: 1, targetUserId: command.UserId);
         return Result(UserAdministrationStatus.Success, intern);
     });
 
@@ -83,14 +115,16 @@ public sealed class UserAdministrationStore(IConfiguration configuration, IDatab
     {
         if (actorId == userId) return Result(UserAdministrationStatus.SelfChange);
         var user = await conn.QuerySingleOrDefaultAsync<User>("SELECT Id, AuthLevel FROM Users WHERE Id=@userId FOR UPDATE", new { userId }, tx);
-        if (user is null) return Result(UserAdministrationStatus.Success);
+        if (user is null) return Result(UserAdministrationStatus.NotFound);
         if (user.IsAdmin() && await AdminCountAsync(conn, tx) <= 1) return Result(UserAdministrationStatus.LastAdmin);
         await conn.ExecuteAsync("DELETE FROM Users WHERE Id=@userId", new { userId }, tx);
+        await TransactionalAudit.RecordAsync(conn, tx, AuditEventTypes.AdminUserDeleted, _logger, targetUserId: userId);
         return Result(UserAdministrationStatus.Success);
     });
 
     private async Task<UserAdministrationResult> ExecuteAsync(int actorId, Func<MySqlConnection, MySqlTransaction, Task<UserAdministrationResult>> action)
     {
+        using var audit = AuditOperationScope.Begin(actorId, AuditOperationScope.Current?.OperationId);
         guard.ThrowIfUnavailable();
         await using var conn = new MySqlConnection(configuration.GetConnectionString("default") ?? string.Empty);
         await conn.OpenAsync();
@@ -122,7 +156,10 @@ public sealed class UserAdministrationStore(IConfiguration configuration, IDatab
     }
 
     private static Task<int> AdminCountAsync(MySqlConnection conn, MySqlTransaction tx) =>
-        conn.ExecuteScalarAsync<int>("SELECT COUNT(*) FROM Users WHERE TRIM(AuthLevel)='Admin'", transaction: tx);
+        conn.ExecuteScalarAsync<int>("SELECT COUNT(*) FROM Users WHERE LOWER(TRIM(AuthLevel))='admin'", transaction: tx);
+
+    private static async Task<bool> HasAccessAsync(MySqlConnection conn, MySqlTransaction tx, int userId, int accountId) =>
+        await conn.ExecuteScalarAsync<int>("SELECT COUNT(*) FROM AccountsUsers WHERE UserId=@userId AND AccountId=@accountId", new { userId, accountId }, tx) != 0;
 
     private static async Task<bool> AccountsExistAsync(MySqlConnection conn, MySqlTransaction tx, IReadOnlyCollection<int> ids)
     {

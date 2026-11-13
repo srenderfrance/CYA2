@@ -18,6 +18,11 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Content Remove="AccountImports\**;UserImports\**" />
+    <None Remove="AccountImports\**;UserImports\**" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\Cya2.Core\Cya2.Core.csproj" />
     <ProjectReference Include="..\Cya2.Application\Cya2.Application.csproj" />
     <ProjectReference Include="..\Cya2.Shared\Cya2.Shared.csproj" />

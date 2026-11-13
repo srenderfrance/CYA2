@@ -9,6 +9,25 @@ namespace Cya2.Application.Tests;
 public sealed class RollbackOutcomeTests
 {
     [Theory]
+    [InlineData(true, false, AuditOutcomes.Unknown)]
+    [InlineData(false, true, AuditOutcomes.Cancelled)]
+    public async Task UncertainOrCancelledDonationStopsAndUsesTruthfulOutcome(bool unknown, bool cancelled, string outcome)
+    {
+        var executor = new Executor { Donation = new() { OutcomeUnknown = unknown, Cancelled = cancelled } };
+        var audit = new Audit();
+        await Service(executor, new Invalidator(), audit).ExecuteRollbackAsync("both");
+        Assert.False(executor.AccountingCalled);
+        Assert.Equal(outcome, audit.Outcome);
+    }
+
+    [Fact]
+    public async Task CommittedDonationAndFailedAccountingRecordsPartialOutcome()
+    {
+        var audit = new Audit();
+        await Service(new Executor(), new Invalidator(), audit).ExecuteRollbackAsync("both");
+        Assert.Equal(AuditOutcomes.Partial, audit.Outcome);
+    }
+    [Theory]
     [InlineData(false)]
     [InlineData(true)]
     public async Task PartialRollbackInvalidatesEvenWhenAccountingFails(bool throws)
@@ -81,8 +100,10 @@ public sealed class RollbackOutcomeTests
     private sealed class Audit : IAuditEventService
     {
         public bool Throw;
+        public string? Outcome;
         public Task RecordAsync(int? actorUserId, string eventType, string outcome, string? traceId = null, int? itemCount = null, CancellationToken cancellationToken = default)
         {
+            Outcome = outcome;
             Assert.False(cancellationToken.IsCancellationRequested);
             if (Throw) throw new InvalidOperationException("Injected audit failure");
             return Task.CompletedTask;

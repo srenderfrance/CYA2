@@ -138,7 +138,7 @@ public sealed class FrameworkExceptionLoggingTests
         using var registration = appLifetime.ApplicationStopping.Register(() => stopped.TrySetResult());
 
         var queue = host.Services.GetRequiredService<ImportWorkQueue>();
-        await queue.EnqueueAsync(new ImportWorkItem("donations", "preview", "progress", null, []));
+        await queue.EnqueueAsync(new ImportWorkItem("donations", "preview", Guid.NewGuid().ToString("N"), null, []));
         await injected.Task.WaitAsync(TimeSpan.FromSeconds(10));
         await stopped.Task.WaitAsync(TimeSpan.FromSeconds(10));
 

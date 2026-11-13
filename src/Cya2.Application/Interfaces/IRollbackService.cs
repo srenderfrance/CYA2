@@ -14,6 +14,7 @@ namespace Cya2.Application.Interfaces
         public bool Success { get; set; }
         public bool ChangesCommitted { get; set; }
         public bool OutcomeUnknown { get; set; }
+        public bool Cancelled { get; set; }
         public List<string> Warnings { get; set; } = [];
         public string Message { get; set; } = string.Empty;
         public string ErrorMessage { get; set; } = string.Empty;

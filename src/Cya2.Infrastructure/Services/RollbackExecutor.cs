@@ -199,10 +199,10 @@ WHERE backup.BackupId = @BackupId";
                         INSERT INTO DonationData
                         (Id, DonorId, Date, GiftImportId, AccountName, PaymentMethod, GiftType,
                          Amount, Fund, InternName, PrimaryAddressee, SoftCreditName,
-                         IsAnonymous, Frequency, DateCreated, ConstituentId, IsSoftCredit)
+                         IsAnonymous, Frequency, DateCreated, ConstituentId, SoftCreditRecipientId, IsSoftCredit)
                          SELECT Id, DonorId, Date, GiftImportId, AccountName, PaymentMethod, GiftType,
                                  Amount, Fund, InternName, PrimaryAddressee, SoftCreditName,
-                                COALESCE(IsAnonymous, 0), Frequency, DateCreated, ConstituentId, IsSoftCredit
+                                COALESCE(IsAnonymous, 0), Frequency, DateCreated, ConstituentId, SoftCreditRecipientId, IsSoftCredit
                          FROM DonationDataBackup
                          WHERE BackupId = @BackupId
                            AND Id <> 0";
@@ -231,6 +231,7 @@ WHERE donation.Id IS NULL
                     pinCmd.Parameters.Add(new MySqlParameter("@BackupId", latestBackupId));
                     await pinCmd.ExecuteNonQueryAsync(cancellationToken);
 
+                    await TransactionalAudit.RecordAsync(conn, tx, AuditEventTypes.DonationRollbackCompleted, _logger, restoredRows, cancellationToken: cancellationToken);
                     await ImportTransaction.CommitAsync(tx, connStr, "DonationBackupSnapshots", latestBackupId, cancellationToken, requirePinned: true);
 
                     result.Success = true;
@@ -252,6 +253,7 @@ WHERE donation.Id IS NULL
                 _logger.LogError("Error during donation rollback. ExceptionType={ExceptionType}", ex.GetType().Name);
                 result.Success = false;
                 result.OutcomeUnknown = ex is ImportOutcomeUnknownException;
+                result.Cancelled = ex is OperationCanceledException;
                 result.ErrorMessage = result.OutcomeUnknown
                     ? "The donation rollback outcome could not be confirmed. Reconcile the latest snapshot before retrying."
                     : "Donation rollback did not complete. Refresh the backup status before retrying.";
@@ -375,6 +377,7 @@ WHERE donation.Id IS NULL
                     pinCmd.Parameters.Add(new MySqlParameter("@BackupId", latestBackupId));
                     await pinCmd.ExecuteNonQueryAsync(cancellationToken);
 
+                    await TransactionalAudit.RecordAsync(conn, tx, AuditEventTypes.AccountingRollbackCompleted, _logger, restoredRows, cancellationToken: cancellationToken);
                     await ImportTransaction.CommitAsync(tx, connStr, "AccountingBackupSnapshots", latestBackupId, cancellationToken, requirePinned: true);
 
                     result.Success = true;
@@ -396,6 +399,7 @@ WHERE donation.Id IS NULL
                 _logger.LogError("Error during accounting rollback. ExceptionType={ExceptionType}", ex.GetType().Name);
                 result.Success = false;
                 result.OutcomeUnknown = ex is ImportOutcomeUnknownException;
+                result.Cancelled = ex is OperationCanceledException;
                 result.ErrorMessage = result.OutcomeUnknown
                     ? "The accounting rollback outcome could not be confirmed. Reconcile the latest snapshot before retrying."
                     : "Accounting rollback did not complete. Refresh the backup status before retrying.";

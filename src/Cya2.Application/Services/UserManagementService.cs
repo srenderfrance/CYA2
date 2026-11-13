@@ -1,7 +1,7 @@
 using Cya2.Application.DTOs;
 using Cya2.Application.Interfaces;
 using Cya2.Core.Interfaces;
-using Cya2.Core.Utilities;
+using Cya2.Core.Entities;
 using Microsoft.Extensions.Logging;
 
 namespace Cya2.Application.Services;
@@ -46,6 +46,7 @@ public class UserManagementService
     private readonly IUserRepository _userRepository;
     private readonly IUserAccountAccessRepository _userAccountAccessRepository;
     private readonly IAccountRepository _accountRepository;
+    private readonly IUserAdministrationStore _administrationStore;
     private readonly IAdminAuthorizationContext _adminAuthorizationContext;
     private readonly IImportCacheInvalidator? _cacheInvalidator;
     private readonly IAuditEventService? _auditEvents;
@@ -57,6 +58,7 @@ public class UserManagementService
         IAccountRepository accountRepository,
         IAdminAuthorizationContext adminAuthorizationContext,
         ILogger<UserManagementService> logger,
+        IUserAdministrationStore administrationStore,
         IImportCacheInvalidator? cacheInvalidator = null,
         IAuditEventService? auditEvents = null)
     {
@@ -65,6 +67,7 @@ public class UserManagementService
         _accountRepository = accountRepository;
         _adminAuthorizationContext = adminAuthorizationContext;
         _logger = logger;
+        _administrationStore = administrationStore;
         _cacheInvalidator = cacheInvalidator;
         _auditEvents = auditEvents;
     }
@@ -192,11 +195,16 @@ public class UserManagementService
 
     public async Task<AdminUserOperationDto> UpdateAdminUserAsync(AdminUserUpdateDto request)
     {
+        using var operation = AuditOperationScope.Begin(null, targetUserId: request.UserId);
+        int? actorUserId = null;
+        var attempted = false;
+        var committed = false;
         try
         {
-            var actorUserId = await _adminAuthorizationContext.GetCurrentAdminUserIdAsync();
+            actorUserId = await _adminAuthorizationContext.GetCurrentAdminUserIdAsync();
             if (actorUserId is null)
             {
+                await RecordUserOutcomeAsync(null, AuditOutcomes.Denied);
                 return NotAuthorized();
             }
 
@@ -205,80 +213,43 @@ public class UserManagementService
                 return new AdminUserOperationDto { IsSuccess = false, Message = "Invalid user id." };
             }
 
-            if (string.IsNullOrWhiteSpace(request.Name) &&
-                string.IsNullOrWhiteSpace(request.Email) &&
-                string.IsNullOrWhiteSpace(request.AuthLevel))
+            var profileChanged = !string.IsNullOrWhiteSpace(request.Name) ||
+                !string.IsNullOrWhiteSpace(request.Email) || !string.IsNullOrWhiteSpace(request.AuthLevel);
+            if (!profileChanged && request.GrantAccountId is null && request.RevokeAccountId is null)
             {
                 return new AdminUserOperationDto { IsSuccess = false, Message = "No changes provided for update." };
             }
 
-            var user = await _userRepository.GetByIdAsync(request.UserId);
-            if (user == null)
+            if (profileChanged)
             {
-                return new AdminUserOperationDto { IsSuccess = false, Message = "Selected user not found" };
+                var user = await _userRepository.GetByIdAsync(request.UserId);
+                if (user == null)
+                    return new AdminUserOperationDto { IsSuccess = false, Message = "Selected user not found" };
+                var targetEmail = string.IsNullOrWhiteSpace(request.Email) ? user.Email : request.Email.Trim();
+                if (!IsOrganizationEmail(targetEmail))
+                    return new AdminUserOperationDto { IsSuccess = false, Message = "A valid @scene8.net email is required." };
             }
 
-            var targetEmail = string.IsNullOrWhiteSpace(request.Email) ? user.Email : request.Email.Trim();
-            if (!IsOrganizationEmail(targetEmail))
+            attempted = true;
+            var result = await _administrationStore.UpdateAsync(new UpdateUserCommand(actorUserId.Value, request.UserId,
+                request.Name, request.Email, request.AuthLevel, request.GrantAccountId, request.RevokeAccountId, request.ReuseExistingInternAccount));
+            if (result.Status != UserAdministrationStatus.Success)
             {
-                return new AdminUserOperationDto { IsSuccess = false, Message = "A valid @scene8.net email is required." };
+                await RecordUserOutcomeAsync(actorUserId, AuditOutcomes.Denied);
+                return FromAdministrationStatus(result.Status);
             }
-
-            if (!string.Equals(user.Email, targetEmail, StringComparison.OrdinalIgnoreCase))
-            {
-                var existingUser = await _userRepository.GetByEmailAsync(targetEmail);
-                if (existingUser is not null && existingUser.Id != user.Id)
-                    return new AdminUserOperationDto { IsSuccess = false, Message = "A user with this email already exists" };
-            }
-
-            var originalName = user.Name;
-            var wasIntern = user.IsIntern();
-            var targetName = string.IsNullOrWhiteSpace(request.Name) ? user.Name : request.Name.Trim();
-            var targetAuthLevel = string.IsNullOrWhiteSpace(request.AuthLevel) ? user.AuthLevel : request.AuthLevel.Trim();
-
-            if (wasIntern && !string.Equals(targetAuthLevel, user.AuthLevel, StringComparison.OrdinalIgnoreCase))
-            {
-                return new AdminUserOperationDto { IsSuccess = false, Message = "An intern's role cannot be changed. Create a new user for a different role." };
-            }
-
-            if (string.Equals(targetAuthLevel, "Intern", StringComparison.OrdinalIgnoreCase))
-            {
-                // Intern account identity is name-derived, so a collision needs an explicit reuse decision instead of creating duplicate history paths.
-                var desiredFund = InternAccountUtility.BuildInternFund(targetName);
-                var existingAccount = await _accountRepository.GetByFundAsync(desiredFund);
-                var linkedInternAccount = (await _userAccountAccessRepository.GetUserAccountsAsync(user.Id))
-                    .FirstOrDefault(account => InternAccountUtility.IsInternFund(account.Fund));
-                if (existingAccount != null && existingAccount.AccountId != linkedInternAccount?.AccountId && !request.ReuseExistingInternAccount)
-                {
-                    return new AdminUserOperationDto
-                    {
-                        RequiresInternAccountReuse = true,
-                        Message = "An intern account already exists for this name. Reuse the existing account or modify the user name."
-                    };
-                }
-            }
-
-            if (!string.IsNullOrWhiteSpace(request.Name)) user.Name = targetName;
-            if (!string.IsNullOrWhiteSpace(request.Email)) user.Email = request.Email.Trim();
-            if (!wasIntern && !string.IsNullOrWhiteSpace(request.AuthLevel)) user.AuthLevel = targetAuthLevel;
-
-            await _userRepository.UpdateAsync(user);
-
-            if (string.Equals(user.AuthLevel, "Intern", StringComparison.OrdinalIgnoreCase))
-            {
-                await EnsureInternAccountAccessAsync(user, originalName, request.ReuseExistingInternAccount);
-            }
+            committed = true;
 
             _cacheInvalidator?.Invalidate(CacheDataDomains.Authorization |
-                (string.Equals(user.AuthLevel, "Intern", StringComparison.OrdinalIgnoreCase) ? CacheDataDomains.AccountMetadata : CacheDataDomains.None));
-            await RecordAuditAsync(actorUserId, AuditEventTypes.AdminUserUpdated);
+                (result.InternAccountChanged && profileChanged ? CacheDataDomains.AccountMetadata : CacheDataDomains.None));
 
             return new AdminUserOperationDto { IsSuccess = true, Message = "User updated successfully" };
         }
         catch (Exception ex)
         {
             _logger.LogError("Error updating admin user. ExceptionType={ExceptionType}", ex.GetType().Name);
-            return new AdminUserOperationDto { IsSuccess = false, Message = "Unable to update the user. Please try again." };
+            if (!committed) await RecordUserOutcomeAsync(actorUserId, attempted && ex is not AuditPersistenceException ? AuditOutcomes.Unknown : AuditOutcomes.Failed);
+            return HandleMutationFailure(attempted, committed, CacheDataDomains.Authorization | CacheDataDomains.AccountMetadata);
         }
     }
 
@@ -301,95 +272,24 @@ public class UserManagementService
         }
     }
 
-    public async Task<AdminUserOperationDto> GrantAccountAccessAsync(int userId, int accountId)
-    {
-        try
-        {
-            var actorUserId = await _adminAuthorizationContext.GetCurrentAdminUserIdAsync();
-            if (actorUserId is null)
-            {
-                return NotAuthorized();
-            }
+    public Task<AdminUserOperationDto> GrantAccountAccessAsync(int userId, int accountId) =>
+        UpdateAdminUserAsync(new AdminUserUpdateDto { UserId = userId, GrantAccountId = accountId });
 
-            if (userId <= 0) return new AdminUserOperationDto { IsSuccess = false, Message = "Selected user not found" };
-            if (accountId <= 0) return new AdminUserOperationDto { IsSuccess = false, Message = "Selected account not found" };
-
-            var account = await _userAccountAccessRepository.GetAccountByIdAsync(accountId);
-            if (account == null)
-            {
-                return new AdminUserOperationDto { IsSuccess = false, Message = "Selected account not found" };
-            }
-
-            if (await _userAccountAccessRepository.HasAccessAsync(userId, accountId))
-            {
-                return new AdminUserOperationDto { IsSuccess = false, Message = $"Account '{account.Fund}' is already linked to this user" };
-            }
-
-            var granted = await _userAccountAccessRepository.GrantAccessAsync(userId, accountId);
-            if (!granted)
-            {
-                return new AdminUserOperationDto { IsSuccess = false, Message = "Failed to link account" };
-            }
-
-            var count = await _userAccountAccessRepository.GetUserAccountCountAsync(userId);
-            if (count == 1)
-            {
-                await _userAccountAccessRepository.SetUserDefaultAccountAsync(userId, accountId);
-            }
-
-            _cacheInvalidator?.Invalidate(CacheDataDomains.Authorization);
-            await RecordAuditAsync(actorUserId, AuditEventTypes.AccountAccessGranted);
-
-            return new AdminUserOperationDto { IsSuccess = true, Message = $"Successfully linked account '{account.Fund}'" };
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError("Error granting account access. ExceptionType={ExceptionType}", ex.GetType().Name);
-            return new AdminUserOperationDto { IsSuccess = false, Message = "Unable to link the account. Please try again." };
-        }
-    }
-
-    public async Task<AdminUserOperationDto> RevokeAccountAccessAsync(int userId, int accountId)
-    {
-        try
-        {
-            var actorUserId = await _adminAuthorizationContext.GetCurrentAdminUserIdAsync();
-            if (actorUserId is null)
-            {
-                return NotAuthorized();
-            }
-
-            if (userId <= 0) return new AdminUserOperationDto { IsSuccess = false, Message = "Selected user not found" };
-            if (accountId <= 0) return new AdminUserOperationDto { IsSuccess = false, Message = "Please select an account to remove" };
-
-            var account = await _userAccountAccessRepository.GetAccountByIdAsync(accountId);
-            var accountName = account?.Fund ?? "Unknown";
-
-            var revoked = await _userAccountAccessRepository.RevokeAccessAsync(userId, accountId);
-            if (!revoked)
-            {
-                return new AdminUserOperationDto { IsSuccess = false, Message = "Failed to remove account link" };
-            }
-
-            _cacheInvalidator?.Invalidate(CacheDataDomains.Authorization);
-            await RecordAuditAsync(actorUserId, AuditEventTypes.AccountAccessRevoked);
-
-            return new AdminUserOperationDto { IsSuccess = true, Message = $"Successfully removed account '{accountName}'" };
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError("Error revoking account access. ExceptionType={ExceptionType}", ex.GetType().Name);
-            return new AdminUserOperationDto { IsSuccess = false, Message = "Unable to remove the account link. Please try again." };
-        }
-    }
+    public Task<AdminUserOperationDto> RevokeAccountAccessAsync(int userId, int accountId) =>
+        UpdateAdminUserAsync(new AdminUserUpdateDto { UserId = userId, RevokeAccountId = accountId });
 
     public async Task<AdminUserOperationDto> CreateAdminUserAsync(string name, string email, string authLevel, IEnumerable<int> accountIds, bool reuseExistingInternAccount = false)
     {
+        using var operation = AuditOperationScope.Begin(null);
+        int? actorUserId = null;
+        var attempted = false;
+        var committed = false;
         try
         {
-            var actorUserId = await _adminAuthorizationContext.GetCurrentAdminUserIdAsync();
+            actorUserId = await _adminAuthorizationContext.GetCurrentAdminUserIdAsync();
             if (actorUserId is null)
             {
+                await RecordUserOutcomeAsync(null, AuditOutcomes.Denied);
                 return NotAuthorized();
             }
 
@@ -399,63 +299,19 @@ public class UserManagementService
             if (!IsOrganizationEmail(email))
                 return new AdminUserOperationDto { IsSuccess = false, Message = "A valid @scene8.net email is required." };
 
-            if (await _userRepository.ExistsAsync(email.Trim()))
+            attempted = true;
+            var result = await _administrationStore.CreateAsync(new CreateUserCommand(actorUserId.Value, name.Trim(), email.Trim(),
+                string.IsNullOrWhiteSpace(authLevel) ? "User" : authLevel.Trim(),
+                (accountIds ?? Enumerable.Empty<int>()).Where(id => id > 0).Distinct().ToArray(), reuseExistingInternAccount));
+            if (result.Status != UserAdministrationStatus.Success)
             {
-                return new AdminUserOperationDto { IsSuccess = false, Message = "A user with this email already exists" };
+                await RecordUserOutcomeAsync(actorUserId, AuditOutcomes.Denied);
+                return FromAdministrationStatus(result.Status);
             }
-
-            var isInternUser = string.Equals(authLevel, "Intern", StringComparison.OrdinalIgnoreCase);
-            if (isInternUser && !reuseExistingInternAccount)
-            {
-                // Deletion retains intern accounts, so recreated users must explicitly choose whether to reconnect to an existing account.
-                var existingAccount = await _accountRepository.GetByFundAsync(InternAccountUtility.BuildInternFund(name));
-                if (existingAccount != null)
-                {
-                    return new AdminUserOperationDto
-                    {
-                        RequiresInternAccountReuse = true,
-                        Message = "An intern account already exists for this name. Reuse the existing account or modify the user name."
-                    };
-                }
-            }
-
-            var user = await _userRepository.AddAsync(new Cya2.Core.Entities.User(
-                googleId: string.Empty,
-                email: email.Trim(),
-                name: name.Trim(),
-                language: "en-US",
-                authLevel: string.IsNullOrWhiteSpace(authLevel) ? "User" : authLevel.Trim(),
-                defaultAccount: null));
-
-            if (user == null || user.Id <= 0)
-            {
-                return new AdminUserOperationDto { IsSuccess = false, Message = "Failed to create user" };
-            }
-
-            var realAccountIds = (accountIds ?? Enumerable.Empty<int>()).Where(id => id > 0).Distinct().ToList();
-            isInternUser = string.Equals(user.AuthLevel, "Intern", StringComparison.OrdinalIgnoreCase);
-
-            if (isInternUser)
-            {
-                var internAccount = await EnsureInternAccountAccessAsync(user, reuseExistingAccount: reuseExistingInternAccount);
-                realAccountIds = internAccount?.AccountId > 0
-                    ? new List<int> { internAccount.AccountId }
-                    : new List<int>();
-            }
-
-            foreach (var accountId in isInternUser ? Enumerable.Empty<int>() : realAccountIds)
-            {
-                await _userAccountAccessRepository.GrantAccessAsync(user.Id, accountId);
-            }
-
-            if (realAccountIds.Count == 1)
-            {
-                await _userAccountAccessRepository.SetUserDefaultAccountAsync(user.Id, realAccountIds[0]);
-            }
+            committed = true;
 
             _cacheInvalidator?.Invalidate(CacheDataDomains.Authorization |
-                (isInternUser ? CacheDataDomains.AccountMetadata : CacheDataDomains.None));
-            await RecordAuditAsync(actorUserId, AuditEventTypes.AdminUserCreated);
+                (result.InternAccountChanged ? CacheDataDomains.AccountMetadata : CacheDataDomains.None));
 
             return new AdminUserOperationDto
             {
@@ -466,114 +322,101 @@ public class UserManagementService
         catch (Exception ex)
         {
             _logger.LogError("Error creating admin user. ExceptionType={ExceptionType}", ex.GetType().Name);
-            return new AdminUserOperationDto { IsSuccess = false, Message = "Unable to create the user. Please try again." };
+            if (!committed) await RecordUserOutcomeAsync(actorUserId, attempted && ex is not AuditPersistenceException ? AuditOutcomes.Unknown : AuditOutcomes.Failed);
+            return HandleMutationFailure(attempted, committed, CacheDataDomains.Authorization | CacheDataDomains.AccountMetadata);
         }
     }
 
     public async Task<AdminUserOperationDto> DeleteAdminUserAsync(int userId)
     {
+        using var operation = AuditOperationScope.Begin(null, targetUserId: userId);
+        int? actorUserId = null;
+        var attempted = false;
+        var committed = false;
         try
         {
-            var actorUserId = await _adminAuthorizationContext.GetCurrentAdminUserIdAsync();
+            actorUserId = await _adminAuthorizationContext.GetCurrentAdminUserIdAsync();
             if (actorUserId is null)
             {
+                await RecordUserOutcomeAsync(null, AuditOutcomes.Denied);
                 return NotAuthorized();
             }
 
             if (userId <= 0)
                 return new AdminUserOperationDto { IsSuccess = false, Message = "Selected user not found" };
 
-            var exists = await _userRepository.ExistsAsync(userId);
-            if (!exists)
-                return new AdminUserOperationDto { IsSuccess = false, Message = "Selected user not found" };
-
-            await _userAccountAccessRepository.RevokeAllAccessAsync(userId);
-            await _userRepository.DeleteAsync(userId);
+            attempted = true;
+            var result = await _administrationStore.DeleteAsync(actorUserId.Value, userId);
+            if (result.Status != UserAdministrationStatus.Success)
+            {
+                await RecordUserOutcomeAsync(actorUserId, AuditOutcomes.Denied);
+                return FromAdministrationStatus(result.Status);
+            }
+            committed = true;
             _cacheInvalidator?.Invalidate(CacheDataDomains.Authorization);
-            await RecordAuditAsync(actorUserId, AuditEventTypes.AdminUserDeleted);
 
             return new AdminUserOperationDto { IsSuccess = true, Message = "User deleted successfully" };
         }
         catch (Exception ex)
         {
             _logger.LogError("Error deleting user. ExceptionType={ExceptionType}", ex.GetType().Name);
-            return new AdminUserOperationDto { IsSuccess = false, Message = "Unable to delete the user. Please try again." };
+            if (!committed) await RecordUserOutcomeAsync(actorUserId, attempted && ex is not AuditPersistenceException ? AuditOutcomes.Unknown : AuditOutcomes.Failed);
+            return HandleMutationFailure(attempted, committed, CacheDataDomains.Authorization);
         }
+    }
+
+    private AdminUserOperationDto HandleMutationFailure(bool attempted, bool committed, CacheDataDomains domains)
+    {
+        if (attempted)
+        {
+            try { _cacheInvalidator?.Invalidate(domains); }
+            catch (Exception ex) { _logger.LogError("Unable to invalidate user administration caches. ExceptionType={ExceptionType}", ex.GetType().Name); }
+        }
+
+        return new AdminUserOperationDto
+        {
+            IsSuccess = committed,
+            Message = committed ? "The change was saved, but follow-up processing failed. Refresh and verify the result." :
+                attempted ? "The result could not be confirmed. Refresh and verify before retrying." :
+                "Unable to process the user change. Please try again."
+        };
     }
 
     private static AdminUserOperationDto NotAuthorized()
         => new() { IsSuccess = false, Message = "Administrator authorization is required." };
 
-    private Task RecordAuditAsync(int? actorUserId, string eventType)
-        => _auditEvents?.RecordAsync(actorUserId, eventType, AuditOutcomes.Succeeded)
-           ?? Task.CompletedTask;
-
-    private async Task<Cya2.Core.Entities.Account?> EnsureInternAccountAccessAsync(Cya2.Core.Entities.User user, string? originalName = null, bool reuseExistingAccount = false)
+    private static AdminUserOperationDto FromAdministrationStatus(UserAdministrationStatus status) => new()
     {
-        if (user == null || user.Id <= 0)
+        RequiresInternAccountReuse = status == UserAdministrationStatus.InternReuseRequired,
+        Message = status switch
         {
-            return null;
+            UserAdministrationStatus.NotAuthorized => "Administrator authorization is required.",
+            UserAdministrationStatus.NotFound => "Selected user not found",
+            UserAdministrationStatus.SelfChange => "Administrators cannot delete their own user or remove their own administrator role.",
+            UserAdministrationStatus.LastAdmin => "The last administrator cannot be deleted or demoted.",
+            UserAdministrationStatus.DuplicateEmail => "A user with this email already exists",
+            UserAdministrationStatus.InternRoleChange => "An intern's role cannot be changed. Create a new user for a different role.",
+            UserAdministrationStatus.InternReuseRequired => "An intern account already exists for this name. Reuse the existing account or modify the user name.",
+            UserAdministrationStatus.InvalidAccount => "The selected account is invalid or cannot be both added and removed.",
+            UserAdministrationStatus.AccountAlreadyLinked => "The selected account is already linked to this user.",
+            UserAdministrationStatus.AccountNotLinked => "The selected account is not linked to this user.",
+            _ => "Unable to update the user. Please try again."
         }
+    };
 
-        var desiredInternFund = InternAccountUtility.BuildInternFund(user.Name);
-        var desiredAccount = await _accountRepository.GetByFundAsync(desiredInternFund);
-
-        var linkedAccounts = await _userAccountAccessRepository.GetUserAccountsAsync(user.Id);
-        var linkedInternAccount = linkedAccounts.FirstOrDefault(a => InternAccountUtility.IsInternFund(a.Fund));
-
-        if (desiredAccount != null && linkedInternAccount != null && desiredAccount.AccountId != linkedInternAccount.AccountId && reuseExistingAccount)
+    private async Task RecordUserOutcomeAsync(int? actorUserId, string outcome)
+    {
+        try
         {
-            // A confirmed reuse switches access to the retained account without merging or deleting either account's data.
-            await _userAccountAccessRepository.RevokeAccessAsync(user.Id, linkedInternAccount.AccountId);
-            linkedInternAccount = null;
+            if (_auditEvents is not null)
+                await _auditEvents.RecordAsync(actorUserId,
+                    outcome == AuditOutcomes.Denied ? AuditEventTypes.AdminUserChangeDenied : outcome == AuditOutcomes.Unknown ? AuditEventTypes.AdminUserChangeUnconfirmed : AuditEventTypes.AdminUserChangeFailed,
+                    outcome, cancellationToken: CancellationToken.None);
         }
-
-        if (desiredAccount == null && linkedInternAccount != null)
+        catch (Exception ex)
         {
-            // A rename keeps the same intern account and its history; only its name-derived identity changes.
-            linkedInternAccount.Fund = desiredInternFund;
-            desiredAccount = await _accountRepository.UpdateAsync(linkedInternAccount);
+            _logger.LogCritical(new EventId(9100, "AuditWriteFailed"), "Administration audit delivery failed. OperationId={OperationId} ExceptionType={ExceptionType}", AuditOperationScope.Current?.OperationId, ex.GetType().Name);
         }
-
-        if (desiredAccount == null && !string.IsNullOrWhiteSpace(originalName))
-        {
-            var previousFund = InternAccountUtility.BuildInternFund(originalName);
-            var previousAccount = await _accountRepository.GetByFundAsync(previousFund);
-            if (previousAccount != null)
-            {
-                previousAccount.Fund = desiredInternFund;
-                desiredAccount = await _accountRepository.UpdateAsync(previousAccount);
-            }
-        }
-
-        if (desiredAccount == null)
-        {
-            // Intern accounts are donation-only, so they deliberately have no AccountingClass or accounting account number.
-            desiredAccount = await _accountRepository.AddAsync(new Cya2.Core.Entities.Account
-            {
-                Fund = desiredInternFund,
-                AccountingClass = null,
-                AccountNumber = $"INT-{user.Id}",
-                Overhead = 12.00m,
-                SoftCredit = string.Empty,
-                BalanceAdjustment = 0,
-                CreatedAt = DateTime.UtcNow
-            });
-        }
-
-        if (desiredAccount?.AccountId > 0)
-        {
-            var hasAccess = await _userAccountAccessRepository.HasAccessAsync(user.Id, desiredAccount.AccountId);
-            if (!hasAccess)
-            {
-                await _userAccountAccessRepository.GrantAccessAsync(user.Id, desiredAccount.AccountId);
-            }
-
-            await _userAccountAccessRepository.SetUserDefaultAccountAsync(user.Id, desiredAccount.AccountId);
-            return desiredAccount;
-        }
-
-        _logger.LogWarning("Failed to resolve or create an intern account.");
-        return null;
     }
+
 }
